@@ -280,7 +280,7 @@ async def analyze_symbol(s):
                 elif bp<be50<be200: btc_filter="BEAR"
                 else: btc_filter="NEUTRAL"
 
-        trend_score=0; align_score=0; adx_score=0; rsi_score=0; vol_score=0; sr_score=0; vwap_score=0; atr_score=0; derivatives_score=0; btc_score=0
+        trend_score=0; align_score=0; adx_score=0; rsi_score=0; vol_score=0; sr_score=0; vwap_score=0; atr_score=0; derivatives_score=0; btc_score=0; entry_location_score=0; entry_location="—"
         if direction:
             trend_score = (
                 (10 if ((direction==1 and p>e200_4) or (direction==-1 and p<e200_4)) else 0) +
@@ -297,6 +297,24 @@ async def analyze_symbol(s):
                 if direction==1: rsi_score=10 if 52<=r<=68 else 6 if 48<=r<=72 else 0
                 else: rsi_score=10 if 32<=r<=48 else 6 if 28<=r<=52 else 0
             vol_score = 10 if vr is not None and vr>=1.5 else 7 if vr is not None and vr>=1.2 else 3 if vr is not None and vr>=0.8 else 0
+            # Entry-location score: reward entries close to support (LONG) or resistance (SHORT), penalize chasing.
+            if a and a>0 and support is not None and resistance is not None:
+                if direction==1:
+                    dist_support=max(0.0,p-support); atr_units=dist_support/a
+                    if p < support: entry_location="BELOW SUPPORT"
+                    elif atr_units<=1.5: entry_location="OPTIMAL"
+                    elif atr_units<=2.5: entry_location="GOOD"
+                    elif atr_units<=3.0: entry_location="FAR"
+                    else: entry_location="CHASE RISK"
+                    entry_location_score=5 if entry_location=="OPTIMAL" else 4 if entry_location=="GOOD" else 2 if entry_location=="FAR" else 0
+                elif direction==-1:
+                    dist_res=max(0.0,resistance-p); atr_units=dist_res/a
+                    if p > resistance: entry_location="ABOVE RESISTANCE"
+                    elif atr_units<=1.5: entry_location="OPTIMAL"
+                    elif atr_units<=2.5: entry_location="GOOD"
+                    elif atr_units<=3.0: entry_location="FAR"
+                    else: entry_location="CHASE RISK"
+                    entry_location_score=5 if entry_location=="OPTIMAL" else 4 if entry_location=="GOOD" else 2 if entry_location=="FAR" else 0
             if support is not None and resistance is not None:
                 risk_dist=abs(p-sl) if sl is not None else (a*1.5 if a else p*0.01)
                 room=(resistance-p) if direction==1 else (p-support)
@@ -320,7 +338,7 @@ async def analyze_symbol(s):
             elif btc_filter == "NEUTRAL":
                 btc_score=3
 
-        score=int(min(100,trend_score+align_score+adx_score+rsi_score+vol_score+sr_score+vwap_score+atr_score+derivatives_score+btc_score))
+        score=int(min(100,trend_score+align_score+adx_score+rsi_score+vol_score+sr_score+vwap_score+atr_score+derivatives_score+btc_score+entry_location_score))
         score_label="A+" if score>=85 else "A" if score>=75 else "B" if score>=65 else "C" if score>=50 else "NO-TRADE"
 
         # Hard risk filters: avoid weak trend, poor room to the next level, or a BTC regime conflict.
@@ -328,7 +346,8 @@ async def analyze_symbol(s):
             (adx_v is not None and adx_v<15) or
             (direction==1 and resistance is not None and sl is not None and resistance-p < abs(p-sl)) or
             (direction==-1 and support is not None and sl is not None and p-support < abs(p-sl)) or
-            (s!="BTCUSDT" and btc_filter in ("BULL","BEAR") and btc_filter != ("BULL" if direction==1 else "BEAR"))
+            (s!="BTCUSDT" and btc_filter in ("BULL","BEAR") and btc_filter != ("BULL" if direction==1 else "BEAR")) or
+            entry_location in ("CHASE RISK","BELOW SUPPORT","ABOVE RESISTANCE")
         ):
             score=min(score,49)
             score_label="NO-TRADE"
@@ -350,8 +369,8 @@ async def analyze_symbol(s):
             vol_ratio=round(vr,2) if vr is not None else None, trend=trend4, signal=signal,
             entry=round_price(entry), sl=round_price(sl), tp1=round_price(tp1), tp2=round_price(tp2),
             rr=2.0 if signal!="NO-TRADE" else None, score=score, score_label=score_label,
-            adx_1h=round(adx_v,1) if adx_v is not None else None, vwap_1h=round_price(vwap_v), support=round_price(support), resistance=round_price(resistance), atr_pct=round(atr_pct,2) if atr_pct is not None else None, btc_filter=btc_filter,
-            score_breakdown={"trend":trend_score,"alignment":align_score,"adx":adx_score,"rsi":rsi_score,"volume":vol_score,"support_resistance":sr_score,"vwap":vwap_score,"atr":atr_score,"funding_oi":derivatives_score,"btc_filter":btc_score},
+            adx_1h=round(adx_v,1) if adx_v is not None else None, vwap_1h=round_price(vwap_v), support=round_price(support), resistance=round_price(resistance), atr_pct=round(atr_pct,2) if atr_pct is not None else None, btc_filter=btc_filter, entry_location=entry_location, entry_location_score=entry_location_score,
+            score_breakdown={"trend":trend_score,"alignment":align_score,"adx":adx_score,"rsi":rsi_score,"volume":vol_score,"support_resistance":sr_score,"vwap":vwap_score,"atr":atr_score,"funding_oi":derivatives_score,"btc_filter":btc_score,"entry_location":entry_location_score},
             position_qty=round(qty,6) if qty is not None else None,
             position_usd=round(position_usd,2) if position_usd is not None else None,
             margin_3x=round(margin_3x,2) if margin_3x is not None else None,
