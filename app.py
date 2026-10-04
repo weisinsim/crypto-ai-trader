@@ -13,8 +13,22 @@ ROOT = Path(__file__).resolve().parent
 STATIC_DIR = ROOT / "static"
 
 SYMBOLS = ["BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT","DOGEUSDT","ADAUSDT","AVAXUSDT","LINKUSDT","SUIUSDT"]
-BASE = "https://fapi.binance.com"
-WS = "wss://fstream.binance.com/stream"
+FUTURES_BASES = [
+    "https://fapi.binance.com",
+    "https://fapi1.binance.com",
+    "https://fapi2.binance.com",
+    "https://fapi3.binance.com",
+    "https://fapi4.binance.com",
+]
+SPOT_BASE = "https://api.binance.com"
+WS_BASES = [
+    "wss://fstream.binance.com/stream",
+    "wss://fstream1.binance.com/stream",
+    "wss://fstream2.binance.com/stream",
+    "wss://fstream3.binance.com/stream",
+    "wss://fstream4.binance.com/stream",
+]
+
 
 cache = {
     s: {
@@ -29,6 +43,18 @@ cache = {
 }
 clients = set()
 market_status = {"status": "STARTING", "updated": 0, "error": None}
+diagnostics = {
+    "rest_source": None,
+    "ws_source": None,
+    "last_errors": [],
+    "last_success": 0,
+}
+
+def log_error(stage, detail):
+    msg = f"{stage}: {str(detail)[:240]}"
+    diagnostics["last_errors"] = (diagnostics["last_errors"] + [msg])[-12:]
+    market_status["error"] = msg
+
 
 app = FastAPI(title="Crypto AI Trader V6")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -50,6 +76,18 @@ async def health():
         "age_sec": min(ages) if ages else None,
         "symbols_ready": ready,
         "analysis_ready": sum(v["analysis_ts"] > 0 for v in cache.values())
+    }
+
+
+@app.get("/api/debug")
+async def debug():
+    now = time.time()
+    return {
+        "status": market_status,
+        "diagnostics": diagnostics,
+        "symbols_ready": sum(v["price"] is not None for v in cache.values()),
+        "analysis_ready": sum(v["analysis_ts"] > 0 for v in cache.values()),
+        "age_sec": {s: round(now-v["ts"], 1) if v["ts"] else None for s, v in cache.items()},
     }
 
 
@@ -111,17 +149,38 @@ def round_price(x):
     return round(x, 6)
 
 
-async def get_json(client, path, params):
-    r = await client.get(BASE + path, params=params)
-    r.raise_for_status()
-    return r.json()
+async def get_json(client, path, params, allow_spot=False):
+    last_error = None
+    bases = FUTURES_BASES + ([SPOT_BASE] if allow_spot else [])
+    for base in bases:
+        try:
+            r = await client.get(base + path, params=params)
+            if r.status_code == 200:
+                if base != SPOT_BASE:
+                    diagnostics["rest_source"] = base
+                return r.json()
+            last_error = f"{base}{path} -> HTTP {r.status_code}: {r.text[:160]}"
+        except Exception as e:
+            last_error = f"{base}{path} -> {type(e).__name__}: {e}"
+    log_error("REST", last_error or "unknown error")
+    raise RuntimeError(last_error or "REST request failed")
+
+
+async def get_market_json(client, futures_path, params, spot_path=None):
+    try:
+        return await get_json(client, futures_path, params, allow_spot=False)
+    except Exception:
+        if spot_path:
+            return await get_json(client, spot_path, params, allow_spot=True)
+        raise
+
 
 
 async def analyze_symbol(client, s):
     try:
         k1, k4, fr, oi = await asyncio.gather(
-            get_json(client, "/fapi/v1/klines", {"symbol": s, "interval": "1h", "limit": 240}),
-            get_json(client, "/fapi/v1/klines", {"symbol": s, "interval": "4h", "limit": 240}),
+            get_market_json(client, "/fapi/v1/klines", {"symbol": s, "interval": "1h", "limit": 240}, "/api/v3/klines"),
+            get_market_json(client, "/fapi/v1/klines", {"symbol": s, "interval": "4h", "limit": 240}, "/api/v3/klines"),
             get_json(client, "/fapi/v1/premiumIndex", {"symbol": s}),
             get_json(client, "/fapi/v1/openInterest", {"symbol": s})
         )
@@ -188,22 +247,56 @@ async def analyze_symbol(client, s):
         })
     except Exception as e:
         cache[s]["error"] = str(e)[:120]
+        log_error(f"ANALYSIS {s}", e)
 
 
 async def seed_rest():
     async with httpx.AsyncClient(timeout=8) as c:
         async def one(s):
             try:
-                d = await get_json(c, "/fapi/v1/ticker/24hr", {"symbol": s})
+                d = await get_market_json(c, "/fapi/v1/ticker/24hr", {"symbol": s}, "/api/v3/ticker/24hr")
                 cache[s].update(
                     price=float(d["lastPrice"]),
                     change=float(d["priceChangePercent"]),
                     volume=float(d["quoteVolume"]),
                     ts=time.time()
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                cache[s]["error"] = str(e)[:120]
+                log_error(f"SEED {s}", e)
         await asyncio.gather(*(one(s) for s in SYMBOLS))
+        ready = sum(v["price"] is not None for v in cache.values())
+        if ready:
+            diagnostics["last_success"] = time.time()
+            market_status.update(status="LIVE", updated=time.time(), error=None)
+        else:
+            market_status.update(status="FALLBACK", updated=time.time())
+
+
+async def price_poll_loop():
+    while True:
+        try:
+            async with httpx.AsyncClient(timeout=8) as c:
+                await asyncio.gather(*(poll_price(c, s) for s in SYMBOLS))
+        except Exception as e:
+            log_error("PRICE POLL", e)
+        await asyncio.sleep(5)
+
+
+async def poll_price(client, s):
+    try:
+        d = await get_market_json(client, "/fapi/v1/ticker/24hr", {"symbol": s}, "/api/v3/ticker/24hr")
+        cache[s].update(
+            price=float(d["lastPrice"]),
+            change=float(d["priceChangePercent"]),
+            volume=float(d.get("quoteVolume", 0)),
+            ts=time.time(),
+        )
+        diagnostics["last_success"] = time.time()
+        await broadcast({"type": "ticker", "data": cache[s]})
+    except Exception as e:
+        cache[s]["error"] = str(e)[:120]
+        log_error(f"PRICE {s}", e)
 
 
 async def analysis_loop():
@@ -216,6 +309,7 @@ async def analysis_loop():
             await broadcast({"type": "snapshot", "data": list(cache.values()), "server_ts": time.time()})
         except Exception as e:
             market_status.update(status="DELAYED", updated=time.time(), error=str(e)[:120])
+            log_error("ANALYSIS LOOP", e)
         await asyncio.sleep(60)
 
 
@@ -233,10 +327,14 @@ async def broadcast(obj):
 
 async def ws_loop():
     streams = [f"{s.lower()}@miniTicker" for s in SYMBOLS]
-    url = WS + "?streams=" + "/".join(streams)
     while True:
-        try:
-            async with websockets.connect(url, ping_interval=20, ping_timeout=20, close_timeout=5, max_size=2**20) as sock:
+        connected = False
+        for ws_base in WS_BASES:
+            url = ws_base + "?streams=" + "/".join(streams)
+            try:
+                async with websockets.connect(url, ping_interval=20, ping_timeout=20, close_timeout=5, max_size=2**20) as sock:
+                connected = True
+                diagnostics["ws_source"] = ws_base
                 market_status.update(status="LIVE", updated=time.time(), error=None)
                 await broadcast({"type": "status", "status": "LIVE"})
                 async for raw in sock:
@@ -251,17 +349,23 @@ async def ws_loop():
                             ts=time.time()
                         )
                         await broadcast({"type": "ticker", "data": cache[s]})
-        except Exception as e:
-            market_status.update(status="FALLBACK", updated=time.time(), error=str(e)[:120])
+                if connected:
+                    break
+            except Exception as e:
+                log_error("BINANCE WS", e)
+                continue
+        if not connected:
+            market_status.update(status="FALLBACK", updated=time.time())
             await broadcast({"type": "status", "status": "FALLBACK"})
             await seed_rest()
-            await asyncio.sleep(3)
+        await asyncio.sleep(3)
 
 
 @app.on_event("startup")
 async def startup():
     await seed_rest()
     asyncio.create_task(ws_loop())
+    asyncio.create_task(price_poll_loop())
     asyncio.create_task(analysis_loop())
 
 
