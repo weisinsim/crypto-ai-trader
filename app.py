@@ -274,7 +274,11 @@ async def analyze_symbol(client, s):
 async def seed_rest():
     async with httpx.AsyncClient(timeout=3, http2=True) as c:
         try:
-            d = await get_json(c, SPOT_BASE, "/api/v3/ticker/24hr", {}, timeout=3)
+            d = await get_json(
+                c, SPOT_BASE, "/api/v3/ticker/24hr",
+                {"symbols": json.dumps(SYMBOLS, separators=(",", ":"))},
+                timeout=3
+            )
             by_symbol = {x.get("symbol"): x for x in d}
             for s in SYMBOLS:
                 x = by_symbol.get(s)
@@ -414,7 +418,9 @@ async def ws_loop():
 
 @app.on_event("startup")
 async def startup():
-    await seed_rest()
+    # Never block server startup on Binance. Start the service immediately,
+    # then populate the cache in the background.
+    asyncio.create_task(seed_rest())
     asyncio.create_task(ws_loop())
     asyncio.create_task(price_poll_loop())
     asyncio.create_task(analysis_loop())
