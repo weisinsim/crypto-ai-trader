@@ -151,7 +151,7 @@ def round_price(x):
     return round(x, 6)
 
 
-async def get_json(client, base, path, params, timeout=5):
+async def get_json(client, base, path, params, timeout=3):
     r = await client.get(base + path, params=params, timeout=timeout)
     if r.status_code != 200:
         raise RuntimeError(f"{base}{path} -> HTTP {r.status_code}: {r.text[:160]}")
@@ -161,9 +161,9 @@ async def get_json(client, base, path, params, timeout=5):
 async def get_candles(client, symbol, interval):
     params = {"symbol": symbol, "interval": interval, "limit": 240}
     # Binance public market-data CDN first: fast and independent of Futures API.
-    for base in (DATA_BASE, SPOT_BASE):
+    for base in (SPOT_BASE, DATA_BASE):
         try:
-            return await get_json(client, base, "/api/v3/klines", params, timeout=5)
+            return await get_json(client, base, "/api/v3/klines", params, timeout=3)
         except Exception as e:
             log_error(f"CANDLES {symbol} {interval}", e)
     raise RuntimeError(f"No candle source for {symbol} {interval}")
@@ -193,11 +193,9 @@ async def analyze_symbol(client, s):
             get_candles(client, s, "4h"),
         )
 
-        # Funding/OI are optional and can never block technical analysis.
-        fr, oi = await asyncio.gather(
-            get_futures_optional(client, "/fapi/v1/premiumIndex", {"symbol": s}),
-            get_futures_optional(client, "/fapi/v1/openInterest", {"symbol": s}),
-        )
+        # Funding/OI are intentionally excluded from the critical path.
+        # They are updated separately so technical signals render first.
+        fr, oi = None, None
 
         c1 = [float(x[4]) for x in k1]
         h1 = [float(x[2]) for x in k1]
@@ -249,8 +247,8 @@ async def analyze_symbol(client, s):
             "entry": round_price(entry), "sl": round_price(sl),
             "tp1": round_price(tp1), "tp2": round_price(tp2),
             "rr": 2.0 if signal != "NO-TRADE" else None,
-            "funding": float(fr.get("lastFundingRate", 0)) if fr else None,
-            "oi": float(oi.get("openInterest", 0)) if oi else None,
+            "funding": cache[s].get("funding"),
+            "oi": cache[s].get("oi"),
             "analysis_ts": time.time(),
             "ts": time.time(),
             "error": None,
@@ -261,7 +259,7 @@ async def analyze_symbol(client, s):
 
 
 async def seed_rest():
-    async with httpx.AsyncClient(timeout=5) as c:
+    async with httpx.AsyncClient(timeout=3, http2=True) as c:
         async def one(s):
             try:
                 d = await get_ticker(c, s)
@@ -286,7 +284,7 @@ async def seed_rest():
 async def price_poll_loop():
     while True:
         try:
-            async with httpx.AsyncClient(timeout=6) as c:
+            async with httpx.AsyncClient(timeout=4, http2=True) as c:
                 await asyncio.gather(*(poll_price(c, s) for s in SYMBOLS))
         except Exception as e:
             log_error("PRICE POLL", e)
@@ -312,7 +310,7 @@ async def poll_price(client, s):
 async def analysis_loop():
     while True:
         try:
-            async with httpx.AsyncClient(timeout=8) as c:
+            async with httpx.AsyncClient(timeout=4, http2=True) as c:
                 await asyncio.gather(*(analyze_symbol(c, s) for s in SYMBOLS))
             market_status.update(status="LIVE" if market_status["status"] != "OFFLINE" else "LIVE",
                                  updated=time.time(), error=None)
@@ -320,7 +318,29 @@ async def analysis_loop():
         except Exception as e:
             market_status.update(status="DELAYED", updated=time.time(), error=str(e)[:120])
             log_error("ANALYSIS LOOP", e)
-        await asyncio.sleep(30)
+        await asyncio.sleep(15)
+
+
+async def metrics_loop():
+    while True:
+        try:
+            async with httpx.AsyncClient(timeout=3, http2=True) as c:
+                for s in SYMBOLS:
+                    try:
+                        fr, oi = await asyncio.gather(
+                            get_futures_optional(c, "/fapi/v1/premiumIndex", {"symbol": s}),
+                            get_futures_optional(c, "/fapi/v1/openInterest", {"symbol": s}),
+                        )
+                        if fr:
+                            cache[s]["funding"] = float(fr.get("lastFundingRate", 0))
+                        if oi:
+                            cache[s]["oi"] = float(oi.get("openInterest", 0))
+                    except Exception as e:
+                        log_error(f"METRICS {s}", e)
+                await broadcast({"type": "snapshot", "data": list(cache.values()), "server_ts": time.time()})
+        except Exception as e:
+            log_error("METRICS LOOP", e)
+        await asyncio.sleep(120)
 
 
 async def broadcast(obj):
@@ -383,6 +403,7 @@ async def startup():
     asyncio.create_task(ws_loop())
     asyncio.create_task(price_poll_loop())
     asyncio.create_task(analysis_loop())
+    asyncio.create_task(metrics_loop())
 
 
 @app.websocket("/ws")
