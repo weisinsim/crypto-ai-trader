@@ -332,24 +332,30 @@ async def ws_loop():
         for ws_base in WS_BASES:
             url = ws_base + "?streams=" + "/".join(streams)
             try:
-                async with websockets.connect(url, ping_interval=20, ping_timeout=20, close_timeout=5, max_size=2**20) as sock:
-                connected = True
-                diagnostics["ws_source"] = ws_base
-                market_status.update(status="LIVE", updated=time.time(), error=None)
-                await broadcast({"type": "status", "status": "LIVE"})
-                async for raw in sock:
-                    m = json.loads(raw)
-                    d = m.get("data", {})
-                    s = d.get("s")
-                    if s in cache:
-                        cache[s].update(
-                            price=float(d.get("c")),
-                            change=float(d.get("P", 0)),
-                            volume=float(d.get("q", 0)),
-                            ts=time.time()
-                        )
-                        await broadcast({"type": "ticker", "data": cache[s]})
-                if connected:
+                async with websockets.connect(
+                    url,
+                    ping_interval=20,
+                    ping_timeout=20,
+                    close_timeout=5,
+                    max_size=2**20,
+                ) as sock:
+                    connected = True
+                    diagnostics["ws_source"] = ws_base
+                    market_status.update(status="LIVE", updated=time.time(), error=None)
+                    await broadcast({"type": "status", "status": "LIVE"})
+                    async for raw in sock:
+                        m = json.loads(raw)
+                        d = m.get("data", {})
+                        s = d.get("s")
+                        if s in cache:
+                            cache[s].update(
+                                price=float(d.get("c")),
+                                change=float(d.get("P", 0)),
+                                volume=float(d.get("q", 0)),
+                                ts=time.time(),
+                            )
+                            diagnostics["last_success"] = time.time()
+                            await broadcast({"type": "ticker", "data": cache[s]})
                     break
             except Exception as e:
                 log_error("BINANCE WS", e)
