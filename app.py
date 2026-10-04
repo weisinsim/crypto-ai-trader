@@ -21,6 +21,7 @@ FUTURES_BASES = [
     "https://fapi4.binance.com",
 ]
 SPOT_BASE = "https://api.binance.com"
+FUTURES_PRIMARY = "https://fapi.binance.com"
 WS_BASES = [
     "wss://fstream.binance.com/stream",
     "wss://fstream1.binance.com/stream",
@@ -187,14 +188,10 @@ async def analyze_symbol(client, s):
         # technical analysis still works from market candles.
         fr = {}
         oi = {}
-        try:
-            fr = await get_json(client, "/fapi/v1/premiumIndex", {"symbol": s})
-        except Exception as e:
-            log_error(f"FUNDING {s}", e)
-        try:
-            oi = await get_json(client, "/fapi/v1/openInterest", {"symbol": s})
-        except Exception as e:
-            log_error(f"OI {s}", e)
+        fr, oi = await asyncio.gather(
+            get_futures_optional(client, "/fapi/v1/premiumIndex", {"symbol": s}),
+            get_futures_optional(client, "/fapi/v1/openInterest", {"symbol": s}),
+        )
 
         c1 = [float(x[4]) for x in k1]
         h1 = [float(x[2]) for x in k1]
