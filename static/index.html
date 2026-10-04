@@ -1,1 +1,95 @@
-TEMP
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Crypto AI Trader V6</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",Arial,sans-serif;background:#0b0f14;color:#eef2f7}
+*{box-sizing:border-box}body{margin:0;background:#0b0f14}.wrap{max-width:1100px;margin:auto;padding:14px}
+header{position:sticky;top:0;background:#0b0f14ee;backdrop-filter:blur(12px);z-index:5;padding:8px 0 12px}
+h1{font-size:22px;margin:0 0 5px}.sub{font-size:12px;color:#9aa4b2}
+.status{display:inline-flex;gap:7px;align-items:center;margin-top:8px;padding:6px 10px;border-radius:999px;background:#151b23;font-size:12px}
+.dot{width:8px;height:8px;border-radius:50%;background:#8b95a5}.live .dot{background:#35d07f}.bad .dot{background:#ff4d5f}
+.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}
+.card{background:#121820;border:1px solid #202a35;border-radius:16px;padding:13px}
+.row{display:flex;justify-content:space-between;gap:8px}.symbol{font-weight:700}.price{font-size:21px;font-weight:700;margin-top:7px}.chg{font-size:12px;margin-top:3px}.up{color:#35d07f}.down{color:#ff5968}
+.badge{font-size:11px;font-weight:700;padding:5px 8px;border-radius:8px;white-space:nowrap}.LONG{background:#124d31;color:#67f0a4}.SHORT{background:#5a1721;color:#ff8c98}.WATCH-LONG{background:#675313;color:#ffe17a}.WATCH-SHORT{background:#4a4f57;color:#d8dde5}.NO-TRADE{background:#252c35;color:#9fa8b4}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}.kv{background:#0d131a;border-radius:9px;padding:7px}.k{font-size:10px;color:#7f8997}.v{font-size:12px;margin-top:2px}
+.signal{margin-top:10px;border-top:1px solid #202a35;padding-top:9px}.levels{font-size:11px;color:#b6bfcb;line-height:1.65}
+.toolbar{display:flex;gap:7px;overflow:auto;margin-top:12px}.filter{border:1px solid #27313d;background:#121820;color:#cbd2dc;border-radius:9px;padding:7px 10px;font-size:11px}.filter.active{background:#26313d;color:#fff}
+.small{font-size:10px;color:#697482;margin-top:12px}
+@media(min-width:760px){.cards{grid-template-columns:repeat(3,1fr)}}@media(max-width:420px){.cards{grid-template-columns:1fr 1fr}.price{font-size:18px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+<h1>Crypto AI Trader V6</h1>
+<div class="sub">Binance Futures · 4H方向 + 1H入场 · 实时价格 + 60秒分析</div>
+<div id="status" class="status"><span class="dot"></span><span id="stxt">连接中…</span></div>
+</header>
+<div class="toolbar">
+<button class="filter active" data-f="ALL">全部</button>
+<button class="filter" data-f="LONG">LONG</button>
+<button class="filter" data-f="WATCH-LONG">WATCH-LONG</button>
+<button class="filter" data-f="WATCH-SHORT">WATCH-SHORT</button>
+<button class="filter" data-f="SHORT">SHORT</button>
+</div>
+<div id="cards" class="cards"></div>
+<div class="small">风险提示：信号仅用于交易决策辅助，不保证盈利。建议单笔风险≤1%，并先模拟盘验证。</div>
+</div>
+<script>
+const state={data:{},filter:"ALL",ws:null};
+const $=id=>document.getElementById(id);
+function fmt(x){if(x==null)return"—";return Number(x).toLocaleString(undefined,{maximumFractionDigits:6})}
+function setStatus(s){
+ const el=$("status"); el.className="status "+(s==="LIVE"?"live":(s==="OFFLINE"?"bad":""));
+ $("stxt").textContent=s==="LIVE"?"LIVE 实时":s==="FALLBACK"?"REST备用":"连接中…";
+}
+function render(){
+ const arr=Object.values(state.data).filter(x=>state.filter==="ALL"||x.signal===state.filter);
+ arr.sort((a,b)=>(Math.abs(b.change||0)-Math.abs(a.change||0)));
+ $("cards").innerHTML=arr.map(x=>`
+ <div class="card">
+  <div class="row"><div><div class="symbol">${x.symbol.replace("USDT","/USDT")}</div><div class="price">${fmt(x.price)}</div>
+  <div class="chg ${(x.change||0)>=0?"up":"down"}">${(x.change||0)>=0?"+":""}${fmt(x.change)}%</div></div>
+  <span class="badge ${x.signal}">${x.signal}</span></div>
+  <div class="grid">
+   <div class="kv"><div class="k">4H TREND</div><div class="v">${x.trend||"—"}</div></div>
+   <div class="kv"><div class="k">1H RSI</div><div class="v">${fmt(x.rsi_1h)}</div></div>
+   <div class="kv"><div class="k">VOL / AVG</div><div class="v">${x.vol_ratio?fmt(x.vol_ratio)+"x":"—"}</div></div>
+   <div class="kv"><div class="k">FUNDING</div><div class="v">${x.funding!=null?(x.funding*100).toFixed(4)+"%":"—"}</div></div>
+  </div>
+  <div class="signal">
+   <div class="levels">Entry <b>${fmt(x.entry)}</b> · SL <b>${fmt(x.sl)}</b><br>TP1 <b>${fmt(x.tp1)}</b> · TP2 <b>${fmt(x.tp2)}</b> · R/R <b>${x.rr||"—"}</b></div>
+  </div>
+ </div>`).join("") || '<div class="card">暂无符合条件的信号</div>';
+}
+async function snapshot(){
+ try{
+  const r=await fetch("/api/snapshot",{cache:"no-store"}); const j=await r.json();
+  (j.data||[]).forEach(x=>state.data[x.symbol]=x);
+  setStatus(j.status?.status||"FALLBACK"); render();
+ }catch(e){setStatus("OFFLINE")}
+}
+function connect(){
+ try{
+  const proto=location.protocol==="https:"?"wss":"ws";
+  const ws=new WebSocket(proto+"://"+location.host+"/ws"); state.ws=ws;
+  ws.onopen=()=>{setStatus("LIVE");ws.send("hello");snapshot()};
+  ws.onmessage=e=>{
+   const m=JSON.parse(e.data);
+   if(m.type==="status")setStatus(m.status);
+   if(m.type==="snapshot"){(m.data||[]).forEach(x=>state.data[x.symbol]=x);render();setStatus(m.status?.status||"LIVE")}
+   if(m.type==="ticker"){state.data[m.data.symbol]={...(state.data[m.data.symbol]||{}),...m.data};render()}
+  };
+  ws.onclose=()=>{setStatus("FALLBACK");setTimeout(connect,3000)};
+  ws.onerror=()=>{try{ws.close()}catch(e){}};
+ }catch(e){setTimeout(connect,3000)}
+}
+document.querySelectorAll(".filter").forEach(b=>b.onclick=()=>{document.querySelectorAll(".filter").forEach(x=>x.classList.remove("active"));b.classList.add("active");state.filter=b.dataset.f;render()});
+snapshot();connect();setInterval(snapshot,30000);
+</script>
+</body>
+</html>
