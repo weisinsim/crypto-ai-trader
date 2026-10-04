@@ -21,6 +21,7 @@ FUTURES_BASES = [
     "https://fapi4.binance.com",
 ]
 SPOT_BASE = "https://api.binance.com"
+DATA_BASE = "https://data-api.binance.vision"
 FUTURES_PRIMARY = "https://fapi.binance.com"
 WS_BASES = [
     "wss://fstream.binance.com/stream",
@@ -150,44 +151,49 @@ def round_price(x):
     return round(x, 6)
 
 
-async def get_json(client, path, params, allow_spot=False):
-    last_error = None
-    bases = ([SPOT_BASE] if allow_spot else []) + FUTURES_BASES
-    for base in bases:
+async def get_json(client, base, path, params, timeout=5):
+    r = await client.get(base + path, params=params, timeout=timeout)
+    if r.status_code != 200:
+        raise RuntimeError(f"{base}{path} -> HTTP {r.status_code}: {r.text[:160]}")
+    return r.json()
+
+
+async def get_candles(client, symbol, interval):
+    params = {"symbol": symbol, "interval": interval, "limit": 240}
+    # Binance public market-data CDN first: fast and independent of Futures API.
+    for base in (DATA_BASE, SPOT_BASE):
         try:
-            r = await client.get(base + path, params=params)
-            if r.status_code == 200:
-                if base != SPOT_BASE:
-                    diagnostics["rest_source"] = base
-                return r.json()
-            last_error = f"{base}{path} -> HTTP {r.status_code}: {r.text[:160]}"
+            return await get_json(client, base, "/api/v3/klines", params, timeout=5)
         except Exception as e:
-            last_error = f"{base}{path} -> {type(e).__name__}: {e}"
-    log_error("REST", last_error or "unknown error")
-    raise RuntimeError(last_error or "REST request failed")
+            log_error(f"CANDLES {symbol} {interval}", e)
+    raise RuntimeError(f"No candle source for {symbol} {interval}")
 
 
-async def get_market_json(client, futures_path, params, spot_path=None):
+async def get_ticker(client, symbol):
+    for base in (SPOT_BASE, DATA_BASE):
+        try:
+            return await get_json(client, base, "/api/v3/ticker/24hr", {"symbol": symbol}, timeout=4)
+        except Exception as e:
+            log_error(f"TICKER {symbol}", e)
+    raise RuntimeError(f"No ticker source for {symbol}")
+
+
+async def get_futures_optional(client, path, params):
     try:
-        return await get_json(client, futures_path, params, allow_spot=False)
-    except Exception:
-        if spot_path:
-            return await get_json(client, spot_path, params, allow_spot=True)
-        raise
-
+        return await get_json(client, FUTURES_PRIMARY, path, params, timeout=2.5)
+    except Exception as e:
+        log_error(f"FUTURES OPTIONAL {path}", e)
+        return None
 
 
 async def analyze_symbol(client, s):
     try:
         k1, k4 = await asyncio.gather(
-            get_market_json(client, "/fapi/v1/klines", {"symbol": s, "interval": "1h", "limit": 240}, "/api/v3/klines"),
-            get_market_json(client, "/fapi/v1/klines", {"symbol": s, "interval": "4h", "limit": 240}, "/api/v3/klines"),
+            get_candles(client, s, "1h"),
+            get_candles(client, s, "4h"),
         )
 
-        # Funding/OI are optional: if Futures endpoints are blocked,
-        # technical analysis still works from market candles.
-        fr = {}
-        oi = {}
+        # Funding/OI are optional and can never block technical analysis.
         fr, oi = await asyncio.gather(
             get_futures_optional(client, "/fapi/v1/premiumIndex", {"symbol": s}),
             get_futures_optional(client, "/fapi/v1/openInterest", {"symbol": s}),
@@ -226,15 +232,9 @@ async def analyze_symbol(client, s):
 
         stop_dist = (a * 1.5) if a else p * 0.01
         if signal in ("LONG", "WATCH-LONG"):
-            entry = p
-            sl = p - stop_dist
-            tp1 = p + stop_dist * 2
-            tp2 = p + stop_dist * 3
+            entry, sl, tp1, tp2 = p, p-stop_dist, p+stop_dist*2, p+stop_dist*3
         elif signal in ("SHORT", "WATCH-SHORT"):
-            entry = p
-            sl = p + stop_dist
-            tp1 = p - stop_dist * 2
-            tp2 = p - stop_dist * 3
+            entry, sl, tp1, tp2 = p, p+stop_dist, p-stop_dist*2, p-stop_dist*3
         else:
             entry = sl = tp1 = tp2 = None
 
@@ -252,7 +252,8 @@ async def analyze_symbol(client, s):
             "funding": float(fr.get("lastFundingRate", 0)) if fr else None,
             "oi": float(oi.get("openInterest", 0)) if oi else None,
             "analysis_ts": time.time(),
-            "ts": time.time()
+            "ts": time.time(),
+            "error": None,
         })
     except Exception as e:
         cache[s]["error"] = str(e)[:120]
@@ -263,7 +264,7 @@ async def seed_rest():
     async with httpx.AsyncClient(timeout=5) as c:
         async def one(s):
             try:
-                d = await get_market_json(c, "/fapi/v1/ticker/24hr", {"symbol": s}, "/api/v3/ticker/24hr")
+                d = await get_ticker(c, s)
                 cache[s].update(
                     price=float(d["lastPrice"]),
                     change=float(d["priceChangePercent"]),
@@ -285,7 +286,7 @@ async def seed_rest():
 async def price_poll_loop():
     while True:
         try:
-            async with httpx.AsyncClient(timeout=8) as c:
+            async with httpx.AsyncClient(timeout=6) as c:
                 await asyncio.gather(*(poll_price(c, s) for s in SYMBOLS))
         except Exception as e:
             log_error("PRICE POLL", e)
@@ -294,7 +295,7 @@ async def price_poll_loop():
 
 async def poll_price(client, s):
     try:
-        d = await get_market_json(client, "/fapi/v1/ticker/24hr", {"symbol": s}, "/api/v3/ticker/24hr")
+        d = await get_ticker(client, s)
         cache[s].update(
             price=float(d["lastPrice"]),
             change=float(d["priceChangePercent"]),
