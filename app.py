@@ -13,6 +13,9 @@ ROOT = Path(__file__).resolve().parent
 STATIC_DIR = ROOT / "static"
 
 SYMBOLS = ["BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT","DOGEUSDT","ADAUSDT","AVAXUSDT","LINKUSDT","SUIUSDT"]
+
+# Binance USDⓈ-M Futures: this dashboard is for futures, so all candles/prices
+# use fapi/fstream rather than Spot api/stream.
 FUTURES_BASES = [
     "https://fapi.binance.com",
     "https://fapi1.binance.com",
@@ -20,30 +23,13 @@ FUTURES_BASES = [
     "https://fapi3.binance.com",
     "https://fapi4.binance.com",
 ]
-SPOT_BASE = "https://api.binance.com"
-SPOT_BASES = [
-    "https://api-gcp.binance.com",
-    "https://api1.binance.com",
-    "https://api2.binance.com",
-    "https://api3.binance.com",
-    "https://api4.binance.com",
-    "https://api.binance.com",
-    "https://data-api.binance.vision",
-]
-DATA_BASE = "https://data-api.binance.vision"
-FUTURES_PRIMARY = "https://fapi.binance.com"
-SPOT_WS_BASES = ["wss://stream.binance.com:9443/stream", "wss://stream.binance.com/stream"]
-WS_BASES = [
-    "wss://fstream.binance.com:443/stream",
+FUTURES_WS = [
     "wss://fstream.binance.com/stream",
-    "wss://fstream1.binance.com/stream",
-    "wss://fstream2.binance.com/stream",
-    "wss://fstream3.binance.com/stream",
-    "wss://fstream4.binance.com/stream",
+    "wss://fstream.binance.com:443/stream",
 ]
 
-
-series = {s: {"1h": [], "4h": []} for s in SYMBOLS}
+# Emergency market-data fallback only. Signals are marked with the source.
+BYBIT_BASE = "https://api.bybit.com"
 
 cache = {
     s: {
@@ -53,26 +39,60 @@ cache = {
         "rsi_1h": None, "atr_1h": None, "vol_ratio": None,
         "trend": "LOADING", "signal": "NO-TRADE",
         "entry": None, "sl": None, "tp1": None, "tp2": None, "rr": None,
-        "funding": None, "oi": None, "analysis_ts": 0
+        "funding": None, "oi": None, "analysis_ts": 0, "source": None,
+        "error": None,
     } for s in SYMBOLS
 }
+series = {s: {"1h": [], "4h": []} for s in SYMBOLS}
 clients = set()
 market_status = {"status": "STARTING", "updated": 0, "error": None}
 diagnostics = {
-    "rest_source": None,
-    "ws_source": None,
-    "last_errors": [],
-    "last_success": 0,
+    "rest_source": None, "ws_source": None, "last_success": 0,
+    "binance_failures": 0, "fallback_source": None, "last_errors": []
 }
-
-def log_error(stage, detail):
-    msg = f"{stage}: {str(detail)[:240]}"
-    diagnostics["last_errors"] = (diagnostics["last_errors"] + [msg])[-12:]
-    market_status["error"] = msg
-
+last_analysis = {s: 0 for s in SYMBOLS}
+http_client = None
 
 app = FastAPI(title="Crypto AI Trader V6")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+def log_error(stage, detail):
+    msg = f"{stage}: {str(detail)[:220]}"
+    diagnostics["last_errors"] = (diagnostics["last_errors"] + [msg])[-10:]
+    market_status["error"] = msg
+
+
+async def get_json(base, path, params=None, timeout=3.0):
+    r = await http_client.get(base + path, params=params or {}, timeout=timeout)
+    if r.status_code != 200:
+        raise RuntimeError(f"HTTP {r.status_code}: {r.text[:120]}")
+    return r.json()
+
+
+async def futures_json(path, params=None, timeout=3.0):
+    last = None
+    for base in FUTURES_BASES:
+        try:
+            data = await get_json(base, path, params, timeout)
+            diagnostics["rest_source"] = base
+            return data
+        except Exception as e:
+            last = e
+            diagnostics["binance_failures"] += 1
+    raise RuntimeError(f"Binance Futures unavailable: {last}")
+
+
+async def bybit_json(path, params=None, timeout=3.0):
+    data = await get_json(BYBIT_BASE, path, params, timeout)
+    if data.get("retCode", 0) != 0:
+        raise RuntimeError(str(data)[:180])
+    diagnostics["fallback_source"] = BYBIT_BASE
+    return data["result"]
+
+
+def fmt_source(source):
+    return source or "—"
 
 
 @app.get("/")
@@ -83,14 +103,16 @@ async def index():
 @app.get("/api/health")
 async def health():
     now = time.time()
-    ages = [now-v["ts"] for v in cache.values() if v["ts"]]
     ready = sum(v["price"] is not None for v in cache.values())
+    analyzed = sum(v["analysis_ts"] > 0 for v in cache.values())
+    ages = [now-v["ts"] for v in cache.values() if v["ts"]]
     return {
         "ok": ready > 0,
         "status": market_status["status"],
-        "age_sec": min(ages) if ages else None,
         "symbols_ready": ready,
-        "analysis_ready": sum(v["analysis_ts"] > 0 for v in cache.values())
+        "analysis_ready": analyzed,
+        "age_sec": min(ages) if ages else None,
+        "source": diagnostics["rest_source"] or diagnostics["ws_source"] or diagnostics["fallback_source"],
     }
 
 
@@ -103,16 +125,13 @@ async def debug():
         "symbols_ready": sum(v["price"] is not None for v in cache.values()),
         "analysis_ready": sum(v["analysis_ts"] > 0 for v in cache.values()),
         "age_sec": {s: round(now-v["ts"], 1) if v["ts"] else None for s, v in cache.items()},
+        "errors": {s: v["error"] for s, v in cache.items() if v["error"]},
     }
 
 
 @app.get("/api/snapshot")
 async def snapshot():
-    return {
-        "server_ts": time.time(),
-        "status": market_status,
-        "data": list(cache.values())
-    }
+    return {"server_ts": time.time(), "status": market_status, "data": list(cache.values())}
 
 
 def ema(values, period):
@@ -136,11 +155,11 @@ def rsi(values, period=14):
     ag = sum(gains[:period]) / period
     al = sum(losses[:period]) / period
     for i in range(period, len(gains)):
-        ag = (ag * (period-1) + gains[i]) / period
-        al = (al * (period-1) + losses[i]) / period
+        ag = (ag*(period-1) + gains[i]) / period
+        al = (al*(period-1) + losses[i]) / period
     if al == 0:
         return 100.0
-    return 100 - (100 / (1 + ag/al))
+    return 100 - (100/(1 + ag/al))
 
 
 def atr(highs, lows, closes, period=14):
@@ -148,294 +167,213 @@ def atr(highs, lows, closes, period=14):
         return None
     tr = []
     for i in range(1, len(closes)):
-        tr.append(max(
-            highs[i] - lows[i],
-            abs(highs[i] - closes[i-1]),
-            abs(lows[i] - closes[i-1])
-        ))
+        tr.append(max(highs[i]-lows[i], abs(highs[i]-closes[i-1]), abs(lows[i]-closes[i-1])))
     return sum(tr[-period:]) / period
 
 
 def round_price(x):
-    if x is None:
-        return None
+    if x is None: return None
     if x >= 1000: return round(x, 2)
     if x >= 1: return round(x, 4)
     return round(x, 6)
 
 
-async def get_json(client, base, path, params, timeout=3):
-    r = await client.get(base + path, params=params, timeout=timeout)
-    if r.status_code != 200:
-        raise RuntimeError(f"{base}{path} -> HTTP {r.status_code}: {r.text[:160]}")
-    return r.json()
+def kline_to_obj(x):
+    return {"t": int(x[0]), "o": float(x[1]), "h": float(x[2]), "l": float(x[3]),
+            "c": float(x[4]), "v": float(x[5]), "q": float(x[7])}
 
 
-async def get_candles(client, symbol, interval):
-    params = {"symbol": symbol, "interval": interval, "limit": 210}
-    last = None
-    # Binance documents api1-api4 as performance alternatives and data-api as a
-    # public market-data endpoint. Try the fastest/most available endpoint first.
-    for base in SPOT_BASES:
-        try:
-            return await get_json(client, base, "/api/v3/klines", params, timeout=2.5)
-        except Exception as e:
-            last = e
-    raise RuntimeError(f"No candle source for {symbol} {interval}: {last}")
+def set_series(s, interval, klines):
+    series[s][interval] = [kline_to_obj(x) for x in klines][-210:]
 
 
-async def get_ticker(client, symbol):
-    last = None
-    for base in SPOT_BASES:
-        try:
-            return await get_json(client, base, "/api/v3/ticker/24hr", {"symbol": symbol}, timeout=2.5)
-        except Exception as e:
-            last = e
-    raise RuntimeError(f"No ticker source for {symbol}: {last}")
-
-
-async def get_futures_optional(client, path, params):
+async def seed_symbol(s):
     try:
-        return await get_json(client, FUTURES_PRIMARY, path, params, timeout=2.5)
-    except Exception as e:
-        log_error(f"FUTURES OPTIONAL {path}", e)
-        return None
-
-
-def set_series_from_klines(s, interval, klines):
-    arr = []
-    for x in klines:
-        arr.append({
-            "t": int(x[0]), "o": float(x[1]), "h": float(x[2]),
-            "l": float(x[3]), "c": float(x[4]), "v": float(x[5]), "q": float(x[7])
-        })
-    series[s][interval] = arr[-210:]
-
-
-def update_1h_candle(s, d):
-    k = {
-        "t": int(d["t"]), "o": float(d["o"]), "h": float(d["h"]),
-        "l": float(d["l"]), "c": float(d["c"]), "v": float(d["v"]), "q": float(d["q"])
-    }
-    arr = series[s]["1h"]
-    if arr and arr[-1]["t"] == k["t"]:
-        arr[-1] = k
-    else:
-        arr.append(k)
-        del arr[:-240]
-    # Build 4H bars from the 1H series. Only complete groups are used.
-    groups = {}
-    for x in arr:
-        bucket = (x["t"] // (4*60*60*1000)) * (4*60*60*1000)
-        groups.setdefault(bucket, []).append(x)
-    four = []
-    for t, g in sorted(groups.items()):
-        if len(g) == 4:
-            four.append({
-                "t": t, "o": g[0]["o"], "h": max(x["h"] for x in g),
-                "l": min(x["l"] for x in g), "c": g[-1]["c"],
-                "v": sum(x["v"] for x in g), "q": sum(x["q"] for x in g)
-            })
-    series[s]["4h"] = four[-80:]
-
-
-async def analyze_from_cache(s):
-    try:
-        k1 = series[s]["1h"]
-        k4 = series[s]["4h"]
-        if len(k1) < 205 or len(k4) < 50:
-            return False
-        c1 = [x["c"] for x in k1]
-        h1 = [x["h"] for x in k1]
-        l1 = [x["l"] for x in k1]
-        q1 = [x["q"] for x in k1]
-        c4 = [x["c"] for x in k4]
-        p = c1[-1]
-        e20 = ema(c1, 20); e50 = ema(c1, 50); e200 = ema(c1, 200)
-        e20_4 = ema(c4, 20); e50_4 = ema(c4, 50); e200_4 = ema(c4, 200)
-        r = rsi(c1); a = atr(h1, l1, c1)
-        vr = q1[-1] / (sum(q1[-21:-1]) / 20) if len(q1) >= 21 else None
-        trend4 = "BULL" if p > e20_4 > e50_4 else ("BEAR" if p < e20_4 < e50_4 else "RANGE")
-        score = (2 if p > e20_4 else -2) + (2 if e20_4 > e50_4 else -2) + (1 if p > e20 else -1) + (1 if e20 > e50 else -1) + (1 if r is not None and r >= 50 else -1) + (1 if vr is not None and vr >= 1.2 else 0)
-        signal = "NO-TRADE"
-        if trend4 == "BULL" and score >= 4 and r is not None and r < 72: signal = "LONG"
-        elif trend4 == "BULL" and score >= 2: signal = "WATCH-LONG"
-        elif trend4 == "BEAR" and score <= -4 and r is not None and r > 28: signal = "SHORT"
-        elif trend4 == "BEAR" and score <= -2: signal = "WATCH-SHORT"
-        stop_dist = (a * 1.5) if a else p * 0.01
-        if signal in ("LONG","WATCH-LONG"): entry,sl,tp1,tp2=p,p-stop_dist,p+2*stop_dist,p+3*stop_dist
-        elif signal in ("SHORT","WATCH-SHORT"): entry,sl,tp1,tp2=p,p+stop_dist,p-2*stop_dist,p-3*stop_dist
-        else: entry=sl=tp1=tp2=None
-        cache[s].update({
-            "price": p, "ema20_1h": round_price(e20), "ema50_1h": round_price(e50), "ema200_1h": round_price(e200),
-            "ema20_4h": round_price(e20_4), "ema50_4h": round_price(e50_4), "ema200_4h": round_price(e200_4),
-            "rsi_1h": round(r,1) if r is not None else None, "atr_1h": round_price(a),
-            "vol_ratio": round(vr,2) if vr is not None else None, "trend": trend4, "signal": signal,
-            "entry": round_price(entry), "sl": round_price(sl), "tp1": round_price(tp1), "tp2": round_price(tp2),
-            "rr": 2.0 if signal != "NO-TRADE" else None, "analysis_ts": time.time(), "ts": time.time(), "error": None
-        })
+        k1, k4 = await asyncio.gather(
+            futures_json("/fapi/v1/klines", {"symbol": s, "interval": "1h", "limit": 210}, 3.0),
+            futures_json("/fapi/v1/klines", {"symbol": s, "interval": "4h", "limit": 210}, 3.0),
+        )
+        set_series(s, "1h", k1)
+        set_series(s, "4h", k4)
+        await analyze_symbol(s)
+        cache[s]["source"] = "Binance Futures"
         return True
     except Exception as e:
-        log_error(f"CACHE ANALYSIS {s}", e)
+        log_error(f"SEED {s}", e)
+        # Emergency fallback to Bybit linear futures.
+        try:
+            b1, b4 = await asyncio.gather(
+                bybit_json("/v5/market/kline", {"category":"linear","symbol":s,"interval":"60","limit":210}, 3.0),
+                bybit_json("/v5/market/kline", {"category":"linear","symbol":s,"interval":"240","limit":210}, 3.0),
+            )
+            def bybit_rows(obj):
+                rows = obj["list"]
+                rows.reverse()
+                return [{"t":int(x[0]),"o":float(x[1]),"h":float(x[2]),"l":float(x[3]),"c":float(x[4]),"v":float(x[5]),"q":float(x[6])} for x in rows]
+            series[s]["1h"] = bybit_rows(b1)[-210:]
+            series[s]["4h"] = bybit_rows(b4)[-210:]
+            cache[s]["source"] = "Bybit fallback"
+            await analyze_symbol(s)
+            return True
+        except Exception as e2:
+            log_error(f"FALLBACK {s}", e2)
+            cache[s]["error"] = str(e2)[:120]
+            return False
+
+
+async def analyze_symbol(s):
+    k1, k4 = series[s]["1h"], series[s]["4h"]
+    if len(k1) < 205 or len(k4) < 50:
+        return False
+    try:
+        c1=[x["c"] for x in k1]; h1=[x["h"] for x in k1]; l1=[x["l"] for x in k1]; q1=[x["q"] for x in k1]
+        c4=[x["c"] for x in k4]
+        p=c1[-1]
+        e20=ema(c1,20); e50=ema(c1,50); e200=ema(c1,200)
+        e20_4=ema(c4,20); e50_4=ema(c4,50); e200_4=ema(c4,200)
+        r=rsi(c1); a=atr(h1,l1,c1)
+        vr=q1[-1]/(sum(q1[-21:-1])/20) if len(q1)>=21 else None
+        trend4="BULL" if p>e20_4>e50_4 else ("BEAR" if p<e20_4<e50_4 else "RANGE")
+        score=(2 if p>e20_4 else -2)+(2 if e20_4>e50_4 else -2)+(1 if p>e20 else -1)+(1 if e20>e50 else -1)+(1 if r is not None and r>=50 else -1)+(1 if vr is not None and vr>=1.2 else 0)
+        signal="NO-TRADE"
+        if trend4=="BULL" and score>=4 and r is not None and r<72: signal="LONG"
+        elif trend4=="BULL" and score>=2: signal="WATCH-LONG"
+        elif trend4=="BEAR" and score<=-4 and r is not None and r>28: signal="SHORT"
+        elif trend4=="BEAR" and score<=-2: signal="WATCH-SHORT"
+        dist=(a*1.5 if a else p*0.01)
+        if signal in ("LONG","WATCH-LONG"): entry,sl,tp1,tp2=p,p-dist,p+2*dist,p+3*dist
+        elif signal in ("SHORT","WATCH-SHORT"): entry,sl,tp1,tp2=p,p+dist,p-2*dist,p-3*dist
+        else: entry=sl=tp1=tp2=None
+        cache[s].update(
+            price=p, ema20_1h=round_price(e20), ema50_1h=round_price(e50), ema200_1h=round_price(e200),
+            ema20_4h=round_price(e20_4), ema50_4h=round_price(e50_4), ema200_4h=round_price(e200_4),
+            rsi_1h=round(r,1) if r is not None else None, atr_1h=round_price(a),
+            vol_ratio=round(vr,2) if vr is not None else None, trend=trend4, signal=signal,
+            entry=round_price(entry), sl=round_price(sl), tp1=round_price(tp1), tp2=round_price(tp2),
+            rr=2.0 if signal!="NO-TRADE" else None, analysis_ts=time.time(), ts=time.time(), error=None
+        )
+        return True
+    except Exception as e:
+        log_error(f"ANALYSIS {s}", e)
         return False
 
 
-async def seed_rest():
-    async with httpx.AsyncClient(timeout=4, http2=True) as c:
-        async def one(s):
-            try:
-                k1, k4 = await asyncio.gather(
-                    get_candles(c, s, "1h"),
-                    get_candles(c, s, "4h"),
-                )
-                set_series_from_klines(s, "1h", k1)
-                set_series_from_klines(s, "4h", k4)
-                await analyze_from_cache(s)
-                cache[s].update(price=series[s]["1h"][-1]["c"], ts=time.time())
-            except Exception as e:
-                log_error(f"SEED {s}", e)
-        await asyncio.gather(*(one(s) for s in SYMBOLS))
-        ready = sum(v["price"] is not None for v in cache.values())
-        market_status.update(status="LIVE" if ready else "FALLBACK", updated=time.time(), error=None)
-        if ready:
-            diagnostics["last_success"] = time.time()
-        await broadcast({"type":"snapshot","data":list(cache.values()),"server_ts":time.time(),"status":market_status})
+async def seed_all():
+    # 10 symbols × 2 timeframes in parallel; no symbol blocks another.
+    results = await asyncio.gather(*(seed_symbol(s) for s in SYMBOLS), return_exceptions=True)
+    ready=sum(v["price"] is not None for v in cache.values())
+    analyzed=sum(v["analysis_ts"]>0 for v in cache.values())
+    market_status.update(status="LIVE" if ready else "DELAYED", updated=time.time(), error=None if ready else market_status["error"])
+    diagnostics["last_success"]=time.time() if ready else diagnostics["last_success"]
+    await broadcast({"type":"snapshot","data":list(cache.values()),"server_ts":time.time(),"status":market_status})
 
 
-async def price_poll_loop():
-    # WebSocket is primary; this is only a slow safety net.
+async def price_rest_fallback():
     while True:
         try:
-            async with httpx.AsyncClient(timeout=3, http2=True) as c:
-                await asyncio.gather(*(poll_price(c, s) for s in SYMBOLS))
-        except Exception as e:
-            log_error("PRICE POLL", e)
-        await asyncio.sleep(15)
-
-
-async def price_poll_loop():
-    while True:
-        try:
-            async with httpx.AsyncClient(timeout=4, http2=True) as c:
-                await asyncio.gather(*(poll_price(c, s) for s in SYMBOLS))
-        except Exception as e:
-            log_error("PRICE POLL", e)
-        await asyncio.sleep(3)
-
-
-async def poll_price(client, s):
-    try:
-        d = await get_ticker(client, s)
-        cache[s].update(
-            price=float(d["lastPrice"]),
-            change=float(d["priceChangePercent"]),
-            volume=float(d.get("quoteVolume", 0)),
-            ts=time.time(),
-        )
-        diagnostics["last_success"] = time.time()
-        await broadcast({"type": "ticker", "data": cache[s]})
-    except Exception as e:
-        cache[s]["error"] = str(e)[:120]
-        log_error(f"PRICE {s}", e)
-
-
-async def analysis_loop():
-    while True:
-        try:
-            for s in SYMBOLS:
-                if series[s]["1h"]:
-                    await analyze_from_cache(s)
-            market_status.update(status="LIVE", updated=time.time(), error=None)
+            data = await futures_json("/fapi/v1/ticker/24hr", {}, 3.0)
+            wanted=set(SYMBOLS)
+            for x in data:
+                s=x.get("symbol")
+                if s in wanted:
+                    cache[s].update(price=float(x["lastPrice"]), change=float(x["priceChangePercent"]), volume=float(x.get("quoteVolume",0)), ts=time.time(), source=cache[s]["source"] or "Binance Futures")
+            diagnostics["last_success"]=time.time()
             await broadcast({"type":"snapshot","data":list(cache.values()),"server_ts":time.time(),"status":market_status})
         except Exception as e:
-            log_error("ANALYSIS LOOP", e)
-        await asyncio.sleep(15)
+            log_error("FUTURES TICKER FALLBACK", e)
+        await asyncio.sleep(8)
+
+
+async def ws_loop():
+    streams=[]
+    for s in SYMBOLS:
+        q=s.lower()
+        streams += [f"{q}@miniTicker", f"{q}@kline_1h", f"{q}@kline_4h"]
+    query="/".join(streams)
+    while True:
+        connected=False
+        for base in FUTURES_WS:
+            try:
+                async with websockets.connect(base+"?streams="+query, ping_interval=20, ping_timeout=20, close_timeout=3, max_size=2**20) as sock:
+                    connected=True
+                    diagnostics["ws_source"]=base
+                    market_status.update(status="LIVE", updated=time.time(), error=None)
+                    await broadcast({"type":"status","status":"LIVE","source":"Binance Futures WS"})
+                    async for raw in sock:
+                        m=json.loads(raw); d=m.get("data",{})
+                        if d.get("e")=="24hrMiniTicker":
+                            s=d.get("s")
+                            if s in cache:
+                                cache[s].update(price=float(d["c"]), change=float(d["P"]), volume=float(d["q"]), ts=time.time(), source="Binance Futures")
+                                diagnostics["last_success"]=time.time()
+                                await broadcast({"type":"ticker","data":cache[s]})
+                        elif d.get("e")=="kline":
+                            s=d.get("s"); k=d.get("k",{})
+                            if s in cache:
+                                interval=k.get("i")
+                                if interval in ("1h","4h"):
+                                    item={"t":int(k["t"]),"o":float(k["o"]),"h":float(k["h"]),"l":float(k["l"]),"c":float(k["c"]),"v":float(k["v"]),"q":float(k["q"])}
+                                    arr=series[s][interval]
+                                    if arr and arr[-1]["t"]==item["t"]: arr[-1]=item
+                                    else: arr.append(item); del arr[:-210]
+                                    cache[s].update(price=float(k["c"]), ts=time.time(), source="Binance Futures")
+                                    if time.time()-last_analysis[s] >= 3:
+                                        last_analysis[s]=time.time()
+                                        await analyze_symbol(s)
+                                        await broadcast({"type":"snapshot","data":list(cache.values()),"server_ts":time.time(),"status":market_status})
+                    break
+            except Exception as e:
+                log_error("BINANCE FUTURES WS", e)
+        if not connected:
+            market_status.update(status="DELAYED", updated=time.time())
+            await broadcast({"type":"status","status":"DELAYED"})
+        await asyncio.sleep(2)
 
 
 async def metrics_loop():
     while True:
-        try:
-            async with httpx.AsyncClient(timeout=3, http2=True) as c:
-                for s in SYMBOLS:
-                    try:
-                        fr, oi = await asyncio.gather(
-                            get_futures_optional(c, "/fapi/v1/premiumIndex", {"symbol": s}),
-                            get_futures_optional(c, "/fapi/v1/openInterest", {"symbol": s}),
-                        )
-                        if fr:
-                            cache[s]["funding"] = float(fr.get("lastFundingRate", 0))
-                        if oi:
-                            cache[s]["oi"] = float(oi.get("openInterest", 0))
-                    except Exception as e:
-                        log_error(f"METRICS {s}", e)
-                await broadcast({"type": "snapshot", "data": list(cache.values()), "server_ts": time.time()})
-        except Exception as e:
-            log_error("METRICS LOOP", e)
+        # Optional metrics; never blocks price/technical pipeline.
+        for s in SYMBOLS:
+            try:
+                fr = await futures_json("/fapi/v1/premiumIndex", {"symbol":s}, 2.0)
+                oi = await futures_json("/fapi/v1/openInterest", {"symbol":s}, 2.0)
+                cache[s]["funding"]=float(fr.get("lastFundingRate",0))
+                cache[s]["oi"]=float(oi.get("openInterest",0))
+            except Exception:
+                pass
         await asyncio.sleep(120)
 
 
+@app.on_event("startup")
+async def startup():
+    global http_client
+    http_client=httpx.AsyncClient(
+        timeout=httpx.Timeout(4.0, connect=2.0),
+        limits=httpx.Limits(max_connections=40, max_keepalive_connections=20),
+        http2=True,
+    )
+    asyncio.create_task(seed_all())
+    asyncio.create_task(ws_loop())
+    asyncio.create_task(price_rest_fallback())
+    asyncio.create_task(metrics_loop())
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    global http_client
+    if http_client:
+        await http_client.aclose()
+
+
 async def broadcast(obj):
-    dead = []
-    msg = json.dumps(obj)
+    dead=[]
+    msg=json.dumps(obj, separators=(",",":"))
     for ws in list(clients):
         try:
             await ws.send_text(msg)
         except Exception:
             dead.append(ws)
-    for ws in dead:
-        clients.discard(ws)
-
-
-async def ws_loop():
-    streams = [f"{s.lower()}@kline_1h" for s in SYMBOLS] + [f"{s.lower()}@kline_4h" for s in SYMBOLS] + [f"{s.lower()}@miniTicker" for s in SYMBOLS]
-    while True:
-        connected = False
-        for base in SPOT_WS_BASES:
-            try:
-                url = base + "?streams=" + "/".join(streams)
-                async with websockets.connect(url, ping_interval=20, ping_timeout=20, close_timeout=3, max_size=2**20) as sock:
-                    connected = True
-                    diagnostics["ws_source"] = base
-                    market_status.update(status="LIVE", updated=time.time(), error=None)
-                    await broadcast({"type":"status","status":"LIVE"})
-                    async for raw in sock:
-                        m=json.loads(raw); d=m.get("data",{})
-                        if "k" in d:
-                            k=d["k"]; s=k.get("s"); interval=k.get("i")
-                            if s in cache and interval in ("1h","4h"):
-                                item={"t":int(k["t"]),"o":float(k["o"]),"h":float(k["h"]),"l":float(k["l"]),"c":float(k["c"]),"v":float(k["v"]),"q":float(k["q"])}
-                                arr=series[s][interval]
-                                if arr and arr[-1]["t"] == item["t"]:
-                                    arr[-1]=item
-                                else:
-                                    arr.append(item)
-                                    del arr[:-210]
-                                cache[s].update(price=float(k["c"]), volume=float(k["q"]), ts=time.time())
-                                await analyze_from_cache(s)
-                                await broadcast({"type":"snapshot","data":list(cache.values()),"server_ts":time.time(),"status":market_status})
-                        elif d.get("e")=="24hrMiniTicker":
-                            s=d.get("s")
-                            if s in cache:
-                                cache[s].update(price=float(d["c"]), change=float(d["P"]), volume=float(d["q"]), ts=time.time())
-                                await broadcast({"type":"ticker","data":cache[s]})
-                    break
-            except Exception as e:
-                log_error("BINANCE SPOT WS",e)
-        if not connected:
-            market_status.update(status="FALLBACK",updated=time.time())
-            await broadcast({"type":"status","status":"FALLBACK"})
-        await asyncio.sleep(3)
-
-
-@app.on_event("startup")
-async def startup():
-    # Never block server startup on Binance. Start the service immediately,
-    # then populate the cache in the background.
-    asyncio.create_task(seed_rest())
-    asyncio.create_task(ws_loop())
-    asyncio.create_task(price_poll_loop())
-    asyncio.create_task(analysis_loop())
-    asyncio.create_task(metrics_loop())
+    for ws in dead: clients.discard(ws)
 
 
 @app.websocket("/ws")
@@ -443,13 +381,8 @@ async def client_ws(ws: WebSocket):
     await ws.accept()
     clients.add(ws)
     try:
-        await ws.send_text(json.dumps({
-            "type": "snapshot", "data": list(cache.values()),
-            "server_ts": time.time(), "status": market_status
-        }))
+        await ws.send_text(json.dumps({"type":"snapshot","data":list(cache.values()),"server_ts":time.time(),"status":market_status}))
         while True:
             await ws.receive_text()
-    except WebSocketDisconnect:
-        clients.discard(ws)
-    except Exception:
+    except (WebSocketDisconnect, Exception):
         clients.discard(ws)
