@@ -178,12 +178,32 @@ async def get_market_json(client, futures_path, params, spot_path=None):
 
 async def analyze_symbol(client, s):
     try:
-        k1, k4, fr, oi = await asyncio.gather(
-            get_market_json(client, "/fapi/v1/klines", {"symbol": s, "interval": "1h", "limit": 240}, "/api/v3/klines"),
-            get_market_json(client, "/fapi/v1/klines", {"symbol": s, "interval": "4h", "limit": 240}, "/api/v3/klines"),
-            get_json(client, "/fapi/v1/premiumIndex", {"symbol": s}),
-            get_json(client, "/fapi/v1/openInterest", {"symbol": s})
-        )
+        async with asyncio.TaskGroup() as tg:
+            t1 = tg.create_task(get_market_json(
+                client, "/fapi/v1/klines",
+                {"symbol": s, "interval": "1h", "limit": 240},
+                "/api/v3/klines"
+            ))
+            t4 = tg.create_task(get_market_json(
+                client, "/fapi/v1/klines",
+                {"symbol": s, "interval": "4h", "limit": 240},
+                "/api/v3/klines"
+            ))
+        k1, k4 = t1.result(), t4.result()
+
+        # Funding/OI are optional: if Futures endpoints are blocked,
+        # technical analysis still works from market candles.
+        fr = {}
+        oi = {}
+        try:
+            fr = await get_json(client, "/fapi/v1/premiumIndex", {"symbol": s})
+        except Exception as e:
+            log_error(f"FUNDING {s}", e)
+        try:
+            oi = await get_json(client, "/fapi/v1/openInterest", {"symbol": s})
+        except Exception as e:
+            log_error(f"OI {s}", e)
+
         c1 = [float(x[4]) for x in k1]
         h1 = [float(x[2]) for x in k1]
         l1 = [float(x[3]) for x in k1]
@@ -240,8 +260,8 @@ async def analyze_symbol(client, s):
             "entry": round_price(entry), "sl": round_price(sl),
             "tp1": round_price(tp1), "tp2": round_price(tp2),
             "rr": 2.0 if signal != "NO-TRADE" else None,
-            "funding": float(fr.get("lastFundingRate", 0)),
-            "oi": float(oi.get("openInterest", 0)),
+            "funding": float(fr.get("lastFundingRate", 0)) if fr else None,
+            "oi": float(oi.get("openInterest", 0)) if oi else None,
             "analysis_ts": time.time(),
             "ts": time.time()
         })
