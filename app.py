@@ -36,7 +36,7 @@ cache = {
         "rsi_1h": None, "atr_1h": None, "vol_ratio": None,
         "trend": "LOADING", "signal": "NO-TRADE",
         "entry": None, "sl": None, "tp1": None, "tp2": None, "rr": None, "score": 0, "score_label": "NO-TRADE", "score_breakdown": {}, "position_qty": None, "position_usd": None, "margin_3x": None,
-        "funding": None, "oi": None, "analysis_ts": 0, "source": None,
+        "funding": None, "oi": None, "oi_change": None, "adx_1h": None, "vwap_1h": None, "support": None, "resistance": None, "atr_pct": None, "btc_filter": "NEUTRAL", "analysis_ts": 0, "source": None,
         "error": None,
     } for s in SYMBOLS
 }
@@ -48,6 +48,7 @@ diagnostics = {
     "binance_failures": 0, "fallback_source": None, "last_errors": []
 }
 last_analysis = {s: 0 for s in SYMBOLS}
+oi_history = {s: [] for s in SYMBOLS}
 http_client = None
 
 app = FastAPI(title="Crypto AI Trader V6")
@@ -152,6 +153,48 @@ def atr(highs, lows, closes, period=14):
         tr.append(max(highs[i]-lows[i], abs(highs[i]-closes[i-1]), abs(lows[i]-closes[i-1])))
     return sum(tr[-period:]) / period
 
+
+def adx(highs, lows, closes, period=14):
+    if len(closes) < period*2+1: return None
+    trs=[]; plus=[]; minus=[]
+    for i in range(1,len(closes)):
+        up=highs[i]-highs[i-1]; dn=lows[i-1]-lows[i]
+        trs.append(max(highs[i]-lows[i], abs(highs[i]-closes[i-1]), abs(lows[i]-closes[i-1])))
+        plus.append(up if up>dn and up>0 else 0)
+        minus.append(dn if dn>up and dn>0 else 0)
+    def avg(arr): return sum(arr[-period:])/period if len(arr)>=period else None
+    tr=avg(trs); pd=avg(plus); md=avg(minus)
+    if not tr or tr==0: return None
+    pdi=100*pd/tr; mdi=100*md/tr
+    dx=100*abs(pdi-mdi)/max(pdi+mdi,1e-9)
+    # Wilder-style rolling DX approximation, stable enough for a dashboard filter.
+    dxs=[]
+    for j in range(period, len(trs)):
+        trj=avg(trs[:j+1]); pj=avg(plus[:j+1]); mj=avg(minus[:j+1])
+        if trj and trj>0:
+            p=100*pj/trj; m=100*mj/trj
+            dxs.append(100*abs(p-m)/max(p+m,1e-9))
+    return sum(dxs[-period:])/min(period,len(dxs)) if dxs else dx
+
+def vwap(highs, lows, closes, volumes, period=48):
+    n=min(period,len(closes))
+    if n==0: return None
+    pv=0.0; vv=0.0
+    for h,l,c,v in zip(highs[-n:],lows[-n:],closes[-n:],volumes[-n:]):
+        typ=(h+l+c)/3
+        pv += typ*v; vv += v
+    return pv/vv if vv else None
+
+def sr_levels(highs, lows, closes, lookback=48):
+    n=min(lookback,len(closes))
+    if n<5: return None,None
+    p=closes[-1]
+    recent_h=highs[-n:]; recent_l=lows[-n:]
+    # Exclude the current candle so the level is not simply today's price.
+    resistance=max(recent_h[:-1])
+    support=min(recent_l[:-1])
+    return support,resistance
+
 def round_price(x):
     if x is None: return None
     if x >= 1000: return round(x, 2)
@@ -221,36 +264,74 @@ async def analyze_symbol(s):
         elif signal in ("SHORT","WATCH-SHORT"): entry,sl,tp1,tp2=p,p+dist,p-2*dist,p-3*dist
         else: entry=sl=tp1=tp2=None
 
-        # V7 opportunity score: 0-100, combining 4H direction and 1H entry quality.
+        # V8 technical model: trend, momentum, volume, volatility, market structure, derivatives and BTC regime.
         direction = 1 if signal in ("LONG","WATCH-LONG") else (-1 if signal in ("SHORT","WATCH-SHORT") else 0)
-        # Moving-average structure is a core V7 signal component.
-        # 4H EMA200 = regime filter; 4H EMA20/50 = trend; 1H EMA20/50/200 = entry alignment.
-        trend_score = 0
-        if direction:
-            trend_score += 15 if ((direction==1 and p>e200_4) or (direction==-1 and p<e200_4)) else 0
-            trend_score += 10 if ((direction==1 and p>e20_4>e50_4) or (direction==-1 and p<e20_4<e50_4)) else 0
-            trend_score += 10 if ((direction==1 and e20_4>e50_4) or (direction==-1 and e20_4<e50_4)) else 0
+        adx_v = adx(h1,l1,c1,14)
+        vwap_v = vwap(h1,l1,c1,q1,48)
+        support,resistance = sr_levels(h1,l1,c1,48)
+        atr_pct = (a/p*100) if a and p else None
 
-        align_score = 0
+        # BTC market filter: alt LONG prefers BTC above 4H EMA50/200; SHORT prefers below.
+        btc_filter = "NEUTRAL"
+        if s != "BTCUSDT" and cache["BTCUSDT"].get("price") is not None:
+            bp=cache["BTCUSDT"].get("price"); be50=cache["BTCUSDT"].get("ema50_4h"); be200=cache["BTCUSDT"].get("ema200_4h")
+            if be50 and be200:
+                if bp>be50>be200: btc_filter="BULL"
+                elif bp<be50<be200: btc_filter="BEAR"
+                else: btc_filter="NEUTRAL"
+
+        trend_score=0; align_score=0; adx_score=0; rsi_score=0; vol_score=0; sr_score=0; vwap_score=0; atr_score=0; derivatives_score=0; btc_score=0
         if direction:
-            align_score += 10 if ((direction==1 and p>e200) or (direction==-1 and p<e200)) else 0
-            align_score += 10 if ((direction==1 and p>e20) or (direction==-1 and p<e20)) else 0
-            align_score += 10 if ((direction==1 and e20>e50) or (direction==-1 and e20<e50)) else 0
-        rsi_score = 0
-        if direction and r is not None:
-            if direction==1:
-                rsi_score = 15 if 52<=r<=68 else (10 if 48<=r<52 or 68<r<=72 else 0)
-            else:
-                rsi_score = 15 if 32<=r<=48 else (10 if 28<=r<32 or 48<r<=52 else 0)
-        vol_score = 0 if vr is None else (15 if vr>=1.5 else 10 if vr>=1.2 else 5 if vr>=0.8 else 0)
-        funding_score = 0
-        funding_now = cache[s].get("funding")
-        if direction and funding_now is not None:
-            f=abs(funding_now)*100
-            funding_score = 10 if f<=0.01 else 5 if f<=0.03 else 0
-        momentum_score = 10 if direction and ((direction==1 and p>e20) or (direction==-1 and p<e20)) else 0
-        score = int(min(100, trend_score+align_score+rsi_score+vol_score+funding_score+momentum_score))
-        score_label = "A+" if score>=85 else "A" if score>=75 else "B" if score>=65 else "C" if score>=50 else "NO-TRADE"
+            trend_score = (
+                (10 if ((direction==1 and p>e200_4) or (direction==-1 and p<e200_4)) else 0) +
+                (5 if ((direction==1 and e20_4>e50_4) or (direction==-1 and e20_4<e50_4)) else 0) +
+                (5 if ((direction==1 and p>e20_4) or (direction==-1 and p<e20_4)) else 0)
+            )
+            align_score = (
+                (5 if ((direction==1 and p>e200) or (direction==-1 and p<e200)) else 0) +
+                (5 if ((direction==1 and p>e20) or (direction==-1 and p<e20)) else 0) +
+                (5 if ((direction==1 and e20>e50) or (direction==-1 and e20<e50)) else 0)
+            )
+            adx_score = 10 if adx_v is not None and adx_v>=25 else 6 if adx_v is not None and adx_v>=20 else 2 if adx_v is not None and adx_v>=15 else 0
+            if r is not None:
+                if direction==1: rsi_score=10 if 52<=r<=68 else 6 if 48<=r<=72 else 0
+                else: rsi_score=10 if 32<=r<=48 else 6 if 28<=r<=52 else 0
+            vol_score = 10 if vr is not None and vr>=1.5 else 7 if vr is not None and vr>=1.2 else 3 if vr is not None and vr>=0.8 else 0
+            if support is not None and resistance is not None:
+                risk_dist=abs(p-sl) if sl is not None else (a*1.5 if a else p*0.01)
+                room=(resistance-p) if direction==1 else (p-support)
+                if room>0:
+                    sr_score=10 if room>=2*risk_dist else 6 if room>=risk_dist else 0
+            if vwap_v is not None:
+                vwap_score=5 if ((direction==1 and p>vwap_v) or (direction==-1 and p<vwap_v)) else 0
+            if atr_pct is not None:
+                atr_score=5 if 0.5<=atr_pct<=4 else 2 if atr_pct<=6 else 0
+            funding_now=cache[s].get("funding")
+            oi_ch=cache[s].get("oi_change")
+            if funding_now is not None:
+                f=abs(funding_now)*100
+                derivatives_score += 5 if f<=0.01 else 3 if f<=0.03 else 0
+            if oi_ch is not None:
+                # Rising OI with price in the signal direction is confirmation; falling OI is weaker.
+                oi_confirm=(oi_ch>0.5 and ((direction==1 and p>e20) or (direction==-1 and p<e20)))
+                derivatives_score += 5 if oi_confirm else 2 if oi_ch>-0.5 else 0
+            if btc_filter == ("BULL" if direction==1 else "BEAR"):
+                btc_score=5
+            elif btc_filter == "NEUTRAL":
+                btc_score=3
+
+        score=int(min(100,trend_score+align_score+adx_score+rsi_score+vol_score+sr_score+vwap_score+atr_score+derivatives_score+btc_score))
+        score_label="A+" if score>=85 else "A" if score>=75 else "B" if score>=65 else "C" if score>=50 else "NO-TRADE"
+
+        # Hard risk filters: avoid weak trend, poor room to the next level, or a BTC regime conflict.
+        if direction and (
+            (adx_v is not None and adx_v<15) or
+            (direction==1 and resistance is not None and sl is not None and resistance-p < abs(p-sl)) or
+            (direction==-1 and support is not None and sl is not None and p-support < abs(p-sl)) or
+            (s!="BTCUSDT" and btc_filter in ("BULL","BEAR") and btc_filter != ("BULL" if direction==1 else "BEAR"))
+        ):
+            score=min(score,49)
+            score_label="NO-TRADE"
 
         # $1,000 account, 1% max loss per trade. Position sizing is risk-based.
         risk_usd = 10.0
@@ -269,7 +350,8 @@ async def analyze_symbol(s):
             vol_ratio=round(vr,2) if vr is not None else None, trend=trend4, signal=signal,
             entry=round_price(entry), sl=round_price(sl), tp1=round_price(tp1), tp2=round_price(tp2),
             rr=2.0 if signal!="NO-TRADE" else None, score=score, score_label=score_label,
-            score_breakdown={"trend":trend_score,"alignment":align_score,"rsi":rsi_score,"volume":vol_score,"funding":funding_score,"momentum":momentum_score},
+            adx_1h=round(adx_v,1) if adx_v is not None else None, vwap_1h=round_price(vwap_v), support=round_price(support), resistance=round_price(resistance), atr_pct=round(atr_pct,2) if atr_pct is not None else None, btc_filter=btc_filter,
+            score_breakdown={"trend":trend_score,"alignment":align_score,"adx":adx_score,"rsi":rsi_score,"volume":vol_score,"support_resistance":sr_score,"vwap":vwap_score,"atr":atr_score,"funding_oi":derivatives_score,"btc_filter":btc_score},
             position_qty=round(qty,6) if qty is not None else None,
             position_usd=round(position_usd,2) if position_usd is not None else None,
             margin_3x=round(margin_3x,2) if margin_3x is not None else None,
@@ -312,6 +394,12 @@ async def bybit_ticker_fallback():
                 if s in wanted and x.get("lastPrice"):
                     change=float(x["price24hPcnt"])*100 if x.get("price24hPcnt") is not None else cache[s]["change"]
                     cache[s].update(price=float(x["lastPrice"]), change=change, volume=float(x.get("turnover24h",0)), funding=float(x["fundingRate"]) if x.get("fundingRate") not in (None,"") else cache[s]["funding"], oi=float(x["openInterest"]) if x.get("openInterest") not in (None,"") else cache[s]["oi"], ts=time.time(), source="Bybit Live")
+                    try:
+                        ov=float(x["openInterest"]); now=time.time(); hist=oi_history[s]; hist.append((now,ov)); del hist[:-180]
+                        old=next((v for t,v in reversed(hist) if now-t>=900), hist[0][1] if hist else ov)
+                        cache[s]["oi_change"]=((ov/old)-1)*100 if old else None
+                    except Exception: pass
+
             diagnostics["last_success"]=time.time()
             await broadcast({"type":"snapshot","data":list(cache.values()),"server_ts":time.time(),"status":market_status})
         except Exception as e:
@@ -333,6 +421,11 @@ async def handle_bybit_ws(sock):
             s=topic.split(".")[-1]
             if s in cache and rows.get("lastPrice"):
                 cache[s].update(price=float(rows["lastPrice"]), change=float(rows["price24hPcnt"])*100 if rows.get("price24hPcnt") is not None else cache[s]["change"], volume=float(rows.get("turnover24h",0)), funding=float(rows["fundingRate"]) if rows.get("fundingRate") is not None else cache[s]["funding"], oi=float(rows["openInterest"]) if rows.get("openInterest") is not None else cache[s]["oi"], ts=time.time(), source="Bybit Live")
+                try:
+                    ov=float(rows["openInterest"]); now=time.time(); hist=oi_history[s]; hist.append((now,ov)); del hist[:-180]
+                    old=next((v for t,v in reversed(hist) if now-t>=900), hist[0][1] if hist else ov)
+                    cache[s]["oi_change"]=((ov/old)-1)*100 if old else None
+                except Exception: pass
                 diagnostics["last_success"]=time.time()
                 await broadcast({"type":"ticker","data":cache[s]})
         elif topic.startswith("kline."):
