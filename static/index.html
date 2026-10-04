@@ -26,7 +26,7 @@ h1{font-size:22px;margin:0 0 5px}.sub{font-size:12px;color:#9aa4b2}
 <div class="wrap">
 <header>
 <h1>Crypto AI Trader V6</h1>
-<div class="sub">Binance Futures · 4H方向 + 1H入场 · WebSocket实时 · 本地计算</div>
+<div class="sub">Bybit / Binance Futures · 4H方向 + 1H入场 · 多因子技术分析 · WebSocket实时</div>
 <div id="status" class="status"><span class="dot"></span><span id="stxt">连接中…</span></div><div id="diag" class="small">数据源：连接中</div>
 </header>
 <div class="toolbar">
@@ -67,9 +67,16 @@ function render(){
    <div class="kv"><div class="k">1H RSI</div><div class="v">${fmt(x.rsi_1h)}</div></div>
    <div class="kv"><div class="k">VOL / AVG</div><div class="v">${x.vol_ratio?fmt(x.vol_ratio)+"x":"—"}</div></div>
    <div class="kv"><div class="k">FUNDING</div><div class="v">${x.funding!=null?(x.funding*100).toFixed(4)+"%":"—"}</div></div>
+   <div class="kv"><div class="k">ADX 1H</div><div class="v">${fmt(x.adx_1h)}</div></div>
+   <div class="kv"><div class="k">VWAP 1H</div><div class="v">${fmt(x.vwap_1h)}</div></div>
+   <div class="kv"><div class="k">OI CHANGE</div><div class="v">${x.oi_change!=null?((x.oi_change>=0?"+":"")+x.oi_change.toFixed(2)+"%"):"—"}</div></div>
+   <div class="kv"><div class="k">BTC FILTER</div><div class="v">${x.btc_filter||"—"}</div></div>
+   <div class="kv"><div class="k">SUPPORT</div><div class="v">${fmt(x.support)}</div></div>
+   <div class="kv"><div class="k">RESISTANCE</div><div class="v">${fmt(x.resistance)}</div></div>
   </div>
   <div class="signal">
    <div class="score"><span>OPPORTUNITY SCORE</span><b>${x.score||0}/100 · ${x.score_label||"NO-TRADE"}</b></div>
+   <div class="risk">ADX ${fmt(x.adx_1h)} · VWAP ${fmt(x.vwap_1h)} · ATR ${x.atr_pct!=null?x.atr_pct.toFixed(2)+"%":"—"} · OI ${x.oi_change!=null?((x.oi_change>=0?"+":"")+x.oi_change.toFixed(2)+"%"):"—"} · BTC ${x.btc_filter||"—"}</div>
    <div class="levels">Entry <b>${fmt(x.entry)}</b> · SL <b>${fmt(x.sl)}</b><br>TP1 <b>${fmt(x.tp1)}</b> · TP2 <b>${fmt(x.tp2)}</b> · R/R <b>${x.rr||"—"}</b></div>
    ${x.position_usd?`<div class="risk">风险≤$10 · 建议仓位 ${fmt(x.position_usd)} · 3×保证金约 ${fmt(x.margin_3x)}</div>`:""}
   </div>
