@@ -172,7 +172,7 @@ async def get_json(client, base, path, params, timeout=3):
 
 
 async def get_candles(client, symbol, interval):
-    params = {"symbol": symbol, "interval": interval, "limit": (210 if interval == "1h" else 60)}
+    params = {"symbol": symbol, "interval": interval, "limit": 210}
     last = None
     # Binance documents api1-api4 as performance alternatives and data-api as a
     # public market-data endpoint. Try the fastest/most available endpoint first.
@@ -202,25 +202,14 @@ async def get_futures_optional(client, path, params):
         return None
 
 
-def set_series_from_klines(s, klines):
-    one = []
+def set_series_from_klines(s, interval, klines):
+    arr = []
     for x in klines:
-        one.append({
+        arr.append({
             "t": int(x[0]), "o": float(x[1]), "h": float(x[2]),
             "l": float(x[3]), "c": float(x[4]), "v": float(x[5]), "q": float(x[7])
         })
-    series[s]["1h"] = one[-240:]
-    four = []
-    for i in range(0, len(one) - 3, 4):
-        g = one[i:i+4]
-        if len(g) < 4:
-            continue
-        four.append({
-            "t": g[0]["t"], "o": g[0]["o"], "h": max(x["h"] for x in g),
-            "l": min(x["l"] for x in g), "c": g[-1]["c"],
-            "v": sum(x["v"] for x in g), "q": sum(x["q"] for x in g)
-        })
-    series[s]["4h"] = four[-80:]
+    series[s][interval] = arr[-210:]
 
 
 def update_1h_candle(s, d):
@@ -263,7 +252,7 @@ async def analyze_from_cache(s):
         c4 = [x["c"] for x in k4]
         p = c1[-1]
         e20 = ema(c1, 20); e50 = ema(c1, 50); e200 = ema(c1, 200)
-        e20_4 = ema(c4, 20); e50_4 = ema(c4, 50); e200_4 = ema(c4, 50)
+        e20_4 = ema(c4, 20); e50_4 = ema(c4, 50); e200_4 = ema(c4, 200)
         r = rsi(c1); a = atr(h1, l1, c1)
         vr = q1[-1] / (sum(q1[-21:-1]) / 20) if len(q1) >= 21 else None
         trend4 = "BULL" if p > e20_4 > e50_4 else ("BEAR" if p < e20_4 < e50_4 else "RANGE")
@@ -292,17 +281,21 @@ async def analyze_from_cache(s):
 
 
 async def seed_rest():
-    async with httpx.AsyncClient(timeout=3, http2=True) as c:
+    async with httpx.AsyncClient(timeout=4, http2=True) as c:
         async def one(s):
             try:
-                k = await get_candles(c, s, "1h")
-                set_series_from_klines(s, k)
+                k1, k4 = await asyncio.gather(
+                    get_candles(c, s, "1h"),
+                    get_candles(c, s, "4h"),
+                )
+                set_series_from_klines(s, "1h", k1)
+                set_series_from_klines(s, "4h", k4)
                 await analyze_from_cache(s)
+                cache[s].update(price=series[s]["1h"][-1]["c"], ts=time.time())
             except Exception as e:
                 log_error(f"SEED {s}", e)
         await asyncio.gather(*(one(s) for s in SYMBOLS))
         ready = sum(v["price"] is not None for v in cache.values())
-        analysis_ready = sum(v["analysis_ts"] > 0 for v in cache.values())
         market_status.update(status="LIVE" if ready else "FALLBACK", updated=time.time(), error=None)
         if ready:
             diagnostics["last_success"] = time.time()
@@ -394,7 +387,7 @@ async def broadcast(obj):
 
 
 async def ws_loop():
-    streams = [f"{s.lower()}@kline_1h" for s in SYMBOLS] + [f"{s.lower()}@miniTicker" for s in SYMBOLS]
+    streams = [f"{s.lower()}@kline_1h" for s in SYMBOLS] + [f"{s.lower()}@kline_4h" for s in SYMBOLS] + [f"{s.lower()}@miniTicker" for s in SYMBOLS]
     while True:
         connected = False
         for base in SPOT_WS_BASES:
@@ -408,9 +401,15 @@ async def ws_loop():
                     async for raw in sock:
                         m=json.loads(raw); d=m.get("data",{})
                         if "k" in d:
-                            k=d["k"]; s=k.get("s")
-                            if s in cache:
-                                update_1h_candle(s,k)
+                            k=d["k"]; s=k.get("s"); interval=k.get("i")
+                            if s in cache and interval in ("1h","4h"):
+                                item={"t":int(k["t"]),"o":float(k["o"]),"h":float(k["h"]),"l":float(k["l"]),"c":float(k["c"]),"v":float(k["v"]),"q":float(k["q"])}
+                                arr=series[s][interval]
+                                if arr and arr[-1]["t"] == item["t"]:
+                                    arr[-1]=item
+                                else:
+                                    arr.append(item)
+                                    del arr[:-210]
                                 cache[s].update(price=float(k["c"]), volume=float(k["q"]), ts=time.time())
                                 await analyze_from_cache(s)
                                 await broadcast({"type":"snapshot","data":list(cache.values()),"server_ts":time.time(),"status":market_status})
