@@ -248,6 +248,10 @@ async def analyze_symbol(s):
         risk_usd = 10.0
         qty = (risk_usd/abs(entry-sl)) if entry is not None and sl is not None and abs(entry-sl)>0 else None
         position_usd = qty*entry if qty is not None else None
+        # $1,000 account, max 3x notional = $3,000.
+        if position_usd is not None and position_usd > 3000.0:
+            position_usd = 3000.0
+            qty = position_usd/entry
         margin_3x = position_usd/3 if position_usd is not None else None
 
         cache[s].update(
