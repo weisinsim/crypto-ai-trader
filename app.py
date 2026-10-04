@@ -223,11 +223,19 @@ async def analyze_symbol(s):
 
         # V7 opportunity score: 0-100, combining 4H direction and 1H entry quality.
         direction = 1 if signal in ("LONG","WATCH-LONG") else (-1 if signal in ("SHORT","WATCH-SHORT") else 0)
-        trend_score = 25 if direction and ((direction==1 and trend4=="BULL") or (direction==-1 and trend4=="BEAR")) else 0
+        # Moving-average structure is a core V7 signal component.
+        # 4H EMA200 = regime filter; 4H EMA20/50 = trend; 1H EMA20/50/200 = entry alignment.
+        trend_score = 0
+        if direction:
+            trend_score += 15 if ((direction==1 and p>e200_4) or (direction==-1 and p<e200_4)) else 0
+            trend_score += 10 if ((direction==1 and p>e20_4>e50_4) or (direction==-1 and p<e20_4<e50_4)) else 0
+            trend_score += 10 if ((direction==1 and e20_4>e50_4) or (direction==-1 and e20_4<e50_4)) else 0
+
         align_score = 0
         if direction:
-            align_score += 10 if (direction==1 and p>e20) or (direction==-1 and p<e20) else 0
-            align_score += 10 if (direction==1 and e20>e50) or (direction==-1 and e20<e50) else 0
+            align_score += 10 if ((direction==1 and p>e200) or (direction==-1 and p<e200)) else 0
+            align_score += 10 if ((direction==1 and p>e20) or (direction==-1 and p<e20)) else 0
+            align_score += 10 if ((direction==1 and e20>e50) or (direction==-1 and e20<e50)) else 0
         rsi_score = 0
         if direction and r is not None:
             if direction==1:
