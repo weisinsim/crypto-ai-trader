@@ -178,18 +178,10 @@ async def get_market_json(client, futures_path, params, spot_path=None):
 
 async def analyze_symbol(client, s):
     try:
-        async with asyncio.TaskGroup() as tg:
-            t1 = tg.create_task(get_market_json(
-                client, "/fapi/v1/klines",
-                {"symbol": s, "interval": "1h", "limit": 240},
-                "/api/v3/klines"
-            ))
-            t4 = tg.create_task(get_market_json(
-                client, "/fapi/v1/klines",
-                {"symbol": s, "interval": "4h", "limit": 240},
-                "/api/v3/klines"
-            ))
-        k1, k4 = t1.result(), t4.result()
+        k1, k4 = await asyncio.gather(
+            get_market_json(client, "/fapi/v1/klines", {"symbol": s, "interval": "1h", "limit": 240}, "/api/v3/klines"),
+            get_market_json(client, "/fapi/v1/klines", {"symbol": s, "interval": "4h", "limit": 240}, "/api/v3/klines"),
+        )
 
         # Funding/OI are optional: if Futures endpoints are blocked,
         # technical analysis still works from market candles.
@@ -271,7 +263,7 @@ async def analyze_symbol(client, s):
 
 
 async def seed_rest():
-    async with httpx.AsyncClient(timeout=8) as c:
+    async with httpx.AsyncClient(timeout=5) as c:
         async def one(s):
             try:
                 d = await get_market_json(c, "/fapi/v1/ticker/24hr", {"symbol": s}, "/api/v3/ticker/24hr")
@@ -300,7 +292,7 @@ async def price_poll_loop():
                 await asyncio.gather(*(poll_price(c, s) for s in SYMBOLS))
         except Exception as e:
             log_error("PRICE POLL", e)
-        await asyncio.sleep(5)
+        await asyncio.sleep(3)
 
 
 async def poll_price(client, s):
@@ -322,7 +314,7 @@ async def poll_price(client, s):
 async def analysis_loop():
     while True:
         try:
-            async with httpx.AsyncClient(timeout=10) as c:
+            async with httpx.AsyncClient(timeout=8) as c:
                 await asyncio.gather(*(analyze_symbol(c, s) for s in SYMBOLS))
             market_status.update(status="LIVE" if market_status["status"] != "OFFLINE" else "LIVE",
                                  updated=time.time(), error=None)
@@ -330,7 +322,7 @@ async def analysis_loop():
         except Exception as e:
             market_status.update(status="DELAYED", updated=time.time(), error=str(e)[:120])
             log_error("ANALYSIS LOOP", e)
-        await asyncio.sleep(60)
+        await asyncio.sleep(30)
 
 
 async def broadcast(obj):
