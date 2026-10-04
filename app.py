@@ -14,8 +14,6 @@ STATIC_DIR = ROOT / "static"
 
 SYMBOLS = ["BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT","DOGEUSDT","ADAUSDT","AVAXUSDT","LINKUSDT","SUIUSDT"]
 
-# Binance USDⓈ-M Futures: this dashboard is for futures, so all candles/prices
-# use fapi/fstream rather than Spot api/stream.
 FUTURES_BASES = [
     "https://fapi.binance.com",
     "https://fapi1.binance.com",
@@ -27,8 +25,6 @@ FUTURES_WS = [
     "wss://fstream.binance.com/stream",
     "wss://fstream.binance.com:443/stream",
 ]
-
-# Emergency market-data fallback only. Signals are marked with the source.
 BYBIT_BASE = "https://api.bybit.com"
 
 cache = {
@@ -56,19 +52,16 @@ http_client = None
 app = FastAPI(title="Crypto AI Trader V6")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-
 def log_error(stage, detail):
     msg = f"{stage}: {str(detail)[:220]}"
     diagnostics["last_errors"] = (diagnostics["last_errors"] + [msg])[-10:]
     market_status["error"] = msg
-
 
 async def get_json(base, path, params=None, timeout=3.0):
     r = await http_client.get(base + path, params=params or {}, timeout=timeout)
     if r.status_code != 200:
         raise RuntimeError(f"HTTP {r.status_code}: {r.text[:120]}")
     return r.json()
-
 
 async def futures_json(path, params=None, timeout=3.0):
     last = None
@@ -82,7 +75,6 @@ async def futures_json(path, params=None, timeout=3.0):
             diagnostics["binance_failures"] += 1
     raise RuntimeError(f"Binance Futures unavailable: {last}")
 
-
 async def bybit_json(path, params=None, timeout=3.0):
     data = await get_json(BYBIT_BASE, path, params, timeout)
     if data.get("retCode", 0) != 0:
@@ -90,15 +82,9 @@ async def bybit_json(path, params=None, timeout=3.0):
     diagnostics["fallback_source"] = BYBIT_BASE
     return data["result"]
 
-
-def fmt_source(source):
-    return source or "—"
-
-
 @app.get("/")
 async def index():
     return FileResponse(str(STATIC_DIR / "index.html"))
-
 
 @app.get("/api/health")
 async def health():
@@ -115,7 +101,6 @@ async def health():
         "source": diagnostics["rest_source"] or diagnostics["ws_source"] or diagnostics["fallback_source"],
     }
 
-
 @app.get("/api/debug")
 async def debug():
     now = time.time()
@@ -128,11 +113,9 @@ async def debug():
         "errors": {s: v["error"] for s, v in cache.items() if v["error"]},
     }
 
-
 @app.get("/api/snapshot")
 async def snapshot():
     return {"server_ts": time.time(), "status": market_status, "data": list(cache.values())}
-
 
 def ema(values, period):
     if len(values) < period:
@@ -142,7 +125,6 @@ def ema(values, period):
     for v in values[period:]:
         e = v * k + e * (1-k)
     return e
-
 
 def rsi(values, period=14):
     if len(values) < period + 1:
@@ -161,7 +143,6 @@ def rsi(values, period=14):
         return 100.0
     return 100 - (100/(1 + ag/al))
 
-
 def atr(highs, lows, closes, period=14):
     if len(closes) < period + 1:
         return None
@@ -170,22 +151,18 @@ def atr(highs, lows, closes, period=14):
         tr.append(max(highs[i]-lows[i], abs(highs[i]-closes[i-1]), abs(lows[i]-closes[i-1])))
     return sum(tr[-period:]) / period
 
-
 def round_price(x):
     if x is None: return None
     if x >= 1000: return round(x, 2)
     if x >= 1: return round(x, 4)
     return round(x, 6)
 
-
 def kline_to_obj(x):
     return {"t": int(x[0]), "o": float(x[1]), "h": float(x[2]), "l": float(x[3]),
             "c": float(x[4]), "v": float(x[5]), "q": float(x[7])}
 
-
 def set_series(s, interval, klines):
     series[s][interval] = [kline_to_obj(x) for x in klines][-210:]
-
 
 async def seed_symbol(s):
     try:
@@ -200,7 +177,6 @@ async def seed_symbol(s):
         return True
     except Exception as e:
         log_error(f"SEED {s}", e)
-        # Emergency fallback to Bybit linear futures.
         try:
             b1, b4 = await asyncio.gather(
                 bybit_json("/v5/market/kline", {"category":"linear","symbol":s,"interval":"60","limit":210}, 3.0),
@@ -219,7 +195,6 @@ async def seed_symbol(s):
             log_error(f"FALLBACK {s}", e2)
             cache[s]["error"] = str(e2)[:120]
             return False
-
 
 async def analyze_symbol(s):
     k1, k4 = series[s]["1h"], series[s]["4h"]
@@ -257,16 +232,12 @@ async def analyze_symbol(s):
         log_error(f"ANALYSIS {s}", e)
         return False
 
-
 async def seed_all():
-    # 10 symbols × 2 timeframes in parallel; no symbol blocks another.
-    results = await asyncio.gather(*(seed_symbol(s) for s in SYMBOLS), return_exceptions=True)
+    await asyncio.gather(*(seed_symbol(s) for s in SYMBOLS), return_exceptions=True)
     ready=sum(v["price"] is not None for v in cache.values())
-    analyzed=sum(v["analysis_ts"]>0 for v in cache.values())
     market_status.update(status="LIVE" if ready else "DELAYED", updated=time.time(), error=None if ready else market_status["error"])
     diagnostics["last_success"]=time.time() if ready else diagnostics["last_success"]
     await broadcast({"type":"snapshot","data":list(cache.values()),"server_ts":time.time(),"status":market_status})
-
 
 async def price_rest_fallback():
     while True:
@@ -282,7 +253,6 @@ async def price_rest_fallback():
         except Exception as e:
             log_error("FUTURES TICKER FALLBACK", e)
         await asyncio.sleep(8)
-
 
 async def ws_loop():
     streams=[]
@@ -329,10 +299,8 @@ async def ws_loop():
             await broadcast({"type":"status","status":"DELAYED"})
         await asyncio.sleep(2)
 
-
 async def metrics_loop():
     while True:
-        # Optional metrics; never blocks price/technical pipeline.
         for s in SYMBOLS:
             try:
                 fr = await futures_json("/fapi/v1/premiumIndex", {"symbol":s}, 2.0)
@@ -343,27 +311,23 @@ async def metrics_loop():
                 pass
         await asyncio.sleep(120)
 
-
 @app.on_event("startup")
 async def startup():
     global http_client
     http_client=httpx.AsyncClient(
         timeout=httpx.Timeout(4.0, connect=2.0),
         limits=httpx.Limits(max_connections=40, max_keepalive_connections=20),
-        http2=True,
     )
     asyncio.create_task(seed_all())
     asyncio.create_task(ws_loop())
     asyncio.create_task(price_rest_fallback())
     asyncio.create_task(metrics_loop())
 
-
 @app.on_event("shutdown")
 async def shutdown():
     global http_client
     if http_client:
         await http_client.aclose()
-
 
 async def broadcast(obj):
     dead=[]
@@ -374,7 +338,6 @@ async def broadcast(obj):
         except Exception:
             dead.append(ws)
     for ws in dead: clients.discard(ws)
-
 
 @app.websocket("/ws")
 async def client_ws(ws: WebSocket):
