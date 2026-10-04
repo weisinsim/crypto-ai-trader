@@ -151,7 +151,7 @@ def round_price(x):
 
 async def get_json(client, path, params, allow_spot=False):
     last_error = None
-    bases = FUTURES_BASES + ([SPOT_BASE] if allow_spot else [])
+    bases = ([SPOT_BASE] if allow_spot else []) + FUTURES_BASES
     for base in bases:
         try:
             r = await client.get(base + path, params=params)
