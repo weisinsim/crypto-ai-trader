@@ -35,7 +35,7 @@ cache = {
         "ema20_4h": None, "ema50_4h": None, "ema200_4h": None,
         "rsi_1h": None, "atr_1h": None, "vol_ratio": None,
         "trend": "LOADING", "signal": "NO-TRADE",
-        "entry": None, "sl": None, "tp1": None, "tp2": None, "rr": None,
+        "entry": None, "sl": None, "tp1": None, "tp2": None, "rr": None, "score": 0, "score_label": "NO-TRADE", "score_breakdown": {}, "position_qty": None, "position_usd": None, "margin_3x": None,
         "funding": None, "oi": None, "analysis_ts": 0, "source": None,
         "error": None,
     } for s in SYMBOLS
@@ -220,13 +220,48 @@ async def analyze_symbol(s):
         if signal in ("LONG","WATCH-LONG"): entry,sl,tp1,tp2=p,p-dist,p+2*dist,p+3*dist
         elif signal in ("SHORT","WATCH-SHORT"): entry,sl,tp1,tp2=p,p+dist,p-2*dist,p-3*dist
         else: entry=sl=tp1=tp2=None
+
+        # V7 opportunity score: 0-100, combining 4H direction and 1H entry quality.
+        direction = 1 if signal in ("LONG","WATCH-LONG") else (-1 if signal in ("SHORT","WATCH-SHORT") else 0)
+        trend_score = 25 if direction and ((direction==1 and trend4=="BULL") or (direction==-1 and trend4=="BEAR")) else 0
+        align_score = 0
+        if direction:
+            align_score += 10 if (direction==1 and p>e20) or (direction==-1 and p<e20) else 0
+            align_score += 10 if (direction==1 and e20>e50) or (direction==-1 and e20<e50) else 0
+        rsi_score = 0
+        if direction and r is not None:
+            if direction==1:
+                rsi_score = 15 if 52<=r<=68 else (10 if 48<=r<52 or 68<r<=72 else 0)
+            else:
+                rsi_score = 15 if 32<=r<=48 else (10 if 28<=r<32 or 48<r<=52 else 0)
+        vol_score = 0 if vr is None else (15 if vr>=1.5 else 10 if vr>=1.2 else 5 if vr>=0.8 else 0)
+        funding_score = 0
+        funding_now = cache[s].get("funding")
+        if direction and funding_now is not None:
+            f=abs(funding_now)*100
+            funding_score = 10 if f<=0.01 else 5 if f<=0.03 else 0
+        momentum_score = 10 if direction and ((direction==1 and p>e20) or (direction==-1 and p<e20)) else 0
+        score = int(min(100, trend_score+align_score+rsi_score+vol_score+funding_score+momentum_score))
+        score_label = "A+" if score>=85 else "A" if score>=75 else "B" if score>=65 else "C" if score>=50 else "NO-TRADE"
+
+        # $1,000 account, 1% max loss per trade. Position sizing is risk-based.
+        risk_usd = 10.0
+        qty = (risk_usd/abs(entry-sl)) if entry is not None and sl is not None and abs(entry-sl)>0 else None
+        position_usd = qty*entry if qty is not None else None
+        margin_3x = position_usd/3 if position_usd is not None else None
+
         cache[s].update(
             price=p, ema20_1h=round_price(e20), ema50_1h=round_price(e50), ema200_1h=round_price(e200),
             ema20_4h=round_price(e20_4), ema50_4h=round_price(e50_4), ema200_4h=round_price(e200_4),
             rsi_1h=round(r,1) if r is not None else None, atr_1h=round_price(a),
             vol_ratio=round(vr,2) if vr is not None else None, trend=trend4, signal=signal,
             entry=round_price(entry), sl=round_price(sl), tp1=round_price(tp1), tp2=round_price(tp2),
-            rr=2.0 if signal!="NO-TRADE" else None, analysis_ts=time.time(), ts=time.time(), error=None
+            rr=2.0 if signal!="NO-TRADE" else None, score=score, score_label=score_label,
+            score_breakdown={"trend":trend_score,"alignment":align_score,"rsi":rsi_score,"volume":vol_score,"funding":funding_score,"momentum":momentum_score},
+            position_qty=round(qty,6) if qty is not None else None,
+            position_usd=round(position_usd,2) if position_usd is not None else None,
+            margin_3x=round(margin_3x,2) if margin_3x is not None else None,
+            analysis_ts=time.time(), ts=time.time(), error=None
         )
         return True
     except Exception as e:
