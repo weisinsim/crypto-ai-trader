@@ -159,7 +159,7 @@ async def get_json(client, base, path, params, timeout=3):
 
 
 async def get_candles(client, symbol, interval):
-    params = {"symbol": symbol, "interval": interval, "limit": 240}
+    params = {"symbol": symbol, "interval": interval, "limit": (210 if interval == "1h" else 60)}
     # Binance public market-data CDN first: fast and independent of Futures API.
     for base in (SPOT_BASE, DATA_BASE):
         try:
@@ -260,25 +260,25 @@ async def analyze_symbol(client, s):
 
 async def seed_rest():
     async with httpx.AsyncClient(timeout=3, http2=True) as c:
-        async def one(s):
-            try:
-                d = await get_ticker(c, s)
-                cache[s].update(
-                    price=float(d["lastPrice"]),
-                    change=float(d["priceChangePercent"]),
-                    volume=float(d["quoteVolume"]),
-                    ts=time.time()
-                )
-            except Exception as e:
-                cache[s]["error"] = str(e)[:120]
-                log_error(f"SEED {s}", e)
-        await asyncio.gather(*(one(s) for s in SYMBOLS))
+        try:
+            d = await get_json(c, SPOT_BASE, "/api/v3/ticker/24hr", {}, timeout=3)
+            by_symbol = {x.get("symbol"): x for x in d}
+            for s in SYMBOLS:
+                x = by_symbol.get(s)
+                if x:
+                    cache[s].update(
+                        price=float(x["lastPrice"]),
+                        change=float(x["priceChangePercent"]),
+                        volume=float(x.get("quoteVolume", 0)),
+                        ts=time.time()
+                    )
+        except Exception as e:
+            log_error("BATCH TICKER", e)
+            await asyncio.gather(*(poll_price(c, s) for s in SYMBOLS))
         ready = sum(v["price"] is not None for v in cache.values())
+        market_status.update(status="LIVE" if ready else "FALLBACK", updated=time.time(), error=None)
         if ready:
             diagnostics["last_success"] = time.time()
-            market_status.update(status="LIVE", updated=time.time(), error=None)
-        else:
-            market_status.update(status="FALLBACK", updated=time.time())
 
 
 async def price_poll_loop():
@@ -311,10 +311,12 @@ async def analysis_loop():
     while True:
         try:
             async with httpx.AsyncClient(timeout=4, http2=True) as c:
-                await asyncio.gather(*(analyze_symbol(c, s) for s in SYMBOLS))
-            market_status.update(status="LIVE" if market_status["status"] != "OFFLINE" else "LIVE",
-                                 updated=time.time(), error=None)
-            await broadcast({"type": "snapshot", "data": list(cache.values()), "server_ts": time.time()})
+                tasks = [asyncio.create_task(analyze_symbol(c, s)) for s in SYMBOLS]
+                for task in asyncio.as_completed(tasks):
+                    await task
+                    # Push each completed symbol immediately; don't wait for all 10.
+                    await broadcast({"type": "snapshot", "data": list(cache.values()), "server_ts": time.time()})
+            market_status.update(status="LIVE", updated=time.time(), error=None)
         except Exception as e:
             market_status.update(status="DELAYED", updated=time.time(), error=str(e)[:120])
             log_error("ANALYSIS LOOP", e)
