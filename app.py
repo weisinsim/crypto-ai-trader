@@ -21,9 +21,19 @@ FUTURES_BASES = [
     "https://fapi4.binance.com",
 ]
 SPOT_BASE = "https://api.binance.com"
+SPOT_BASES = [
+    "https://api-gcp.binance.com",
+    "https://api1.binance.com",
+    "https://api2.binance.com",
+    "https://api3.binance.com",
+    "https://api4.binance.com",
+    "https://api.binance.com",
+    "https://data-api.binance.vision",
+]
 DATA_BASE = "https://data-api.binance.vision"
 FUTURES_PRIMARY = "https://fapi.binance.com"
 WS_BASES = [
+    "wss://fstream.binance.com:443/stream",
     "wss://fstream.binance.com/stream",
     "wss://fstream1.binance.com/stream",
     "wss://fstream2.binance.com/stream",
@@ -160,22 +170,25 @@ async def get_json(client, base, path, params, timeout=3):
 
 async def get_candles(client, symbol, interval):
     params = {"symbol": symbol, "interval": interval, "limit": (210 if interval == "1h" else 60)}
-    # Binance public market-data CDN first: fast and independent of Futures API.
-    for base in (SPOT_BASE, DATA_BASE):
+    last = None
+    # Binance documents api1-api4 as performance alternatives and data-api as a
+    # public market-data endpoint. Try the fastest/most available endpoint first.
+    for base in SPOT_BASES:
         try:
-            return await get_json(client, base, "/api/v3/klines", params, timeout=3)
+            return await get_json(client, base, "/api/v3/klines", params, timeout=2.5)
         except Exception as e:
-            log_error(f"CANDLES {symbol} {interval}", e)
-    raise RuntimeError(f"No candle source for {symbol} {interval}")
+            last = e
+    raise RuntimeError(f"No candle source for {symbol} {interval}: {last}")
 
 
 async def get_ticker(client, symbol):
-    for base in (SPOT_BASE, DATA_BASE):
+    last = None
+    for base in SPOT_BASES:
         try:
-            return await get_json(client, base, "/api/v3/ticker/24hr", {"symbol": symbol}, timeout=4)
+            return await get_json(client, base, "/api/v3/ticker/24hr", {"symbol": symbol}, timeout=2.5)
         except Exception as e:
-            log_error(f"TICKER {symbol}", e)
-    raise RuntimeError(f"No ticker source for {symbol}")
+            last = e
+    raise RuntimeError(f"No ticker source for {symbol}: {last}")
 
 
 async def get_futures_optional(client, path, params):
