@@ -255,6 +255,22 @@ async def price_rest_fallback():
             log_error("FUTURES TICKER FALLBACK", e)
         await asyncio.sleep(8)
 
+async def bybit_ticker_fallback():
+    while True:
+        try:
+            result = await bybit_json("/v5/market/tickers", {"category":"linear"}, 3.0)
+            wanted=set(SYMBOLS)
+            for x in result.get("list", []):
+                s=x.get("symbol")
+                if s in wanted and x.get("lastPrice"):
+                    change=float(x["price24hPcnt"])*100 if x.get("price24hPcnt") is not None else cache[s]["change"]
+                    cache[s].update(price=float(x["lastPrice"]), change=change, volume=float(x.get("turnover24h",0)), funding=float(x["fundingRate"]) if x.get("fundingRate") not in (None,"") else cache[s]["funding"], oi=float(x["openInterest"]) if x.get("openInterest") not in (None,"") else cache[s]["oi"], ts=time.time(), source="Bybit Live")
+            diagnostics["last_success"]=time.time()
+            await broadcast({"type":"snapshot","data":list(cache.values()),"server_ts":time.time(),"status":market_status})
+        except Exception as e:
+            log_error("BYBIT TICKER FALLBACK", e)
+        await asyncio.sleep(5)
+
 async def handle_bybit_ws(sock):
     args=[]
     for s in SYMBOLS:
@@ -368,6 +384,7 @@ async def startup():
     asyncio.create_task(seed_all())
     asyncio.create_task(ws_loop())
     asyncio.create_task(price_rest_fallback())
+    asyncio.create_task(bybit_ticker_fallback())
     asyncio.create_task(metrics_loop())
 
 @app.on_event("shutdown")
