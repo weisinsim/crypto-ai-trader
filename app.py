@@ -26,6 +26,7 @@ FUTURES_WS = [
     "wss://fstream.binance.com:443/stream",
 ]
 BYBIT_BASE = "https://api.bybit.com"
+BYBIT_WS = "wss://stream.bybit.com/v5/public/linear"
 
 cache = {
     s: {
@@ -254,6 +255,42 @@ async def price_rest_fallback():
             log_error("FUTURES TICKER FALLBACK", e)
         await asyncio.sleep(8)
 
+async def handle_bybit_ws(sock):
+    args=[]
+    for s in SYMBOLS:
+        args += [f"tickers.{s}", f"kline.60.{s}", f"kline.240.{s}"]
+    await sock.send(json.dumps({"op":"subscribe","args":args}))
+    async for raw in sock:
+        m=json.loads(raw)
+        topic=m.get("topic","")
+        if topic.startswith("tickers."):
+            rows=m.get("data") or {}
+            if isinstance(rows,list):
+                rows=rows[0] if rows else {}
+            s=topic.split(".")[-1]
+            if s in cache and rows.get("lastPrice"):
+                cache[s].update(price=float(rows["lastPrice"]), change=float(rows["price24hPcnt"])*100 if rows.get("price24hPcnt") is not None else cache[s]["change"], volume=float(rows.get("turnover24h",0)), funding=float(rows["fundingRate"]) if rows.get("fundingRate") is not None else cache[s]["funding"], oi=float(rows["openInterest"]) if rows.get("openInterest") is not None else cache[s]["oi"], ts=time.time(), source="Bybit Live")
+                diagnostics["last_success"]=time.time()
+                await broadcast({"type":"ticker","data":cache[s]})
+        elif topic.startswith("kline."):
+            parts=topic.split(".")
+            if len(parts)==3:
+                interval, s = parts[1], parts[2]
+                if s in cache and interval in ("60","240"):
+                    rows=m.get("data") or []
+                    if rows:
+                        k=rows[0]
+                        item={"t":int(k["start"]),"o":float(k["open"]),"h":float(k["high"]),"l":float(k["low"]),"c":float(k["close"]),"v":float(k["volume"]),"q":float(k["turnover"])}
+                        tf="1h" if interval=="60" else "4h"
+                        arr=series[s][tf]
+                        if arr and arr[-1]["t"]==item["t"]: arr[-1]=item
+                        else: arr.append(item); del arr[:-210]
+                        cache[s].update(price=item["c"], ts=time.time(), source="Bybit Live")
+                        if time.time()-last_analysis[s] >= 3:
+                            last_analysis[s]=time.time()
+                            await analyze_symbol(s)
+                            await broadcast({"type":"snapshot","data":list(cache.values()),"server_ts":time.time(),"status":market_status})
+
 async def ws_loop():
     streams=[]
     for s in SYMBOLS:
@@ -294,6 +331,16 @@ async def ws_loop():
                     break
             except Exception as e:
                 log_error("BINANCE FUTURES WS", e)
+        if not connected:
+            try:
+                async with websockets.connect(BYBIT_WS, ping_interval=20, ping_timeout=20, close_timeout=3, max_size=2**20) as sock:
+                    connected=True
+                    diagnostics["ws_source"]=BYBIT_WS
+                    market_status.update(status="LIVE", updated=time.time(), error=None)
+                    await broadcast({"type":"status","status":"LIVE","source":"Bybit Live WS"})
+                    await handle_bybit_ws(sock)
+            except Exception as e:
+                log_error("BYBIT WS", e)
         if not connected:
             market_status.update(status="DELAYED", updated=time.time())
             await broadcast({"type":"status","status":"DELAYED"})
