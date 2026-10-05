@@ -42,7 +42,8 @@ h1{font-size:22px;margin:0 0 5px}.sub{font-size:12px;color:#9aa4b2}
 <script>
 const state={data:{},history:{},filter:"ALL",ws:null};
 const $=id=>document.getElementById(id);
-function fmtTime(ms){if(!ms)return"—";return new Date(ms).toLocaleString([], {month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});}\nfunction fmt(x){if(x==null)return"—";return Number(x).toLocaleString(undefined,{maximumFractionDigits:6})}
+function fmtTime(ms){if(!ms)return"—";return new Date(ms).toLocaleString([], {month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});}
+function fmt(x){if(x==null)return"—";return Number(x).toLocaleString(undefined,{maximumFractionDigits:6})}
 function setStatus(s){
  const el=$("status"); el.className="status "+(s==="LIVE"?"live":(s==="OFFLINE"?"bad":""));
  $("stxt").textContent=s==="LIVE"?"LIVE 实时":s==="DELAYED"?"数据延迟":s==="FALLBACK"?"REST备用":"连接中…";
@@ -78,7 +79,8 @@ function render(){
  const hist=Object.values(state.data).map(x=>({symbol:x.symbol,...(state.history?.[x.symbol]?.[0]||{})})).filter(x=>x.signal);
  $("historyPanel").innerHTML=`<div class="history"><h3>最近已确认信号（1H收盘确认）</h3>${hist.length?hist.map(x=>`<div class="histrow"><b>${x.symbol.replace("USDT","")}</b><span class="${x.signal==="LONG"?"activeSig":"invalidSig"}">${x.signal}</span><span>${fmtTime(x.signal_time)} · Entry ${fmt(x.entry)} · ${x.score}/100</span><span>${x.status||"ACTIVE"}</span></div>`).join(""):"<div class='small'>等待第一根1H K线收盘确认</div>"}</div>`;
 }
-async function loadSignals(){try{const r=await fetch("/api/signals",{cache:"no-store"});const j=await r.json();state.history=j.history||{};}catch(e){}}\nasync function snapshot(){
+async function loadSignals(){try{const r=await fetch("/api/signals",{cache:"no-store"});const j=await r.json();state.history=j.history||{};}catch(e){}}
+async function snapshot(){
  try{
   const r=await fetch("/api/snapshot",{cache:"no-store"}); const j=await r.json();
   (j.data||[]).forEach(x=>state.data[x.symbol]=x);
