@@ -278,7 +278,6 @@ async def seed_symbol(s):
             series[s]["4h"] = bybit_rows(b4)[-210:]
             cache[s]["source"] = "Bybit fallback"
             await analyze_symbol(s)
-            record_confirmed_signal(s)
             return True
         except Exception as e2:
             log_error(f"FALLBACK {s}", e2)
