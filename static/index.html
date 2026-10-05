@@ -18,8 +18,8 @@ h1{font-size:22px;margin:0 0 5px}.sub{font-size:12px;color:#9aa4b2}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}.kv{background:#0d131a;border-radius:9px;padding:7px}.k{font-size:10px;color:#7f8997}.v{font-size:12px;margin-top:2px}
 .signal{margin-top:10px;border-top:1px solid #202a35;padding-top:9px}.score{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:12px}.score b{font-size:15px}.risk{font-size:10px;color:#8993a1;line-height:1.5}.levels{font-size:11px;color:#b6bfcb;line-height:1.65}
 .toolbar{display:flex;gap:7px;overflow:auto;margin-top:12px}.filter{border:1px solid #27313d;background:#121820;color:#cbd2dc;border-radius:9px;padding:7px 10px;font-size:11px}.filter.active{background:#26313d;color:#fff}
-.small{font-size:10px;color:#697482;margin-top:12px}
-@media(min-width:760px){.cards{grid-template-columns:repeat(3,1fr)}}@media(max-width:420px){.cards{grid-template-columns:1fr 1fr}.price{font-size:18px}}
+.small{font-size:10px;color:#697482;margin-top:12px}.historyPanel{margin-top:14px}.history{background:#121820;border:1px solid #202a35;border-radius:14px;padding:12px}.history h3{margin:0 0 8px;font-size:14px}.histrow{display:grid;grid-template-columns:74px 70px 1fr 62px;gap:6px;padding:8px 0;border-top:1px solid #202a35;font-size:10px;color:#aeb7c4}.histrow:first-child{border-top:0}.histrow b{color:#eef2f7}.activeSig{color:#67f0a4}.invalidSig{color:#ff8c98}
+@media(min-width:760px){.cards{grid-template-columns:repeat(3,1fr)}}@media(max-width:420px){.cards{grid-template-columns:1fr}.price{font-size:18px}.card{min-width:0}.row{align-items:flex-start}.badge{font-size:10px}}
 </style>
 </head>
 <body>
@@ -36,13 +36,13 @@ h1{font-size:22px;margin:0 0 5px}.sub{font-size:12px;color:#9aa4b2}
 <button class="filter" data-f="WATCH-SHORT">WATCH-SHORT</button>
 <button class="filter" data-f="SHORT">SHORT</button>
 </div>
-<div id="cards" class="cards"></div>
+<div id="cards" class="cards"></div><div id="historyPanel" class="historyPanel"></div>
 <div class="small">风险提示：信号仅用于交易决策辅助，不保证盈利。建议单笔风险≤1%，并先模拟盘验证。</div>
 </div>
 <script>
-const state={data:{},filter:"ALL",ws:null};
+const state={data:{},history:{},filter:"ALL",ws:null};
 const $=id=>document.getElementById(id);
-function fmt(x){if(x==null)return"—";return Number(x).toLocaleString(undefined,{maximumFractionDigits:6})}
+function fmtTime(ms){if(!ms)return"—";return new Date(ms).toLocaleString([], {month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});}\nfunction fmt(x){if(x==null)return"—";return Number(x).toLocaleString(undefined,{maximumFractionDigits:6})}
 function setStatus(s){
  const el=$("status"); el.className="status "+(s==="LIVE"?"live":(s==="OFFLINE"?"bad":""));
  $("stxt").textContent=s==="LIVE"?"LIVE 实时":s==="DELAYED"?"数据延迟":s==="FALLBACK"?"REST备用":"连接中…";
@@ -59,30 +59,26 @@ function render(){
  arr.sort((a,b)=>(b.score||0)-(a.score||0)||(Math.abs(b.change||0)-Math.abs(a.change||0)));
  $("cards").innerHTML=arr.map(x=>`
  <div class="card">
-  <div class="row"><div><div class="symbol">${x.symbol.replace("USDT","/USDT")}</div><div class="price">${fmt(x.price)}</div>
-  <div class="chg ${(x.change||0)>=0?"up":"down"}">${(x.change||0)>=0?"+":""}${fmt(x.change)}%</div></div>
-  <span class="badge ${x.signal}">${x.signal}</span></div>
+  <div class="row"><div><div class="symbol">${x.symbol.replace("USDT","/USDT")}</div><div class="price">${fmt(x.price)}</div><div class="chg ${(x.change||0)>=0?"up":"down"}">${(x.change||0)>=0?"+":""}${fmt(x.change)}%</div></div><span class="badge ${x.signal}">${x.signal}</span></div>
   <div class="grid">
-   <div class="kv"><div class="k">4H TREND</div><div class="v">${x.trend||"—"}</div></div>
-   <div class="kv"><div class="k">1H RSI</div><div class="v">${fmt(x.rsi_1h)}</div></div>
-   <div class="kv"><div class="k">VOL / AVG</div><div class="v">${x.vol_ratio?fmt(x.vol_ratio)+"x":"—"}</div></div>
-   <div class="kv"><div class="k">FUNDING</div><div class="v">${x.funding!=null?(x.funding*100).toFixed(4)+"%":"—"}</div></div>
-   <div class="kv"><div class="k">ADX 1H</div><div class="v">${fmt(x.adx_1h)}</div></div>
-   <div class="kv"><div class="k">VWAP 1H</div><div class="v">${fmt(x.vwap_1h)}</div></div>
-   <div class="kv"><div class="k">OI CHANGE</div><div class="v">${x.oi_change!=null?((x.oi_change>=0?"+":"")+x.oi_change.toFixed(2)+"%"):"—"}</div></div>
-   <div class="kv"><div class="k">BTC FILTER</div><div class="v">${x.btc_filter||"—"}</div></div>
-   <div class="kv"><div class="k">SUPPORT</div><div class="v">${fmt(x.support)}</div></div>
-   <div class="kv"><div class="k">RESISTANCE</div><div class="v">${fmt(x.resistance)}</div></div>
+   <div class="kv"><div class="k">4H TREND</div><div class="v">${x.trend||"—"}</div></div><div class="kv"><div class="k">1H RSI</div><div class="v">${fmt(x.rsi_1h)}</div></div>
+   <div class="kv"><div class="k">VOL / AVG</div><div class="v">${x.vol_ratio?fmt(x.vol_ratio)+"x":"—"}</div></div><div class="kv"><div class="k">FUNDING</div><div class="v">${x.funding!=null?(x.funding*100).toFixed(4)+"%":"—"}</div></div>
+   <div class="kv"><div class="k">ADX 1H</div><div class="v">${fmt(x.adx_1h)}</div></div><div class="kv"><div class="k">VWAP 1H</div><div class="v">${fmt(x.vwap_1h)}</div></div>
+   <div class="kv"><div class="k">OI CHANGE</div><div class="v">${x.oi_change!=null?((x.oi_change>=0?"+":"")+x.oi_change.toFixed(2)+"%"):"—"}</div></div><div class="kv"><div class="k">BTC FILTER</div><div class="v">${x.btc_filter||"—"}</div></div>
+   <div class="kv"><div class="k">SUPPORT</div><div class="v">${fmt(x.support)}</div></div><div class="kv"><div class="k">RESISTANCE</div><div class="v">${fmt(x.resistance)}</div></div>
   </div>
   <div class="signal">
    <div class="score"><span>OPPORTUNITY SCORE</span><b>${x.score||0}/100 · ${x.score_label||"NO-TRADE"}</b></div>
-   <div class="risk">ADX ${fmt(x.adx_1h)} · VWAP ${fmt(x.vwap_1h)} · ATR ${x.atr_pct!=null?x.atr_pct.toFixed(2)+"%":"—"} · OI ${x.oi_change!=null?((x.oi_change>=0?"+":"")+x.oi_change.toFixed(2)+"%"):"—"} · BTC ${x.btc_filter||"—"} · 入场位置 ${x.entry_location||"—"}</div>
-   <div class="levels">Entry <b>${fmt(x.entry)}</b> · SL <b>${fmt(x.sl)}</b><br>TP1 <b>${fmt(x.tp1)}</b> · TP2 <b>${fmt(x.tp2)}</b> · R/R <b>${x.rr||"—"}</b></div>
-   ${x.entry_location?`<div class="risk">入场位置：<b>${x.entry_location}</b> · ADX ${fmt(x.adx_1h)} · VWAP ${fmt(x.vwap_1h)} · ATR ${x.atr_pct!=null?x.atr_pct.toFixed(2)+"%":"—"} · OI ${x.oi_change!=null?((x.oi_change>=0?"+":"")+x.oi_change.toFixed(2)+"%"):"—"} · BTC ${x.btc_filter||"—"}</div>`:""}${x.position_usd?`<div class="risk">风险≤$10 · 建议仓位 ${fmt(x.position_usd)} · 3×保证金约 ${fmt(x.margin_3x)}</div>`:""}
+   <div class="risk">实时分析：ADX ${fmt(x.adx_1h)} · VWAP ${fmt(x.vwap_1h)} · ATR ${x.atr_pct!=null?x.atr_pct.toFixed(2)+"%":"—"} · OI ${x.oi_change!=null?((x.oi_change>=0?"+":"")+x.oi_change.toFixed(2)+"%"):"—"} · BTC ${x.btc_filter||"—"} · 入场位置 ${x.entry_location||"—"}</div>
+   <div class="levels">实时Entry <b>${fmt(x.entry)}</b> · SL <b>${fmt(x.sl)}</b><br>TP1 <b>${fmt(x.tp1)}</b> · TP2 <b>${fmt(x.tp2)}</b></div>
+   <div class="risk">★ 已确认1H信号：<b>${x.confirmed_signal||"WAITING"}</b> · 时间 ${fmtTime(x.confirmed_signal_time)} · Entry ${fmt(x.confirmed_entry)} · 状态 ${x.confirmed_status||"WAITING"}</div>
+   ${x.position_usd?`<div class="risk">风险≤$10 · 建议仓位 ${fmt(x.position_usd)} · 3×保证金约 ${fmt(x.margin_3x)}</div>`:""}
   </div>
  </div>`).join("") || '<div class="card">暂无符合条件的信号</div>';
+ const hist=Object.values(state.data).map(x=>({symbol:x.symbol,...(state.history?.[x.symbol]?.[0]||{})})).filter(x=>x.signal);
+ $("historyPanel").innerHTML=`<div class="history"><h3>最近已确认信号（1H收盘确认）</h3>${hist.length?hist.map(x=>`<div class="histrow"><b>${x.symbol.replace("USDT","")}</b><span class="${x.signal==="LONG"?"activeSig":"invalidSig"}">${x.signal}</span><span>${fmtTime(x.signal_time)} · Entry ${fmt(x.entry)} · ${x.score}/100</span><span>${x.status||"ACTIVE"}</span></div>`).join(""):"<div class='small'>等待第一根1H K线收盘确认</div>"}</div>`;
 }
-async function snapshot(){
+async function loadSignals(){try{const r=await fetch("/api/signals",{cache:"no-store"});const j=await r.json();state.history=j.history||{};}catch(e){}}\nasync function snapshot(){
  try{
   const r=await fetch("/api/snapshot",{cache:"no-store"}); const j=await r.json();
   (j.data||[]).forEach(x=>state.data[x.symbol]=x);
@@ -97,7 +93,7 @@ function connect(){
   ws.onmessage=e=>{
    const m=JSON.parse(e.data);
    if(m.type==="status")setStatus(m.status);
-   if(m.type==="snapshot"){(m.data||[]).forEach(x=>state.data[x.symbol]=x);render();setStatus(m.status?.status||"LIVE");setDiag(m)}
+   if(m.type==="snapshot"){(m.data||[]).forEach(x=>state.data[x.symbol]=x);loadSignals().then(render);setStatus(m.status?.status||"LIVE");setDiag(m)}
    if(m.type==="ticker"){state.data[m.data.symbol]={...(state.data[m.data.symbol]||{}),...m.data};render()}
   };
   ws.onclose=()=>{setStatus("FALLBACK");setTimeout(connect,3000)};
