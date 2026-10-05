@@ -16,7 +16,7 @@ h1{font-size:22px;margin:0 0 5px}.sub{font-size:12px;color:#9aa4b2}
 .row{display:flex;justify-content:space-between;gap:8px}.symbol{font-weight:700}.price{font-size:21px;font-weight:700;margin-top:7px}.chg{font-size:12px;margin-top:3px}.up{color:#35d07f}.down{color:#ff5968}
 .badge{font-size:11px;font-weight:700;padding:5px 8px;border-radius:8px;white-space:nowrap}.LONG{background:#124d31;color:#67f0a4}.SHORT{background:#5a1721;color:#ff8c98}.WATCH-LONG{background:#675313;color:#ffe17a}.WATCH-SHORT{background:#4a4f57;color:#d8dde5}.NO-TRADE{background:#252c35;color:#9fa8b4}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}.kv{background:#0d131a;border-radius:9px;padding:7px}.k{font-size:10px;color:#7f8997}.v{font-size:12px;margin-top:2px}
-.signal{margin-top:10px;border-top:1px solid #202a35;padding-top:9px}.score{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:12px}.score b{font-size:15px}.risk{font-size:10px;color:#8993a1;line-height:1.5}.levels{font-size:11px;color:#b6bfcb;line-height:1.65}
+.signal{margin-top:10px;border-top:1px solid #202a35;padding-top:9px}.score{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:12px}.score b{font-size:15px}.decision{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:7px 0;padding:8px 10px;border-radius:9px;background:#0d131a;border:1px solid #27313d;font-size:11px}.decision b{font-size:12px}.decision.wait{border-color:#665a2b}.decision.wait b{color:#ffe17a}.decision.ready{border-color:#245d3f}.decision.ready b{color:#67f0a4}.decision.blocked{border-color:#5b2730}.decision.blocked b{color:#ff8c98}.risk{font-size:10px;color:#8993a1;line-height:1.5}.levels{font-size:11px;color:#b6bfcb;line-height:1.65}
 .toolbar{display:flex;gap:7px;overflow:auto;margin-top:12px}.filter{border:1px solid #27313d;background:#121820;color:#cbd2dc;border-radius:9px;padding:7px 10px;font-size:11px}.filter.active{background:#26313d;color:#fff}
 .small{font-size:10px;color:#697482;margin-top:12px}.historyPanel{margin-top:14px}.history{background:#121820;border:1px solid #202a35;border-radius:14px;padding:12px}.history h3{margin:0 0 8px;font-size:14px}.histrow{display:grid;grid-template-columns:74px 70px 1fr 62px;gap:6px;padding:8px 0;border-top:1px solid #202a35;font-size:10px;color:#aeb7c4}.histrow:first-child{border-top:0}.histrow b{color:#eef2f7}.activeSig{color:#67f0a4}.invalidSig{color:#ff8c98}
 @media(min-width:760px){.cards{grid-template-columns:repeat(3,1fr)}}@media(max-width:420px){.cards{grid-template-columns:1fr}.price{font-size:18px}.card{min-width:0}.row{align-items:flex-start}.badge{font-size:10px}}
@@ -55,6 +55,13 @@ function setDiag(j){
  const src=(d.find(x=>x.source)||{}).source||"—";
  $("diag").textContent="数据源："+src+" · 价格 "+ready+"/10 · 分析 "+analyzed+"/10";
 }
+function executionState(x){
+ const s=x.confirmed_signal||"NO-TRADE";
+ const st=x.confirmed_status||"WAITING";
+ if((s==="LONG"||s==="SHORT") && st!=="WAITING") return {cls:"ready",text:s+" · 可执行"};
+ if(s==="LONG"||s==="SHORT") return {cls:"wait",text:s+" · 等待确认"};
+ return {cls:"wait",text:"NO-TRADE · 等待1H确认"};
+}
 function render(){
  const arr=Object.values(state.data).filter(x=>state.filter==="ALL"||x.signal===state.filter);
  arr.sort((a,b)=>(b.score||0)-(a.score||0)||(Math.abs(b.change||0)-Math.abs(a.change||0)));
@@ -70,9 +77,10 @@ function render(){
   </div>
   <div class="signal">
    <div class="score"><span>OPPORTUNITY SCORE</span><b>${x.score||0}/100 · ${x.score_label||"NO-TRADE"}</b></div>
+   <div class="decision ${executionState(x).cls}"><span>交易执行状态</span><b>${executionState(x).text}</b></div>
    <div class="risk">实时分析：ADX ${fmt(x.adx_1h)} · VWAP ${fmt(x.vwap_1h)} · ATR ${x.atr_pct!=null?x.atr_pct.toFixed(2)+"%":"—"} · OI ${x.oi_change!=null?((x.oi_change>=0?"+":"")+x.oi_change.toFixed(2)+"%"):"—"} · BTC ${x.btc_filter||"—"} · 入场位置 ${x.entry_location||"—"}</div>
    <div class="levels">实时Entry <b>${fmt(x.entry)}</b> · SL <b>${fmt(x.sl)}</b><br>TP1 <b>${fmt(x.tp1)}</b> · TP2 <b>${fmt(x.tp2)}</b></div>
-   <div class="risk">★ 已确认1H信号：<b>${x.confirmed_signal||"WAITING"}</b> · 时间 ${fmtTime(x.confirmed_signal_time)} · Entry ${fmt(x.confirmed_entry)} · 状态 ${x.confirmed_status||"WAITING"}</div>
+   <div class="risk">说明：<b>${x.signal||"NO-TRADE"} · ${x.score_label||"NO-TRADE"}</b> = 值得关注；只有「交易执行状态」显示可执行时才考虑入场。</div>
    ${x.position_usd?`<div class="risk">风险≤$10 · 建议仓位 ${fmt(x.position_usd)} · 3×保证金约 ${fmt(x.margin_3x)}</div>`:""}
   </div>
  </div>`).join("") || '<div class="card">暂无符合条件的信号</div>';
