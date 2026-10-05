@@ -37,7 +37,8 @@ cache = {
         "trend": "LOADING", "signal": "NO-TRADE",
         "entry": None, "sl": None, "tp1": None, "tp2": None, "rr": None, "score": 0, "score_label": "NO-TRADE", "score_breakdown": {}, "position_qty": None, "position_usd": None, "margin_3x": None,
         "funding": None, "oi": None, "oi_change": None, "adx_1h": None, "vwap_1h": None, "support": None, "resistance": None, "atr_pct": None, "btc_filter": "NEUTRAL", "analysis_ts": 0, "source": None,
-        "error": None,
+        "error": None, "live_signal": "NO-TRADE",
+        "confirmed_signal": "NO-TRADE", "confirmed_signal_time": None, "confirmed_entry": None, "confirmed_sl": None, "confirmed_tp1": None, "confirmed_tp2": None, "confirmed_score": 0, "confirmed_score_label": "NO-TRADE", "confirmed_status": "WAITING",
     } for s in SYMBOLS
 }
 series = {s: {"1h": [], "4h": []} for s in SYMBOLS}
@@ -49,6 +50,8 @@ diagnostics = {
 }
 last_analysis = {s: 0 for s in SYMBOLS}
 oi_history = {s: [] for s in SYMBOLS}
+signal_history = {s: [] for s in SYMBOLS}
+confirmed_state = {s: "NO-TRADE" for s in SYMBOLS}
 http_client = None
 
 app = FastAPI(title="Crypto AI Trader V6")
@@ -118,6 +121,10 @@ async def debug():
 @app.get("/api/snapshot")
 async def snapshot():
     return {"server_ts": time.time(), "status": market_status, "data": list(cache.values())}
+
+@app.get("/api/signals")
+async def signals():
+    return {"server_ts": time.time(), "history": signal_history, "confirmed": {s: {k: cache[s].get(k) for k in ("confirmed_signal","confirmed_signal_time","confirmed_entry","confirmed_sl","confirmed_tp1","confirmed_tp2","confirmed_score","confirmed_score_label","confirmed_status")} for s in SYMBOLS}}
 
 def ema(values, period):
     if len(values) < period:
@@ -208,6 +215,43 @@ def kline_to_obj(x):
 def set_series(s, interval, klines):
     series[s][interval] = [kline_to_obj(x) for x in klines][-210:]
 
+def record_confirmed_signal(s, candle_close_ms=None):
+    """Freeze the 1H signal at candle close so intrabar flips do not create fake entries."""
+    sig = cache[s].get("signal") or "NO-TRADE"
+    prev = confirmed_state[s]
+    ts_ms = int(candle_close_ms) if candle_close_ms else int(time.time() * 1000)
+    if sig == prev:
+        return False
+
+    if prev in ("LONG", "SHORT") and sig not in ("LONG", "SHORT"):
+        cache[s]["confirmed_status"] = "INVALIDATED"
+        if signal_history[s]:
+            signal_history[s][0]["status"] = "INVALIDATED"
+            signal_history[s][0]["ended_at"] = ts_ms
+
+    confirmed_state[s] = sig
+    cache[s]["confirmed_signal"] = sig
+    cache[s]["confirmed_signal_time"] = ts_ms
+    cache[s]["confirmed_entry"] = cache[s].get("entry")
+    cache[s]["confirmed_sl"] = cache[s].get("sl")
+    cache[s]["confirmed_tp1"] = cache[s].get("tp1")
+    cache[s]["confirmed_tp2"] = cache[s].get("tp2")
+    cache[s]["confirmed_score"] = cache[s].get("score", 0)
+    cache[s]["confirmed_score_label"] = cache[s].get("score_label", "NO-TRADE")
+    cache[s]["confirmed_status"] = "ACTIVE" if sig in ("LONG", "SHORT") else "NO-TRADE"
+
+    if sig in ("LONG", "SHORT"):
+        event = {
+            "symbol": s, "signal": sig, "signal_time": ts_ms,
+            "entry": cache[s].get("entry"), "sl": cache[s].get("sl"),
+            "tp1": cache[s].get("tp1"), "tp2": cache[s].get("tp2"),
+            "score": cache[s].get("score", 0), "score_label": cache[s].get("score_label", "NO-TRADE"),
+            "entry_location": cache[s].get("entry_location"), "status": "ACTIVE"
+        }
+        signal_history[s].insert(0, event)
+        signal_history[s] = signal_history[s][:20]
+    return True
+
 async def seed_symbol(s):
     try:
         k1, k4 = await asyncio.gather(
@@ -234,6 +278,7 @@ async def seed_symbol(s):
             series[s]["4h"] = bybit_rows(b4)[-210:]
             cache[s]["source"] = "Bybit fallback"
             await analyze_symbol(s)
+            record_confirmed_signal(s)
             return True
         except Exception as e2:
             log_error(f"FALLBACK {s}", e2)
@@ -371,7 +416,7 @@ async def analyze_symbol(s):
             price=p, ema20_1h=round_price(e20), ema50_1h=round_price(e50), ema200_1h=round_price(e200),
             ema20_4h=round_price(e20_4), ema50_4h=round_price(e50_4), ema200_4h=round_price(e200_4),
             rsi_1h=round(r,1) if r is not None else None, atr_1h=round_price(a),
-            vol_ratio=round(vr,2) if vr is not None else None, trend=trend4, signal=signal,
+            vol_ratio=round(vr,2) if vr is not None else None, trend=trend4, signal=signal, live_signal=signal,
             entry=round_price(entry), sl=round_price(sl), tp1=round_price(tp1), tp2=round_price(tp2),
             rr=2.0 if signal!="NO-TRADE" else None, score=score, score_label=score_label,
             adx_1h=round(adx_v,1) if adx_v is not None else None, vwap_1h=round_price(vwap_v), support=round_price(support), resistance=round_price(resistance), atr_pct=round(atr_pct,2) if atr_pct is not None else None, btc_filter=btc_filter, entry_location=entry_location, entry_location_score=entry_location_score,
@@ -463,6 +508,10 @@ async def handle_bybit_ws(sock):
                         item={"t":int(k["start"]),"o":float(k["open"]),"h":float(k["high"]),"l":float(k["low"]),"c":float(k["close"]),"v":float(k["volume"]),"q":float(k["turnover"])}
                         tf="1h" if interval=="60" else "4h"
                         arr=series[s][tf]
+                        is_new_bar = bool(arr and arr[-1]["t"] != item["t"])
+                        if interval=="60" and is_new_bar:
+                            await analyze_symbol(s)
+                            record_confirmed_signal(s, int(arr[-1]["t"]) + 3600000)
                         if arr and arr[-1]["t"]==item["t"]: arr[-1]=item
                         else: arr.append(item); del arr[:-210]
                         cache[s].update(price=item["c"], ts=time.time(), source="Bybit Live")
@@ -501,6 +550,10 @@ async def ws_loop():
                                 if interval in ("1h","4h"):
                                     item={"t":int(k["t"]),"o":float(k["o"]),"h":float(k["h"]),"l":float(k["l"]),"c":float(k["c"]),"v":float(k["v"]),"q":float(k["q"])}
                                     arr=series[s][interval]
+                                    is_new_bar = bool(arr and arr[-1]["t"] != item["t"])
+                                    if interval=="1h" and is_new_bar:
+                                        await analyze_symbol(s)
+                                        record_confirmed_signal(s, int(arr[-1]["t"]) + 3600000)
                                     if arr and arr[-1]["t"]==item["t"]: arr[-1]=item
                                     else: arr.append(item); del arr[:-210]
                                     cache[s].update(price=float(k["c"]), ts=time.time(), source="Binance Futures")
