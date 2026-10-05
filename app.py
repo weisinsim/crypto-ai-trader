@@ -342,15 +342,20 @@ async def analyze_symbol(s):
         score_label="A+" if score>=85 else "A" if score>=75 else "B" if score>=65 else "C" if score>=50 else "NO-TRADE"
 
         # Hard risk filters: avoid weak trend, poor room to the next level, or a BTC regime conflict.
-        if direction and (
+        hard_no_trade = bool(direction and (
             (adx_v is not None and adx_v<15) or
             (direction==1 and resistance is not None and sl is not None and resistance-p < abs(p-sl)) or
             (direction==-1 and support is not None and sl is not None and p-support < abs(p-sl)) or
             (s!="BTCUSDT" and btc_filter in ("BULL","BEAR") and btc_filter != ("BULL" if direction==1 else "BEAR")) or
             entry_location in ("CHASE RISK","BELOW SUPPORT","ABOVE RESISTANCE")
-        ):
+        ))
+        if hard_no_trade:
             score=min(score,49)
             score_label="NO-TRADE"
+            # Hard filters are actionable filters: the displayed signal must agree with them.
+            signal="NO-TRADE"
+            entry=sl=tp1=tp2=None
+            direction=0
 
         # $1,000 account, 1% max loss per trade. Position sizing is risk-based.
         risk_usd = 10.0
