@@ -78,7 +78,7 @@ function render(){
    <div class="score"><span>OPPORTUNITY SCORE</span><b>${x.score||0}/100 · ${x.score_label||"NO-TRADE"}</b></div>
    <div class="risk">ADX ${fmt(x.adx_1h)} · VWAP ${fmt(x.vwap_1h)} · ATR ${x.atr_pct!=null?x.atr_pct.toFixed(2)+"%":"—"} · OI ${x.oi_change!=null?((x.oi_change>=0?"+":"")+x.oi_change.toFixed(2)+"%"):"—"} · BTC ${x.btc_filter||"—"} · 入场位置 ${x.entry_location||"—"}</div>
    <div class="levels">Entry <b>${fmt(x.entry)}</b> · SL <b>${fmt(x.sl)}</b><br>TP1 <b>${fmt(x.tp1)}</b> · TP2 <b>${fmt(x.tp2)}</b> · R/R <b>${x.rr||"—"}</b></div>
-   ${x.position_usd?`<div class="risk">风险≤$10 · 建议仓位 ${fmt(x.position_usd)} · 3×保证金约 ${fmt(x.margin_3x)}</div>`:""}
+   ${x.entry_location?`<div class="risk">入场位置：<b>${x.entry_location}</b> · ADX ${fmt(x.adx_1h)} · VWAP ${fmt(x.vwap_1h)} · ATR ${x.atr_pct!=null?x.atr_pct.toFixed(2)+"%":"—"} · OI ${x.oi_change!=null?((x.oi_change>=0?"+":"")+x.oi_change.toFixed(2)+"%"):"—"} · BTC ${x.btc_filter||"—"}</div>`:""}${x.position_usd?`<div class="risk">风险≤$10 · 建议仓位 ${fmt(x.position_usd)} · 3×保证金约 ${fmt(x.margin_3x)}</div>`:""}
   </div>
  </div>`).join("") || '<div class="card">暂无符合条件的信号</div>';
 }
