@@ -54,7 +54,8 @@ signal_history = {s: [] for s in SYMBOLS}
 confirmed_state = {s: "NO-TRADE" for s in SYMBOLS}
 http_client = None
 
-app = FastAPI(title="Crypto AI Trader V6")
+MODEL_NAME = "V8.2 Asset Adaptive Institutional"
+app = FastAPI(title=f"Crypto AI Trader {MODEL_NAME}")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 def log_error(stage, detail):
