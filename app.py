@@ -54,7 +54,9 @@ signal_history = {s: [] for s in SYMBOLS}
 confirmed_state = {s: "NO-TRADE" for s in SYMBOLS}
 http_client = None
 
-MODEL_NAME = "V8.2-XRP Reversal Institutional"
+MODEL_NAME = "V27.2 XRP LONG-ONLY Institutional"
+MODEL_VERSION = "V27.2"
+XRP_PARAMS = {"kill_slope": 0.0077, "atr_max": 0.0135, "shock_max": 0.025, "sl_atr": 1.7, "tp_atr": 2.8, "direction": "LONG_ONLY"}
 app = FastAPI(title=f"Crypto AI Trader {MODEL_NAME}")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -300,12 +302,12 @@ async def analyze_symbol(s):
         trend4="BULL" if p>e20_4>e50_4 else ("BEAR" if p<e20_4<e50_4 else "RANGE")
         score=(2 if p>e20_4 else -2)+(2 if e20_4>e50_4 else -2)+(1 if p>e20 else -1)+(1 if e20>e50 else -1)+(1 if r is not None and r>=50 else -1)+(1 if vr is not None and vr>=1.2 else 0)
         signal="NO-TRADE"
-        # V8.2-XRP: XRP-only LONG reversal model. Frozen production-candidate logic.
+        # V27.2 XRP: XRP-only LONG reversal model. Frozen production-candidate logic.
         # Kill switches: excessive trend slope, excessive ATR, or shock candle.
         slope5 = ((e20_4 / e50_4) - 1) if (e20_4 and e50_4) else 0
         atr_pct_raw = (a / p) if (a and p) else 0
         shock_raw = abs(c1[-1] / c1[-2] - 1) if len(c1) > 1 else 0
-        xrp_kill = abs(slope5) > 0.0077 or atr_pct_raw > 0.0135 or shock_raw > 0.025
+        xrp_kill = abs(slope5) > XRP_PARAMS["kill_slope"] or atr_pct_raw > XRP_PARAMS["atr_max"] or shock_raw > XRP_PARAMS["shock_max"]
         xrp_dev = ((p - e20) / a) if (a and e20) else 0
         xrp_mean = r is not None and r <= 35 and xrp_dev <= -0.5 and p > c1[-2]
         xrp_trend = e20_4 > e50_4 and e20 > e50
@@ -317,7 +319,7 @@ async def analyze_symbol(s):
         elif not xrp_kill and ((r is not None and r <= 40) or xrp_trend):
             signal="WATCH-LONG"
         dist=(a*1.5 if a else p*0.01)
-        if signal in ("LONG","WATCH-LONG"): entry,sl,tp1,tp2=p,p-(1.7*(a or p*0.01)),p+(2.8*(a or p*0.01)),p+(3.5*(a or p*0.01))
+        if signal in ("LONG","WATCH-LONG"): entry,sl,tp1,tp2=p,p-(XRP_PARAMS["sl_atr"]*(a or p*0.01)),p+(XRP_PARAMS["tp_atr"]*(a or p*0.01)),p+(3.5*(a or p*0.01))
         else: entry=sl=tp1=tp2=None
 
         # V8 technical model: trend, momentum, volume, volatility, market structure, derivatives and BTC regime.
@@ -422,7 +424,7 @@ async def analyze_symbol(s):
             qty = position_usd/entry
         margin_3x = position_usd/3 if position_usd is not None else None
 
-        # XRP is intentionally LONG-only; SHORT signals are impossible by design.
+        # V27.2 is intentionally LONG-only; SHORT signals are impossible by design.
         if signal in ("SHORT","WATCH-SHORT"):
             signal="NO-TRADE"
             entry=sl=tp1=tp2=None
