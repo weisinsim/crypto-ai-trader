@@ -258,8 +258,8 @@ def record_confirmed_signal(s, candle_close_ms=None):
 async def seed_symbol(s):
     try:
         k1, k4 = await asyncio.gather(
-            futures_json("/fapi/v1/klines", {"symbol": s, "interval": "1h", "limit": 210}, 3.0),
-            futures_json("/fapi/v1/klines", {"symbol": s, "interval": "4h", "limit": 210}, 3.0),
+            futures_json("/fapi/v1/klines", {"symbol": s, "interval": "1h", "limit": 300}, 3.0),
+            futures_json("/fapi/v1/klines", {"symbol": s, "interval": "4h", "limit": 300}, 3.0),
         )
         set_series(s, "1h", k1)
         set_series(s, "4h", k4)
@@ -270,8 +270,8 @@ async def seed_symbol(s):
         log_error(f"SEED {s}", e)
         try:
             b1, b4 = await asyncio.gather(
-                bybit_json("/v5/market/kline", {"category":"linear","symbol":s,"interval":"60","limit":210}, 3.0),
-                bybit_json("/v5/market/kline", {"category":"linear","symbol":s,"interval":"240","limit":210}, 3.0),
+                bybit_json("/v5/market/kline", {"category":"linear","symbol":s,"interval":"60","limit":300}, 3.0),
+                bybit_json("/v5/market/kline", {"category":"linear","symbol":s,"interval":"240","limit":300}, 3.0),
             )
             def bybit_rows(obj):
                 rows = obj["list"]
@@ -289,7 +289,7 @@ async def seed_symbol(s):
 
 async def analyze_symbol(s):
     k1, k4 = series[s]["1h"], series[s]["4h"]
-    if len(k1) < 205 or len(k4) < 50:
+    if len(k1) < 200 or len(k4) < 50:
         return False
     try:
         c1=[x["c"] for x in k1]; h1=[x["h"] for x in k1]; l1=[x["l"] for x in k1]; q1=[x["q"] for x in k1]
@@ -449,7 +449,13 @@ async def analyze_symbol(s):
         return False
 
 async def seed_all():
-    await asyncio.gather(*(seed_symbol(s) for s in SYMBOLS), return_exceptions=True)
+    # Retry historical-data seeding so a temporary exchange/API delay does not leave the dashboard stuck at LOADING.
+    for _ in range(3):
+        await asyncio.gather(*(seed_symbol(s) for s in SYMBOLS), return_exceptions=True)
+        analyzed=sum(v["analysis_ts"] > 0 for v in cache.values())
+        if analyzed == len(SYMBOLS):
+            break
+        await asyncio.sleep(2)
     ready=sum(v["price"] is not None for v in cache.values())
     market_status.update(status="LIVE" if ready else "DELAYED", updated=time.time(), error=None if ready else market_status["error"])
     diagnostics["last_success"]=time.time() if ready else diagnostics["last_success"]
