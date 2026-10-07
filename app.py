@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 ROOT = Path(__file__).resolve().parent
 STATIC_DIR = ROOT / "static"
 
-SYMBOLS = ["BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT","DOGEUSDT","ADAUSDT","AVAXUSDT","LINKUSDT","SUIUSDT"]
+SYMBOLS = ["XRPUSDT"]
 
 FUTURES_BASES = [
     "https://fapi.binance.com",
@@ -54,7 +54,7 @@ signal_history = {s: [] for s in SYMBOLS}
 confirmed_state = {s: "NO-TRADE" for s in SYMBOLS}
 http_client = None
 
-MODEL_NAME = "V8.2 Asset Adaptive Institutional"
+MODEL_NAME = "V8.2-XRP Reversal Institutional"
 app = FastAPI(title=f"Crypto AI Trader {MODEL_NAME}")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -300,17 +300,28 @@ async def analyze_symbol(s):
         trend4="BULL" if p>e20_4>e50_4 else ("BEAR" if p<e20_4<e50_4 else "RANGE")
         score=(2 if p>e20_4 else -2)+(2 if e20_4>e50_4 else -2)+(1 if p>e20 else -1)+(1 if e20>e50 else -1)+(1 if r is not None and r>=50 else -1)+(1 if vr is not None and vr>=1.2 else 0)
         signal="NO-TRADE"
-        if trend4=="BULL" and score>=4 and r is not None and r<72: signal="LONG"
-        elif trend4=="BULL" and score>=2: signal="WATCH-LONG"
-        elif trend4=="BEAR" and score<=-4 and r is not None and r>28: signal="SHORT"
-        elif trend4=="BEAR" and score<=-2: signal="WATCH-SHORT"
+        # V8.2-XRP: XRP-only LONG reversal model. Frozen production-candidate logic.
+        # Kill switches: excessive trend slope, excessive ATR, or shock candle.
+        slope5 = ((e20_4 / e50_4) - 1) if (e20_4 and e50_4) else 0
+        atr_pct_raw = (a / p) if (a and p) else 0
+        shock_raw = abs(c1[-1] / c1[-2] - 1) if len(c1) > 1 else 0
+        xrp_kill = abs(slope5) > 0.0077 or atr_pct_raw > 0.0135 or shock_raw > 0.025
+        xrp_dev = ((p - e20) / a) if (a and e20) else 0
+        xrp_mean = r is not None and r <= 35 and xrp_dev <= -0.5 and p > c1[-2]
+        xrp_trend = e20_4 > e50_4 and e20 > e50
+        xrp_pullback = xrp_trend and c1[-2] <= c1[-3] and p > e20 and r is not None and r <= 55
+        xrp_res = max(h1[-21:-1]) if len(h1) >= 22 else None
+        xrp_breakout = xrp_trend and xrp_res is not None and p > xrp_res and p > c1[-2]
+        if not xrp_kill and (xrp_mean or xrp_pullback or xrp_breakout):
+            signal="LONG"
+        elif not xrp_kill and ((r is not None and r <= 40) or xrp_trend):
+            signal="WATCH-LONG"
         dist=(a*1.5 if a else p*0.01)
-        if signal in ("LONG","WATCH-LONG"): entry,sl,tp1,tp2=p,p-dist,p+2*dist,p+3*dist
-        elif signal in ("SHORT","WATCH-SHORT"): entry,sl,tp1,tp2=p,p+dist,p-2*dist,p-3*dist
+        if signal in ("LONG","WATCH-LONG"): entry,sl,tp1,tp2=p,p-(1.7*(a or p*0.01)),p+(2.8*(a or p*0.01)),p+(3.5*(a or p*0.01))
         else: entry=sl=tp1=tp2=None
 
         # V8 technical model: trend, momentum, volume, volatility, market structure, derivatives and BTC regime.
-        direction = 1 if signal in ("LONG","WATCH-LONG") else (-1 if signal in ("SHORT","WATCH-SHORT") else 0)
+        direction = 1 if signal in ("LONG","WATCH-LONG") else 0
         adx_v = adx(h1,l1,c1,14)
         vwap_v = vwap(h1,l1,c1,q1,48)
         support,resistance = sr_levels(h1,l1,c1,48)
@@ -391,7 +402,6 @@ async def analyze_symbol(s):
             (adx_v is not None and adx_v<15) or
             (direction==1 and resistance is not None and sl is not None and resistance-p < abs(p-sl)) or
             (direction==-1 and support is not None and sl is not None and p-support < abs(p-sl)) or
-            (s!="BTCUSDT" and btc_filter in ("BULL","BEAR") and btc_filter != ("BULL" if direction==1 else "BEAR")) or
             entry_location in ("CHASE RISK","BELOW SUPPORT","ABOVE RESISTANCE")
         ))
         if hard_no_trade:
@@ -412,6 +422,11 @@ async def analyze_symbol(s):
             qty = position_usd/entry
         margin_3x = position_usd/3 if position_usd is not None else None
 
+        # XRP is intentionally LONG-only; SHORT signals are impossible by design.
+        if signal in ("SHORT","WATCH-SHORT"):
+            signal="NO-TRADE"
+            entry=sl=tp1=tp2=None
+            direction=0
         cache[s].update(
             price=p, ema20_1h=round_price(e20), ema50_1h=round_price(e50), ema200_1h=round_price(e200),
             ema20_4h=round_price(e20_4), ema50_4h=round_price(e50_4), ema200_4h=round_price(e200_4),
