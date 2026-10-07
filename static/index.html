@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Crypto AI Trader V8.2 Asset Adaptive Institutional</title>
+<title>Crypto AI Trader V8.2-XRP Reversal Institutional</title>
 <style>
 :root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",Arial,sans-serif;background:#0b0f14;color:#eef2f7}
 *{box-sizing:border-box}body{margin:0;background:#0b0f14}.wrap{max-width:1100px;margin:auto;padding:14px}
@@ -25,19 +25,18 @@ h1{font-size:22px;margin:0 0 5px}.sub{font-size:12px;color:#9aa4b2}
 <body>
 <div class="wrap">
 <header>
-<h1>Crypto AI Trader V8.2 Asset Adaptive Institutional</h1>
-<div class="sub">Bybit / Binance Futures · 4H方向 + 1H入场 · 多因子技术分析 · WebSocket实时</div>
+<h1>Crypto AI Trader V8.2-XRP Reversal Institutional</h1>
+<div class="sub">XRP/USDT · LONG ONLY · 4H Regime + 1H Confirmation · XRP Reversal Model · WebSocket实时</div>
 <div id="status" class="status"><span class="dot"></span><span id="stxt">连接中…</span></div><div id="diag" class="small">数据源：连接中</div>
 </header>
 <div class="toolbar">
-<button class="filter active" data-f="ALL">全部</button>
+<button class="filter active" data-f="ALL">XRP</button>
 <button class="filter" data-f="LONG">LONG</button>
 <button class="filter" data-f="WATCH-LONG">WATCH-LONG</button>
-<button class="filter" data-f="WATCH-SHORT">WATCH-SHORT</button>
-<button class="filter" data-f="SHORT">SHORT</button>
+<button class="filter" data-f="NO-TRADE">NO-TRADE</button>
 </div>
 <div id="cards" class="cards"></div><div id="historyPanel" class="historyPanel"></div>
-<div class="small">风险提示：信号仅用于交易决策辅助，不保证盈利。建议单笔风险≤1%，并先模拟盘验证。</div>
+<div class="small">V8.2-XRP：仅用于 XRP/USDT。LONG ONLY · Regime Kill-Switch · Shock Filter · RSI/EMA/ATR · 1H确认。信号仅用于交易决策辅助，不保证盈利。</div>
 </div>
 <script>
 const state={data:{},history:{},filter:"ALL",ws:null};
@@ -53,7 +52,7 @@ function setDiag(j){
  const ready=d.filter(x=>x.price!=null).length;
  const analyzed=d.filter(x=>x.analysis_ts>0).length;
  const src=(d.find(x=>x.source)||{}).source||"—";
- $("diag").textContent="数据源："+src+" · 价格 "+ready+"/10 · 分析 "+analyzed+"/10";
+ $("diag").textContent="数据源："+src+" · 价格 "+ready+"/1 · 分析 "+analyzed+"/1";
 }
 function executionState(x){
  const s=x.confirmed_signal||"NO-TRADE";
@@ -80,7 +79,7 @@ function render(){
    <div class="decision ${executionState(x).cls}"><span>交易执行状态</span><b>${executionState(x).text}</b></div>
    <div class="risk">实时分析：ADX ${fmt(x.adx_1h)} · VWAP ${fmt(x.vwap_1h)} · ATR ${x.atr_pct!=null?x.atr_pct.toFixed(2)+"%":"—"} · OI ${x.oi_change!=null?((x.oi_change>=0?"+":"")+x.oi_change.toFixed(2)+"%"):"—"} · BTC ${x.btc_filter||"—"} · 入场位置 ${x.entry_location||"—"}</div>
    <div class="levels">实时Entry <b>${fmt(x.entry)}</b> · SL <b>${fmt(x.sl)}</b><br>TP1 <b>${fmt(x.tp1)}</b> · TP2 <b>${fmt(x.tp2)}</b></div>
-   <div class="risk">说明：<b>${x.signal||"NO-TRADE"} · ${x.score_label||"NO-TRADE"}</b> = 值得关注；只有「交易执行状态」显示可执行时才考虑入场。</div>
+   <div class="risk">说明：<b>XRP V8.2</b> · LONG ONLY；只有「交易执行状态」显示可执行时才考虑入场。</div>
    ${x.position_usd?`<div class="risk">风险≤$10 · 建议仓位 ${fmt(x.position_usd)} · 3×保证金约 ${fmt(x.margin_3x)}</div>`:""}
   </div>
  </div>`).join("") || '<div class="card">暂无符合条件的信号</div>';
