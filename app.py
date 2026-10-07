@@ -330,13 +330,8 @@ async def analyze_symbol(s):
         atr_pct = (a/p*100) if a and p else None
 
         # BTC market filter: alt LONG prefers BTC above 4H EMA50/200; SHORT prefers below.
+        # V27.2 is XRP-only. No BTC dependency; keep legacy UI field neutral.
         btc_filter = "NEUTRAL"
-        if s != "BTCUSDT" and cache["BTCUSDT"].get("price") is not None:
-            bp=cache["BTCUSDT"].get("price"); be50=cache["BTCUSDT"].get("ema50_4h"); be200=cache["BTCUSDT"].get("ema200_4h")
-            if be50 and be200:
-                if bp>be50>be200: btc_filter="BULL"
-                elif bp<be50<be200: btc_filter="BEAR"
-                else: btc_filter="NEUTRAL"
 
         trend_score=0; align_score=0; adx_score=0; rsi_score=0; vol_score=0; sr_score=0; vwap_score=0; atr_score=0; derivatives_score=0; btc_score=0; entry_location_score=0; entry_location="—"
         if direction:
