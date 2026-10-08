@@ -38,7 +38,7 @@ cache = {
         "entry": None, "sl": None, "tp1": None, "tp2": None, "rr": None, "score": 0, "score_label": "NO-TRADE", "score_breakdown": {}, "position_qty": None, "position_usd": None, "margin_3x": None,
         "funding": None, "oi": None, "oi_change": None, "adx_1h": None, "vwap_1h": None, "support": None, "resistance": None, "atr_pct": None, "btc_filter": "NEUTRAL", "analysis_ts": 0, "source": None,
         "error": None, "live_signal": "NO-TRADE",
-        "confirmed_signal": "NO-TRADE", "confirmed_signal_time": None, "confirmed_entry": None, "confirmed_sl": None, "confirmed_tp1": None, "confirmed_tp2": None, "confirmed_score": 0, "confirmed_score_label": "NO-TRADE", "confirmed_status": "WAITING",
+        "confirmed_signal": "NO-TRADE", "confirmed_signal_time": None, "confirmed_entry": None, "confirmed_sl": None, "confirmed_tp1": None, "confirmed_tp2": None, "confirmed_score": 0, "confirmed_score_label": "NO-TRADE", "confirmed_status": "WAITING", "regime": "LOADING", "direction_bias": "NEUTRAL", "opportunity_tier": "D", "confirmation_basis": "1H candle close", "last_closed_candle": None,
     } for s in SYMBOLS
 }
 series = {s: {"1h": [], "4h": []} for s in SYMBOLS}
@@ -55,7 +55,7 @@ confirmed_state = {s: "NO-TRADE" for s in SYMBOLS}
 http_client = None
 
 MODEL_NAME = "Crypto AI Trader Multi-Asset Adaptive"
-MODEL_VERSION = "V28-Asset Adaptive"
+MODEL_VERSION = "V28.1-Execution Integrity"
 XRP_PARAMS = {"kill_slope": 0.0077, "atr_max": 0.0135, "shock_max": 0.025, "sl_atr": 1.7, "tp_atr": 2.8, "direction": "LONG_ONLY"}
 MODEL_LIBRARY = {
     "BTCUSDT": {"name":"BTC Trend Tactical", "status":"RESEARCH", "direction":"LONG/SHORT", "horizon":"1–3H tactical", "family":"trend_tactical"},
@@ -133,6 +133,10 @@ async def debug():
 @app.get("/api/snapshot")
 async def snapshot():
     return {"server_ts": time.time(), "status": market_status, "data": list(cache.values())}
+
+@app.get("/api/models")
+async def models():
+    return {"model_name": MODEL_NAME, "version": MODEL_VERSION, "models": MODEL_LIBRARY}
 
 @app.get("/api/signals")
 async def signals():
@@ -273,6 +277,8 @@ async def seed_symbol(s):
         set_series(s, "1h", k1)
         set_series(s, "4h", k4)
         await analyze_symbol(s)
+        cache[s]["confirmed_status"] = "WAITING"
+        cache[s]["confirmation_basis"] = "Next 1H candle close required"
         cache[s]["source"] = "Binance Futures"
         return True
     except Exception as e:
@@ -290,6 +296,8 @@ async def seed_symbol(s):
             series[s]["4h"] = bybit_rows(b4)[-210:]
             cache[s]["source"] = "Bybit fallback"
             await analyze_symbol(s)
+            cache[s]["confirmed_status"] = "WAITING"
+            cache[s]["confirmation_basis"] = "Next 1H candle close required"
             return True
         except Exception as e2:
             log_error(f"FALLBACK {s}", e2)
@@ -312,6 +320,8 @@ async def analyze_symbol(s):
         support,resistance=sr_levels(h1,l1,c1,48)
         atr_pct=(a/p*100) if a and p else None
         trend4="BULL" if p>e20_4>e50_4 else ("BEAR" if p<e20_4<e50_4 else "RANGE")
+        regime=trend4
+        direction_bias="LONG" if trend4=="BULL" else ("SHORT" if trend4=="BEAR" else "NEUTRAL")
         signal="NO-TRADE"; entry=sl=tp1=tp2=None; direction=0; entry_location="—"
         score_breakdown={}
         # XRP V27.2 remains frozen and unchanged.
@@ -375,6 +385,16 @@ async def analyze_symbol(s):
                 signal="WATCH-LONG" if direction==1 else "WATCH-SHORT"
             if cfg["status"]=="NO-PRODUCTION":
                 signal="NO-TRADE"; direction=0; entry=sl=tp1=tp2=None
+        if signal in ("LONG","SHORT") and score >= 75:
+            opportunity_tier = "A"
+        elif signal in ("LONG","SHORT","WATCH-LONG","WATCH-SHORT") and score >= 65:
+            opportunity_tier = "B"
+        elif signal in ("WATCH-LONG","WATCH-SHORT") or score >= 50:
+            opportunity_tier = "C"
+        else:
+            opportunity_tier = "D"
+        if cfg["status"] == "NO-PRODUCTION":
+            opportunity_tier = "D"
         # Common risk sizing.
         risk_usd=10.0
         qty=(risk_usd/abs(entry-sl)) if entry is not None and sl is not None and abs(entry-sl)>0 else None
@@ -395,6 +415,8 @@ async def analyze_symbol(s):
             position_qty=round(qty,6) if qty is not None else None, position_usd=round(position_usd,2) if position_usd is not None else None,
             margin_3x=round(margin_3x,2) if margin_3x is not None else None,
             model_name=cfg["name"], model_status=cfg["status"], direction_mode=cfg["direction"], horizon=cfg["horizon"],
+            regime=regime, direction_bias=direction_bias, opportunity_tier=opportunity_tier,
+            confirmation_basis="1H candle close", last_closed_candle=(series[s]["1h"][-2]["t"] + 3600000 if len(series[s]["1h"]) >= 2 else None),
             analysis_ts=time.time(), ts=time.time(), error=None
         )
         return True
