@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 ROOT = Path(__file__).resolve().parent
 STATIC_DIR = ROOT / "static"
 
-SYMBOLS = ["XRPUSDT"]
+SYMBOLS = ["BTCUSDT","ETHUSDT","SOLUSDT","AVAXUSDT","XRPUSDT"]
 
 FUTURES_BASES = [
     "https://fapi.binance.com",
@@ -54,9 +54,18 @@ signal_history = {s: [] for s in SYMBOLS}
 confirmed_state = {s: "NO-TRADE" for s in SYMBOLS}
 http_client = None
 
-MODEL_NAME = "V27.2 XRP LONG-ONLY Institutional"
-MODEL_VERSION = "V27.2"
+MODEL_NAME = "Crypto AI Trader Multi-Asset Adaptive"
+MODEL_VERSION = "V28-Asset Adaptive"
 XRP_PARAMS = {"kill_slope": 0.0077, "atr_max": 0.0135, "shock_max": 0.025, "sl_atr": 1.7, "tp_atr": 2.8, "direction": "LONG_ONLY"}
+MODEL_LIBRARY = {
+    "BTCUSDT": {"name":"BTC Trend Tactical", "status":"RESEARCH", "direction":"LONG/SHORT", "horizon":"1–3H tactical", "family":"trend_tactical"},
+    "ETHUSDT": {"name":"ETH No-Production Alpha", "status":"NO-PRODUCTION", "direction":"NONE", "horizon":"WAIT", "family":"none"},
+    "SOLUSDT": {"name":"SOL Momentum Pullback", "status":"CANDIDATE", "direction":"LONG/SHORT", "horizon":"up to 12H", "family":"momentum_pullback"},
+    "AVAXUSDT": {"name":"AVAX Trend Pullback", "status":"RESEARCH", "direction":"LONG/SHORT", "horizon":"up to 12H", "family":"trend_pullback"},
+    "XRPUSDT": {"name":"XRP V27.2 Reversal", "status":"FROZEN", "direction":"LONG ONLY", "horizon":"1H confirmation / swing", "family":"xrp_v27"}
+}
+for _s in SYMBOLS:
+    cache[_s].update({"model_name":MODEL_LIBRARY[_s]["name"],"model_status":MODEL_LIBRARY[_s]["status"],"direction_mode":MODEL_LIBRARY[_s]["direction"],"horizon":MODEL_LIBRARY[_s]["horizon"]})
 app = FastAPI(title=f"Crypto AI Trader {MODEL_NAME}")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -292,150 +301,100 @@ async def analyze_symbol(s):
     if len(k1) < 200 or len(k4) < 50:
         return False
     try:
+        cfg = MODEL_LIBRARY[s]
         c1=[x["c"] for x in k1]; h1=[x["h"] for x in k1]; l1=[x["l"] for x in k1]; q1=[x["q"] for x in k1]
         c4=[x["c"] for x in k4]
         p=c1[-1]
         e20=ema(c1,20); e50=ema(c1,50); e200=ema(c1,200)
         e20_4=ema(c4,20); e50_4=ema(c4,50); e200_4=ema(c4,200)
-        r=rsi(c1); a=atr(h1,l1,c1)
+        r=rsi(c1); a=atr(h1,l1,c1); adx_v=adx(h1,l1,c1,14); vwap_v=vwap(h1,l1,c1,q1,48)
         vr=q1[-1]/(sum(q1[-21:-1])/20) if len(q1)>=21 else None
+        support,resistance=sr_levels(h1,l1,c1,48)
+        atr_pct=(a/p*100) if a and p else None
         trend4="BULL" if p>e20_4>e50_4 else ("BEAR" if p<e20_4<e50_4 else "RANGE")
-        score=(2 if p>e20_4 else -2)+(2 if e20_4>e50_4 else -2)+(1 if p>e20 else -1)+(1 if e20>e50 else -1)+(1 if r is not None and r>=50 else -1)+(1 if vr is not None and vr>=1.2 else 0)
-        signal="NO-TRADE"
-        # V27.2 XRP: XRP-only LONG reversal model. Frozen production-candidate logic.
-        # Kill switches: excessive trend slope, excessive ATR, or shock candle.
-        slope5 = ((e20_4 / e50_4) - 1) if (e20_4 and e50_4) else 0
-        atr_pct_raw = (a / p) if (a and p) else 0
-        shock_raw = abs(c1[-1] / c1[-2] - 1) if len(c1) > 1 else 0
-        xrp_kill = abs(slope5) > XRP_PARAMS["kill_slope"] or atr_pct_raw > XRP_PARAMS["atr_max"] or shock_raw > XRP_PARAMS["shock_max"]
-        xrp_dev = ((p - e20) / a) if (a and e20) else 0
-        xrp_mean = r is not None and r <= 35 and xrp_dev <= -0.5 and p > c1[-2]
-        xrp_trend = e20_4 > e50_4 and e20 > e50
-        xrp_pullback = xrp_trend and c1[-2] <= c1[-3] and p > e20 and r is not None and r <= 55
-        xrp_res = max(h1[-21:-1]) if len(h1) >= 22 else None
-        xrp_breakout = xrp_trend and xrp_res is not None and p > xrp_res and p > c1[-2]
-        if not xrp_kill and (xrp_mean or xrp_pullback or xrp_breakout):
-            signal="LONG"
-        elif not xrp_kill and ((r is not None and r <= 40) or xrp_trend):
-            signal="WATCH-LONG"
-        dist=(a*1.5 if a else p*0.01)
-        if signal in ("LONG","WATCH-LONG"): entry,sl,tp1,tp2=p,p-(XRP_PARAMS["sl_atr"]*(a or p*0.01)),p+(XRP_PARAMS["tp_atr"]*(a or p*0.01)),p+(3.5*(a or p*0.01))
-        else: entry=sl=tp1=tp2=None
-
-        # V8 technical model: trend, momentum, volume, volatility, market structure, derivatives and BTC regime.
-        direction = 1 if signal in ("LONG","WATCH-LONG") else 0
-        adx_v = adx(h1,l1,c1,14)
-        vwap_v = vwap(h1,l1,c1,q1,48)
-        support,resistance = sr_levels(h1,l1,c1,48)
-        atr_pct = (a/p*100) if a and p else None
-
-        # BTC market filter: alt LONG prefers BTC above 4H EMA50/200; SHORT prefers below.
-        # V27.2 is XRP-only. No BTC dependency; keep legacy UI field neutral.
-        btc_filter = "NEUTRAL"
-
-        trend_score=0; align_score=0; adx_score=0; rsi_score=0; vol_score=0; sr_score=0; vwap_score=0; atr_score=0; derivatives_score=0; btc_score=0; entry_location_score=0; entry_location="—"
-        if direction:
-            trend_score = (
-                (10 if ((direction==1 and p>e200_4) or (direction==-1 and p<e200_4)) else 0) +
-                (5 if ((direction==1 and e20_4>e50_4) or (direction==-1 and e20_4<e50_4)) else 0) +
-                (5 if ((direction==1 and p>e20_4) or (direction==-1 and p<e20_4)) else 0)
-            )
-            align_score = (
-                (5 if ((direction==1 and p>e200) or (direction==-1 and p<e200)) else 0) +
-                (5 if ((direction==1 and p>e20) or (direction==-1 and p<e20)) else 0) +
-                (5 if ((direction==1 and e20>e50) or (direction==-1 and e20<e50)) else 0)
-            )
-            adx_score = 10 if adx_v is not None and adx_v>=25 else 6 if adx_v is not None and adx_v>=20 else 2 if adx_v is not None and adx_v>=15 else 0
-            if r is not None:
-                if direction==1: rsi_score=10 if 52<=r<=68 else 6 if 48<=r<=72 else 0
-                else: rsi_score=10 if 32<=r<=48 else 6 if 28<=r<=52 else 0
-            vol_score = 10 if vr is not None and vr>=1.5 else 7 if vr is not None and vr>=1.2 else 3 if vr is not None and vr>=0.8 else 0
-            # Entry-location score: reward entries close to support (LONG) or resistance (SHORT), penalize chasing.
-            if a and a>0 and support is not None and resistance is not None:
-                if direction==1:
-                    dist_support=max(0.0,p-support); atr_units=dist_support/a
-                    if p < support: entry_location="BELOW SUPPORT"
-                    elif atr_units<=1.5: entry_location="OPTIMAL"
-                    elif atr_units<=2.5: entry_location="GOOD"
-                    elif atr_units<=3.0: entry_location="FAR"
-                    else: entry_location="CHASE RISK"
-                    entry_location_score=5 if entry_location=="OPTIMAL" else 4 if entry_location=="GOOD" else 2 if entry_location=="FAR" else 0
-                elif direction==-1:
-                    dist_res=max(0.0,resistance-p); atr_units=dist_res/a
-                    if p > resistance: entry_location="ABOVE RESISTANCE"
-                    elif atr_units<=1.5: entry_location="OPTIMAL"
-                    elif atr_units<=2.5: entry_location="GOOD"
-                    elif atr_units<=3.0: entry_location="FAR"
-                    else: entry_location="CHASE RISK"
-                    entry_location_score=5 if entry_location=="OPTIMAL" else 4 if entry_location=="GOOD" else 2 if entry_location=="FAR" else 0
-            if support is not None and resistance is not None:
-                risk_dist=abs(p-sl) if sl is not None else (a*1.5 if a else p*0.01)
-                room=(resistance-p) if direction==1 else (p-support)
-                if room>0:
-                    sr_score=10 if room>=2*risk_dist else 6 if room>=risk_dist else 0
-            if vwap_v is not None:
-                vwap_score=5 if ((direction==1 and p>vwap_v) or (direction==-1 and p<vwap_v)) else 0
-            if atr_pct is not None:
-                atr_score=5 if 0.5<=atr_pct<=4 else 2 if atr_pct<=6 else 0
-            funding_now=cache[s].get("funding")
-            oi_ch=cache[s].get("oi_change")
-            if funding_now is not None:
-                f=abs(funding_now)*100
-                derivatives_score += 5 if f<=0.01 else 3 if f<=0.03 else 0
-            if oi_ch is not None:
-                # Rising OI with price in the signal direction is confirmation; falling OI is weaker.
-                oi_confirm=(oi_ch>0.5 and ((direction==1 and p>e20) or (direction==-1 and p<e20)))
-                derivatives_score += 5 if oi_confirm else 2 if oi_ch>-0.5 else 0
-            if btc_filter == ("BULL" if direction==1 else "BEAR"):
-                btc_score=5
-            elif btc_filter == "NEUTRAL":
-                btc_score=3
-
-        score=int(min(100,trend_score+align_score+adx_score+rsi_score+vol_score+sr_score+vwap_score+atr_score+derivatives_score+btc_score+entry_location_score))
-        score_label="A+" if score>=85 else "A" if score>=75 else "B" if score>=65 else "C" if score>=50 else "NO-TRADE"
-
-        # Hard risk filters: avoid weak trend, poor room to the next level, or a BTC regime conflict.
-        hard_no_trade = bool(direction and (
-            (adx_v is not None and adx_v<15) or
-            (direction==1 and resistance is not None and sl is not None and resistance-p < abs(p-sl)) or
-            (direction==-1 and support is not None and sl is not None and p-support < abs(p-sl)) or
-            entry_location in ("CHASE RISK","BELOW SUPPORT","ABOVE RESISTANCE")
-        ))
-        if hard_no_trade:
-            score=min(score,49)
-            score_label="NO-TRADE"
-            # Hard filters are actionable filters: the displayed signal must agree with them.
-            signal="NO-TRADE"
-            entry=sl=tp1=tp2=None
-            direction=0
-
-        # $1,000 account, 1% max loss per trade. Position sizing is risk-based.
-        risk_usd = 10.0
-        qty = (risk_usd/abs(entry-sl)) if entry is not None and sl is not None and abs(entry-sl)>0 else None
-        position_usd = qty*entry if qty is not None else None
-        # $1,000 account, max 3x notional = $3,000.
-        if position_usd is not None and position_usd > 3000.0:
-            position_usd = 3000.0
-            qty = position_usd/entry
-        margin_3x = position_usd/3 if position_usd is not None else None
-
-        # V27.2 is intentionally LONG-only; SHORT signals are impossible by design.
-        if signal in ("SHORT","WATCH-SHORT"):
-            signal="NO-TRADE"
-            entry=sl=tp1=tp2=None
-            direction=0
+        signal="NO-TRADE"; entry=sl=tp1=tp2=None; direction=0; entry_location="—"
+        score_breakdown={}
+        # XRP V27.2 remains frozen and unchanged.
+        if s=="XRPUSDT":
+            slope5=((e20_4/e50_4)-1) if e20_4 and e50_4 else 0
+            atr_pct_raw=(a/p) if a and p else 0
+            shock_raw=abs(c1[-1]/c1[-2]-1) if len(c1)>1 else 0
+            kill=abs(slope5)>XRP_PARAMS["kill_slope"] or atr_pct_raw>XRP_PARAMS["atr_max"] or shock_raw>XRP_PARAMS["shock_max"]
+            dev=((p-e20)/a) if a and e20 else 0
+            mean_rev=r is not None and r<=35 and dev<=-0.5 and p>c1[-2]
+            trend=e20_4>e50_4 and e20>e50
+            pull=trend and c1[-2]<=c1[-3] and p>e20 and r is not None and r<=55
+            brk=trend and resistance is not None and p>resistance and p>c1[-2]
+            if not kill and (mean_rev or pull or brk): signal="LONG"
+            elif not kill and ((r is not None and r<=40) or trend): signal="WATCH-LONG"
+            if signal in ("LONG","WATCH-LONG"):
+                entry=p; sl=p-XRP_PARAMS["sl_atr"]*(a or p*.01); tp1=p+XRP_PARAMS["tp_atr"]*(a or p*.01); tp2=p+3.5*(a or p*.01); direction=1
+            score=43 if signal=="WATCH-LONG" else 75 if signal=="LONG" else 0
+            if kill: score=0; signal="NO-TRADE"; direction=0
+            score_label="A" if score>=75 else "B" if score>=65 else "C" if score>=50 else "NO-TRADE"
+            score_breakdown={"model":"V27.2","kill_switch":not kill,"rsi":round(r,1) if r else None}
+        elif s=="ETHUSDT":
+            # ETH has not passed independent validation; deliberately suppress false positives.
+            score=0; score_label="NO-PRODUCTION"
+        else:
+            # Asset-specific trend regime with a deliberately looser tactical entry.
+            bull=e20_4>e50_4 and p>e20_4
+            bear=e20_4<e50_4 and p<e20_4
+            if s=="SOLUSDT":
+                rl=(40,52); rs=(48,60); sl_mult=1.0; tp_mult=2.0; max_hold="12H"
+            elif s=="AVAXUSDT":
+                rl=(40,52); rs=(48,60); sl_mult=1.2; tp_mult=1.2; max_hold="12H"
+            else: # BTC research tactical
+                rl=(45,55); rs=(45,55); sl_mult=1.2; tp_mult=1.5; max_hold="1–3H"
+            long_ok=bull and r is not None and rl[0]<=r<=rl[1] and p>e20 and p>c1[-2]
+            short_ok=bear and r is not None and rs[0]<=r<=rs[1] and p<e20 and p<c1[-2]
+            # Tactical mode allows earlier entry; ADX is advisory, not a hard blocker.
+            if long_ok:
+                signal="LONG"; direction=1
+            elif short_ok:
+                signal="SHORT"; direction=-1
+            elif bull and r is not None and r<=rl[1]:
+                signal="WATCH-LONG"; direction=1
+            elif bear and r is not None and r>=rs[0]:
+                signal="WATCH-SHORT"; direction=-1
+            if direction:
+                entry=p; sl=p-direction*sl_mult*(a or p*.005); tp1=p+direction*tp_mult*(a or p*.005); tp2=p+direction*(tp_mult*1.5)*(a or p*.005)
+                dist_support=max(0,p-support) if support else None
+                dist_res=max(0,resistance-p) if resistance else None
+                entry_location="OPTIMAL" if ((direction==1 and dist_support is not None and a and dist_support/a<=2.5) or (direction==-1 and dist_res is not None and a and dist_res/a<=2.5)) else "TACTICAL"
+            trend_pts=30 if (direction==1 and bull) or (direction==-1 and bear) else 0
+            rsi_pts=20 if ((direction==1 and rl[0]<=r<=rl[1]) or (direction==-1 and rs[0]<=r<=rs[1])) else 0
+            adx_pts=15 if adx_v and adx_v>=20 else 8 if adx_v and adx_v>=15 else 0
+            vol_pts=15 if vr and vr>=1.1 else 8 if vr and vr>=0.8 else 0
+            loc_pts=10 if entry_location=="OPTIMAL" else 5 if direction else 0
+            score=min(100,int(trend_pts+rsi_pts+adx_pts+vol_pts+loc_pts))
+            score_label="A" if score>=75 else "B" if score>=65 else "C" if score>=50 else "NO-TRADE"
+            score_breakdown={"trend":trend_pts,"rsi":rsi_pts,"adx":adx_pts,"volume":vol_pts,"entry_location":loc_pts}
+            # Research models may display WATCH/SETUP, but only candidates can be execution-ready.
+            if cfg["status"]=="RESEARCH" and signal in ("LONG","SHORT") and score<75:
+                signal="WATCH-LONG" if direction==1 else "WATCH-SHORT"
+            if cfg["status"]=="NO-PRODUCTION":
+                signal="NO-TRADE"; direction=0; entry=sl=tp1=tp2=None
+        # Common risk sizing.
+        risk_usd=10.0
+        qty=(risk_usd/abs(entry-sl)) if entry is not None and sl is not None and abs(entry-sl)>0 else None
+        position_usd=qty*entry if qty is not None else None
+        if position_usd is not None and position_usd>3000:
+            position_usd=3000.0; qty=position_usd/entry
+        margin_3x=position_usd/3 if position_usd is not None else None
         cache[s].update(
             price=p, ema20_1h=round_price(e20), ema50_1h=round_price(e50), ema200_1h=round_price(e200),
             ema20_4h=round_price(e20_4), ema50_4h=round_price(e50_4), ema200_4h=round_price(e200_4),
-            rsi_1h=round(r,1) if r is not None else None, atr_1h=round_price(a),
-            vol_ratio=round(vr,2) if vr is not None else None, trend=trend4, signal=signal, live_signal=signal,
-            entry=round_price(entry), sl=round_price(sl), tp1=round_price(tp1), tp2=round_price(tp2),
-            rr=2.0 if signal!="NO-TRADE" else None, score=score, score_label=score_label,
-            adx_1h=round(adx_v,1) if adx_v is not None else None, vwap_1h=round_price(vwap_v), support=round_price(support), resistance=round_price(resistance), atr_pct=round(atr_pct,2) if atr_pct is not None else None, btc_filter=btc_filter, entry_location=entry_location, entry_location_score=entry_location_score,
-            score_breakdown={"trend":trend_score,"alignment":align_score,"adx":adx_score,"rsi":rsi_score,"volume":vol_score,"support_resistance":sr_score,"vwap":vwap_score,"atr":atr_score,"funding_oi":derivatives_score,"btc_filter":btc_score,"entry_location":entry_location_score},
-            position_qty=round(qty,6) if qty is not None else None,
-            position_usd=round(position_usd,2) if position_usd is not None else None,
+            rsi_1h=round(r,1) if r is not None else None, atr_1h=round_price(a), vol_ratio=round(vr,2) if vr is not None else None,
+            trend=trend4, signal=signal, live_signal=signal, entry=round_price(entry), sl=round_price(sl), tp1=round_price(tp1), tp2=round_price(tp2),
+            rr=round((abs(tp1-entry)/abs(entry-sl)),2) if entry is not None and sl is not None and tp1 is not None and abs(entry-sl)>0 else None,
+            score=score, score_label=score_label, score_breakdown=score_breakdown,
+            adx_1h=round(adx_v,1) if adx_v is not None else None, vwap_1h=round_price(vwap_v),
+            support=round_price(support), resistance=round_price(resistance), atr_pct=round(atr_pct,2) if atr_pct is not None else None,
+            btc_filter="NEUTRAL", entry_location=entry_location, entry_location_score=score_breakdown.get("entry_location",0),
+            position_qty=round(qty,6) if qty is not None else None, position_usd=round(position_usd,2) if position_usd is not None else None,
             margin_3x=round(margin_3x,2) if margin_3x is not None else None,
+            model_name=cfg["name"], model_status=cfg["status"], direction_mode=cfg["direction"], horizon=cfg["horizon"],
             analysis_ts=time.time(), ts=time.time(), error=None
         )
         return True
