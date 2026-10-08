@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Crypto AI Trader V28 Asset-Adaptive Multi-Asset</title>
+<title>Crypto AI Trader V28.1 Asset-Adaptive Multi-Asset</title>
 <style>
 :root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",Arial,sans-serif;background:#0b0f14;color:#eef2f7}
 *{box-sizing:border-box}body{margin:0;background:#0b0f14}.wrap{max-width:1100px;margin:auto;padding:14px}
@@ -26,7 +26,7 @@ h1{font-size:22px;margin:0 0 5px}.sub{font-size:12px;color:#9aa4b2}
 <div class="wrap">
 <header>
 <h1>Crypto AI Trader V28 Asset-Adaptive Multi-Asset</h1>
-<div class="sub">BTC · ETH · SOL · AVAX · XRP · 各币种独立模型 · 4H Regime + 1H Tactical Confirmation · WebSocket实时</div>
+<div class="sub">BTC · ETH · SOL · AVAX · XRP · 各币种独立模型 · 4H Regime + 1H 收盘确认 · WebSocket实时</div>
 <div id="status" class="status"><span class="dot"></span><span id="stxt">连接中…</span></div><div id="diag" class="small">数据源：连接中</div>
 </header>
 <div class="toolbar">
@@ -36,7 +36,7 @@ h1{font-size:22px;margin:0 0 5px}.sub{font-size:12px;color:#9aa4b2}
 <button class="filter" data-f="NO-TRADE">NO-TRADE</button>
 </div>
 <div id="cards" class="cards"></div><div id="historyPanel" class="historyPanel"></div>
-<div class="small">V28：Asset-Adaptive Multi-Asset。每个币种独立模型、方向与持仓时间；ETH暂无生产Alpha，XRP V27.2保持冻结。信号仅用于交易决策辅助，不保证盈利。</div>
+<div class="small">V28.1：Asset-Adaptive Multi-Asset。每个币种独立模型、方向与持仓时间；ETH暂无生产Alpha，XRP V27.2保持冻结。信号仅用于交易决策辅助，不保证盈利。</div>
 </div>
 <script>
 const state={data:{},history:{},filter:"ALL",ws:null};
@@ -77,7 +77,8 @@ function render(){
   <div class="signal">
    <div class="score"><span>OPPORTUNITY SCORE</span><b>${x.score||0}/100 · ${x.score_label||"NO-TRADE"}</b></div>
    <div class="decision ${executionState(x).cls}"><span>交易执行状态</span><b>${executionState(x).text}</b></div>
-   <div class="risk">实时分析：ADX ${fmt(x.adx_1h)} · VWAP ${fmt(x.vwap_1h)} · ATR ${x.atr_pct!=null?x.atr_pct.toFixed(2)+"%":"—"} · OI ${x.oi_change!=null?((x.oi_change>=0?"+":"")+x.oi_change.toFixed(2)+"%"):"—"} · 1H确认 ${x.confirmed_status||"WAITING"} · 入场位置 ${x.entry_location||"—"}</div>
+   <div class="risk">Regime ${x.regime||x.trend||"—"} · Bias ${x.direction_bias||"NEUTRAL"} · Tier ${x.opportunity_tier||"D"} · 1H确认 ${x.confirmed_status||"WAITING"} · ${x.confirmation_basis||"1H candle close"} · 入场位置 ${x.entry_location||"—"}</div>
+   <div class="risk">ADX ${fmt(x.adx_1h)} · VWAP ${fmt(x.vwap_1h)} · ATR ${x.atr_pct!=null?x.atr_pct.toFixed(2)+"%":"—"} · OI ${x.oi_change!=null?((x.oi_change>=0?"+":"")+x.oi_change.toFixed(2)+"%"):"—"}</div>
    <div class="levels">实时Entry <b>${fmt(x.entry)}</b> · SL <b>${fmt(x.sl)}</b><br>TP1 <b>${fmt(x.tp1)}</b> · TP2 <b>${fmt(x.tp2)}</b></div>
    <div class="risk">说明：<b>${x.model_name||"Asset Model"}</b> · ${x.direction_mode||"—"}；只有「交易执行状态」显示可执行时才考虑入场。ETH当前为NO-PRODUCTION。</div>
    ${x.position_usd?`<div class="risk">风险≤$10 · 建议仓位 ${fmt(x.position_usd)} · 3×保证金约 ${fmt(x.margin_3x)}</div>`:""}
