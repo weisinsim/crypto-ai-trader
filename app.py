@@ -55,12 +55,12 @@ confirmed_state = {s: "NO-TRADE" for s in SYMBOLS}
 http_client = None
 
 MODEL_NAME = "Crypto AI Trader Multi-Asset Adaptive"
-MODEL_VERSION = "V28.1-Execution Integrity"
+MODEL_VERSION = "V28.2-Validated Execution Gate"
 XRP_PARAMS = {"kill_slope": 0.0077, "atr_max": 0.0135, "shock_max": 0.025, "sl_atr": 1.7, "tp_atr": 2.8, "direction": "LONG_ONLY"}
 MODEL_LIBRARY = {
     "BTCUSDT": {"name":"BTC Trend Tactical", "status":"RESEARCH", "direction":"LONG/SHORT", "horizon":"1–3H tactical", "family":"trend_tactical"},
     "ETHUSDT": {"name":"ETH No-Production Alpha", "status":"NO-PRODUCTION", "direction":"NONE", "horizon":"WAIT", "family":"none"},
-    "SOLUSDT": {"name":"SOL Momentum Pullback", "status":"CANDIDATE", "direction":"LONG/SHORT", "horizon":"up to 12H", "family":"momentum_pullback"},
+    "SOLUSDT": {"name":"SOL Momentum Pullback", "status":"RESEARCH", "direction":"LONG/SHORT", "horizon":"up to 12H", "family":"momentum_pullback"},
     "AVAXUSDT": {"name":"AVAX Trend Pullback", "status":"RESEARCH", "direction":"LONG/SHORT", "horizon":"up to 12H", "family":"trend_pullback"},
     "XRPUSDT": {"name":"XRP V27.2 Reversal", "status":"FROZEN", "direction":"LONG ONLY", "horizon":"1H confirmation / swing", "family":"xrp_v27"}
 }
@@ -237,6 +237,18 @@ def record_confirmed_signal(s, candle_close_ms=None):
     prev = confirmed_state[s]
     ts_ms = int(candle_close_ms) if candle_close_ms else int(time.time() * 1000)
     if sig == prev:
+        return False
+
+    # Only independently validated candidate/frozen models may become executable confirmations.
+    cfg = MODEL_LIBRARY.get(s, {})
+    executable = (
+        sig in ("LONG", "SHORT")
+        and cache[s].get("opportunity_tier") == "A"
+        and cfg.get("status") in ("CANDIDATE", "FROZEN")
+    )
+    if sig in ("LONG", "SHORT") and not executable:
+        cache[s]["confirmed_status"] = "WAITING_VALIDATION"
+        cache[s]["confirmation_basis"] = "1H candle close + validated model gate"
         return False
 
     if prev in ("LONG", "SHORT") and sig not in ("LONG", "SHORT"):
