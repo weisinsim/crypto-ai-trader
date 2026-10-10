@@ -80,6 +80,19 @@ class ResearchReportTests(unittest.TestCase):
         report = render(manifest)
         self.assertIn("1/2 | FAIL_CROSS_COST_ROBUSTNESS", report)
 
+    def test_cross_cost_gate_includes_symbol_with_entire_cost_tier_missing(self):
+        manifest = {
+            "min_trades_threshold": 2,
+            "cost_sensitivity_bps": [5, 10, 20],
+            "reports": [
+                {"symbol": "ETHUSDT", "cost_bps": 5, "status": "RESEARCH_ONLY",
+                 "development_metrics_by_exit": {"target_3.0R": {"single_position": {"net_R": 5}}},
+                 "holdout_metrics_by_exit": {"target_3.0R": {"single_position": {"trades": 4, "net_R": 3, "profit_factor": 1.4}}}},
+            ],
+        }
+        report = render(manifest)
+        self.assertIn("| ETHUSDT | 3.0R | single_position | 1/3 | FAIL_CROSS_COST_ROBUSTNESS |", report)
+
     def test_cross_cost_gate_fails_if_a_configured_cost_tier_is_missing(self):
         manifest = {
             "min_trades_threshold": 2,
