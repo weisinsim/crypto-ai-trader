@@ -5,6 +5,7 @@ This runner reports research metrics only. It does not declare a profitable mode
 and it will mark results as insufficient when the signal sample is too small.
 """
 import argparse
+import csv
 import json
 import subprocess
 import sys
