@@ -10,11 +10,13 @@ from statistics import median
 from research.run_backtest import load_csv
 
 GRID = [
-    {"lookback": lookback, "max_wait": max_wait, "target_r": target_r, "trend_period": trend_period}
+    {"lookback": lookback, "max_wait": max_wait, "target_r": target_r,
+     "trend_period": trend_period, "volatility_filter": volatility_filter}
     for lookback in (24, 48, 72)
     for max_wait in (3, 6)
     for target_r in (1.5, 2.0)
     for trend_period in (0, 100, 200)
+    for volatility_filter in (0.0, 1.0, 1.2)
 ]
 
 
@@ -57,10 +59,18 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
         raise ValueError("fees and slippage must be finite and non-negative")
     lookback, max_wait, target_r = params["lookback"], params["max_wait"], params["target_r"]
     trend_period = params.get("trend_period", 0)
-    if lookback < 5 or max_wait < 1 or target_r <= 0 or trend_period not in (0, 100, 200):
+    volatility_filter = params.get("volatility_filter", 0.0)
+    if (lookback < 5 or max_wait < 1 or target_r <= 0
+            or trend_period not in (0, 100, 200)
+            or volatility_filter not in (0.0, 1.0, 1.2)):
         raise ValueError("invalid strategy parameters")
     atr = atr_values(rows)
     trend_ema = ema_values(rows, trend_period)
+    atr_median = [None] * len(rows)
+    for z in range(48, len(rows)):
+        prior_atr = [v for v in atr[z - 48:z] if v is not None and v > 0]
+        if prior_atr:
+            atr_median[z] = median(prior_atr)
     trades = []
     equity = 1.0
     peak = 1.0
@@ -72,6 +82,10 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
         for j in range(i, min(end_idx - 1, i + 1)):
             if atr[j] is None or atr[j] <= 0:
                 continue
+            if volatility_filter > 0:
+                baseline_atr = atr_median[j]
+                if baseline_atr is None or atr[j] < baseline_atr * volatility_filter:
+                    continue
             prior = rows[max(0, j - lookback):j]
             if len(prior) < lookback:
                 continue
