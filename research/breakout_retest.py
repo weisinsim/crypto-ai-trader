@@ -14,6 +14,7 @@ GRID = [
     for lookback in (24, 48, 72)
     for max_wait in (3, 6)
     for target_r in (1.5, 2.0)
+    for trend_period in (0, 100, 200)
 ]
 
 
@@ -29,6 +30,21 @@ def atr_values(rows: list[dict], period: int = 14) -> list[float | None]:
     return out
 
 
+def ema_values(rows: list[dict], period: int) -> list[float | None]:
+    """Causal EMA series; each value uses closes up to and including that bar."""
+    out: list[float | None] = [None] * len(rows)
+    if period <= 0:
+        return out
+    alpha = 2.0 / (period + 1)
+    value = None
+    for i, row in enumerate(rows):
+        close = float(row["c"])
+        value = close if value is None else alpha * close + (1 - alpha) * value
+        if i >= period - 1:
+            out[i] = value
+    return out
+
+
 def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx: int,
                         fee_rate: float = 0.0005, slippage_rate: float = 0.0002,
                         risk_fraction: float = 0.01, max_leverage: float = 3.0) -> dict:
@@ -40,9 +56,11 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
     if any(not math.isfinite(x) or x < 0 for x in (fee_rate, slippage_rate)):
         raise ValueError("fees and slippage must be finite and non-negative")
     lookback, max_wait, target_r = params["lookback"], params["max_wait"], params["target_r"]
-    if lookback < 5 or max_wait < 1 or target_r <= 0:
+    trend_period = params.get("trend_period", 0)
+    if lookback < 5 or max_wait < 1 or target_r <= 0 or trend_period not in (0, 100, 200):
         raise ValueError("invalid strategy parameters")
     atr = atr_values(rows)
+    trend_ema = ema_values(rows, trend_period)
     trades = []
     equity = 1.0
     peak = 1.0
@@ -60,9 +78,11 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
             resistance = max(x["h"] for x in prior)
             support = min(x["l"] for x in prior)
             if rows[j]["c"] > resistance + 0.05 * atr[j]:
-                signal = (1, resistance, j)
+                if trend_period == 0 or (trend_ema[j] is not None and rows[j]["c"] > trend_ema[j]):
+                    signal = (1, resistance, j)
             elif rows[j]["c"] < support - 0.05 * atr[j]:
-                signal = (-1, support, j)
+                if trend_period == 0 or (trend_ema[j] is not None and rows[j]["c"] < trend_ema[j]):
+                    signal = (-1, support, j)
         if signal is None:
             i += 1
             continue
@@ -211,7 +231,7 @@ def main():
         "status": "RESEARCH_ONLY", "symbol": args.symbol.upper(), "interval": args.interval,
         "bars": len(rows), "first_ts": rows[0]["t"], "last_ts": rows[-1]["t"],
         "split": {"train_fraction": args.train_fraction, "train_bars": split, "holdout_bars": len(rows)-split},
-        "strategy": "confirmed breakout, retest within 0.30 ATR, directional 1H candle close confirmation, next-bar-open entry; stop wins same-bar stop/target tie; max drawdown includes intratrade close-marked equity",
+        "strategy": "confirmed breakout, retest within 0.30 ATR, directional 1H candle close confirmation, next-bar-open entry; optional causal EMA trend filter (0/100/200); stop wins same-bar stop/target tie; max drawdown includes intratrade close-marked equity",
         "grid": GRID, "candidate_count": len(candidates), "eligible_count": len(eligible),
         "selected_parameters": selected["parameters"] if selected else None,
         "training_selection_metrics": {k:v for k,v in selected.items() if k != "folds"} if selected else None,
