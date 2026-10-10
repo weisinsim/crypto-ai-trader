@@ -45,6 +45,16 @@ class BacktestTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             run_ema_cross_backtest(rows, fast=10, slow=5)
 
+    def test_non_finite_cost_and_funding_parameters_rejected(self):
+        rows = candles_from_closes([100 + (i % 5) for i in range(80)])
+        for name, value in (("fee_rate", float("nan")),
+                            ("slippage_rate", float("inf")),
+                            ("funding_rate_per_bar", float("-inf"))):
+            with self.subTest(name=name):
+                with self.assertRaisesRegex(ValueError, "finite"):
+                    run_ema_cross_backtest(rows, fast=3, slow=7, atr_period=3,
+                                           **{name: value})
+
     def test_risk_fraction_must_be_between_zero_and_one(self):
         rows = candles_from_closes([100 + (i % 5) for i in range(80)])
         for risk in (0, -0.1, 1.1):
