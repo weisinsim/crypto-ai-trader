@@ -95,11 +95,22 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
                 exit_idx, exit_price, reason = end_idx - 1, rows[end_idx - 1]["c"], "TIME"
                 for m in range(entry_idx, end_idx):
                     bar = rows[m]
+                    # Track unrealized equity while the position is open so max DD
+                    # includes intratrade adverse excursions, not only closed trades.
+                    mark_pnl = qty * (float(bar["c"]) - entry) * side
+                    mark_costs = qty * (entry + float(bar["c"])) * (fee_rate + slippage_rate)
+                    marked_equity = max(0.000001, equity + mark_pnl - mark_costs)
+                    peak = max(peak, marked_equity)
+                    if peak > 0:
+                        max_dd = max(max_dd, (peak - marked_equity) / peak)
                     stop_hit = bar["l"] <= stop if side == 1 else bar["h"] >= stop
                     target_hit = bar["h"] >= target if side == 1 else bar["l"] <= target
                     # Conservative tie-break: if both barriers touch in one candle, stop wins.
                     if stop_hit:
-                        exit_idx, exit_price, reason = m, stop, "STOP"
+                        exit_idx = m
+                        exit_price = (min(stop, float(bar["o"])) if side == 1
+                                      else max(stop, float(bar["o"])))
+                        reason = "STOP"
                         break
                     if target_hit:
                         exit_idx, exit_price, reason = m, target, "TARGET"
@@ -200,10 +211,11 @@ def main():
         "status": "RESEARCH_ONLY", "symbol": args.symbol.upper(), "interval": args.interval,
         "bars": len(rows), "first_ts": rows[0]["t"], "last_ts": rows[-1]["t"],
         "split": {"train_fraction": args.train_fraction, "train_bars": split, "holdout_bars": len(rows)-split},
-        "strategy": "confirmed breakout, retest within 0.30 ATR, directional 1H candle close confirmation, next-bar-open entry; stop wins same-bar stop/target tie",
+        "strategy": "confirmed breakout, retest within 0.30 ATR, directional 1H candle close confirmation, next-bar-open entry; stop wins same-bar stop/target tie; max drawdown includes intratrade close-marked equity",
         "grid": GRID, "candidate_count": len(candidates), "eligible_count": len(eligible),
         "selected_parameters": selected["parameters"] if selected else None,
         "training_selection_metrics": {k:v for k,v in selected.items() if k != "folds"} if selected else None,
+        "candidate_diagnostics": sorted(candidates, key=lambda x: x["score"], reverse=True),
         "holdout": {k:v for k,v in holdout.items() if k != "trade_log"} | {"trades_by_side": {"long": holdout["long"], "short": holdout["short"]}} if holdout else None,
         "stress_holdout_0_30pct_round_trip": {k:v for k,v in stress.items() if k != "trade_log"} | {"trades_by_side": {"long": stress["long"], "short": stress["short"]}} if stress else None,
         "warnings": ["Research only; historical funding rates are not included.", "OHLCV cannot resolve intrabar order; stop is conservatively prioritized.", "No deployment decision without independent forward validation."],
