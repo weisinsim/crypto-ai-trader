@@ -139,6 +139,15 @@ jobs:
           print(f"holdout={report['holdout']}")
           print(f"stress_holdout={report['stress_holdout_0_30pct_round_trip']}")
           PY
+      - name: Run mean-reversion research
+        env:
+          SYMBOL: ${{ matrix.symbol }}
+        run: |
+          python -m research.mean_reversion \
+            --csv "data/${SYMBOL}_1h.csv" \
+            --symbol "${SYMBOL}" --interval 1h \
+            --train-fraction 0.6 \
+            --output "reports/${SYMBOL}_1h_mean_reversion.json"
       - name: Upload raw data and report
         if: always()
         uses: actions/upload-artifact@v4
@@ -149,6 +158,7 @@ jobs:
             reports/${{ matrix.symbol }}_1h_baseline.json
             reports/${{ matrix.symbol }}_1h_adaptive.json
             reports/${{ matrix.symbol }}_1h_breakout_retest.json
+            reports/${{ matrix.symbol }}_1h_mean_reversion.json
             reports/${{ matrix.symbol }}_1h_mean_reversion.json
           if-no-files-found: warn
           retention-days: 30
