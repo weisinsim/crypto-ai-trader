@@ -11,6 +11,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Support both package imports in tests and direct execution as a script.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from validation.audit_historical_data import audit as audit_candles
 from validation.audit_funding_history import audit as audit_funding
 
