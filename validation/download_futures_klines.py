@@ -14,6 +14,7 @@ availability and verify file completeness before any performance conclusions.
 import argparse
 import csv
 import json
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -50,12 +51,19 @@ def get_json(params, retries=5):
             with urlopen(req, timeout=20) as response:
                 return json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
+            # Keep the exchange response body visible in hosted CI logs.
+            try:
+                detail = exc.read().decode("utf-8", errors="replace")[:1000]
+            except Exception:
+                detail = "(response body unavailable)"
             if exc.code not in (418, 429, 500, 502, 503, 504) or attempt == retries - 1:
-                raise
+                raise RuntimeError(
+                    f"Binance kline HTTP {exc.code}; endpoint={BASE}; response={detail}"
+                ) from exc
             time.sleep(min(2 ** attempt, 30))
-        except (URLError, TimeoutError):
+        except (URLError, TimeoutError) as exc:
             if attempt == retries - 1:
-                raise
+                raise RuntimeError(f"Could not reach Binance kline endpoint {BASE}: {exc}") from exc
             time.sleep(min(2 ** attempt, 30))
     raise RuntimeError("Retry budget exhausted")
 
@@ -114,7 +122,16 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     report = []
     for symbol in args.symbols:
-        rows = download(symbol.upper(), args.interval, start_ms, end_ms)
+        try:
+            rows = download(symbol.upper(), args.interval, start_ms, end_ms)
+        except Exception as exc:
+            print(
+                f"ERROR downloading symbol={symbol.upper()} interval={args.interval} "
+                f"start={args.start} end_exclusive={args.end}: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
+            raise
         path = out_dir / f"{symbol.upper()}_{args.interval}.csv"
         fields = ["timestamp", "open", "high", "low", "close", "volume", "quote_volume",
                   "trade_count", "taker_buy_base_volume", "taker_buy_quote_volume"]
