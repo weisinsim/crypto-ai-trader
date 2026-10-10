@@ -247,10 +247,17 @@ def record_confirmed_signal(s, candle_close_ms=None):
 
     # Only independently validated candidate/frozen models may become executable confirmations.
     cfg = MODEL_LIBRARY.get(s, {})
+    # Execution requires an explicit, auditable validation record.
+    # FROZEN means parameters are preserved, not that profitability is proven.
+    validation = cfg.get("validation", {})
     executable = (
         sig in ("LONG", "SHORT")
         and cache[s].get("opportunity_tier") == "A"
-        and cfg.get("status") in ("CANDIDATE", "FROZEN")
+        and cfg.get("status") == "CANDIDATE"
+        and validation.get("holdout_passed") is True
+        and validation.get("walk_forward_passed") is True
+        and validation.get("cost_stress_passed") is True
+        and validation.get("report_id")
     )
     if sig in ("LONG", "SHORT") and not executable:
         cache[s]["confirmed_status"] = "WAITING_VALIDATION"
