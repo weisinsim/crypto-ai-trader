@@ -97,7 +97,7 @@ def main() -> None:
         walk_results.append({
             "fold": fold + 1, "start_ts": start_ts, "end_ts": rows[b - 1]["t"],
             "bars": b - a, "trades": len(fold_trades),
-            "net_return_pct": round(sum(t["pnl_equity"] for t in fold_trades) * 100, 4),
+            "net_return_pct": round((fold_result["equity_final"] - 1.0) * 100, 4),
             "max_drawdown_pct": max_drawdown_pct(fold_curve),
             "equity_final": fold_result["equity_final"],
             "win_rate_pct": round(sum(t["pnl_equity"] > 0 for t in fold_trades) / len(fold_trades) * 100, 2) if fold_trades else None,
@@ -116,7 +116,7 @@ def main() -> None:
                   "warmup_bars": split, "holdout_bars": len(holdout)},
         "holdout": {
             "bars": len(holdout), "trades": len(holdout_trades),
-            "net_return_pct": round(sum(holdout_pnls) * 100, 4),
+            "net_return_pct": round((holdout_result["equity_final"] - 1.0) * 100, 4),
             "max_drawdown_pct": max_drawdown_pct(holdout_curve),
             "equity_final": holdout_result["equity_final"],
             "win_rate_pct": round(sum(p > 0 for p in holdout_pnls) / len(holdout_pnls) * 100, 2) if holdout_pnls else None,
@@ -127,7 +127,7 @@ def main() -> None:
         "walk_forward": walk_results,
         "warnings": [
             "This runner evaluates a fixed EMA baseline; it does not optimize or certify a profitable model.",
-            "Equity starts at 1.0 and position size scales with current realized equity; inspect the trade log and drawdown assumptions before interpreting profitability.",
+            "Net return is calculated from final account equity relative to the 1.0 starting equity; trade PnL sums are not used as a substitute for compounded portfolio return.",
             "Funding is a constant per-bar assumption here, not historical realized funding. Use a historical funding series before production decisions.",
             "All report results require independent review of CSV coverage, exchange data and execution assumptions."
         ],
