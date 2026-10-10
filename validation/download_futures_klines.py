@@ -101,7 +101,7 @@ def download_archive(symbol, interval, start_ms, end_ms, now_ms=None):
                 dates.append(("daily", d))
                 d = d.fromordinal(d.toordinal() + 1)
         else:
-            dates.append(("monthly", month_cursor)
+            dates.append(("monthly", month_cursor))
         for kind, period in dates:
             stamp = period.strftime("%Y-%m-%d") if kind == "daily" else period.strftime("%Y-%m")
             url = (f"https://data.binance.vision/data/futures/um/{kind}/klines/"
