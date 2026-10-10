@@ -98,6 +98,18 @@ class ExitAuditTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "finite"):
                 read_funding(path)
 
+    def test_funding_coverage_uses_configured_gap_threshold(self):
+        from validation.exit_parameter_audit import validate_funding_coverage
+        candles = [candle(0, 100, 101, 99, 100), candle(100_000, 100, 101, 99, 100)]
+        funding = [{"ts": 0, "rate": 0.0001}, {"ts": 100_000, "rate": 0.0001}]
+        with self.assertRaisesRegex(ValueError, "internal gaps"):
+            validate_funding_coverage(funding, candles, 3600, max_gap_hours=12)
+
+    def test_funding_coverage_rejects_empty_candles(self):
+        from validation.exit_parameter_audit import validate_funding_coverage
+        with self.assertRaisesRegex(ValueError, "empty candles"):
+            validate_funding_coverage([{"ts": 0, "rate": 0.0001}], [], 3600)
+
     def test_funding_coverage_rejects_truncated_history(self):
         from validation.exit_parameter_audit import validate_funding_coverage
         candles = [candle(100, 100, 101, 99, 100), candle(200, 100, 101, 99, 100)]
