@@ -170,6 +170,17 @@ class ExitAuditTests(unittest.TestCase):
         self.assertEqual([t["timestamp"] for t in accepted], [100, 300, 500])
         self.assertEqual(skipped, 1)
 
+    def test_summary_drawdown_uses_chronological_order(self):
+        from validation.exit_parameter_audit import summarize
+        trades = [
+            {"timestamp": 300, "net_R": 2.0, "exit_reason": "TP"},
+            {"timestamp": 100, "net_R": -1.0, "exit_reason": "SL"},
+            {"timestamp": 200, "net_R": -1.0, "exit_reason": "SL"},
+        ]
+        stats = summarize(trades)
+        self.assertEqual(stats["net_R"], 0.0)
+        self.assertEqual(stats["max_drawdown_R"], 2.0)
+
     def test_summary_reports_overlapping_trades(self):
         stats = summarize([
             {"timestamp": 100, "exit_timestamp": 300, "net_R": 1.0, "exit_reason": "TP"},
