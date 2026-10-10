@@ -40,8 +40,6 @@ class ResearchReportTests(unittest.TestCase):
         self.assertIn("4.5000", report)
         self.assertIn("Development vs Holdout comparison", report)
         self.assertIn("Development/Holdout stability flags", report)
-        self.assertIn("REGIME_INSTABILITY", report)
-        self.assertIn("GENERALIZATION_FAILURE", report)
         self.assertIn("80 | 1.4000 | 12.0000", report)
         self.assertIn("not a full portfolio simulator", report)
         self.assertIn("Largest win %", report)
@@ -64,6 +62,24 @@ class ResearchReportTests(unittest.TestCase):
             "holdout_metrics_by_exit": {"target_2.5R": {"signal_level": {"trades": 0}}}
         }]})
         self.assertIn("—", report)
+
+
+    def test_flags_opposite_development_and_holdout_signs(self):
+        manifest = {"reports": [
+            {"symbol": "BTCUSDT", "cost_bps": 10, "status": "RESEARCH_ONLY",
+             "development_metrics_by_exit": {"target_3.0R": {
+                 "single_position": {"net_R": -4.2}}},
+             "holdout_metrics_by_exit": {"target_3.0R": {
+                 "single_position": {"net_R": 9.2}}}},
+            {"symbol": "AVAXUSDT", "cost_bps": 10, "status": "RESEARCH_ONLY",
+             "development_metrics_by_exit": {"target_3.0R": {
+                 "single_position": {"net_R": 8.4}}},
+             "holdout_metrics_by_exit": {"target_3.0R": {
+                 "single_position": {"net_R": -3.6}}}},
+        ]}
+        report = render(manifest)
+        self.assertIn("REGIME_INSTABILITY: dev loss / holdout gain", report)
+        self.assertIn("GENERALIZATION_FAILURE: dev gain / holdout loss", report)
 
 
 if __name__ == "__main__":
