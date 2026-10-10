@@ -43,7 +43,7 @@ Repeat for each coin. The signal file's `stop` column is used when present; othe
 
 - Timestamps are ISO-8601 UTC close timestamps from the downloader. The signal entry is assumed at the close of that signal candle and exits are evaluated from the next candle onward.
 - If stop and target are both touched in one OHLC candle, stop-first is assumed.
-- Time exits use the final available close within the holding window.
+- Time exits use the final close only when the full configured holding window is present. Signals too close to a split/data boundary to complete that window without a stop/target hit are excluded from the trade metrics and counted as signals without a trade result; they are not assigned an artificially short time exit.
 - The current harness does not model funding payments, partial exits, trailing stops, market impact, liquidation, order-book fills, overlapping positions or portfolio-wide exposure.
 - Missing signal/candle timestamp matches are skipped; always inspect the audit output's matched signal count.
 - A chronological split is only a first guardrail. Preserve a final untouched holdout and run walk-forward folds before making claims.
@@ -61,4 +61,4 @@ After all candle files pass the integrity audit and signal replay has been revie
 python validation/run_multi_asset_exit_audit.py --data-dir data/historical --signals-dir data/replay --out-dir data/exit_audits --min-trades 30
 ```
 
-This runs 2.5R and 3R exit comparisons at 5, 10, 20 and 30 bps round-trip cost assumptions for each available coin. It writes per-coin JSON audits and a batch manifest. A result is labeled `INSUFFICIENT_SAMPLE` when the largest holdout sample across exit variants is below the configured minimum; this label is not a pass. The batch runner does not repair missing inputs and does not validate signal parity or funding/slippage realism.
+This runs 2.5R and 3R exit comparisons at 5, 10, 20 and 30 bps round-trip cost assumptions for each available coin. It writes per-coin JSON audits and a batch manifest. A result is labeled `INSUFFICIENT_SAMPLE` unless every exit target and both signal-level and single-position modes meet the configured minimum holdout trade count; this label is not a pass. The batch runner does not repair missing inputs and does not validate signal parity or funding/slippage realism.
