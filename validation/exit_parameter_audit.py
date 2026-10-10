@@ -141,10 +141,11 @@ def main():
     p.add_argument("--cost-bps", type=float, default=10.0)
     p.add_argument("--max-hold", type=int, default=72)
     p.add_argument("--holdout-fraction", type=float, default=0.30)
+    p.add_argument("--min-match-pct", type=float, default=95.0, help="Abort if fewer than this percent of signals match candle timestamps")
     p.add_argument("--out", default="exit_audit_results.json")
     a = p.parse_args()
-    if a.stop_atr <= 0 or a.cost_bps < 0 or a.max_hold < 1 or not 0.05 <= a.holdout_fraction <= 0.45:
-        p.error("Invalid parameters: stop-atr > 0, cost-bps >= 0, max-hold >= 1, holdout fraction 0.05–0.45")
+    if a.stop_atr <= 0 or a.cost_bps < 0 or a.max_hold < 1 or not 0.05 <= a.holdout_fraction <= 0.45 or not 0 <= a.min_match_pct <= 100:
+        p.error("Invalid parameters: stop-atr > 0, cost-bps >= 0, max-hold >= 1, holdout fraction 0.05–0.45, match threshold 0–100")
     candles, signals = read_candles(a.candles), read_signals(a.signals)
     if not signals:
         raise SystemExit("No signals found. No backtest was performed.")
@@ -154,6 +155,9 @@ def main():
     unmatched_count = len(signals) - matched_count
     if matched_count == 0:
         raise SystemExit("No signal timestamps match candle timestamps; check timestamp convention and timezone. No backtest was performed.")
+    match_pct = 100 * matched_count / len(signals)
+    if match_pct < a.min_match_pct:
+        raise SystemExit(f"Only {match_pct:.2f}% of signals match candle timestamps; minimum is {a.min_match_pct:.2f}%. No backtest was performed.")
     split_ts = candles[split_i]["ts"]
     periods = {
         "development": {"candles": candles[:split_i], "signals": [s for s in signals if s["ts"] < split_ts]},
@@ -164,7 +168,8 @@ def main():
         "inputs": {"candle_rows": len(candles), "signal_rows": len(signals),
                    "matched_signal_rows": matched_count,
                    "unmatched_signal_rows": unmatched_count,
-                   "signal_timestamp_match_pct": round(100 * matched_count / len(signals), 2),
+                   "signal_timestamp_match_pct": round(match_pct, 2),
+                   "minimum_required_match_pct": a.min_match_pct,
                    "holdout_start_epoch": split_ts, "stop_atr_fallback": a.stop_atr,
                    "uses_signal_stop_when_present": True,
                    "round_trip_cost_bps": a.cost_bps, "max_hold_candles": a.max_hold},
