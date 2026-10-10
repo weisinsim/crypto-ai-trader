@@ -29,7 +29,7 @@ class FundingDataTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "pause_seconds"):
             download_funding_rates("BTCUSDT", 0, 100, fetch_page=lambda _: [], pause_seconds=-1)
 
-    def test_conflicting_duplicate_fails(self):
+    def test_stale_duplicate_page_aborts_pagination(self):
         def fake_fetch(params):
             if params["startTime"] <= 100:
                 return [record(100)]
