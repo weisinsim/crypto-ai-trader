@@ -158,6 +158,18 @@ class ExitAuditTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 read_signals(path)
 
+    def test_single_position_filter_skips_overlapping_signals(self):
+        from validation.exit_parameter_audit import filter_single_position
+        trades = [
+            {"timestamp": 100, "exit_timestamp": 300, "net_R": 1.0},
+            {"timestamp": 200, "exit_timestamp": 400, "net_R": -1.0},
+            {"timestamp": 300, "exit_timestamp": 500, "net_R": 0.5},
+            {"timestamp": 500, "exit_timestamp": 600, "net_R": 0.2},
+        ]
+        accepted, skipped = filter_single_position(trades)
+        self.assertEqual([t["timestamp"] for t in accepted], [100, 300, 500])
+        self.assertEqual(skipped, 1)
+
     def test_summary_reports_overlapping_trades(self):
         stats = summarize([
             {"timestamp": 100, "exit_timestamp": 300, "net_R": 1.0, "exit_reason": "TP"},
