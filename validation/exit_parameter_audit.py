@@ -155,8 +155,10 @@ def main():
     if matched_count == 0:
         raise SystemExit("No signal timestamps match candle timestamps; check timestamp convention and timezone. No backtest was performed.")
     split_ts = candles[split_i]["ts"]
-    periods = {"development": [s for s in signals if s["ts"] < split_ts],
-               "holdout": [s for s in signals if s["ts"] >= split_ts]}
+    periods = {
+        "development": {"candles": candles[:split_i], "signals": [s for s in signals if s["ts"] < split_ts]},
+        "holdout": {"candles": candles[split_i:], "signals": [s for s in signals if s["ts"] >= split_ts]},
+    }
     output = {
         "notice": "Exit comparison only; not a validated strategy or investment recommendation.",
         "inputs": {"candle_rows": len(candles), "signal_rows": len(signals),
@@ -170,8 +172,9 @@ def main():
     }
     for name, subset in periods.items():
         output["periods"][name] = {}
+        output["periods"][name]["signal_rows"] = len(subset["signals"])
         for r in (2.5, 3.0):
-            trades = evaluate(candles, subset, r, a.stop_atr, a.cost_bps, a.max_hold)
+            trades = evaluate(subset["candles"], subset["signals"], r, a.stop_atr, a.cost_bps, a.max_hold)
             output["periods"][name][f"target_{r}R"] = summarize(trades)
     Path(a.out).write_text(json.dumps(output, indent=2), encoding="utf-8")
     print(json.dumps(output, indent=2))
