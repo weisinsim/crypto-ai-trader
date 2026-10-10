@@ -1,6 +1,11 @@
 name: Historical baseline research
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "research/**"
+      - ".github/workflows/historical-baseline-research.yml"
   workflow_dispatch:
     inputs:
       days:
@@ -35,7 +40,7 @@ jobs:
       - name: Download complete closed-candle history
         env:
           SYMBOL: ${{ matrix.symbol }}
-          DAYS: ${{ inputs.days }}
+          DAYS: ${{ inputs.days || '180' }}
         run: |
           START="$(date -u -d "${DAYS} days ago" +%F)"
           END="$(date -u +%F)"
