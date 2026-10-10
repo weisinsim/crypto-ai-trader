@@ -50,7 +50,7 @@ def main():
                 continue
             result = json.loads(dest.read_text(encoding="utf-8"))
             holdout = result.get("periods", {}).get("holdout", {})
-            trades = max((holdout.get(k, {}).get("trades", 0) for k in holdout), default=0)
+            trades = max((v.get("trades", 0) for v in holdout.values() if isinstance(v, dict)), default=0)
             reports.append({
                 "symbol": symbol, "cost_bps": cost,
                 "status": "RESEARCH_ONLY" if trades >= args.min_trades else "INSUFFICIENT_SAMPLE",
