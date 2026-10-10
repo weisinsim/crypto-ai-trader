@@ -17,17 +17,23 @@ XRP = {"kill_slope": 0.0077, "atr_max": 0.0135, "shock_max": 0.025, "sl_atr": 1.
 
 
 def ts_ms(v):
-    return int(datetime.fromisoformat(v.replace("Z", "+00:00")).timestamp() * 1000)
+    dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
+    if dt.tzinfo is None or dt.utcoffset() is None:
+        raise ValueError(f"Timestamp must include timezone: {v!r}")
+    return int(dt.timestamp() * 1000)
 
 
 def read_rows(path):
     rows = []
     with open(path, newline="", encoding="utf-8-sig") as f:
         for r in csv.DictReader(f):
-            rows.append({"timestamp": r["timestamp"], "ts": ts_ms(r["timestamp"]),
-                         "o": float(r["open"]), "h": float(r["high"]), "l": float(r["low"]),
-                         "c": float(r["close"]), "v": float(r.get("volume") or 0),
-                         "q": float(r.get("quote_volume") or 0)})
+            row = {"timestamp": r["timestamp"], "ts": ts_ms(r["timestamp"]),
+                   "o": float(r["open"]), "h": float(r["high"]), "l": float(r["low"]),
+                   "c": float(r["close"]), "v": float(r.get("volume") or 0),
+                   "q": float(r.get("quote_volume") or 0)}
+            if row["l"] > min(row["o"], row["c"]) or row["h"] < max(row["o"], row["c"]) or row["l"] > row["h"]:
+                raise ValueError(f"Invalid OHLC values at {r['timestamp']} in {path}")
+            rows.append(row)
     rows.sort(key=lambda x: x["ts"])
     if len({x["ts"] for x in rows}) != len(rows):
         raise ValueError(f"Duplicate timestamps in {path}")
