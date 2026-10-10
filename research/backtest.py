@@ -84,9 +84,17 @@ def run_ema_cross_backtest(
     rows = validate_candles(candles)
     if fast < 2 or slow <= fast or atr_period < 1:
         raise ValueError("require 2 <= fast < slow and atr_period >= 1")
+    numeric_params = {
+        "stop_atr": stop_atr, "target_atr": target_atr,
+        "fee_rate": fee_rate, "slippage_rate": slippage_rate,
+        "funding_rate_per_bar": funding_rate_per_bar,
+        "risk_fraction": risk_fraction,
+    }
+    if not all(isfinite(float(value)) for value in numeric_params.values()):
+        raise ValueError("all numeric strategy parameters must be finite")
     if stop_atr <= 0 or target_atr <= 0:
         raise ValueError("stop_atr and target_atr must be positive")
-    if min(fee_rate, slippage_rate) < 0:
+    if fee_rate < 0 or slippage_rate < 0:
         raise ValueError("fee and slippage rates cannot be negative")
     if not 0 < risk_fraction <= 1:
         raise ValueError("risk_fraction must be in (0, 1]")
