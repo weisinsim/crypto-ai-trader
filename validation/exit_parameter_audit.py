@@ -43,11 +43,13 @@ def read_candles(path):
                     or c["low"] > c["high"]):
                 raise ValueError(f"Invalid OHLC values at {row['timestamp']}")
             rows.append({"ts": parse_ts(row["timestamp"]), **c})
-    rows.sort(key=lambda x: x["ts"])
     if len(rows) < 3:
         raise ValueError("At least 3 candles are required")
-    if len({r["ts"] for r in rows}) != len(rows):
+    timestamps = [row["ts"] for row in rows]
+    if len(set(timestamps)) != len(timestamps):
         raise ValueError("Duplicate candle timestamps")
+    if any(right <= left for left, right in zip(timestamps, timestamps[1:])):
+        raise ValueError("Candle timestamps must be strictly increasing in the input file; refusing to silently reorder history")
     return rows
 
 
@@ -65,9 +67,11 @@ def read_signals(path):
             if stop is not None and (not math.isfinite(stop) or stop <= 0):
                 raise ValueError("Stop must be finite and positive when supplied")
             rows.append({"ts": parse_ts(row["timestamp"]), "side": side, "entry": entry, "atr": atr, "stop": stop})
-    rows.sort(key=lambda x: x["ts"])
-    if len({r["ts"] for r in rows}) != len(rows):
+    timestamps = [row["ts"] for row in rows]
+    if len(set(timestamps)) != len(timestamps):
         raise ValueError("Duplicate signal timestamps; one signal per timestamp is supported")
+    if any(right < left for left, right in zip(timestamps, timestamps[1:])):
+        raise ValueError("Signal timestamps must be chronological in the input file; refusing to silently reorder signals")
     return rows
 
 
