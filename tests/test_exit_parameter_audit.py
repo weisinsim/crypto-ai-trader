@@ -67,6 +67,18 @@ class ExitAuditTests(unittest.TestCase):
         self.assertEqual(trades[0]["exit_reason"], "SL")
         self.assertEqual(trades[0]["gross_R"], -2.5)
 
+    def test_adverse_funding_sensitivity_is_subtracted_from_net_r(self):
+        candles = [
+            candle(0, 100, 101, 99, 100),
+            candle(28_800, 100, 101, 99, 100),
+        ]
+        signals = [{"ts": 0, "side": "LONG", "entry": 100, "atr": 1}]
+        trades = evaluate(candles, signals, target_r=2.5, stop_atr=2,
+                          cost_bps=0, max_hold=1, funding_bps_per_8h=100)
+        self.assertEqual(trades[0]["gross_R"], 0.0)
+        self.assertAlmostEqual(trades[0]["funding_R"], 0.5)
+        self.assertAlmostEqual(trades[0]["net_R"], -0.5)
+
     def test_round_trip_cost_is_subtracted_in_r(self):
         candles = [
             candle(1, 100, 101, 99, 100),
