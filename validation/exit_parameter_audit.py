@@ -71,7 +71,7 @@ def read_signals(path):
     return rows
 
 
-def evaluate(candles, signals, target_r, stop_atr, cost_bps, max_hold):
+def evaluate(candles, signals, target_r, stop_atr, cost_bps, max_hold, funding_bps_per_8h=0.0):
     index = {c["ts"]: i for i, c in enumerate(candles)}
     results = []
     for sig in signals:
@@ -117,8 +117,13 @@ def evaluate(candles, signals, target_r, stop_atr, cost_bps, max_hold):
             close = future[-1]["close"]
             outcome = d * (close - entry) / risk
         cost_r = (cost_bps / 10000.0) * entry / risk
+        # Sensitivity proxy only: charges the configured adverse funding rate
+        # prorated by elapsed candle intervals. This is not historical funding data.
+        elapsed_hours = max(0.0, (exit_ts - sig["ts"]) / 3600.0)
+        funding_r = (funding_bps_per_8h / 10000.0) * (elapsed_hours / 8.0) * entry / risk
         results.append({"timestamp": sig["ts"], "exit_timestamp": exit_ts, "side": sig["side"], "exit_reason": reason,
-                        "gross_R": outcome, "cost_R": cost_r, "net_R": outcome - cost_r})
+                        "gross_R": outcome, "cost_R": cost_r, "funding_R": funding_r,
+                        "net_R": outcome - cost_r - funding_r})
     return results
 
 
@@ -199,6 +204,8 @@ def main():
     p.add_argument("--signals", required=True)
     p.add_argument("--stop-atr", type=float, default=2.0)
     p.add_argument("--cost-bps", type=float, default=10.0)
+    p.add_argument("--funding-bps-per-8h", type=float, default=0.0,
+                   help="Research approximation: adverse funding cost in bps per 8h of holding time")
     p.add_argument("--max-hold", type=int, default=72)
     p.add_argument("--interval", choices=("15m", "30m", "1h", "2h", "4h", "1d"), default="1h",
                    help="Expected candle cadence; gaps and irregular intervals abort the audit")
@@ -206,8 +213,8 @@ def main():
     p.add_argument("--min-match-pct", type=float, default=95.0, help="Abort if fewer than this percent of signals match candle timestamps")
     p.add_argument("--out", default="exit_audit_results.json")
     a = p.parse_args()
-    if a.stop_atr <= 0 or a.cost_bps < 0 or a.max_hold < 1 or not 0.05 <= a.holdout_fraction <= 0.45 or not 0 <= a.min_match_pct <= 100:
-        p.error("Invalid parameters: stop-atr > 0, cost-bps >= 0, max-hold >= 1, holdout fraction 0.05–0.45, match threshold 0–100")
+    if a.stop_atr <= 0 or a.cost_bps < 0 or a.funding_bps_per_8h < 0 or a.max_hold < 1 or not 0.05 <= a.holdout_fraction <= 0.45 or not 0 <= a.min_match_pct <= 100:
+        p.error("Invalid parameters: stop-atr > 0, cost-bps >= 0, funding-bps-per-8h >= 0, max-hold >= 1, holdout fraction 0.05–0.45, match threshold 0–100")
     candles, signals = read_candles(a.candles), read_signals(a.signals)
     interval_seconds = {"15m": 900, "30m": 1800, "1h": 3600, "2h": 7200, "4h": 14400, "1d": 86400}[a.interval]
     cadence_errors = [
@@ -247,7 +254,7 @@ def main():
                    "minimum_required_match_pct": a.min_match_pct,
                    "holdout_start_epoch": split_ts, "stop_atr_fallback": a.stop_atr,
                    "uses_signal_stop_when_present": True,
-                   "round_trip_cost_bps": a.cost_bps, "max_hold_candles": a.max_hold, "expected_interval": a.interval},
+                   "round_trip_cost_bps": a.cost_bps, "funding_bps_per_8h_sensitivity": a.funding_bps_per_8h, "max_hold_candles": a.max_hold, "expected_interval": a.interval},
         "periods": {}
     }
     for name, subset in periods.items():
@@ -256,7 +263,7 @@ def main():
         subset_candle_ts = {c["ts"] for c in subset["candles"]}
         matched_subset_signals = sum(s["ts"] in subset_candle_ts for s in subset["signals"])
         for r in (2.5, 3.0):
-            trades = evaluate(subset["candles"], subset["signals"], r, a.stop_atr, a.cost_bps, a.max_hold)
+            trades = evaluate(subset["candles"], subset["signals"], r, a.stop_atr, a.cost_bps, a.max_hold, a.funding_bps_per_8h)
             sequential, skipped = filter_single_position(trades)
             output["periods"][name][f"target_{r}R"] = {
                 "signal_level": summarize(trades),
