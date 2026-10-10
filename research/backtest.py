@@ -135,6 +135,7 @@ def run_ema_cross_backtest(
                                "entry_time": position["entry_time"], "exit_time": int(bar["t"]),
                                "entry": round(position["entry_fill"], 8), "exit": round(exit_fill, 8),
                                "reason": reason, "bars_held": position["bars_held"],
+                               "stop": round(position["stop"], 8), "target": round(position["target"], 8),
                                "return_pct": round(ret_pct, 6), "pnl_equity": round(pnl, 8)})
                 position = None
 
@@ -171,6 +172,7 @@ def run_ema_cross_backtest(
                        "entry_time": position["entry_time"], "exit_time": int(bar["t"]),
                        "entry": round(position["entry_fill"], 8), "exit": round(exit_fill, 8),
                        "reason": "END_OF_DATA", "bars_held": position["bars_held"],
+                       "stop": round(position["stop"], 8), "target": round(position["target"], 8),
                        "return_pct": round((equity / position["equity_before"] - 1) * 100, 6),
                        "pnl_equity": round(pnl, 8)})
 
