@@ -331,7 +331,12 @@ def main():
                    "minimum_required_match_pct": a.min_match_pct,
                    "holdout_start_epoch": split_ts, "stop_atr_fallback": a.stop_atr,
                    "uses_signal_stop_when_present": True,
-                   "round_trip_cost_bps": a.cost_bps, "funding_bps_per_8h_sensitivity": a.funding_bps_per_8h if funding_rows is None else None, "funding_file": a.funding_file, "max_hold_candles": a.max_hold, "expected_interval": a.interval},
+                   "round_trip_cost_bps": a.cost_bps,
+                   "funding_bps_per_8h_sensitivity": a.funding_bps_per_8h if funding_rows is None else None,
+                   "funding_file": a.funding_file,
+                   "funding_mark_price_assumption": "entry_price_proxy",
+                   "funding_event_timing_assumption": "event_timestamp_compared_to_candle_close_exit_timestamp",
+                   "max_hold_candles": a.max_hold, "expected_interval": a.interval},
         "periods": {}
     }
     for name, subset in periods.items():
