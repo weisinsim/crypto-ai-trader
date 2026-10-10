@@ -106,17 +106,17 @@ class ExitAuditTests(unittest.TestCase):
             signals = root / "signals.csv"
             out = root / "out.json"
             candles.write_text(
-                "timestamp,open,high,low,close\\n"
-                "2025-01-01T00:59:59Z,100,101,99,100\\n"
-                "2025-01-01T01:59:59Z,100,101,99,100\\n"
-                "2025-01-01T02:59:59Z,100,101,99,100\\n"
-                "2025-01-01T03:59:59Z,100,101,99,100\\n",
+                "timestamp,open,high,low,close\n"
+                "2025-01-01T00:59:59Z,100,101,99,100\n"
+                "2025-01-01T01:59:59Z,100,101,99,100\n"
+                "2025-01-01T02:59:59Z,100,101,99,100\n"
+                "2025-01-01T03:59:59Z,100,101,99,100\n",
                 encoding="utf-8",
             )
             signals.write_text(
-                "timestamp,side,entry,atr\\n"
-                "2025-01-01T00:59:59Z,LONG,100,1\\n"
-                "2025-01-01T00:00:00Z,LONG,100,1\\n",
+                "timestamp,side,entry,atr\n"
+                "2025-01-01T00:59:59Z,LONG,100,1\n"
+                "2025-01-01T00:00:00Z,LONG,100,1\n",
                 encoding="utf-8",
             )
             script = Path(__file__).resolve().parents[1] / "validation" / "exit_parameter_audit.py"
