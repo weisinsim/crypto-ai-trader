@@ -27,11 +27,19 @@ def ts_ms(v):
 def read_rows(path):
     rows = []
     with open(path, newline="", encoding="utf-8-sig") as f:
-        for r in csv.DictReader(f):
-            row = {"timestamp": r["timestamp"], "ts": ts_ms(r["timestamp"]),
-                   "o": float(r["open"]), "h": float(r["high"]), "l": float(r["low"]),
-                   "c": float(r["close"]), "v": float(r.get("volume") or 0),
-                   "q": float(r.get("quote_volume") or 0)}
+        reader = csv.DictReader(f)
+        required = {"timestamp", "open", "high", "low", "close", "volume", "quote_volume"}
+        missing = required - set(reader.fieldnames or [])
+        if missing:
+            raise ValueError(f"Missing required columns in {path}: {sorted(missing)}")
+        for r in reader:
+            try:
+                row = {"timestamp": r["timestamp"], "ts": ts_ms(r["timestamp"]),
+                       "o": float(r["open"]), "h": float(r["high"]), "l": float(r["low"]),
+                       "c": float(r["close"]), "v": float(r["volume"]),
+                       "q": float(r["quote_volume"])}
+            except (TypeError, ValueError, KeyError) as exc:
+                raise ValueError(f"Invalid timestamp or numeric OHLCV field in {path}: {r}") from exc
             if (not all(math.isfinite(row[k]) for k in ("o", "h", "l", "c", "v", "q"))
                     or not all(row[k] > 0 for k in ("o", "h", "l", "c"))
                     or row["v"] < 0 or row["q"] < 0
