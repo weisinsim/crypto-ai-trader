@@ -63,14 +63,19 @@ def check_timeframe_alignment(candle_file, four_hour_file):
     hourly = timestamps(candle_file)
     four_hourly = timestamps(four_hour_file)
     missing = sorted(four_hourly - hourly)
+    # Binance UTC hourly close timestamps must end at xx:59:59.999.
+    one_hour_ms = 60 * 60 * 1000
+    hourly_misaligned = sorted(ts for ts in hourly if (ts + 1) % one_hour_ms != 0)
     # Binance UTC 4h candles close at 03:59:59.999, 07:59:59.999, etc.
     # For millisecond close timestamps, adding 1 ms must land on a 4h boundary.
     four_hour_ms = 4 * 60 * 60 * 1000
     misaligned = sorted(ts for ts in four_hourly if (ts + 1) % four_hour_ms != 0)
     return {
-        "pass": bool(hourly and four_hourly) and not missing and not misaligned,
+        "pass": bool(hourly and four_hourly) and not missing and not hourly_misaligned and not misaligned,
         "hourly_rows": len(hourly),
         "four_hour_rows": len(four_hourly),
+        "hourly_closes_off_utc_boundary": len(hourly_misaligned),
+        "hourly_misaligned_examples_ms": hourly_misaligned[:10],
         "four_hour_closes_missing_from_1h": len(missing),
         "missing_examples_ms": missing[:10],
         "four_hour_closes_off_utc_boundary": len(misaligned),
