@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from research.run_backtest import load_csv, max_drawdown_pct
+from research.run_backtest import load_csv, load_funding_csv, max_drawdown_pct
 
 
 class RunnerInputTests(unittest.TestCase):
@@ -42,6 +42,30 @@ class RunnerInputTests(unittest.TestCase):
     def test_load_csv_rejects_empty_file(self):
         path = self._write_csv([])
         self.assertEqual(load_csv(path, 3_600_000), [])
+
+    def _write_funding_csv(self, records):
+        handle = tempfile.NamedTemporaryFile(mode="w", newline="", encoding="utf-8", delete=False)
+        writer = csv.DictWriter(handle, fieldnames=("funding_time", "funding_rate", "mark_price", "symbol"))
+        writer.writeheader()
+        writer.writerows(records)
+        handle.close()
+        self.addCleanup(Path(handle.name).unlink, missing_ok=True)
+        return handle.name
+
+    def test_load_funding_csv_sorts_and_preserves_mark_price(self):
+        path = self._write_funding_csv([
+            {"funding_time": 200, "funding_rate": "0.001", "mark_price": "101", "symbol": "BTCUSDT"},
+            {"funding_time": 100, "funding_rate": "-0.001", "mark_price": "99", "symbol": "BTCUSDT"},
+        ])
+        rows = load_funding_csv(path)
+        self.assertEqual([row["funding_time"] for row in rows], [100, 200])
+        self.assertEqual(rows[0]["mark_price"], 99.0)
+
+    def test_load_funding_csv_rejects_duplicate_timestamps(self):
+        record = {"funding_time": 100, "funding_rate": "0.001", "mark_price": "100", "symbol": "BTCUSDT"}
+        path = self._write_funding_csv([record, record])
+        with self.assertRaisesRegex(ValueError, "duplicate funding timestamp"):
+            load_funding_csv(path)
 
 
 if __name__ == "__main__":
