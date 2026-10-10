@@ -67,6 +67,17 @@ class ExitAuditTests(unittest.TestCase):
         self.assertEqual(trades[0]["exit_reason"], "SL")
         self.assertEqual(trades[0]["gross_R"], -2.5)
 
+    def test_actual_funding_events_are_side_aware(self):
+        from validation.exit_parameter_audit import funding_cost_r
+        funding = [
+            {"ts": 10, "rate": 0.001},
+            {"ts": 20, "rate": -0.0005},
+            {"ts": 30, "rate": 0.002},
+        ]
+        # Funding at entry is excluded; event at exit is included.
+        self.assertAlmostEqual(funding_cost_r(funding, 10, 30, "LONG", 100, 2), 0.075)
+        self.assertAlmostEqual(funding_cost_r(funding, 10, 30, "SHORT", 100, 2), -0.075)
+
     def test_adverse_funding_sensitivity_is_subtracted_from_net_r(self):
         candles = [
             candle(0, 100, 101, 99, 100),
