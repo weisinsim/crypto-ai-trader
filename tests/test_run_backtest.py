@@ -13,6 +13,10 @@ class RunnerInputTests(unittest.TestCase):
         self.assertEqual(max_drawdown_pct(later_window), 10.0)
         self.assertEqual(max_drawdown_pct(earlier_history), 50.0)
 
+    def test_max_drawdown_includes_starting_equity_peak(self):
+        first_bar_loss = [{"t": 10, "equity": 0.8}, {"t": 11, "equity": 0.9}]
+        self.assertEqual(max_drawdown_pct(first_bar_loss, initial_equity=1.0), 20.0)
+
     def test_max_drawdown_empty_curve_is_zero(self):
         self.assertEqual(max_drawdown_pct([]), 0.0)
 
