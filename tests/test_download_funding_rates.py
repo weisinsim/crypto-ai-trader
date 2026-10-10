@@ -44,6 +44,21 @@ class FundingDownloaderTests(unittest.TestCase):
         get_json.return_value = []
         self.assertEqual(download("BTCUSDT", 1000, 2000), [])
 
+    @patch("validation.download_funding_rates.download_archive")
+    @patch("validation.download_funding_rates.get_json")
+    def test_region_restriction_falls_back_to_public_archive(self, get_json, archive):
+        from urllib.error import HTTPError
+        start = 1_735_689_600_000
+        end = start + 100_000
+        get_json.side_effect = HTTPError(
+            "https://fapi.binance.com/fapi/v1/fundingRate", 451,
+            "Unavailable For Legal Reasons", {}, None
+        )
+        archive.return_value = [{"timestamp": "2025-01-01T00:00:00Z", "funding_rate": "0.0001"}]
+        rows = download("BTCUSDT", start, end)
+        self.assertEqual(rows, archive.return_value)
+        archive.assert_called_once_with("BTCUSDT", start, end)
+
     @patch("validation.download_funding_rates.get_json")
     def test_download_rejects_nonadvancing_pagination(self, get_json):
         start = 1_735_689_600_000
