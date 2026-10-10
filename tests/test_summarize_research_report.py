@@ -21,7 +21,7 @@ class ResearchReportTests(unittest.TestCase):
                 },
                 "holdout_metrics_by_exit": {
                     "target_2.5R": {
-                        "signal_level": {"trades": 38, "win_rate_pct": 55.0, "profit_factor": 1.2, "net_R": 4.2, "avg_R": 0.11, "max_drawdown_R": 2.0},
+                        "signal_level": {"trades": 38, "win_rate_pct": 55.0, "profit_factor": 1.2, "net_R": 4.2, "avg_R": 0.11, "max_drawdown_R": 2.0, "max_win_R": 2.1, "largest_win_share_pct": 22.0, "top_three_wins_share_pct": 48.0},
                         "single_position": {"trades": 31, "win_rate_pct": 54.0, "profit_factor": 1.1, "net_R": 3.1, "avg_R": 0.1, "max_drawdown_R": 2.2},
                     },
                     "target_3.0R": {
@@ -41,6 +41,9 @@ class ResearchReportTests(unittest.TestCase):
         self.assertIn("Development vs Holdout comparison", report)
         self.assertIn("80 | 1.4000 | 12.0000", report)
         self.assertIn("not a full portfolio simulator", report)
+        self.assertIn("Largest win %", report)
+        self.assertIn("22.00", report)
+        self.assertIn("48.00", report)
 
     def test_non_research_status_is_listed_but_not_misrepresented_as_metrics(self):
         report = render({"reports": [{"symbol": "ETHUSDT", "cost_bps": 10, "status": "NO_SIGNALS"}]})
