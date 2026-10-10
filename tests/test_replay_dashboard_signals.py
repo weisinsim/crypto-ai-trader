@@ -2,7 +2,7 @@ import unittest
 import tempfile
 from pathlib import Path
 
-from validation.replay_dashboard_signals import ema, rsi, atr, replay, ts_ms, read_rows
+from validation.replay_dashboard_signals import ema, rsi, atr, replay, ts_ms, read_rows, closed_rows_at
 
 
 class ReplayDashboardSignalsTests(unittest.TestCase):
@@ -16,6 +16,10 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
             path.write_text("timestamp,open,high,low,close,volume,quote_volume\n2025-01-01T01:00:00Z,100,99,98,100,1,100\n", encoding="utf-8")
             with self.assertRaises(ValueError):
                 read_rows(path)
+
+    def test_only_closed_higher_timeframe_bars_are_used(self):
+        bars = [{"ts": 100, "c": 1}, {"ts": 200, "c": 2}, {"ts": 300, "c": 3}]
+        self.assertEqual(closed_rows_at(bars, 200), bars[:2])
 
     def test_ema_seed_and_trend(self):
         self.assertEqual(ema([1, 2, 3], 2), 2.5)
