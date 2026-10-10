@@ -14,6 +14,10 @@ SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT", "XRPUSDT"]
 COSTS = [5, 10, 20, 30]
 
 
+def holdout_max_trade_count(holdout):
+    return max((v.get("trades", 0) for v in holdout.values() if isinstance(v, dict)), default=0)
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--data-dir", default="data/historical")
@@ -50,7 +54,7 @@ def main():
                 continue
             result = json.loads(dest.read_text(encoding="utf-8"))
             holdout = result.get("periods", {}).get("holdout", {})
-            trades = max((v.get("trades", 0) for v in holdout.values() if isinstance(v, dict)), default=0)
+            trades = holdout_max_trade_count(holdout)
             reports.append({
                 "symbol": symbol, "cost_bps": cost,
                 "status": "RESEARCH_ONLY" if trades >= args.min_trades else "INSUFFICIENT_SAMPLE",
