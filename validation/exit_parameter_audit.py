@@ -104,7 +104,7 @@ def validate_funding_coverage(funding_rows, candles, expected_interval_seconds, 
     max_gap = max(max_gap_hours * 3600, expected_interval_seconds * 24)
     # Funding events are discrete and may not occur exactly on candle boundaries.
     # Allow bounded edge distance, but fail closed if either edge is too far away.
-    if events[0] - first_ts > max_gap or last_ts - events[-1] > max_gap:
+    if abs(events[0] - first_ts) > max_gap or abs(last_ts - events[-1]) > max_gap:
         raise ValueError(
             "Funding history does not adequately cover the candle window: "
             f"candles={first_ts}..{last_ts}, funding={events[0]}..{events[-1]}, "
