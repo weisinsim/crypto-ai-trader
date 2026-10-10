@@ -103,7 +103,7 @@ def run_ema_cross_backtest(
     max_dd = 0.0
     position = None
     trades = []
-    equity_curve = [equity]
+    equity_curve = [{"t": int(rows[0]["t"]), "equity": equity}]
     # Slippage affects fill prices; commissions are deducted separately on both fills.
 
     def finalize_position(pos: dict, bar: dict, exit_price: float, reason: str, current_equity: float):
@@ -212,7 +212,7 @@ def run_ema_cross_backtest(
                               - estimated_exit_fee - accrued_funding)
         peak = max(peak, marked_equity)
         max_dd = max(max_dd, (peak - marked_equity) / peak if peak else 0)
-        equity_curve.append(marked_equity)
+        equity_curve.append({"t": int(bar["t"]), "equity": marked_equity})
 
     if position is not None:
         bar = rows[-1]
@@ -221,6 +221,8 @@ def run_ema_cross_backtest(
         # Include the final liquidation value in maximum drawdown.
         peak = max(peak, equity)
         max_dd = max(max_dd, (peak - equity) / peak if peak else 0.0)
+        if equity_curve and equity_curve[-1]["t"] == int(bar["t"]):
+            equity_curve[-1]["equity"] = equity
 
     wins = [t["pnl_equity"] for t in trades if t["pnl_equity"] > 0]
     losses = [-t["pnl_equity"] for t in trades if t["pnl_equity"] < 0]
@@ -231,4 +233,4 @@ def run_ema_cross_backtest(
             "win_rate_pct": round(len(wins) / len(trades) * 100, 2) if trades else None,
             "profit_factor": round(sum(wins) / gross_loss, 4) if gross_loss else (None if not wins else "INF"),
             "expectancy_pct": round(sum(t["return_pct"] for t in trades) / len(trades), 4) if trades else None,
-            "equity_final": round(equity, 8), "trade_log": trades}
+            "equity_final": round(equity, 8), "equity_curve": equity_curve, "trade_log": trades}
