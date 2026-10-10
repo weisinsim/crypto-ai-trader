@@ -76,8 +76,8 @@ def render(manifest):
         "",
         "## Holdout metrics by cost, target, and execution mode",
         "",
-        "| Symbol | Cost (bps) | Target | Mode | Trades | Win rate % | Profit factor | Net R | Avg R | Max DD R |",
-        "|---|---:|---:|---|---:|---:|---:|---:|---:|---:|",
+        "| Symbol | Cost (bps) | Target | Mode | Trades | Win rate % | PF | Net R | Avg R | Max DD R | Max win R | Largest win % | Top 3 wins % |",
+        "|---|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ])
     for report in sorted(reports, key=lambda r: (r.get("symbol", ""), r.get("cost_bps", -1))):
         if report.get("status") not in ("RESEARCH_ONLY", "INSUFFICIENT_SAMPLE"):
@@ -90,7 +90,9 @@ def render(manifest):
                 lines.append(
                     f"| {report.get('symbol', '—')} | {report.get('cost_bps', '—')} | {target}R | {mode} | "
                     f"{m.get('trades', '—')} | {fmt(m.get('win_rate_pct'))} | {fmt(m.get('profit_factor'), 4)} | "
-                    f"{fmt(m.get('net_R'), 4)} | {fmt(m.get('avg_R'), 4)} | {fmt(m.get('max_drawdown_R'), 4)} |"
+                    f"{fmt(m.get('net_R'), 4)} | {fmt(m.get('avg_R'), 4)} | {fmt(m.get('max_drawdown_R'), 4)} | "
+                    f"{fmt(m.get('max_win_R'), 4)} | {fmt(m.get('largest_win_share_pct'))} | "
+                    f"{fmt(m.get('top_three_wins_share_pct'))} |"
                 )
     lines.extend([
         "",
