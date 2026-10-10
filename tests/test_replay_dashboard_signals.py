@@ -1,0 +1,35 @@
+import unittest
+
+from validation.replay_dashboard_signals import ema, rsi, atr, replay
+
+
+class ReplayDashboardSignalsTests(unittest.TestCase):
+    def test_ema_seed_and_trend(self):
+        self.assertEqual(ema([1, 2, 3], 2), 2.5)
+        self.assertGreater(ema(list(range(1, 30)), 5), ema(list(range(1, 30)), 10))
+
+    def test_rsi_rising_series_is_100(self):
+        self.assertEqual(rsi(list(range(1, 30))), 100.0)
+
+    def test_atr_positive(self):
+        close = [100 + i for i in range(20)]
+        high = [x + 2 for x in close]
+        low = [x - 1 for x in close]
+        self.assertGreater(atr(high, low, close), 0)
+
+    def test_eth_is_suppressed(self):
+        one = []
+        four = []
+        for i in range(240):
+            t = 1_700_000_000_000 + i * 3_600_000
+            c = 100 + i * 0.2
+            one.append({"timestamp": "2023-11-14T00:00:00Z", "ts": t, "o": c, "h": c+1, "l": c-1, "c": c, "v": 10, "q": 1000})
+        for i in range(70):
+            t = 1_700_000_000_000 + (i+1)*14_400_000 - 1
+            c = 100 + i * 0.8
+            four.append({"timestamp": "2023-11-14T00:00:00Z", "ts": t, "o": c, "h": c+2, "l": c-1, "c": c, "v": 40, "q": 4000})
+        self.assertEqual(replay("ETHUSDT", one, four), [])
+
+
+if __name__ == "__main__":
+    unittest.main()
