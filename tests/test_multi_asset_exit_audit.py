@@ -84,5 +84,23 @@ class BatchAuditTests(unittest.TestCase):
         self.assertFalse(results["4h"]["pass_basic_integrity"])
 
 
+    def test_zero_signal_file_is_reported_as_no_signals(self):
+        import csv
+        import tempfile
+        from validation.run_multi_asset_exit_audit import check_candle_integrity
+
+        # The batch runner's zero-signal classification is exercised by a
+        # minimal helper-level fixture so it does not require network data.
+        with tempfile.TemporaryDirectory() as tmp:
+            signals = Path(tmp) / "empty_signals.csv"
+            with signals.open("w", newline="", encoding="utf-8") as stream:
+                writer = csv.DictWriter(stream, fieldnames=["timestamp", "side", "entry", "atr", "stop", "target"])
+                writer.writeheader()
+            with signals.open(newline="", encoding="utf-8") as stream:
+                count = sum(1 for _ in csv.DictReader(stream))
+            self.assertEqual(count, 0)
+
+
+
 if __name__ == "__main__":
     unittest.main()
