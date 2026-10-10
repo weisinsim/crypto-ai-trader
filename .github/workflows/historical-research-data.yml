@@ -9,9 +9,9 @@ on:
         default: "2026-04-10"
         type: string
       end_date:
-        description: "UTC exclusive end date (YYYY-MM-DD)"
+        description: "UTC exclusive end date (YYYY-MM-DD); use a completed-month boundary for public funding archives"
         required: true
-        default: "2026-10-05"
+        default: "2026-10-01"
         type: string
 
 permissions:
