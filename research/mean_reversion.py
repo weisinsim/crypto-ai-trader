@@ -7,7 +7,7 @@ import math
 from pathlib import Path
 from statistics import median
 
-from research.run_backtest import load_csv
+from research.run_backtest import load_csv, load_funding_csv
 
 
 GRID = [
@@ -55,7 +55,8 @@ def atr_series(rows: list[dict], period: int = 14) -> list[float | None]:
 
 
 def simulate(rows: list[dict], params: dict, start: int, end: int,
-             fee: float = 0.0005, slippage: float = 0.0002) -> dict:
+             fee: float = 0.0005, slippage: float = 0.0002,
+             funding_rates: list[dict] | None = None, symbol: str | None = None) -> dict:
     if not 0 <= start < end <= len(rows):
         raise ValueError("invalid evaluation range")
     if any(not math.isfinite(x) or x < 0 for x in (fee, slippage)):
@@ -65,6 +66,19 @@ def simulate(rows: list[dict], params: dict, start: int, end: int,
     direction = params.get("direction", "BOTH")
     if direction not in ("BOTH", "LONG", "SHORT"):
         raise ValueError("direction must be BOTH, LONG, or SHORT")
+    if funding_rates is not None:
+        if not symbol:
+            raise ValueError("symbol is required when funding_rates are supplied")
+        if any(event.get("symbol", "").upper() != symbol.upper() for event in funding_rates):
+            raise ValueError("funding CSV symbol does not match --symbol")
+        if any(not math.isfinite(float(event["funding_rate"])) or
+               not math.isfinite(float(event["mark_price"])) or float(event["mark_price"]) <= 0
+               for event in funding_rates):
+            raise ValueError("funding data contains invalid rates or mark prices")
+        funding_rates = sorted(funding_rates, key=lambda event: int(event["funding_time"]))
+        if any(int(a["funding_time"]) == int(b["funding_time"])
+               for a, b in zip(funding_rates, funding_rates[1:])):
+            raise ValueError("duplicate funding timestamp")
     mean_line, std_line, rsi_line = indicators(rows, window)
     atr = atr_series(rows)
     equity, peak, max_dd, trades = 1.0, 1.0, 0.0, []
@@ -115,12 +129,27 @@ def simulate(rows: list[dict], params: dict, start: int, end: int,
             if target_hit:
                 exit_idx, exit_price, reason = j, target, "MEAN_TARGET"
                 break
-        pnl = qty*(exit_price-entry)*side - qty*(entry+exit_price)*(fee+slippage)
+        price_pnl = qty*(exit_price-entry)*side
+        trading_cost = qty*(entry+exit_price)*(fee+slippage)
+        # Candle timestamps are open times; same-timestamp entry settlements are excluded.
+        entry_ts = int(rows[entry_idx]["t"])
+        exit_ts = int(rows[exit_idx]["t"])
+        funding_pnl = 0.0
+        funding_events = 0
+        if funding_rates is not None:
+            for event in funding_rates:
+                ts = int(event["funding_time"])
+                if entry_ts < ts <= exit_ts:
+                    funding_pnl += -side * qty * float(event["mark_price"]) * float(event["funding_rate"])
+                    funding_events += 1
+        pnl = price_pnl - trading_cost + funding_pnl
         before = equity
         equity = max(1e-6, equity+pnl)
         trades.append({"side":"LONG" if side == 1 else "SHORT", "entry_time":rows[entry_idx]["t"],
                        "exit_time":rows[exit_idx]["t"], "reason":reason,
                        "entry_price":entry, "exit_price":exit_price, "quantity":qty,
+                       "price_pnl_equity":price_pnl, "trading_cost_equity":trading_cost,
+                       "funding_pnl_equity":funding_pnl, "funding_events":funding_events,
                        "pnl_equity":equity-before, "return_pct":(equity/before-1)*100})
         peak = max(peak, equity)
         max_dd = max(max_dd, (peak-equity)/peak if peak else 0)
@@ -156,9 +185,18 @@ def main():
     parser.add_argument("--symbol", required=True)
     parser.add_argument("--interval", choices=("1h",), default="1h")
     parser.add_argument("--train-fraction", type=float, default=0.6)
+    parser.add_argument("--funding-csv", help="optional historical funding CSV from research.funding_data")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     rows = load_csv(args.csv, 3_600_000)
+    historical_funding = load_funding_csv(args.funding_csv) if args.funding_csv else None
+    if historical_funding is not None:
+        if historical_funding[0]["symbol"] != args.symbol.upper():
+            raise ValueError("funding CSV symbol does not match --symbol")
+        historical_funding = [event for event in historical_funding
+                              if rows[0]["t"] <= event["funding_time"] <= rows[-1]["t"]]
+        if not historical_funding:
+            raise ValueError("funding CSV has no settlement events inside candle data range")
     if len(rows) < 1000:
         raise ValueError("mean-reversion research requires at least 1000 hourly bars")
     if not 0.3 <= args.train_fraction <= 0.8:
@@ -171,7 +209,7 @@ def main():
     windows = [(eval_start+n*width, split if n==2 else eval_start+(n+1)*width) for n in range(3)]
     candidates=[]
     for p in GRID:
-        folds=[simulate(rows[:b],p,a,b) for a,b in windows]
+        folds=[simulate(rows[:b],p,a,b, funding_rates=historical_funding, symbol=args.symbol) for a,b in windows]
         returns=[f["net_return_pct"] for f in folds]
         dds=[f["max_drawdown_pct"] for f in folds]
         positive=sum(x>0 for x in returns)
@@ -189,11 +227,11 @@ def main():
     diagnostic=sorted(candidates,key=lambda x:x["score"],reverse=True)[0] if candidates else None
     holdout=stress=None
     if selected:
-        holdout=simulate(rows,selected["parameters"],split,len(rows))
-        stress=simulate(rows,selected["parameters"],split,len(rows),fee=0.0005,slippage=0.001)
+        holdout=simulate(rows,selected["parameters"],split,len(rows), funding_rates=historical_funding, symbol=args.symbol)
+        stress=simulate(rows,selected["parameters"],split,len(rows),fee=0.0005,slippage=0.001, funding_rates=historical_funding, symbol=args.symbol)
     elif diagnostic:
-        holdout=simulate(rows,diagnostic["parameters"],split,len(rows))
-        stress=simulate(rows,diagnostic["parameters"],split,len(rows),fee=0.0005,slippage=0.001)
+        holdout=simulate(rows,diagnostic["parameters"],split,len(rows), funding_rates=historical_funding, symbol=args.symbol)
+        stress=simulate(rows,diagnostic["parameters"],split,len(rows),fee=0.0005,slippage=0.001, funding_rates=historical_funding, symbol=args.symbol)
     report={"status":"RESEARCH_ONLY","symbol":args.symbol.upper(),"interval":args.interval,"bars":len(rows),
             "split":{"train_fraction":args.train_fraction,"train_bars":split,"holdout_bars":len(rows)-split},
             "strategy":"causal rolling mean-reversion: prior-window z-score, optional RSI extreme filter, direction-specific candidate (BOTH/LONG/SHORT), next-open entry, mean target, ATR stop; conservative stop-first same-bar handling",
@@ -206,13 +244,23 @@ def main():
             "holdout":{k:v for k,v in holdout.items() if k!="trade_log"} if holdout else None,
             "holdout_interpretation":"SELECTED_CANDIDATE" if selected else "DIAGNOSTIC_ONLY_NOT_SELECTED",
             "stress_holdout_0_30pct_round_trip":{k:v for k,v in stress.items() if k!="trade_log"} if stress else None,
-            "warnings":["Research only; historical funding not included.","No deployment decision without independent forward validation."]}
+            "funding_data": ({"source": args.funding_csv, "records": len(historical_funding),
+                              "first_ts": historical_funding[0]["funding_time"],
+                              "last_ts": historical_funding[-1]["funding_time"],
+                              "symbol": historical_funding[0]["symbol"],
+                              "timing_convention": "funding settlement timestamps strictly after entry-bar open through exit-bar open"}
+                             if historical_funding else {"source": None, "records": 0}),
+            "funding_pnl_holdout_equity": round(sum(t["funding_pnl_equity"] for t in (holdout or {}).get("trade_log", []))*100, 4),
+            "warnings":["Research only; funding is applied only when a historical funding CSV is supplied.",
+                        "Funding timing uses candle open timestamps; same-timestamp entry events are excluded because OHLC data cannot resolve intrabar ordering.",
+                        "No deployment decision without independent forward validation."]}
     Path(args.output).parent.mkdir(parents=True,exist_ok=True)
     Path(args.output).write_text(json.dumps(report,indent=2),encoding="utf-8")
     print(f"status=RESEARCH_ONLY symbol={args.symbol.upper()} candidates={len(candidates)} eligible={len(eligible)} selected={bool(selected)}")
     print(f"selected_parameters={report['selected_parameters']}")
     print(f"holdout={report['holdout']}")
     print(f"stress_holdout={report['stress_holdout_0_30pct_round_trip']}")
+    print(f"funding_data={report['funding_data']} funding_pnl_holdout_equity={report['funding_pnl_holdout_equity']}")
     print("top_training_candidates="+json.dumps([{k:x[k] for k in ("parameters","median_fold_return_pct","median_fold_drawdown_pct","positive_folds","worst_fold_return_pct","score","eligible")} for x in sorted(candidates,key=lambda x:x["score"],reverse=True)[:3]]))
 
 
