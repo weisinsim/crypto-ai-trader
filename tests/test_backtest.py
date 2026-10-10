@@ -45,6 +45,14 @@ class BacktestTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             run_ema_cross_backtest(rows, fast=10, slow=5)
 
+    def test_risk_fraction_must_be_between_zero_and_one(self):
+        rows = candles_from_closes([100 + (i % 5) for i in range(80)])
+        for risk in (0, -0.1, 1.1):
+            with self.subTest(risk=risk):
+                with self.assertRaises(ValueError):
+                    run_ema_cross_backtest(rows, fast=3, slow=7, atr_period=3,
+                                           risk_fraction=risk)
+
     def test_same_bar_stop_and_target_prefers_stop(self):
         rows = candles_from_closes([100 + (i % 3) for i in range(80)])
         result = run_ema_cross_backtest(rows, fast=3, slow=7, atr_period=3, stop_atr=.1,
