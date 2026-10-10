@@ -120,6 +120,7 @@ def simulate(rows: list[dict], params: dict, start: int, end: int,
         equity = max(1e-6, equity+pnl)
         trades.append({"side":"LONG" if side == 1 else "SHORT", "entry_time":rows[entry_idx]["t"],
                        "exit_time":rows[exit_idx]["t"], "reason":reason,
+                       "entry_price":entry, "exit_price":exit_price, "quantity":qty,
                        "pnl_equity":equity-before, "return_pct":(equity/before-1)*100})
         peak = max(peak, equity)
         max_dd = max(max_dd, (peak-equity)/peak if peak else 0)
