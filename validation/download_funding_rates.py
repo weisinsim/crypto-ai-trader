@@ -50,21 +50,35 @@ def get_json(params, retries=5):
 
 
 def parse_archive_row(item, symbol, start_ms, end_ms):
-    """Parse Binance Vision rows with or without interval-hours column."""
+    """Parse Binance Vision funding rows across known column layouts.
+
+    Archive schemas have appeared with the funding interval (e.g. 8 hours)
+    either before or after the rate. A rate is a decimal fraction, not the
+    interval-hours field; reject rows when no plausible decimal rate exists.
+    """
     if not item or len(item) < 2 or not item[0].isdigit():
         return None
     ts = int(item[0])
     if not start_ms <= ts < end_ms:
         return None
-    try:
-        rate = float(item[-1])
-    except (TypeError, ValueError) as exc:
-        raise RuntimeError(f"Invalid funding rate in archive row for {symbol}: {item!r}") from exc
-    import math
-    if not math.isfinite(rate):
-        raise RuntimeError(f"Non-finite funding rate in archive row for {symbol}: {item!r}")
-    return {"timestamp": iso_utc(ts), "funding_rate": str(rate)}
 
+    import math
+    numeric = []
+    for value in item[1:]:
+        try:
+            candidate = float(value)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(candidate) and abs(candidate) <= 0.05:
+            numeric.append(candidate)
+    if not numeric:
+        raise RuntimeError(
+            f"No plausible decimal funding rate found in archive row for {symbol}: {item!r}"
+        )
+    # If an archive row contains multiple plausible decimal fields, prefer the
+    # last one, matching the canonical calc_time, interval_hours, rate layout.
+    rate = numeric[-1]
+    return {"timestamp": iso_utc(ts), "funding_rate": str(rate)}
 
 def download_archive(symbol, start_ms, end_ms):
     """Fallback to Binance public funding-rate archives if REST is region-blocked."""
