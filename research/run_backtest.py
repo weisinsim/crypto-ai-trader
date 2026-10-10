@@ -51,12 +51,11 @@ def main() -> None:
                   slippage_rate=args.slippage_rate,
                   funding_rate_per_bar=args.funding_rate_per_bar)
     split = int(len(rows) * args.train_fraction)
-    warmup = rows[max(0, split - args.slow * 3):split]
+    # Use all pre-holdout history to preserve EMA/ATR state. The timestamp
+    # gate excludes entries before the untouched holdout boundary.
     holdout = rows[split:]
-    # Include prior bars for indicator warm-up, but report only trades whose
-    # entries occur at or after the holdout boundary.
     boundary_ts = holdout[0]["t"]
-    holdout_result = run_ema_cross_backtest(warmup + holdout, trade_start_ts=boundary_ts, **common)
+    holdout_result = run_ema_cross_backtest(rows, trade_start_ts=boundary_ts, **common)
     holdout_trades = holdout_result["trade_log"]
     # Convert fixed-notional trade PnL to the starting-equity basis used by the runner.
     holdout_pnls = [t["pnl_equity"] for t in holdout_trades]
@@ -72,9 +71,10 @@ def main() -> None:
         b = n if fold == args.folds - 1 else min(n, a + eval_width)
         if b - a < args.slow + 2:
             continue
-        history_start = max(0, a - args.slow * 3)
+        # Expanding-window evaluation: preserve all historical indicator
+        # state available before the fold, but only count entries in this fold.
         start_ts = rows[a]["t"]
-        fold_result = run_ema_cross_backtest(rows[history_start:b], trade_start_ts=start_ts, **common)
+        fold_result = run_ema_cross_backtest(rows[:b], trade_start_ts=start_ts, **common)
         fold_trades = fold_result["trade_log"]
         walk_results.append({
             "fold": fold + 1, "start_ts": start_ts, "end_ts": rows[b - 1]["t"],
@@ -93,7 +93,7 @@ def main() -> None:
         "bars": len(rows), "first_ts": rows[0]["t"], "last_ts": rows[-1]["t"],
         "parameters": common,
         "split": {"train_fraction": args.train_fraction, "boundary_ts": boundary_ts,
-                  "warmup_bars": len(warmup), "holdout_bars": len(holdout)},
+                  "warmup_bars": split, "holdout_bars": len(holdout)},
         "holdout": {
             "bars": len(holdout), "trades": len(holdout_trades),
             "net_return_pct": round(sum(holdout_pnls) * 100, 4),
@@ -105,7 +105,7 @@ def main() -> None:
         "walk_forward": walk_results,
         "warnings": [
             "This runner evaluates a fixed EMA baseline; it does not optimize or certify a profitable model.",
-            "Trade-level returns are not compounded portfolio returns; inspect the trade log and equity path before interpreting profitability.",
+            "Equity starts at 1.0 and position size scales with current realized equity; inspect the trade log and drawdown assumptions before interpreting profitability.",
             "Funding is a constant per-bar assumption here, not historical realized funding. Use a historical funding series before production decisions.",
             "All report results require independent review of CSV coverage, exchange data and execution assumptions."
         ],
