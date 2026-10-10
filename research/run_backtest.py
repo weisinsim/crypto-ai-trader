@@ -22,10 +22,12 @@ def load_csv(path: str, interval_ms: int) -> list[dict]:
     return validate_candles(rows, interval_ms=interval_ms)
 
 
-def max_drawdown_pct(points: list[dict]) -> float:
-    """Compute peak-to-trough drawdown from timestamped marked equity points."""
-    peak = 0.0
+def max_drawdown_pct(points: list[dict], initial_equity: float = 1.0) -> float:
+    """Compute peak-to-trough drawdown, including the evaluation's starting equity."""
+    peak = float(initial_equity)
     max_dd = 0.0
+    if peak > 0:
+        max_dd = max(max_dd, (peak - float(initial_equity)) / peak)
     for point in points:
         value = float(point["equity"])
         peak = max(peak, value)
