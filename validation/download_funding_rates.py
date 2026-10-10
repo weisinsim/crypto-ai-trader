@@ -81,7 +81,22 @@ def download_archive(symbol, start_ms, end_ms):
                         continue
                     ts = int(item[0])
                     if start_ms <= ts < end_ms:
-                        rows.append({"timestamp": iso_utc(ts), "funding_rate": item[1]})
+                        # Binance Vision fundingRate archives can include
+                        # funding_interval_hours as the second column, e.g.
+                        # timestamp,8,0.0001. The rate is the final column;
+                        # using item[1] silently treated "8 hours" as an 800%
+                        # funding rate and corrupted every R-multiple metric.
+                        try:
+                            rate = float(item[-1])
+                        except (TypeError, ValueError) as exc:
+                            raise RuntimeError(
+                                f"Invalid funding rate in archive row for {symbol}: {item!r}"
+                            ) from exc
+                        if not __import__("math").isfinite(rate):
+                            raise RuntimeError(
+                                f"Non-finite funding rate in archive row for {symbol}: {item!r}"
+                            )
+                        rows.append({"timestamp": iso_utc(ts), "funding_rate": str(rate)})
         return True
 
     month = start.replace(day=1)
