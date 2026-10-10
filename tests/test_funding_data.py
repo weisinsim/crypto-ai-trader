@@ -34,7 +34,7 @@ class FundingDataTests(unittest.TestCase):
             if params["startTime"] <= 100:
                 return [record(100)]
             return [record(100, "0.0002")]
-        with self.assertRaisesRegex(ValueError, "conflicting"):
+        with self.assertRaisesRegex(RuntimeError, "did not advance"):
             download_funding_rates("BTCUSDT", 100, 200, fetch_page=fake_fetch, limit=1, pause_seconds=0)
 
 
