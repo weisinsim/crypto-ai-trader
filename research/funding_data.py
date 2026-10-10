@@ -11,7 +11,7 @@ from typing import Callable
 import httpx
 
 BASE_URL = "https://fapi.binance.com"
-FIELDS = ("funding_time", "funding_rate", "symbol")
+FIELDS = ("funding_time", "funding_rate", "mark_price", "symbol")
 
 
 def parse_funding_rows(raw_rows: list[dict], symbol: str, start_ms: int, end_ms: int) -> list[dict]:
@@ -19,10 +19,12 @@ def parse_funding_rows(raw_rows: list[dict], symbol: str, start_ms: int, end_ms:
     for raw in raw_rows:
         ts = int(raw["fundingTime"])
         rate = float(raw["fundingRate"])
-        if not isfinite(rate):
-            raise ValueError(f"non-finite funding rate at {ts}")
+        mark_price = float(raw["markPrice"])
+        if not isfinite(rate) or not isfinite(mark_price) or mark_price <= 0:
+            raise ValueError(f"invalid funding rate or mark price at {ts}")
         if start_ms <= ts < end_ms:
-            rows.append({"funding_time": ts, "funding_rate": rate, "symbol": symbol.upper()})
+            rows.append({"funding_time": ts, "funding_rate": rate,
+                         "mark_price": mark_price, "symbol": symbol.upper()})
     rows.sort(key=lambda row: row["funding_time"])
     for left, right in zip(rows, rows[1:]):
         if left["funding_time"] == right["funding_time"]:
