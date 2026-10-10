@@ -149,13 +149,20 @@ def main():
     if not signals:
         raise SystemExit("No signals found. No backtest was performed.")
     split_i = int(len(candles) * (1 - a.holdout_fraction))
+    candle_ts = {c["ts"] for c in candles}
+    matched_count = sum(s["ts"] in candle_ts for s in signals)
+    unmatched_count = len(signals) - matched_count
+    if matched_count == 0:
+        raise SystemExit("No signal timestamps match candle timestamps; check timestamp convention and timezone. No backtest was performed.")
     split_ts = candles[split_i]["ts"]
     periods = {"development": [s for s in signals if s["ts"] < split_ts],
                "holdout": [s for s in signals if s["ts"] >= split_ts]}
     output = {
         "notice": "Exit comparison only; not a validated strategy or investment recommendation.",
         "inputs": {"candle_rows": len(candles), "signal_rows": len(signals),
-                   "matched_signal_rows": sum(s["ts"] in {c["ts"] for c in candles} for s in signals),
+                   "matched_signal_rows": matched_count,
+                   "unmatched_signal_rows": unmatched_count,
+                   "signal_timestamp_match_pct": round(100 * matched_count / len(signals), 2),
                    "holdout_start_epoch": split_ts, "stop_atr_fallback": a.stop_atr,
                    "uses_signal_stop_when_present": True,
                    "round_trip_cost_bps": a.cost_bps, "max_hold_candles": a.max_hold},
