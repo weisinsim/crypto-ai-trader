@@ -20,7 +20,7 @@ class FundingArchiveParserTests(unittest.TestCase):
 
     def test_archive_parser_rejects_non_numeric_rate(self):
         ts = utc_ms("2025-01-01T00:00:00Z")
-        with self.assertRaisesRegex(RuntimeError, "Invalid funding rate"):
+        with self.assertRaisesRegex(RuntimeError, "No plausible decimal funding rate"):
             parse_archive_row([str(ts), "8", "not-a-rate"], "BTCUSDT", ts, ts + 1)
 
     def test_three_column_archive_with_interval_last_uses_decimal_rate(self):
@@ -33,10 +33,10 @@ class FundingArchiveParserTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "No plausible decimal funding rate"):
             parse_archive_row([str(ts), "8"], "BTCUSDT", ts, ts + 1)
 
-    def test_rejects_rate_above_sanity_limit_even_if_last_column(self):
+    def test_ignores_interval_hours_after_decimal_rate(self):
         ts = utc_ms("2025-01-01T00:00:00Z")
-        with self.assertRaisesRegex(RuntimeError, "No plausible decimal funding rate"):
-            parse_archive_row([str(ts), "0.0001", "8"], "BTCUSDT", ts, ts + 1)
+        row = parse_archive_row([str(ts), "0.0001", "8"], "BTCUSDT", ts, ts + 1)
+        self.assertEqual(row["funding_rate"], "0.0001")
 
 
 if __name__ == "__main__":
