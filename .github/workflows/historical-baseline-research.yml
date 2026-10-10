@@ -49,6 +49,7 @@ jobs:
             --start "$START" --end "$END" \
             --output "data/${SYMBOL}_1h.csv"
       - name: Download historical funding rates
+        continue-on-error: true
         env:
           SYMBOL: ${{ matrix.symbol }}
           DAYS: ${{ inputs.days || '365' }}
@@ -128,12 +129,22 @@ jobs:
         env:
           SYMBOL: ${{ matrix.symbol }}
         run: |
-          python -m research.mean_reversion \
-            --csv "data/${SYMBOL}_1h.csv" \
-            --symbol "${SYMBOL}" --interval 1h \
-            --train-fraction 0.6 \
-            --funding-csv "data/${SYMBOL}_funding.csv" \
-            --output "reports/${SYMBOL}_1h_mean_reversion.json"
+          if [ -s "data/${SYMBOL}_funding.csv" ]; then
+            echo "Historical funding available; applying funding cashflows."
+            python -m research.mean_reversion \
+              --csv "data/${SYMBOL}_1h.csv" \
+              --symbol "${SYMBOL}" --interval 1h \
+              --train-fraction 0.6 \
+              --funding-csv "data/${SYMBOL}_funding.csv" \
+              --output "reports/${SYMBOL}_1h_mean_reversion.json"
+          else
+            echo "::warning::Historical funding unavailable (possibly exchange API jurisdiction restriction); running explicitly unfunded research only."
+            python -m research.mean_reversion \
+              --csv "data/${SYMBOL}_1h.csv" \
+              --symbol "${SYMBOL}" --interval 1h \
+              --train-fraction 0.6 \
+              --output "reports/${SYMBOL}_1h_mean_reversion.json"
+          fi
       - name: Print mean-reversion research summary
         if: success()
         env:
