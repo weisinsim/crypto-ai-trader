@@ -105,6 +105,15 @@ jobs:
           print(f"holdout={report['holdout']}")
           print("WARNING: historical funding is not included; research-only.")
           PY
+      - name: Run breakout-retest-confirmation research
+        env:
+          SYMBOL: ${{ matrix.symbol }}
+        run: |
+          python -m research.breakout_retest \
+            --csv "data/${SYMBOL}_1h.csv" \
+            --symbol "${SYMBOL}" --interval 1h \
+            --train-fraction 0.6 \
+            --output "reports/${SYMBOL}_1h_breakout_retest.json"
       - name: Upload raw data and report
         if: always()
         uses: actions/upload-artifact@v4
@@ -114,5 +123,6 @@ jobs:
             data/${{ matrix.symbol }}_1h.csv
             reports/${{ matrix.symbol }}_1h_baseline.json
             reports/${{ matrix.symbol }}_1h_adaptive.json
+            reports/${{ matrix.symbol }}_1h_breakout_retest.json
           if-no-files-found: warn
           retention-days: 30
