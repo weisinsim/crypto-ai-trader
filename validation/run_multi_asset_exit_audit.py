@@ -202,10 +202,15 @@ def main():
                     "audit_file": str(dest),
                 })
                 continue
+            development = result.get("periods", {}).get("development", {})
             holdout = result.get("periods", {}).get("holdout", {})
             trades = holdout_max_trade_count(holdout)
             min_variant_trades = holdout_min_trade_count(holdout)
             inputs = result.get("inputs", {})
+            development_metrics = {
+                key: value for key, value in development.items()
+                if isinstance(value, dict) and ("signal_level" in value or "single_position" in value)
+            }
             variant_metrics = {
                 key: value for key, value in holdout.items()
                 if isinstance(value, dict) and ("signal_level" in value or "single_position" in value)
@@ -217,6 +222,7 @@ def main():
                 "holdout_max_trade_count_across_exit_variants": trades,
                 "signal_timestamp_match_pct": inputs.get("signal_timestamp_match_pct"),
                 "candle_integrity": {k: v.get("pass_basic_integrity") for k, v in integrity.items()},
+                "development_metrics_by_exit": development_metrics,
                 "holdout_metrics_by_exit": variant_metrics,
                 "audit_file": str(dest),
                 "funding_history_used": bool(used_funding_file),
