@@ -71,6 +71,7 @@ def run_ema_cross_backtest(
     slippage_rate: float = 0.0002,
     funding_rate_per_bar: float = 0.0,
     allow_short: bool = True,
+    risk_fraction: float = 0.01,
 ) -> dict:
     """Next-open EMA cross baseline with fixed-risk exits and conservative same-bar ordering.
 
@@ -86,6 +87,8 @@ def run_ema_cross_backtest(
         raise ValueError("stop_atr and target_atr must be positive")
     if min(fee_rate, slippage_rate) < 0:
         raise ValueError("fee and slippage rates cannot be negative")
+    if not 0 < risk_fraction <= 1:
+        raise ValueError("risk_fraction must be in (0, 1]")
     if len(rows) < slow + 2:
         return {"status": "INSUFFICIENT_DATA", "bars": len(rows), "trades": 0,
                 "net_return_pct": 0.0, "max_drawdown_pct": 0.0, "win_rate_pct": None,
@@ -115,8 +118,15 @@ def run_ema_cross_backtest(
             else:
                 stop_hit = float(bar["h"]) >= position["stop"]
                 target_hit = float(bar["l"]) <= position["target"]
-            if stop_hit:  # conservative if stop and target both touch in one candle
-                exit_price, reason = position["stop"], "STOP"
+            if stop_hit:  # stop first if both barriers touch in one candle
+                # Model adverse opening gaps through a stop at the worse open price.
+                if position["side"] == 1 and float(bar["o"]) < position["stop"]:
+                    exit_price = float(bar["o"])
+                elif position["side"] == -1 and float(bar["o"]) > position["stop"]:
+                    exit_price = float(bar["o"])
+                else:
+                    exit_price = position["stop"]
+                reason = "STOP"
             elif target_hit:
                 exit_price, reason = position["target"], "TARGET"
             elif i == len(rows) - 1:
@@ -148,16 +158,25 @@ def run_ema_cross_backtest(
                 open_price = float(bar["o"])
                 risk = float(atrs[i - 1]) * stop_atr
                 entry_fill = open_price * (1 + slippage_rate if side == 1 else 1 - slippage_rate)
+                # Risk-based sizing, capped at 1x equity notional (no leverage).
+                qty_by_risk = equity * risk_fraction / max(risk, 1e-12)
+                qty_by_notional = equity / max(entry_fill, 1e-12)
+                qty = min(qty_by_risk, qty_by_notional)
                 position = {"side": side, "entry_fill": entry_fill,
                             "stop": open_price - side * risk,
                             "target": open_price + side * risk * target_atr,
                             "entry_time": int(bar["t"]), "bars_held": 0,
-                            "equity_before": equity,
-                            "qty": equity / max(entry_fill, 1e-12),
-                            "entry_fee": abs((equity / max(entry_fill, 1e-12)) * entry_fill) * fee_rate}
-        peak = max(peak, equity)
-        max_dd = max(max_dd, (peak - equity) / peak if peak else 0)
-        equity_curve.append(equity)
+                            "equity_before": equity, "qty": qty,
+                            "entry_fee": abs(qty * entry_fill) * fee_rate}
+        # Mark open positions to market so drawdown includes unrealized losses.
+        marked_equity = equity
+        if position is not None:
+            mark_price = float(bar["c"])
+            marked_equity += position["qty"] * position["side"] * (mark_price - position["entry_fill"])
+            marked_equity -= abs(position["qty"] * mark_price) * fee_rate
+        peak = max(peak, marked_equity)
+        max_dd = max(max_dd, (peak - marked_equity) / peak if peak else 0)
+        equity_curve.append(marked_equity)
 
     if position is not None:
         bar = rows[-1]
