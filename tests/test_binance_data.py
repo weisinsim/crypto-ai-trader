@@ -36,6 +36,16 @@ class BinanceDataTests(unittest.TestCase):
             download_klines("BTCUSDT", "1h", 0, 3 * 3_600_000,
                             fetch_page=fake_fetch, limit=1, pause_seconds=0)
 
+    def test_rejects_invalid_symbol(self):
+        with self.assertRaisesRegex(ValueError, "symbol"):
+            download_klines("BTC/USDT", "1h", 0, 3_600_000,
+                            fetch_page=lambda _: [], pause_seconds=0)
+
+    def test_rejects_negative_pause(self):
+        with self.assertRaisesRegex(ValueError, "pause_seconds"):
+            download_klines("BTCUSDT", "1h", 0, 3_600_000,
+                            fetch_page=lambda _: [], pause_seconds=-1)
+
     def test_requires_aligned_boundaries(self):
         with self.assertRaises(ValueError):
             download_klines("BTCUSDT", "1h", 1, 3_600_000,
