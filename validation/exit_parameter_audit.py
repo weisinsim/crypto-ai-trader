@@ -3,8 +3,8 @@
 
 candles.csv columns: timestamp,open,high,low,close
 signals.csv columns: timestamp,side,entry,atr
-Timestamps must match candle timestamps exactly. Each signal is entered at its
-recorded close and evaluated from the NEXT candle onward. Same-candle stop and
+Timestamps must match candle OPEN timestamps exactly. Each signal assumes entry
+at the recorded price after that signal candle closes and is evaluated from the NEXT candle onward. Same-candle stop and
 target collisions are resolved as stop-first. Costs are round-trip bps of entry
 notional, converted to R. The final holdout is chronological, not shuffled.
 
