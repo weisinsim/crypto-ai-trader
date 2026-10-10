@@ -386,6 +386,26 @@ class ExitAuditTests(unittest.TestCase):
         self.assertEqual(stats["overlapping_trade_count"], 2)
         self.assertEqual(stats["max_concurrent_trades"], 2)
 
+    def test_trade_evidence_contains_gross_cost_funding_and_net_r(self):
+        from validation.exit_parameter_audit import evaluate
+        candles = [
+            candle(1, 100, 101, 99, 100),
+            candle(2, 100, 106, 99, 105),
+            candle(3, 105, 106, 104, 105),
+        ]
+        signals = [{"ts": 1, "side": "LONG", "entry": 100, "atr": 1}]
+        trades = evaluate(candles, signals, target_r=2.5, stop_atr=2,
+                          cost_bps=10, max_hold=1)
+        self.assertEqual(len(trades), 1)
+        trade = trades[0]
+        self.assertIn("gross_R", trade)
+        self.assertIn("cost_R", trade)
+        self.assertIn("funding_R", trade)
+        self.assertIn("net_R", trade)
+        self.assertIn("exit_reason", trade)
+        self.assertEqual(trade["exit_reason"], "TP")
+        self.assertAlmostEqual(trade["net_R"], trade["gross_R"] - trade["cost_R"] - trade["funding_R"])
+
     def test_summary_counts_trades(self):
         stats = summarize([
             {"net_R": 2.0, "exit_reason": "TP"},
