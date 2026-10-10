@@ -51,6 +51,11 @@ class FundingHistoryAuditTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Non-finite"):
             audit(path)
 
+    def test_rejects_implausible_funding_rate_unit_error(self):
+        path = self.write_csv([("2025-01-01T00:00:00Z", "8")])
+        with self.assertRaisesRegex(ValueError, "sanity limit"):
+            audit(path)
+
     def test_empty_file_fails_closed(self):
         path = self.write_csv([])
         self.assertFalse(audit(path)["pass_basic_integrity"])
