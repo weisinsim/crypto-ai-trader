@@ -88,6 +88,15 @@ def read_funding(path):
             rate = float(row["funding_rate"])
             if not math.isfinite(rate):
                 raise ValueError("Funding rates must be finite")
+            # Binance funding rates are decimal fractions (e.g. 0.0001 = 0.01%).
+            # A value such as 8 is usually the archive's interval-hours column
+            # accidentally parsed as the rate; never let it inflate PnL by
+            # thousands of R.
+            if abs(rate) > 0.05:
+                raise ValueError(
+                    f"Funding rate {rate} exceeds the absolute sanity limit 0.05; "
+                    "check archive column parsing and source units"
+                )
             rows.append({"ts": ts, "rate": rate})
     rows.sort(key=lambda item: item["ts"])
     if len({item["ts"] for item in rows}) != len(rows):
