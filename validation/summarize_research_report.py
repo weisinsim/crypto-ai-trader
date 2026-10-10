@@ -153,30 +153,31 @@ def render(manifest):
         "| Symbol | Target | Mode | Cost tiers passed / total | Cross-cost status |",
         "|---|---:|---|---:|---|",
     ])
-    cost_rows = {}
-    for report in reports:
-        if report.get("status") not in ("RESEARCH_ONLY", "INSUFFICIENT_SAMPLE"):
-            continue
+    expected_costs = manifest.get("cost_sensitivity_bps", [])
+    symbols = sorted({r.get("symbol", "unknown") for r in reports})
+    report_by_symbol_cost = {
+        (r.get("symbol", "unknown"), r.get("cost_bps")): r for r in reports
+    }
+    for symbol in symbols:
         for target in ("2.5", "3.0"):
             for mode in ("signal_level", "single_position"):
-                dev = target_metrics(report, target, mode, "development")
-                hold = target_metrics(report, target, mode)
-                if not dev and not hold:
-                    continue
-                key = (report.get("symbol", "unknown"), target, mode)
-                cost_rows.setdefault(key, []).append(
-                    (report.get("cost_bps"), screening_status(dev, hold, minimum_trades))
+                passed = 0
+                row_present = 0
+                for cost in expected_costs:
+                    report = report_by_symbol_cost.get((symbol, cost))
+                    if report is None:
+                        continue
+                    row_present += 1
+                    dev = target_metrics(report, target, mode, "development")
+                    hold = target_metrics(report, target, mode)
+                    if screening_status(dev, hold, minimum_trades) == "PASS_PRELIMINARY_SCREEN_ONLY":
+                        passed += 1
+                total = len(expected_costs)
+                robust = total > 0 and row_present == total and passed == total
+                lines.append(
+                    f"| {symbol} | {target}R | {mode} | {passed}/{total} | "
+                    f"{'PASS_ALL_COSTS_PRELIMINARY_ONLY' if robust else 'FAIL_CROSS_COST_ROBUSTNESS'} |"
                 )
-    expected_costs = manifest.get("cost_sensitivity_bps", [])
-    for (symbol, target, mode), rows in sorted(cost_rows.items()):
-        by_cost = {cost: status for cost, status in rows}
-        passed = sum(by_cost.get(cost) == "PASS_PRELIMINARY_SCREEN_ONLY" for cost in expected_costs)
-        total = len(expected_costs)
-        robust = total > 0 and passed == total
-        lines.append(
-            f"| {symbol} | {target}R | {mode} | {passed}/{total} | "
-            f"{'PASS_ALL_COSTS_PRELIMINARY_ONLY' if robust else 'FAIL_CROSS_COST_ROBUSTNESS'} |"
-        )
     lines.extend([
         "",
         "## Holdout metrics by cost, target, and execution mode",
