@@ -70,6 +70,7 @@ def run_ema_cross_backtest(
     fee_rate: float = 0.0005,
     slippage_rate: float = 0.0002,
     funding_rate_per_bar: float = 0.0,
+    funding_rates: Iterable[dict] | None = None,
     allow_short: bool = True,
     risk_fraction: float = 0.01,
     trade_start_ts: int | None = None,
@@ -77,11 +78,26 @@ def run_ema_cross_backtest(
     """Next-open EMA cross baseline with fixed-risk exits and conservative same-bar ordering.
 
     Signals are computed from completed bar i-1 and filled at bar i open.
+    Optional historical funding events are settled only when an existing position
+    is open at an event timestamp; event rows require funding_time/rate/mark_price.
     If a bar touches both stop and target, stop is assumed first. Fees are
     charged on entry and exit notional; funding is charged per held bar.
     Returns percentage-equity results with one unit of initial equity and no leverage.
     """
     rows = validate_candles(candles)
+    funding_events = {}
+    if funding_rates is not None:
+        previous_funding_ts = None
+        for event in sorted(list(funding_rates), key=lambda item: int(item["funding_time"])):
+            funding_ts = int(event["funding_time"])
+            rate = float(event["funding_rate"])
+            mark_price = float(event["mark_price"])
+            if not isfinite(rate) or not isfinite(mark_price) or mark_price <= 0:
+                raise ValueError("funding events require finite rates and positive finite mark prices")
+            if previous_funding_ts == funding_ts:
+                raise ValueError(f"duplicate funding timestamp: {funding_ts}")
+            funding_events[funding_ts] = {"funding_rate": rate, "mark_price": mark_price}
+            previous_funding_ts = funding_ts
     if fast < 2 or slow <= fast or atr_period < 1:
         raise ValueError("require 2 <= fast < slow and atr_period >= 1")
     numeric_params = {
@@ -120,7 +136,8 @@ def run_ema_cross_backtest(
         exit_fill = exit_price * (1 - slippage_rate if side == 1 else 1 + slippage_rate)
         gross_pnl = pos["qty"] * side * (exit_fill - pos["entry_fill"])
         exit_fee = abs(pos["qty"] * exit_fill) * fee_rate
-        funding_cost = pos["qty"] * pos["entry_fill"] * funding_rate_per_bar * side * pos["bars_held"]
+        funding_cost = (pos.get("funding_cost", 0.0) if funding_rates is not None else
+                        pos["qty"] * pos["entry_fill"] * funding_rate_per_bar * side * pos["bars_held"])
         pnl = gross_pnl - pos["entry_fee"] - exit_fee - funding_cost
         new_equity = current_equity + pnl
         trade = {
@@ -140,6 +157,12 @@ def run_ema_cross_backtest(
         # intrabar must not be replaced using a signal at that same bar's open.
         can_enter_at_open = position is None
         opened_this_bar = False
+        # Apply exchange funding settlement at this bar timestamp to positions
+        # already open at the event; positions opened later on this bar are excluded.
+        if position is not None and int(bar["t"]) in funding_events and funding_rates is not None:
+            event = funding_events[int(bar["t"])]
+            position["funding_cost"] = position.get("funding_cost", 0.0) + (
+                position["qty"] * event["mark_price"] * event["funding_rate"] * position["side"])
         # A position carried into this candle is checked against this bar.
         if position is not None:
             position["bars_held"] += 1
@@ -214,7 +237,8 @@ def run_ema_cross_backtest(
             mark_price = float(bar["c"])
             unrealized_pnl = position["qty"] * position["side"] * (mark_price - position["entry_fill"])
             estimated_exit_fee = abs(position["qty"] * mark_price) * fee_rate
-            accrued_funding = (position["qty"] * position["entry_fill"] * funding_rate_per_bar
+            accrued_funding = (position.get("funding_cost", 0.0) if funding_rates is not None else
+                               position["qty"] * position["entry_fill"] * funding_rate_per_bar
                                * position["side"] * position["bars_held"])
             marked_equity += (unrealized_pnl - position["entry_fee"]
                               - estimated_exit_fee - accrued_funding)
