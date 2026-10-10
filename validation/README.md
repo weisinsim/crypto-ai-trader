@@ -52,7 +52,7 @@ Repeat for each coin. The signal file's `stop` column is used when present; othe
 - Timestamps are ISO-8601 UTC close timestamps from the downloader. The signal entry is assumed at the close of that signal candle and exits are evaluated from the next candle onward.
 - If stop and target are both touched in one OHLC candle, stop-first is assumed. For stop gaps, the fill is modeled at the candle open when it is worse than the stop price; this is a conservative OHLC approximation, not a full execution simulator. Target fills are capped at the target price.
 - Time exits use the final close only when the full configured holding window is present. Signals too close to a split/data boundary to complete that window without a stop/target hit are excluded from the trade metrics and counted as signals without a trade result; they are not assigned an artificially short time exit.
-- The current harness does not model funding payments, partial exits, trailing stops, market impact, liquidation, order-book fills, overlapping positions or portfolio-wide exposure.
+- Historical funding events are modeled when `--funding-file` is supplied; without it, only the optional constant-rate stress proxy is used. Partial exits, trailing stops, market impact, liquidation, order-book fills and portfolio-wide exposure are not modeled by this exit audit.
 - Missing signal/candle timestamp matches are skipped; always inspect the audit output's matched signal count.
 - A chronological split is only a first guardrail. Preserve a final untouched holdout and run walk-forward folds before making claims.
 
@@ -66,7 +66,7 @@ No model should be described as profitable unless data continuity is reviewed, t
 After all candle files pass the integrity audit and signal replay has been reviewed, run the batch comparison:
 
 ```bash
-python validation/run_multi_asset_exit_audit.py --data-dir data/historical --signals-dir data/replay --out-dir data/exit_audits --min-trades 30
+python validation/run_multi_asset_exit_audit.py --data-dir data/historical --signals-dir data/replay --funding-dir data/funding --require-funding --out-dir data/exit_audits --min-trades 30
 ```
 
-This runs 2.5R and 3R exit comparisons at 5, 10, 20 and 30 bps round-trip cost assumptions for each available coin. It writes per-coin JSON audits and a batch manifest. A result is labeled `INSUFFICIENT_SAMPLE` unless every exit target and both signal-level and single-position modes meet the configured minimum holdout trade count; this label is not a pass. The batch runner does not repair missing inputs and does not validate signal parity or funding/slippage realism.
+This runs 2.5R and 3R exit comparisons at 5, 10, 20 and 30 bps round-trip cost assumptions for each available coin. It writes per-coin JSON audits and a batch manifest. A result is labeled `INSUFFICIENT_SAMPLE` unless every exit target and both signal-level and single-position modes meet the configured minimum holdout trade count; this label is not a pass. Use `--require-funding` for runs that must not proceed without a funding file for every symbol. When a funding file exists, the child audit checks its coverage and applies timestamped side-aware funding cashflows. The batch runner does not repair missing inputs and does not validate signal parity or market-impact/slippage realism.
