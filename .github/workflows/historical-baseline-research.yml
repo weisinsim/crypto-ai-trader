@@ -39,7 +39,7 @@ jobs:
         run: |
           START="$(date -u -d "${DAYS} days ago" +%F)"
           END="$(date -u +%F)"
-          python -m research.binance_data \
+          python -m research.binance_archive_data \
             --symbol "$SYMBOL" --interval 1h \
             --start "$START" --end "$END" \
             --output "data/${SYMBOL}_1h.csv"
