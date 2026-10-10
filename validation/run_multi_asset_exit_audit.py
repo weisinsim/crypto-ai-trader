@@ -16,8 +16,21 @@ SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT", "XRPUSDT"]
 COSTS = [5, 10, 20, 30]
 
 
+def holdout_trade_counts(holdout):
+    # Compare exit variants fairly: metadata such as signal_rows is not a trade result.
+    variants = [v.get("trades", 0) for v in holdout.values()
+                if isinstance(v, dict) and "trades" in v]
+    return variants
+
+
+def holdout_min_trade_count(holdout):
+    counts = holdout_trade_counts(holdout)
+    return min(counts) if counts else 0
+
+
 def holdout_max_trade_count(holdout):
-    return max((v.get("trades", 0) for v in holdout.values() if isinstance(v, dict)), default=0)
+    counts = holdout_trade_counts(holdout)
+    return max(counts) if counts else 0
 
 
 def check_candle_integrity(candle_file, four_hour_file):
@@ -85,6 +98,7 @@ def main():
             result = json.loads(dest.read_text(encoding="utf-8"))
             holdout = result.get("periods", {}).get("holdout", {})
             trades = holdout_max_trade_count(holdout)
+            min_variant_trades = holdout_min_trade_count(holdout)
             inputs = result.get("inputs", {})
             variant_metrics = {
                 key: value for key, value in holdout.items()
@@ -92,7 +106,8 @@ def main():
             }
             reports.append({
                 "symbol": symbol, "cost_bps": cost,
-                "status": "RESEARCH_ONLY" if trades >= args.min_trades else "INSUFFICIENT_SAMPLE",
+                "status": "RESEARCH_ONLY" if min_variant_trades >= args.min_trades else "INSUFFICIENT_SAMPLE",
+                "holdout_min_trade_count_across_exit_variants": min_variant_trades,
                 "holdout_max_trade_count_across_exit_variants": trades,
                 "signal_timestamp_match_pct": inputs.get("signal_timestamp_match_pct"),
                 "candle_integrity": {k: v.get("pass_basic_integrity") for k, v in integrity.items()},
