@@ -40,6 +40,14 @@ def main():
     p.add_argument("--holdout-fraction", type=float, default=0.30)
     p.add_argument("--min-trades", type=int, default=30)
     args = p.parse_args()
+    if args.max_hold < 1:
+        p.error("--max-hold must be >= 1")
+    if not 0.05 <= args.holdout_fraction <= 0.45:
+        p.error("--holdout-fraction must be between 0.05 and 0.45")
+    if args.min_trades < 1:
+        p.error("--min-trades must be >= 1")
+    if not args.symbols or any(not symbol.strip() for symbol in args.symbols):
+        p.error("--symbols must contain at least one non-empty symbol")
     root = Path(__file__).resolve().parents[1]
     data, signals, out = Path(args.data_dir), Path(args.signals_dir), Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
