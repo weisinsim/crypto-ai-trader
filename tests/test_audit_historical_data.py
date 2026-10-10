@@ -34,6 +34,15 @@ class HistoricalDataAuditTests(unittest.TestCase):
         self.assertEqual(result["gap_count"], 1)
         self.assertEqual(result["missing_candles_approx"], 1)
 
+    def test_irregular_cadence_fails(self):
+        rows = [
+            {"timestamp": "2025-01-01T00:59:59.999Z", "open": "100", "high": "102", "low": "99", "close": "101"},
+            {"timestamp": "2025-01-01T01:29:59.999Z", "open": "101", "high": "103", "low": "100", "close": "102"},
+        ]
+        result = audit(self.write_csv(rows), "1h")
+        self.assertFalse(result["pass_basic_integrity"])
+        self.assertEqual(result["cadence_anomaly_count"], 1)
+
     def test_invalid_ohlc_fails(self):
         rows = [{"timestamp": "2025-01-01T00:59:59.999Z", "open": "100", "high": "99", "low": "98", "close": "100"}]
         result = audit(self.write_csv(rows), "1h")
