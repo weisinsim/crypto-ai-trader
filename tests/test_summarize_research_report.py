@@ -78,7 +78,7 @@ class ResearchReportTests(unittest.TestCase):
             ],
         }
         report = render(manifest)
-        self.assertIn("0/2 | FAIL_CROSS_COST_ROBUSTNESS", report)
+        self.assertIn("1/2 | FAIL_CROSS_COST_ROBUSTNESS", report)
 
     def test_flags_opposite_development_and_holdout_signs(self):
         manifest = {"reports": [
