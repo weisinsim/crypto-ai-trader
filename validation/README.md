@@ -51,3 +51,14 @@ Repeat for each coin. The signal file's `stop` column is used when present; othe
 ## Promotion gate
 
 No model should be described as profitable unless data continuity is reviewed, the replay passes automated indicator and signal parity tests, realistic costs/funding are included, a sufficiently large sample exists, and the result survives untouched holdout, walk-forward, regime, and stress tests. Report trades, win rate, net R, expectancy, profit factor, max drawdown, fee sensitivity and fold-by-fold results. Win rate alone is not a decision metric.
+
+
+## 5. Batch multi-asset cost sensitivity
+
+After all candle files pass the integrity audit and signal replay has been reviewed, run the batch comparison:
+
+```bash
+python validation/run_multi_asset_exit_audit.py --data-dir data/historical --signals-dir data/replay --out-dir data/exit_audits --min-trades 30
+```
+
+This runs 2.5R and 3R exit comparisons at 5, 10, 20 and 30 bps round-trip cost assumptions for each available coin. It writes per-coin JSON audits and a batch manifest. A result is labeled `INSUFFICIENT_SAMPLE` when the largest holdout sample across exit variants is below the configured minimum; this label is not a pass. The batch runner does not repair missing inputs and does not validate signal parity or funding/slippage realism.
