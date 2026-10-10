@@ -22,6 +22,18 @@ def load_csv(path: str, interval_ms: int) -> list[dict]:
     return validate_candles(rows, interval_ms=interval_ms)
 
 
+def max_drawdown_pct(points: list[dict]) -> float:
+    """Compute peak-to-trough drawdown from timestamped marked equity points."""
+    peak = 0.0
+    max_dd = 0.0
+    for point in points:
+        value = float(point["equity"])
+        peak = max(peak, value)
+        if peak > 0:
+            max_dd = max(max_dd, (peak - value) / peak)
+    return round(max_dd * 100, 4)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--csv", required=True, help="closed-candle CSV from research.binance_data")
@@ -60,7 +72,8 @@ def main() -> None:
     holdout = rows[split:]
     boundary_ts = holdout[0]["t"]
     holdout_result = run_ema_cross_backtest(rows, trade_start_ts=boundary_ts, **common)
-    holdout_trades = holdout_result["trade_log"]
+    holdout_trades = [t for t in holdout_result["trade_log"] if boundary_ts <= t["entry_time"] <= rows[-1]["t"]]
+    holdout_curve = [p for p in holdout_result["equity_curve"] if boundary_ts <= p["t"] <= rows[-1]["t"]]
     # Convert fixed-notional trade PnL to the starting-equity basis used by the runner.
     holdout_pnls = [t["pnl_equity"] for t in holdout_trades]
     holdout_profit = sum(p for p in holdout_pnls if p > 0)
@@ -79,12 +92,13 @@ def main() -> None:
         # state available before the fold, but only count entries in this fold.
         start_ts = rows[a]["t"]
         fold_result = run_ema_cross_backtest(rows[:b], trade_start_ts=start_ts, **common)
-        fold_trades = fold_result["trade_log"]
+        fold_trades = [t for t in fold_result["trade_log"] if start_ts <= t["entry_time"] <= rows[b - 1]["t"]]
+        fold_curve = [p for p in fold_result["equity_curve"] if start_ts <= p["t"] <= rows[b - 1]["t"]]
         walk_results.append({
             "fold": fold + 1, "start_ts": start_ts, "end_ts": rows[b - 1]["t"],
             "bars": b - a, "trades": len(fold_trades),
             "net_return_pct": round(sum(t["pnl_equity"] for t in fold_trades) * 100, 4),
-            "max_drawdown_pct": fold_result["max_drawdown_pct"],
+            "max_drawdown_pct": max_drawdown_pct(fold_curve),
             "equity_final": fold_result["equity_final"],
             "win_rate_pct": round(sum(t["pnl_equity"] > 0 for t in fold_trades) / len(fold_trades) * 100, 2) if fold_trades else None,
             "profit_factor": round(sum(t["pnl_equity"] for t in fold_trades if t["pnl_equity"] > 0) / -sum(t["pnl_equity"] for t in fold_trades if t["pnl_equity"] < 0), 4) if any(t["pnl_equity"] < 0 for t in fold_trades) else (None if not any(t["pnl_equity"] > 0 for t in fold_trades) else "INF"),
@@ -103,7 +117,7 @@ def main() -> None:
         "holdout": {
             "bars": len(holdout), "trades": len(holdout_trades),
             "net_return_pct": round(sum(holdout_pnls) * 100, 4),
-            "max_drawdown_pct": holdout_result["max_drawdown_pct"],
+            "max_drawdown_pct": max_drawdown_pct(holdout_curve),
             "equity_final": holdout_result["equity_final"],
             "win_rate_pct": round(sum(p > 0 for p in holdout_pnls) / len(holdout_pnls) * 100, 2) if holdout_pnls else None,
             "profit_factor": round(holdout_profit / holdout_loss, 4) if holdout_loss else (None if not holdout_profit else "INF"),
