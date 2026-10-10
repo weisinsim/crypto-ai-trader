@@ -45,6 +45,28 @@ class ExitAuditTests(unittest.TestCase):
         self.assertEqual(trades[0]["exit_reason"], "TP")
         self.assertAlmostEqual(trades[0]["net_R"], 2.5)
 
+    def test_long_stop_gap_fills_at_worse_open(self):
+        candles = [
+            candle(1, 100, 101, 99, 100),
+            candle(2, 95, 98, 94, 96),
+        ]
+        signals = [{"ts": 1, "side": "LONG", "entry": 100, "atr": 1}]
+        trades = evaluate(candles, signals, target_r=2.5, stop_atr=2,
+                          cost_bps=0, max_hold=1)
+        self.assertEqual(trades[0]["exit_reason"], "SL")
+        self.assertEqual(trades[0]["gross_R"], -5.0)
+
+    def test_short_stop_gap_fills_at_worse_open(self):
+        candles = [
+            candle(1, 100, 101, 99, 100),
+            candle(2, 105, 106, 102, 104),
+        ]
+        signals = [{"ts": 1, "side": "SHORT", "entry": 100, "atr": 1}]
+        trades = evaluate(candles, signals, target_r=2.5, stop_atr=2,
+                          cost_bps=0, max_hold=1)
+        self.assertEqual(trades[0]["exit_reason"], "SL")
+        self.assertEqual(trades[0]["gross_R"], -5.0)
+
     def test_round_trip_cost_is_subtracted_in_r(self):
         candles = [
             candle(1, 100, 101, 99, 100),
