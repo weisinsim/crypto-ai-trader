@@ -135,10 +135,10 @@ class ExitAuditTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "candles.csv"
             path.write_text(
-                "timestamp,open,high,low,close\\n"
-                "2025-01-01T00:59:59Z,NaN,101,99,100\\n"
-                "2025-01-01T01:59:59Z,100,101,99,100\\n"
-                "2025-01-01T02:59:59Z,100,101,99,100\\n",
+                "timestamp,open,high,low,close\n"
+                "2025-01-01T00:59:59Z,NaN,101,99,100\n"
+                "2025-01-01T01:59:59Z,100,101,99,100\n"
+                "2025-01-01T02:59:59Z,100,101,99,100\n",
                 encoding="utf-8",
             )
             with self.assertRaises(ValueError):
@@ -151,8 +151,8 @@ class ExitAuditTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "signals.csv"
             path.write_text(
-                "timestamp,side,entry,atr\\n"
-                "2025-01-01T00:59:59Z,LONG,100,NaN\\n",
+                "timestamp,side,entry,atr\n"
+                "2025-01-01T00:59:59Z,LONG,100,NaN\n",
                 encoding="utf-8",
             )
             with self.assertRaises(ValueError):
