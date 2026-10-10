@@ -11,7 +11,7 @@ on:
       days:
         description: "UTC history length (days)"
         required: true
-        default: "180"
+        default: "365"
         type: choice
         options:
           - "90"
@@ -40,7 +40,7 @@ jobs:
       - name: Download complete closed-candle history
         env:
           SYMBOL: ${{ matrix.symbol }}
-          DAYS: ${{ inputs.days || '180' }}
+          DAYS: ${{ inputs.days || '365' }}
         run: |
           START="$(date -u -d "${DAYS} days ago" +%F)"
           END="$(date -u +%F)"
