@@ -10,7 +10,7 @@ from statistics import median
 from research.run_backtest import load_csv
 
 GRID = [
-    {"lookback": lookback, "max_wait": max_wait, "target_r": target_r}
+    {"lookback": lookback, "max_wait": max_wait, "target_r": target_r, "trend_period": trend_period}
     for lookback in (24, 48, 72)
     for max_wait in (3, 6)
     for target_r in (1.5, 2.0)
