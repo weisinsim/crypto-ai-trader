@@ -9,6 +9,7 @@ live and not a profitability guarantee.
 import argparse
 import csv
 import json
+import math
 from datetime import datetime
 from pathlib import Path
 
@@ -31,8 +32,13 @@ def read_rows(path):
                    "o": float(r["open"]), "h": float(r["high"]), "l": float(r["low"]),
                    "c": float(r["close"]), "v": float(r.get("volume") or 0),
                    "q": float(r.get("quote_volume") or 0)}
-            if row["l"] > min(row["o"], row["c"]) or row["h"] < max(row["o"], row["c"]) or row["l"] > row["h"]:
-                raise ValueError(f"Invalid OHLC values at {r['timestamp']} in {path}")
+            if (not all(math.isfinite(row[k]) for k in ("o", "h", "l", "c", "v", "q"))
+                    or not all(row[k] > 0 for k in ("o", "h", "l", "c"))
+                    or row["v"] < 0 or row["q"] < 0
+                    or row["l"] > min(row["o"], row["c"])
+                    or row["h"] < max(row["o"], row["c"])
+                    or row["l"] > row["h"]):
+                raise ValueError(f"Invalid OHLCV values at {r['timestamp']} in {path}")
             rows.append(row)
     rows.sort(key=lambda x: x["ts"])
     if len({x["ts"] for x in rows}) != len(rows):
