@@ -11,7 +11,7 @@ on:
       end_date:
         description: "UTC exclusive end date (YYYY-MM-DD)"
         required: true
-        default: "2026-10-08"
+        default: "2026-10-05"
         type: string
 
 permissions:
