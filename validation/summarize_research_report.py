@@ -84,6 +84,9 @@ def render(manifest):
         blockers = [status for status in statuses if status not in ("RESEARCH_ONLY", "INSUFFICIENT_SAMPLE")]
         if duplicate_costs:
             blockers.append("DUPLICATE_COST_REPORTS")
+        unexpected_costs = sorted(cost for cost in present if cost not in expected_costs)
+        if unexpected_costs:
+            blockers.append("UNEXPECTED_COST_TIERS")
         coverage_status = "BLOCKED:" + ",".join(blockers) if blockers else (
             "COMPLETE" if not missing_costs and len(present) == len(expected_costs) else "INCOMPLETE_COST_COVERAGE"
         )
