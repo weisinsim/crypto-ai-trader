@@ -42,7 +42,7 @@ Repeat for each coin. The signal file's `stop` column is used when present; othe
 ## Input and execution assumptions
 
 - Timestamps are ISO-8601 UTC close timestamps from the downloader. The signal entry is assumed at the close of that signal candle and exits are evaluated from the next candle onward.
-- If stop and target are both touched in one OHLC candle, stop-first is assumed.
+- If stop and target are both touched in one OHLC candle, stop-first is assumed. For stop gaps, the fill is modeled at the candle open when it is worse than the stop price; this is a conservative OHLC approximation, not a full execution simulator. Target fills are capped at the target price.
 - Time exits use the final close only when the full configured holding window is present. Signals too close to a split/data boundary to complete that window without a stop/target hit are excluded from the trade metrics and counted as signals without a trade result; they are not assigned an artificially short time exit.
 - The current harness does not model funding payments, partial exits, trailing stops, market impact, liquidation, order-book fills, overlapping positions or portfolio-wide exposure.
 - Missing signal/candle timestamp matches are skipped; always inspect the audit output's matched signal count.
