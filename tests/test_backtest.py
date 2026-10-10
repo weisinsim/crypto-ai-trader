@@ -49,10 +49,18 @@ class BacktestTests(unittest.TestCase):
         rows = candles_from_closes([100 + (i % 3) for i in range(80)])
         result = run_ema_cross_backtest(rows, fast=3, slow=7, atr_period=3, stop_atr=.1,
                                         target_atr=.1, fee_rate=0, slippage_rate=0)
-        # Any trade that has both barrier levels crossed must be marked as STOP.
+        # Reconstruct the exit candle; if both barriers were touched, STOP must win.
+        by_time = {row["t"]: row for row in rows}
         for trade in result["trade_log"]:
-            if trade["reason"] in ("STOP", "TARGET"):
-                self.assertIn(trade["reason"], ("STOP", "TARGET"))
+            bar = by_time.get(trade["exit_time"])
+            if bar is None:
+                continue
+            if trade["side"] == "LONG":
+                both_hit = bar["l"] <= trade["stop"] and bar["h"] >= trade["target"]
+            else:
+                both_hit = bar["h"] >= trade["stop"] and bar["l"] <= trade["target"]
+            if both_hit:
+                self.assertEqual(trade["reason"], "STOP")
 
 
 if __name__ == "__main__":
