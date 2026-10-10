@@ -14,7 +14,9 @@ availability and verify file completeness before any performance conclusions.
 import argparse
 import csv
 import json
+import io
 import sys
+import zipfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -66,6 +68,78 @@ def get_json(params, retries=5):
                 raise RuntimeError(f"Could not reach Binance kline endpoint {BASE}: {exc}") from exc
             time.sleep(min(2 ** attempt, 30))
     raise RuntimeError("Retry budget exhausted")
+
+
+def download_archive(symbol, interval, start_ms, end_ms, now_ms=None):
+    """Read Binance's public data archive when the REST API is geo-restricted.
+
+    Monthly archives are used for completed months and daily archives for the
+    current/incomplete month. This is an official public market-data mirror;
+    it does not bypass trading controls or use authenticated endpoints.
+    """
+    from calendar import monthrange
+    from urllib.error import HTTPError
+    import io
+    import zipfile
+
+    if now_ms is None:
+        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    start = datetime.fromtimestamp(start_ms / 1000, tz=timezone.utc).date()
+    end = datetime.fromtimestamp((end_ms - 1) / 1000, tz=timezone.utc).date()
+    rows = []
+    month_cursor = start.replace(day=1)
+    while month_cursor <= end:
+        month_end_day = monthrange(month_cursor.year, month_cursor.month)[1]
+        month_end = month_cursor.replace(day=month_end_day)
+        # Current month is not guaranteed to have a complete monthly archive.
+        use_daily = month_cursor.year == datetime.now(timezone.utc).year and month_cursor.month == datetime.now(timezone.utc).month
+        dates = []
+        if use_daily:
+            d = max(start, month_cursor)
+            last = min(end, month_end)
+            while d <= last:
+                dates.append(("daily", d))
+                d = d.fromordinal(d.toordinal() + 1)
+        else:
+            dates.append(("monthly", month_cursor)
+        for kind, period in dates:
+            stamp = period.strftime("%Y-%m-%d") if kind == "daily" else period.strftime("%Y-%m")
+            url = (f"https://data.binance.vision/data/futures/um/{kind}/klines/"
+                   f"{symbol}/{interval}/{symbol}-{interval}-{stamp}.zip")
+            try:
+                req = Request(url, headers={"User-Agent": "crypto-ai-trader-research/1.0"})
+                with urlopen(req, timeout=30) as response:
+                    archive_bytes = response.read()
+            except HTTPError as exc:
+                if exc.code == 404:
+                    raise RuntimeError(f"Official Binance archive missing: {url}") from exc
+                raise RuntimeError(f"Binance archive HTTP {exc.code}: {url}") from exc
+            with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
+                names = [n for n in archive.namelist() if n.lower().endswith(".csv")]
+                if not names:
+                    raise RuntimeError(f"No CSV found in archive {url}")
+                reader = csv.reader(io.TextIOWrapper(archive.open(names[0]), encoding="utf-8"))
+                for item in reader:
+                    if not item or not item[0].isdigit():
+                        continue
+                    open_ms, close_ms = int(item[0]), int(item[6])
+                    if open_ms < start_ms or close_ms >= end_ms or close_ms >= now_ms:
+                        continue
+                    rows.append({
+                        "timestamp": iso_utc(close_ms), "open": item[1], "high": item[2],
+                        "low": item[3], "close": item[4], "volume": item[5],
+                        "quote_volume": item[7] if len(item) > 7 else "",
+                        "trade_count": item[8] if len(item) > 8 else "",
+                        "taker_buy_base_volume": item[9] if len(item) > 9 else "",
+                        "taker_buy_quote_volume": item[10] if len(item) > 10 else "",
+                    })
+        month_cursor = month_cursor.replace(day=1)
+        if month_cursor.month == 12:
+            month_cursor = month_cursor.replace(year=month_cursor.year + 1, month=1)
+        else:
+            month_cursor = month_cursor.replace(month=month_cursor.month + 1)
+    by_ts = {row["timestamp"]: row for row in rows}
+    return [by_ts[k] for k in sorted(by_ts)]
 
 
 def download(symbol, interval, start_ms, end_ms, now_ms=None):
@@ -123,7 +197,17 @@ def main():
     report = []
     for symbol in args.symbols:
         try:
-            rows = download(symbol.upper(), args.interval, start_ms, end_ms)
+            try:
+                rows = download(symbol.upper(), args.interval, start_ms, end_ms)
+            except RuntimeError as exc:
+                if "HTTP 451" not in str(exc):
+                    raise
+                print(
+                    f"REST API is region-restricted; trying official Binance public archive "
+                    f"for {symbol.upper()} {args.interval}.",
+                    file=sys.stderr, flush=True,
+                )
+                rows = download_archive(symbol.upper(), args.interval, start_ms, end_ms)
         except Exception as exc:
             print(
                 f"ERROR downloading symbol={symbol.upper()} interval={args.interval} "
