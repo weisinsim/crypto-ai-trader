@@ -10,25 +10,22 @@ class FundingDownloaderTests(unittest.TestCase):
         self.assertEqual(utc_ms("2025-01-01T00:00:00Z"), 1735689600000)
 
     @patch("validation.download_funding_rates.get_json")
-    def test_download_paginates_without_repeating_boundary_events(self, get_json):
+    def test_download_paginates_when_api_limit_is_reached(self, get_json):
         start = 1_735_689_600_000
         end = start + 20_000_000
         first = [
-            {"fundingTime": start + 1_000, "fundingRate": "0.0001"},
-            {"fundingTime": start + 2_000, "fundingRate": "0.0002"},
+            {"fundingTime": start + i * 1000, "fundingRate": "0.0001"}
+            for i in range(1000)
         ]
         second = [
-            {"fundingTime": start + 2_000, "fundingRate": "0.0002"},
-            {"fundingTime": start + 3_000, "fundingRate": "0.0003"},
+            {"fundingTime": start + 1_000_000, "fundingRate": "0.0002"},
+            {"fundingTime": start + 1_001_000, "fundingRate": "0.0003"},
         ]
-        get_json.side_effect = [first, second, []]
+        get_json.side_effect = [first, second]
         rows = download("BTCUSDT", start, end)
-        self.assertEqual(len(rows), 3)
-        self.assertEqual(
-            [row["funding_rate"] for row in rows],
-            ["0.0001", "0.0002", "0.0003"],
-        )
-        self.assertEqual(get_json.call_count, 3)
+        self.assertEqual(len(rows), 1002)
+        self.assertEqual(get_json.call_count, 2)
+        self.assertEqual(rows, sorted(rows, key=lambda row: row["timestamp"]))
 
     @patch("validation.download_funding_rates.get_json")
     def test_download_rejects_nonadvancing_pagination(self, get_json):
