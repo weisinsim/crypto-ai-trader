@@ -111,7 +111,7 @@ def main():
     candles = fetch_klines(symbol, args.interval, start_ms, end_ms, args.include_open_candle)
     candle_path = out_dir / f"{symbol}_{args.interval}_candles.csv"
     write_csv(candle_path,
-              ["open_time_ms", "open", "high", "low", "close", "volume",
+              ["timestamp", "open", "high", "low", "close", "volume",
                "close_time_ms", "quote_volume", "trade_count", "taker_buy_base",
                "taker_buy_quote"],
               [[r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10]]
