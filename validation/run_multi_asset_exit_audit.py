@@ -20,6 +20,16 @@ def holdout_max_trade_count(holdout):
     return max((v.get("trades", 0) for v in holdout.values() if isinstance(v, dict)), default=0)
 
 
+def check_candle_integrity(candle_file, four_hour_file):
+    integrity = {
+        "1h": audit_candles(candle_file, "1h"),
+        "4h": audit_candles(four_hour_file, "4h"),
+    }
+    failed = [interval for interval, result in integrity.items()
+              if not result.get("pass_basic_integrity", False)]
+    return integrity, failed
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--data-dir", default="data/historical")
@@ -42,12 +52,7 @@ def main():
         if missing:
             reports.append({"symbol": symbol, "status": "INSUFFICIENT_DATA", "missing": missing})
             continue
-        integrity = {
-            "1h": audit_candles(candle_file, "1h"),
-            "4h": audit_candles(four_hour_file, "4h"),
-        }
-        failed_intervals = [interval for interval, result in integrity.items()
-                            if not result.get("pass_basic_integrity", False)]
+        integrity, failed_intervals = check_candle_integrity(candle_file, four_hour_file)
         if failed_intervals:
             reports.append({
                 "symbol": symbol, "status": "DATA_INTEGRITY_FAILED",
