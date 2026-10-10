@@ -58,7 +58,10 @@ def read_signals(path):
             entry, atr = float(row["entry"]), float(row["atr"])
             if entry <= 0 or atr <= 0:
                 raise ValueError("Entry and ATR must be positive")
-            rows.append({"ts": parse_ts(row["timestamp"]), "side": side, "entry": entry, "atr": atr})
+            stop = float(row["stop"]) if row.get("stop", "").strip() else None
+            if stop is not None and stop <= 0:
+                raise ValueError("Stop must be positive when supplied")
+            rows.append({"ts": parse_ts(row["timestamp"]), "side": side, "entry": entry, "atr": atr, "stop": stop})
     rows.sort(key=lambda x: x["ts"])
     if len({r["ts"] for r in rows}) != len(rows):
         raise ValueError("Duplicate signal timestamps; one signal per timestamp is supported")
@@ -72,9 +75,16 @@ def evaluate(candles, signals, target_r, stop_atr, cost_bps, max_hold):
         i = index.get(sig["ts"])
         if i is None:
             continue
-        entry, risk = sig["entry"], sig["atr"] * stop_atr
+        entry = sig["entry"]
         d = 1 if sig["side"] == "LONG" else -1
-        stop, target = entry - d * risk, entry + d * target_r * risk
+        risk = abs(entry - sig["stop"]) if sig.get("stop") is not None else sig["atr"] * stop_atr
+        if risk <= 0:
+            continue
+        stop = sig["stop"] if sig.get("stop") is not None else entry - d * risk
+        # Ignore a supplied stop on the wrong side of entry; it indicates malformed signal data.
+        if (d == 1 and stop >= entry) or (d == -1 and stop <= entry):
+            raise ValueError(f"Stop is on wrong side of entry for signal at {sig['ts']}")
+        target = entry + d * target_r * risk
         future = candles[i + 1:i + 1 + max_hold]
         if not future:
             continue
@@ -146,7 +156,8 @@ def main():
         "notice": "Exit comparison only; not a validated strategy or investment recommendation.",
         "inputs": {"candle_rows": len(candles), "signal_rows": len(signals),
                    "matched_signal_rows": sum(s["ts"] in {c["ts"] for c in candles} for s in signals),
-                   "holdout_start_epoch": split_ts, "stop_atr": a.stop_atr,
+                   "holdout_start_epoch": split_ts, "stop_atr_fallback": a.stop_atr,
+                   "uses_signal_stop_when_present": True,
                    "round_trip_cost_bps": a.cost_bps, "max_hold_candles": a.max_hold},
         "periods": {}
     }
