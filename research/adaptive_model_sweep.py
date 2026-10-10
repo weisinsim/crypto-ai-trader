@@ -84,11 +84,18 @@ def main() -> None:
         median_dd = median(x["max_drawdown_pct"] for x in folds)
         total_trades = sum(x["trades"] for x in folds)
         score = round(median_return - 0.5 * median_dd, 4)
-        eligible = total_trades >= 12 and median_return > 0 and all(x["trades"] >= 2 for x in folds)
+        positive_folds = sum(x["net_return_pct"] > 0 for x in folds)
+        worst_fold_return = min(x["net_return_pct"] for x in folds)
+        eligible = (
+            total_trades >= 15 and all(x["trades"] >= 3 for x in folds)
+            and median_return > 0 and positive_folds >= 2 and worst_fold_return >= -3.0
+        )
         candidates.append({
             "parameters": params, "training_folds": folds, "total_training_trades": total_trades,
             "median_fold_return_pct": round(median_return, 4),
             "median_fold_drawdown_pct": round(median_dd, 4),
+            "positive_training_folds": positive_folds,
+            "worst_training_fold_return_pct": round(worst_fold_return, 4),
             "selection_score": score, "eligible": eligible,
         })
 
@@ -98,6 +105,8 @@ def main() -> None:
     selected = eligible_candidates[0] if eligible_candidates else None
     boundary = rows[split]["t"]
     holdout = None
+    stress_holdout = None
+    neighborhood_stability = None
     if selected:
         holdout_result = run_ema_cross_backtest(
             rows, trade_start_ts=boundary, fee_rate=args.fee_rate,
@@ -105,6 +114,34 @@ def main() -> None:
             **selected["parameters"],
         )
         holdout = summarize(holdout_result, boundary, rows[-1]["t"])
+        # Approx. 0.30% round-trip costs: 0.10% fees + 0.20% slippage.
+        stress_result = run_ema_cross_backtest(
+            rows, trade_start_ts=boundary, fee_rate=0.0005,
+            slippage_rate=0.0010, risk_fraction=0.01,
+            **selected["parameters"],
+        )
+        stress_holdout = summarize(stress_result, boundary, rows[-1]["t"])
+        selected_params = selected["parameters"]
+        near = []
+        for item in candidates:
+            p = item["parameters"]
+            if p == selected_params:
+                continue
+            if (abs(p["fast"] - selected_params["fast"]) <= 5
+                and abs(p["slow"] - selected_params["slow"]) <= 30
+                and abs(p["stop_atr"] - selected_params["stop_atr"]) <= 0.5
+                and abs(p["target_atr"] - selected_params["target_atr"]) <= 0.5):
+                near.append(item)
+        neighborhood_stability = {
+            "neighbor_count": len(near),
+            "neighbors_with_positive_median_training_return": sum(
+                x["median_fold_return_pct"] > 0 for x in near
+            ),
+            "positive_median_fraction": round(
+                sum(x["median_fold_return_pct"] > 0 for x in near) / len(near), 4
+            ) if near else None,
+            "note": "Training folds only; holdout is not used for selection or neighborhood scoring."
+        }
 
     report = {
         "status": "RESEARCH_ONLY",
@@ -112,19 +149,29 @@ def main() -> None:
         "bars": len(rows), "first_ts": rows[0]["t"], "last_ts": rows[-1]["t"],
         "split": {"train_fraction": args.train_fraction, "train_bars": split,
                   "holdout_bars": len(rows) - split, "holdout_start_ts": boundary},
-        "costs": {"fee_rate_per_fill": args.fee_rate, "slippage_rate_per_fill": args.slippage_rate,
-                  "funding": "NOT INCLUDED: historical funding must be added before any deployment decision"},
-        "selection_method": "24 predeclared parameter sets; three chronological folds within training data only; median fold return minus 0.5x median drawdown; requires >=12 trades, >=2 trades/fold and positive median fold return",
+        "costs": {
+            "base_fee_rate_per_fill": args.fee_rate,
+            "base_slippage_rate_per_fill": args.slippage_rate,
+            "stress_fee_rate_per_fill": 0.0005,
+            "stress_slippage_rate_per_fill": 0.0010,
+            "stress_round_trip_cost_approx_pct": 0.30,
+            "funding": "NOT INCLUDED: historical funding must be added before any deployment decision"
+        },
+        "selection_method": "24 predeclared parameter sets; three chronological training folds; score=median return minus 0.5x median drawdown; requires >=15 trades, >=3 trades/fold, positive median return, >=2 positive folds and worst fold >= -3.0%",
         "candidate_count": len(candidates), "eligible_count": len(eligible_candidates),
         "selected_parameters": selected["parameters"] if selected else None,
         "training_selection_metrics": ({k: v for k, v in selected.items() if k != "training_folds"}
                                        if selected else None),
         "holdout": holdout,
+        "stress_holdout_approx_0_30pct_round_trip_cost": stress_holdout,
+        "training_neighborhood_stability": neighborhood_stability,
         "all_candidates": sorted(candidates, key=lambda x: x["selection_score"], reverse=True),
         "warnings": [
             "No candidate is not a failure of the runner; it means training evidence was insufficient.",
             "Holdout is evaluated only after selecting parameters from training data.",
             "This is a long/short EMA-cross research baseline, not a production or profitability certification.",
+            "Stress test approximates 0.30% round-trip fees plus slippage; it is not a calibrated fill simulator.",
+            "Training selection rejects candidates with a fold worse than -3%, fewer than 15 trades, or fewer than two positive folds.",
             "No historical funding data is included; do not use these results to justify live trading.",
         ],
     }
@@ -132,7 +179,8 @@ def main() -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"status={report['status']} symbol={args.symbol.upper()} candidates={len(candidates)} "
-          f"eligible={len(eligible_candidates)} selected={bool(selected)} output={output}")
+          f"eligible={len(eligible_candidates)} selected={bool(selected)} "
+          f"stress_holdout={stress_holdout} output={output}")
 
 
 if __name__ == "__main__":
