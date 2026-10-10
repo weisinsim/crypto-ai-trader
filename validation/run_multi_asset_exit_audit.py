@@ -55,12 +55,19 @@ def main():
             result = json.loads(dest.read_text(encoding="utf-8"))
             holdout = result.get("periods", {}).get("holdout", {})
             trades = holdout_max_trade_count(holdout)
+            inputs = result.get("inputs", {})
+            variant_metrics = {
+                key: value for key, value in holdout.items()
+                if isinstance(value, dict) and "trades" in value
+            }
             reports.append({
                 "symbol": symbol, "cost_bps": cost,
                 "status": "RESEARCH_ONLY" if trades >= args.min_trades else "INSUFFICIENT_SAMPLE",
                 "holdout_max_trade_count_across_exit_variants": trades,
+                "signal_timestamp_match_pct": inputs.get("signal_timestamp_match_pct"),
+                "holdout_metrics_by_exit": variant_metrics,
                 "audit_file": str(dest),
-                "warning": "Do not select a model from a single cost assumption; inspect both exit variants and all metrics."
+                "warning": "Research output only; inspect both exit variants, all cost assumptions, parity, and data quality."
             })
     summary = {
         "notice": "Automated batch runner. No profitability claim. Check audit files, data integrity, parity, funding, slippage and independent holdout.",
