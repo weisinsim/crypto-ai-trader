@@ -20,7 +20,7 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
     def test_non_finite_volume_rejected(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "bad_volume.csv"
-            path.write_text("timestamp,open,high,low,close,volume,quote_volume\\n2025-01-01T01:00:00Z,100,101,99,100,NaN,100\\n", encoding="utf-8")
+            path.write_text("timestamp,open,high,low,close,volume,quote_volume\n2025-01-01T01:00:00Z,100,101,99,100,NaN,100\n", encoding="utf-8")
             with self.assertRaises(ValueError):
                 read_rows(path)
 
