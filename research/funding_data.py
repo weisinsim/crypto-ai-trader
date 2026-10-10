@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import csv
 import time
+from math import isfinite
 from pathlib import Path
 from typing import Callable
 
@@ -18,6 +19,8 @@ def parse_funding_rows(raw_rows: list[dict], symbol: str, start_ms: int, end_ms:
     for raw in raw_rows:
         ts = int(raw["fundingTime"])
         rate = float(raw["fundingRate"])
+        if not isfinite(rate):
+            raise ValueError(f"non-finite funding rate at {ts}")
         if start_ms <= ts < end_ms:
             rows.append({"funding_time": ts, "funding_rate": rate, "symbol": symbol.upper()})
     rows.sort(key=lambda row: row["funding_time"])
