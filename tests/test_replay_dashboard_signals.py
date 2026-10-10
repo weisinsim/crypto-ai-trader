@@ -1,9 +1,22 @@
 import unittest
+import tempfile
+from pathlib import Path
 
-from validation.replay_dashboard_signals import ema, rsi, atr, replay
+from validation.replay_dashboard_signals import ema, rsi, atr, replay, ts_ms, read_rows
 
 
 class ReplayDashboardSignalsTests(unittest.TestCase):
+    def test_timezone_naive_timestamp_rejected(self):
+        with self.assertRaises(ValueError):
+            ts_ms("2025-01-01T00:00:00")
+
+    def test_invalid_ohlc_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "bad.csv"
+            path.write_text("timestamp,open,high,low,close,volume,quote_volume\n2025-01-01T01:00:00Z,100,99,98,100,1,100\n", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                read_rows(path)
+
     def test_ema_seed_and_trend(self):
         self.assertEqual(ema([1, 2, 3], 2), 2.5)
         self.assertGreater(ema(list(range(1, 30)), 5), ema(list(range(1, 30)), 10))
