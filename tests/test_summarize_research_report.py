@@ -80,6 +80,19 @@ class ResearchReportTests(unittest.TestCase):
         report = render(manifest)
         self.assertIn("1/2 | FAIL_CROSS_COST_ROBUSTNESS", report)
 
+    def test_asset_coverage_flags_nonresearch_status_and_missing_costs(self):
+        manifest = {
+            "cost_sensitivity_bps": [5, 10, 20, 30],
+            "reports": [
+                {"symbol": "ETHUSDT", "cost_bps": 5, "status": "NO_SIGNALS"},
+                {"symbol": "BTCUSDT", "cost_bps": 5, "status": "RESEARCH_ONLY"},
+                {"symbol": "BTCUSDT", "cost_bps": 10, "status": "INSUFFICIENT_SAMPLE"},
+            ],
+        }
+        report = render(manifest)
+        self.assertIn("ETHUSDT | 1 | 1/4 | 10, 20, 30 | BLOCKED:NO_SIGNALS", report)
+        self.assertIn("BTCUSDT | 2 | 2/4 | 20, 30 | INCOMPLETE_COST_COVERAGE", report)
+
     def test_cross_cost_gate_includes_symbol_with_entire_cost_tier_missing(self):
         manifest = {
             "min_trades_threshold": 2,
