@@ -95,8 +95,14 @@ def evaluate(candles, signals, target_r, stop_atr, cost_bps, max_hold):
         for candle in future:
             stop_hit = candle["low"] <= stop if d == 1 else candle["high"] >= stop
             target_hit = candle["high"] >= target if d == 1 else candle["low"] <= target
-            if stop_hit:  # conservative when both levels are touched in one candle
-                outcome, reason, exit_ts = -1.0, "SL", candle["ts"]
+            if stop_hit:  # stop-first when both levels are touched in one candle
+                # Model adverse gaps through the stop at the candle open instead of
+                # assuming an impossible fill at the stop price.
+                if d == 1:
+                    stop_fill = min(stop, candle["open"])
+                else:
+                    stop_fill = max(stop, candle["open"])
+                outcome, reason, exit_ts = d * (stop_fill - entry) / risk, "SL", candle["ts"]
                 break
             if target_hit:
                 outcome, reason, exit_ts = target_r, "TP", candle["ts"]
