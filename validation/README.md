@@ -23,6 +23,14 @@ python validation/download_funding_rates.py --symbols BTCUSDT ETHUSDT SOLUSDT AV
 
 This writes `SYMBOL_funding.csv` with `timestamp,funding_rate`; funding rate is a decimal fraction and timestamp is the UTC funding event time.
 
+Audit downloaded funding files before backtesting:
+
+```bash
+python validation/audit_funding_history.py data/funding/BTCUSDT_funding.csv data/funding/ETHUSDT_funding.csv data/funding/SOLUSDT_funding.csv data/funding/AVAXUSDT_funding.csv data/funding/XRPUSDT_funding.csv --max-gap-hours 24
+```
+
+The audit checks timezone-aware timestamps, finite rates, ordering, duplicates, and large event gaps. Funding intervals may vary by symbol and over time, so this is a diagnostic threshold rather than proof that every expected event exists. Confirm each file spans the requested research window before interpreting results.
+
 ## 2. Audit data integrity
 
 ```bash
