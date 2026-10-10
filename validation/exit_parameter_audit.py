@@ -105,7 +105,7 @@ def evaluate(candles, signals, target_r, stop_atr, cost_bps, max_hold):
             close = next(c["close"] for c in future if c["ts"] == exit_ts)
             outcome = d * (close - entry) / risk
         cost_r = (cost_bps / 10000.0) * entry / risk
-        results.append({"timestamp": sig["ts"], "side": sig["side"], "exit_reason": reason,
+        results.append({"timestamp": sig["ts"], "exit_timestamp": exit_ts, "side": sig["side"], "exit_reason": reason,
                         "gross_R": outcome, "cost_R": cost_r, "net_R": outcome - cost_r})
     return results
 
@@ -122,6 +122,23 @@ def summarize(trades):
         equity += x
         peak = max(peak, equity)
         dd = max(dd, peak - equity)
+    # This is signal-level research, not a sequential single-position portfolio.
+    ordered = sorted(trades, key=lambda t: t["timestamp"])
+    overlap_count = 0
+    for i, trade in enumerate(ordered):
+        end_ts = trade.get("exit_timestamp", trade["timestamp"])
+        if any(other["timestamp"] < end_ts and other.get("exit_timestamp", other["timestamp"]) > trade["timestamp"]
+               for j, other in enumerate(ordered) if i != j):
+            overlap_count += 1
+    events = []
+    for trade in trades:
+        events.append((trade["timestamp"], 1))
+        events.append((trade.get("exit_timestamp", trade["timestamp"]), -1))
+    events.sort(key=lambda event: (event[0], event[1]))
+    active = max_active = 0
+    for _, delta in events:
+        active += delta
+        max_active = max(max_active, active)
     pf = gross_profit / gross_loss if gross_loss else (None if gross_profit == 0 else "Infinity")
     return {
         "trades": len(vals),
@@ -130,6 +147,8 @@ def summarize(trades):
         "net_R": round(sum(vals), 4),
         "avg_R": round(sum(vals) / len(vals), 4),
         "max_drawdown_R": round(dd, 4),
+        "overlapping_trade_count": overlap_count,
+        "max_concurrent_trades": max_active,
         "tp_count": sum(t["exit_reason"] == "TP" for t in trades),
         "sl_count": sum(t["exit_reason"] == "SL" for t in trades),
         "time_exit_count": sum(t["exit_reason"] == "TIME" for t in trades),
