@@ -22,6 +22,19 @@ def load_csv(path: str, interval_ms: int) -> list[dict]:
     return validate_candles(rows, interval_ms=interval_ms)
 
 
+def load_funding_csv(path: str) -> list[dict]:
+    with open(path, newline="", encoding="utf-8") as handle:
+        rows = [{"funding_time": int(row["funding_time"]),
+                 "funding_rate": float(row["funding_rate"]),
+                 "mark_price": float(row["mark_price"])}
+                for row in csv.DictReader(handle)]
+    rows.sort(key=lambda row: row["funding_time"])
+    for left, right in zip(rows, rows[1:]):
+        if left["funding_time"] == right["funding_time"]:
+            raise ValueError(f"duplicate funding timestamp: {left['funding_time']}")
+    return rows
+
+
 def max_drawdown_pct(points: list[dict], initial_equity: float = 1.0) -> float:
     """Compute peak-to-trough drawdown, including the evaluation's starting equity."""
     peak = float(initial_equity)
@@ -47,6 +60,7 @@ def main() -> None:
     parser.add_argument("--fast", type=int, default=20)
     parser.add_argument("--slow", type=int, default=50)
     parser.add_argument("--fee-rate", type=float, default=0.0005)
+    parser.add_argument("--funding-csv", help="optional historical funding CSV with funding_time,funding_rate,mark_price,symbol")
     parser.add_argument("--slippage-rate", type=float, default=0.0002)
     parser.add_argument("--funding-rate-per-bar", type=float, default=0.0)
     parser.add_argument("--output", required=True)
@@ -69,9 +83,11 @@ def main() -> None:
     if len(rows) < args.slow * 3:
         raise ValueError("not enough bars for warm-up, holdout and walk-forward")
 
+    historical_funding = load_funding_csv(args.funding_csv) if args.funding_csv else None
     common = dict(fast=args.fast, slow=args.slow, fee_rate=args.fee_rate,
                   slippage_rate=args.slippage_rate,
-                  funding_rate_per_bar=args.funding_rate_per_bar)
+                  funding_rate_per_bar=args.funding_rate_per_bar,
+                  funding_rates=historical_funding)
     split = int(len(rows) * args.train_fraction)
     # Use all pre-holdout history to preserve EMA/ATR state. The timestamp
     # gate excludes entries before the untouched holdout boundary.
@@ -134,7 +150,7 @@ def main() -> None:
         "warnings": [
             "This runner evaluates a fixed EMA baseline; it does not optimize or certify a profitable model.",
             "Net return is calculated from final account equity relative to the 1.0 starting equity; trade PnL sums are not used as a substitute for compounded portfolio return.",
-            "Funding is a constant per-bar assumption here, not historical realized funding. Use a historical funding series before production decisions.",
+            ("Historical funding CSV was applied at matching candle timestamps." if historical_funding is not None else "Funding is a constant per-bar assumption, not historical realized funding; provide --funding-csv before production decisions."),
             "All report results require independent review of CSV coverage, exchange data and execution assumptions."
         ],
     }
