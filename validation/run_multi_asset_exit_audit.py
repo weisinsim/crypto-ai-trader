@@ -102,7 +102,7 @@ def main():
             inputs = result.get("inputs", {})
             variant_metrics = {
                 key: value for key, value in holdout.items()
-                if isinstance(value, dict) and "trades" in value
+                if isinstance(value, dict) and ("signal_level" in value or "single_position" in value)
             }
             reports.append({
                 "symbol": symbol, "cost_bps": cost,
