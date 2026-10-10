@@ -78,6 +78,22 @@ class ExitAuditTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             evaluate(candles, signals, 2.5, 2, 0, 5)
 
+    def test_development_trade_cannot_exit_using_holdout_candles(self):
+        candles = [
+            candle(1, 100, 101, 99, 100),
+            candle(2, 100, 101, 99, 100),
+            candle(3, 100, 110, 99, 109),
+            candle(4, 100, 110, 99, 109),
+        ]
+        # The signal at ts=1 would hit 2.5R only on a later candle; if the
+        # development slice ends at ts=2, its result must not use ts=3 or ts=4.
+        dev_candles = candles[:2]
+        signals = [{"ts": 1, "side": "LONG", "entry": 100, "atr": 1}]
+        trades = evaluate(dev_candles, signals, target_r=2.5, stop_atr=2,
+                          cost_bps=0, max_hold=72)
+        self.assertEqual(trades[0]["exit_reason"], "TIME")
+        self.assertEqual(trades[0]["gross_R"], 0.0)
+
     def test_summary_counts_trades(self):
         stats = summarize([
             {"net_R": 2.0, "exit_reason": "TP"},
