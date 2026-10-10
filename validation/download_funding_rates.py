@@ -49,6 +49,23 @@ def get_json(params, retries=5):
     raise RuntimeError("Retry budget exhausted")
 
 
+def parse_archive_row(item, symbol, start_ms, end_ms):
+    """Parse Binance Vision rows with or without interval-hours column."""
+    if not item or len(item) < 2 or not item[0].isdigit():
+        return None
+    ts = int(item[0])
+    if not start_ms <= ts < end_ms:
+        return None
+    try:
+        rate = float(item[-1])
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f"Invalid funding rate in archive row for {symbol}: {item!r}") from exc
+    import math
+    if not math.isfinite(rate):
+        raise RuntimeError(f"Non-finite funding rate in archive row for {symbol}: {item!r}")
+    return {"timestamp": iso_utc(ts), "funding_rate": str(rate)}
+
+
 def download_archive(symbol, start_ms, end_ms):
     """Fallback to Binance public funding-rate archives if REST is region-blocked."""
     from calendar import monthrange
@@ -77,26 +94,9 @@ def download_archive(symbol, start_ms, end_ms):
             with archive.open(names[0]) as raw:
                 reader = csv.reader(io.TextIOWrapper(raw, encoding="utf-8"))
                 for item in reader:
-                    if not item or not item[0].isdigit() or len(item) < 2:
-                        continue
-                    ts = int(item[0])
-                    if start_ms <= ts < end_ms:
-                        # Binance Vision fundingRate archives can include
-                        # funding_interval_hours as the second column, e.g.
-                        # timestamp,8,0.0001. The rate is the final column;
-                        # using item[1] silently treated "8 hours" as an 800%
-                        # funding rate and corrupted every R-multiple metric.
-                        try:
-                            rate = float(item[-1])
-                        except (TypeError, ValueError) as exc:
-                            raise RuntimeError(
-                                f"Invalid funding rate in archive row for {symbol}: {item!r}"
-                            ) from exc
-                        if not __import__("math").isfinite(rate):
-                            raise RuntimeError(
-                                f"Non-finite funding rate in archive row for {symbol}: {item!r}"
-                            )
-                        rows.append({"timestamp": iso_utc(ts), "funding_rate": str(rate)})
+                    parsed = parse_archive_row(item, symbol, start_ms, end_ms)
+                    if parsed is not None:
+                        rows.append(parsed)
         return True
 
     month = start.replace(day=1)
