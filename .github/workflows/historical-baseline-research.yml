@@ -48,6 +48,16 @@ jobs:
             --symbol "$SYMBOL" --interval 1h \
             --start "$START" --end "$END" \
             --output "data/${SYMBOL}_1h.csv"
+      - name: Download historical funding rates
+        env:
+          SYMBOL: ${{ matrix.symbol }}
+          DAYS: ${{ inputs.days || '365' }}
+        run: |
+          START_MS="$(date -u -d "${DAYS} days ago" +%s000)"
+          END_MS="$(date -u +%s000)"
+          python -m research.funding_data \
+            --symbol "$SYMBOL" --start-ms "$START_MS" --end-ms "$END_MS" \
+            --output "data/${SYMBOL}_funding.csv"
       - name: Run research-only baseline and walk-forward report
         env:
           SYMBOL: ${{ matrix.symbol }}
@@ -122,6 +132,7 @@ jobs:
             --csv "data/${SYMBOL}_1h.csv" \
             --symbol "${SYMBOL}" --interval 1h \
             --train-fraction 0.6 \
+            --funding-csv "data/${SYMBOL}_funding.csv" \
             --output "reports/${SYMBOL}_1h_mean_reversion.json"
       - name: Print mean-reversion research summary
         if: success()
@@ -154,6 +165,7 @@ jobs:
           name: research-${{ matrix.symbol }}-1h
           path: |
             data/${{ matrix.symbol }}_1h.csv
+            data/${{ matrix.symbol }}_funding.csv
             reports/${{ matrix.symbol }}_1h_baseline.json
             reports/${{ matrix.symbol }}_1h_adaptive.json
             reports/${{ matrix.symbol }}_1h_breakout_retest.json
