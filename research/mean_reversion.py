@@ -11,11 +11,13 @@ from research.run_backtest import load_csv
 
 
 GRID = [
-    {"window": window, "entry_z": entry_z, "stop_atr": stop_atr, "rsi_filter": rsi_filter}
+    {"window": window, "entry_z": entry_z, "stop_atr": stop_atr,
+     "rsi_filter": rsi_filter, "direction": direction}
     for window in (24, 48, 72)
     for entry_z in (1.5, 2.0)
     for stop_atr in (1.5, 2.0)
     for rsi_filter in (0, 1)
+    for direction in ("BOTH", "LONG", "SHORT")
 ]
 
 
@@ -60,6 +62,9 @@ def simulate(rows: list[dict], params: dict, start: int, end: int,
         raise ValueError("fees and slippage must be finite and non-negative")
     window, entry_z, stop_atr, rsi_filter = (
         params["window"], params["entry_z"], params["stop_atr"], params["rsi_filter"])
+    direction = params.get("direction", "BOTH")
+    if direction not in ("BOTH", "LONG", "SHORT"):
+        raise ValueError("direction must be BOTH, LONG, or SHORT")
     mean_line, std_line, rsi_line = indicators(rows, window)
     atr = atr_series(rows)
     equity, peak, max_dd, trades = 1.0, 1.0, 0.0, []
@@ -76,6 +81,10 @@ def simulate(rows: list[dict], params: dict, start: int, end: int,
             side = 1
         elif z >= entry_z and (not rsi_filter or (rsi is not None and rsi >= 65)):
             side = -1
+        if direction == "LONG" and side < 0:
+            side = 0
+        elif direction == "SHORT" and side > 0:
+            side = 0
         if not side:
             i += 1
             continue
@@ -186,7 +195,7 @@ def main():
         stress=simulate(rows,diagnostic["parameters"],split,len(rows),fee=0.0005,slippage=0.001)
     report={"status":"RESEARCH_ONLY","symbol":args.symbol.upper(),"interval":args.interval,"bars":len(rows),
             "split":{"train_fraction":args.train_fraction,"train_bars":split,"holdout_bars":len(rows)-split},
-            "strategy":"causal rolling mean-reversion: prior-window z-score, optional RSI extreme filter, next-open entry, mean target, ATR stop; conservative stop-first same-bar handling",
+            "strategy":"causal rolling mean-reversion: prior-window z-score, optional RSI extreme filter, direction-specific candidate (BOTH/LONG/SHORT), next-open entry, mean target, ATR stop; conservative stop-first same-bar handling",
             "candidate_count":len(candidates),"eligible_count":len(eligible),
             "selected_parameters":selected["parameters"] if selected else None,
             "diagnostic_only_parameters":diagnostic["parameters"] if diagnostic and not selected else None,
