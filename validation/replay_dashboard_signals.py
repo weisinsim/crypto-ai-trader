@@ -109,11 +109,11 @@ def replay(symbol, one, four):
         h1=one[:i+1]
         h4=closed_rows_at(four, now)
         if len(h4)<50: continue
-        c=[x["c"] for x in h1]; hi=[x["h"] for x in h1]; lo=[x["l"] for x in h1]; q=[x["q"] for x in h1]
+        c=[x["c"] for x in h1]; hi=[x["h"] for x in h1]; lo=[x["l"] for x in h1]; v=[x["v"] for x in h1]; q=[x["q"] for x in h1]
         c4=[x["c"] for x in h4]
         p=c[-1]; e20=ema(c,20); e50=ema(c,50); e200=ema(c,200)
         e20_4=ema(c4,20); e50_4=ema(c4,50)
-        a=atr(hi,lo,c); r=rsi(c); ad=adx(hi,lo,c); vw=vwap(hi,lo,c,q); sup,res=levels(hi,lo,c)
+        a=atr(hi,lo,c); r=rsi(c); ad=adx(hi,lo,c); vw=vwap(hi,lo,c,v); sup,res=levels(hi,lo,c)
         if None in (e20,e50,e200,e20_4,e50_4,a,r): continue
         side=""; entry=sl=target=None; score=0; reason="NO-TRADE"
         if symbol=="ETHUSDT":
