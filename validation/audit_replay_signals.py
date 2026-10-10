@@ -83,7 +83,12 @@ def audit(symbol, candle_path, signal_path, entry_tolerance_bps=0.1):
         "symbol": symbol, "source_candle_count": len(closes), "signal_count": len(rows),
         "matched_signal_count": len(rows) - len(errors), "error_count": len(errors),
         "entry_tolerance_bps": entry_tolerance_bps, "errors_sample": errors[:20],
-        "pass": bool(rows) and not errors,
+        # Zero signals can be legitimate for a disabled/no-entry model (e.g. ETH).
+        # Keep data integrity separate from signal availability; the batch audit
+        # will mark a zero-trade model as insufficient sample rather than failing
+        # the entire multi-asset run.
+        "status": "NO_SIGNALS" if not rows else ("PASS" if not errors else "SIGNAL_ERRORS"),
+        "pass": bool(closes) and not errors,
         "notice": "This checks timestamp/price/stop/target consistency, not parity with the live strategy or profitability."
     }
 
