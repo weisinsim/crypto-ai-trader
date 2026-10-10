@@ -95,6 +95,11 @@ def levels(h,l,c,n=48):
     return min(l[-m:-1]),max(h[-m:-1])
 
 
+def closed_rows_at(rows, timestamp_ms):
+    """Return only bars whose close timestamp is no later than the decision time."""
+    return [row for row in rows if row["ts"] <= timestamp_ms]
+
+
 def replay(symbol, one, four):
     output=[]
     # For each hourly close, use hourly candles through that close and 4h candles
@@ -102,7 +107,7 @@ def replay(symbol, one, four):
     for i in range(199, len(one)):
         now=one[i]["ts"]
         h1=one[:i+1]
-        h4=[x for x in four if x["ts"] <= now]
+        h4=closed_rows_at(four, now)
         if len(h4)<50: continue
         c=[x["c"] for x in h1]; hi=[x["h"] for x in h1]; lo=[x["l"] for x in h1]; q=[x["q"] for x in h1]
         c4=[x["c"] for x in h4]
