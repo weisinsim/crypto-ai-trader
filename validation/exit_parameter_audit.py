@@ -71,7 +71,38 @@ def read_signals(path):
     return rows
 
 
-def evaluate(candles, signals, target_r, stop_atr, cost_bps, max_hold, funding_bps_per_8h=0.0):
+def read_funding(path):
+    """Read timestamped funding events: timestamp,funding_rate.
+
+    funding_rate is a decimal fraction (e.g. 0.0001 for 0.01%). The rate is
+    charged to longs when positive and to shorts when negative.
+    """
+    rows = []
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            ts = parse_ts(row["timestamp"])
+            rate = float(row["funding_rate"])
+            if not math.isfinite(rate):
+                raise ValueError("Funding rates must be finite")
+            rows.append({"ts": ts, "rate": rate})
+    rows.sort(key=lambda item: item["ts"])
+    if len({item["ts"] for item in rows}) != len(rows):
+        raise ValueError("Duplicate funding timestamps")
+    if not rows:
+        raise ValueError("Funding history is empty")
+    return rows
+
+
+def funding_cost_r(funding_rows, entry_ts, exit_ts, side, entry, risk):
+    """Sum side-aware funding cashflows at events within (entry, exit]."""
+    direction = 1 if side == "LONG" else -1
+    total_fraction = sum(item["rate"] * direction for item in funding_rows
+                         if entry_ts < item["ts"] <= exit_ts)
+    return total_fraction * entry / risk
+
+
+def evaluate(candles, signals, target_r, stop_atr, cost_bps, max_hold,
+             funding_bps_per_8h=0.0, funding_rows=None):
     index = {c["ts"]: i for i, c in enumerate(candles)}
     results = []
     for sig in signals:
@@ -117,10 +148,13 @@ def evaluate(candles, signals, target_r, stop_atr, cost_bps, max_hold, funding_b
             close = future[-1]["close"]
             outcome = d * (close - entry) / risk
         cost_r = (cost_bps / 10000.0) * entry / risk
-        # Sensitivity proxy only: charges the configured adverse funding rate
-        # prorated by elapsed candle intervals. This is not historical funding data.
-        elapsed_hours = max(0.0, (exit_ts - sig["ts"]) / 3600.0)
-        funding_r = (funding_bps_per_8h / 10000.0) * (elapsed_hours / 8.0) * entry / risk
+        # Prefer actual timestamped funding cashflows when supplied; otherwise
+        # use the explicitly labeled constant adverse-rate sensitivity proxy.
+        if funding_rows is not None:
+            funding_r = funding_cost_r(funding_rows, sig["ts"], exit_ts, sig["side"], entry, risk)
+        else:
+            elapsed_hours = max(0.0, (exit_ts - sig["ts"]) / 3600.0)
+            funding_r = (funding_bps_per_8h / 10000.0) * (elapsed_hours / 8.0) * entry / risk
         results.append({"timestamp": sig["ts"], "exit_timestamp": exit_ts, "side": sig["side"], "exit_reason": reason,
                         "gross_R": outcome, "cost_R": cost_r, "funding_R": funding_r,
                         "net_R": outcome - cost_r - funding_r})
@@ -205,7 +239,9 @@ def main():
     p.add_argument("--stop-atr", type=float, default=2.0)
     p.add_argument("--cost-bps", type=float, default=10.0)
     p.add_argument("--funding-bps-per-8h", type=float, default=0.0,
-                   help="Research approximation: adverse funding cost in bps per 8h of holding time")
+                   help="Fallback stress proxy: adverse funding cost in bps per 8h")
+    p.add_argument("--funding-file", default=None,
+                   help="Optional CSV with timestamp,funding_rate; uses actual side-aware event rates")
     p.add_argument("--max-hold", type=int, default=72)
     p.add_argument("--interval", choices=("15m", "30m", "1h", "2h", "4h", "1d"), default="1h",
                    help="Expected candle cadence; gaps and irregular intervals abort the audit")
@@ -220,6 +256,7 @@ def main():
             or not 0 <= a.min_match_pct <= 100):
         p.error("Invalid parameters: numeric values must be finite; stop-atr > 0, cost-bps >= 0, funding-bps-per-8h >= 0, max-hold >= 1, holdout fraction 0.05–0.45, match threshold 0–100")
     candles, signals = read_candles(a.candles), read_signals(a.signals)
+    funding_rows = read_funding(a.funding_file) if a.funding_file else None
     interval_seconds = {"15m": 900, "30m": 1800, "1h": 3600, "2h": 7200, "4h": 14400, "1d": 86400}[a.interval]
     cadence_errors = [
         {"previous_ts": left["ts"], "current_ts": right["ts"],
@@ -258,7 +295,7 @@ def main():
                    "minimum_required_match_pct": a.min_match_pct,
                    "holdout_start_epoch": split_ts, "stop_atr_fallback": a.stop_atr,
                    "uses_signal_stop_when_present": True,
-                   "round_trip_cost_bps": a.cost_bps, "funding_bps_per_8h_sensitivity": a.funding_bps_per_8h, "max_hold_candles": a.max_hold, "expected_interval": a.interval},
+                   "round_trip_cost_bps": a.cost_bps, "funding_bps_per_8h_sensitivity": a.funding_bps_per_8h if funding_rows is None else None, "funding_file": a.funding_file, "max_hold_candles": a.max_hold, "expected_interval": a.interval},
         "periods": {}
     }
     for name, subset in periods.items():
@@ -267,7 +304,7 @@ def main():
         subset_candle_ts = {c["ts"] for c in subset["candles"]}
         matched_subset_signals = sum(s["ts"] in subset_candle_ts for s in subset["signals"])
         for r in (2.5, 3.0):
-            trades = evaluate(subset["candles"], subset["signals"], r, a.stop_atr, a.cost_bps, a.max_hold, a.funding_bps_per_8h)
+            trades = evaluate(subset["candles"], subset["signals"], r, a.stop_atr, a.cost_bps, a.max_hold, a.funding_bps_per_8h, funding_rows)
             sequential, skipped = filter_single_position(trades)
             output["periods"][name][f"target_{r}R"] = {
                 "signal_level": summarize(trades),
