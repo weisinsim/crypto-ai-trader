@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 from pathlib import Path
 from statistics import mean
 
@@ -32,6 +33,9 @@ def load_funding_csv(path: str) -> list[dict]:
     symbols = {row["symbol"] for row in rows}
     if not rows or "" in symbols or len(symbols) != 1:
         raise ValueError("funding CSV must contain rows for exactly one non-empty symbol")
+    if any(not math.isfinite(row["funding_rate"]) or
+           not math.isfinite(row["mark_price"]) or row["mark_price"] <= 0 for row in rows):
+        raise ValueError("funding CSV contains non-finite rates or invalid mark prices")
     rows.sort(key=lambda row: row["funding_time"])
     for left, right in zip(rows, rows[1:]):
         if left["funding_time"] == right["funding_time"]:
