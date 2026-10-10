@@ -93,6 +93,26 @@ def read_funding(path):
     return rows
 
 
+def validate_funding_coverage(funding_rows, candles, expected_interval_seconds):
+    """Fail closed when funding events do not cover the full candle window."""
+    first_ts, last_ts = candles[0]["ts"], candles[-1]["ts"]
+    events = [row["ts"] for row in funding_rows]
+    if events[0] > first_ts or events[-1] < last_ts:
+        raise ValueError(
+            "Funding history does not cover the complete candle window: "
+            f"candles={first_ts}..{last_ts}, funding={events[0]}..{events[-1]}"
+        )
+    # Funding intervals can change by symbol/time. Do not hard-code 8h;
+    # flag suspiciously large internal gaps for manual review.
+    gaps = [right - left for left, right in zip(events, events[1:])]
+    suspicious = [gap for gap in gaps if gap > max(24 * 3600, expected_interval_seconds * 24)]
+    if suspicious:
+        raise ValueError(
+            f"Funding history has {len(suspicious)} internal gaps over the coverage threshold; "
+            "audit raw funding history before backtesting"
+        )
+
+
 def funding_cost_r(funding_rows, entry_ts, exit_ts, side, entry, risk):
     """Sum side-aware funding cashflows at events within (entry, exit]."""
     direction = 1 if side == "LONG" else -1
@@ -256,8 +276,13 @@ def main():
             or not 0 <= a.min_match_pct <= 100):
         p.error("Invalid parameters: numeric values must be finite; stop-atr > 0, cost-bps >= 0, funding-bps-per-8h >= 0, max-hold >= 1, holdout fraction 0.05–0.45, match threshold 0–100")
     candles, signals = read_candles(a.candles), read_signals(a.signals)
-    funding_rows = read_funding(a.funding_file) if a.funding_file else None
     interval_seconds = {"15m": 900, "30m": 1800, "1h": 3600, "2h": 7200, "4h": 14400, "1d": 86400}[a.interval]
+    funding_rows = read_funding(a.funding_file) if a.funding_file else None
+    if funding_rows is not None:
+        try:
+            validate_funding_coverage(funding_rows, candles, interval_seconds)
+        except ValueError as exc:
+            raise SystemExit(f"Funding history validation failed: {exc}")
     cadence_errors = [
         {"previous_ts": left["ts"], "current_ts": right["ts"],
          "delta_seconds": right["ts"] - left["ts"]}
