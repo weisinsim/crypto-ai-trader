@@ -27,6 +27,15 @@ class BatchAuditTests(unittest.TestCase):
         }
         self.assertEqual(holdout_max_trade_count(holdout), 9)
 
+    def test_nested_summary_counts_signal_and_single_position_modes(self):
+        from validation.run_multi_asset_exit_audit import holdout_min_trade_count, holdout_max_trade_count
+        holdout = {
+            "target_2.5R": {"signal_level": {"trades": 40}, "single_position": {"trades": 22}},
+            "target_3.0R": {"signal_level": {"trades": 38}, "single_position": {"trades": 20}},
+        }
+        self.assertEqual(holdout_min_trade_count(holdout), 20)
+        self.assertEqual(holdout_max_trade_count(holdout), 40)
+
     def test_min_trade_count_requires_all_exit_variants(self):
         from validation.run_multi_asset_exit_audit import holdout_min_trade_count
         holdout = {
