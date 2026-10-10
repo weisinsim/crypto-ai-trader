@@ -192,6 +192,8 @@ def main():
     p.add_argument("--stop-atr", type=float, default=2.0)
     p.add_argument("--cost-bps", type=float, default=10.0)
     p.add_argument("--max-hold", type=int, default=72)
+    p.add_argument("--interval", choices=("15m", "30m", "1h", "2h", "4h", "1d"), default="1h",
+                   help="Expected candle cadence; gaps and irregular intervals abort the audit")
     p.add_argument("--holdout-fraction", type=float, default=0.30)
     p.add_argument("--min-match-pct", type=float, default=95.0, help="Abort if fewer than this percent of signals match candle timestamps")
     p.add_argument("--out", default="exit_audit_results.json")
@@ -199,6 +201,19 @@ def main():
     if a.stop_atr <= 0 or a.cost_bps < 0 or a.max_hold < 1 or not 0.05 <= a.holdout_fraction <= 0.45 or not 0 <= a.min_match_pct <= 100:
         p.error("Invalid parameters: stop-atr > 0, cost-bps >= 0, max-hold >= 1, holdout fraction 0.05–0.45, match threshold 0–100")
     candles, signals = read_candles(a.candles), read_signals(a.signals)
+    interval_seconds = {"15m": 900, "30m": 1800, "1h": 3600, "2h": 7200, "4h": 14400, "1d": 86400}[a.interval]
+    cadence_errors = [
+        {"previous_ts": left["ts"], "current_ts": right["ts"],
+         "delta_seconds": right["ts"] - left["ts"]}
+        for left, right in zip(candles, candles[1:])
+        if right["ts"] - left["ts"] != interval_seconds
+    ]
+    if cadence_errors:
+        raise SystemExit(
+            f"Candle cadence validation failed for interval {a.interval}: "
+            f"{len(cadence_errors)} gap/irregular timestamp pairs found; no backtest was performed. "
+            f"First examples: {cadence_errors[:5]}"
+        )
     if not signals:
         raise SystemExit("No signals found. No backtest was performed.")
     split_i = int(len(candles) * (1 - a.holdout_fraction))
@@ -224,7 +239,7 @@ def main():
                    "minimum_required_match_pct": a.min_match_pct,
                    "holdout_start_epoch": split_ts, "stop_atr_fallback": a.stop_atr,
                    "uses_signal_stop_when_present": True,
-                   "round_trip_cost_bps": a.cost_bps, "max_hold_candles": a.max_hold},
+                   "round_trip_cost_bps": a.cost_bps, "max_hold_candles": a.max_hold, "expected_interval": a.interval},
         "periods": {}
     }
     for name, subset in periods.items():
