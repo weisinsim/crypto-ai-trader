@@ -106,9 +106,33 @@ def run_ema_cross_backtest(
     equity_curve = [equity]
     # Slippage affects fill prices; commissions are deducted separately on both fills.
 
+    def finalize_position(pos: dict, bar: dict, exit_price: float, reason: str, current_equity: float):
+        side = pos["side"]
+        # Adverse slippage on both fills; long sells lower, short buys higher.
+        exit_fill = exit_price * (1 - slippage_rate if side == 1 else 1 + slippage_rate)
+        gross_pnl = pos["qty"] * side * (exit_fill - pos["entry_fill"])
+        exit_fee = abs(pos["qty"] * exit_fill) * fee_rate
+        funding_cost = pos["qty"] * pos["entry_fill"] * funding_rate_per_bar * side * pos["bars_held"]
+        pnl = gross_pnl - pos["entry_fee"] - exit_fee - funding_cost
+        new_equity = current_equity + pnl
+        trade = {
+            "side": "LONG" if side == 1 else "SHORT",
+            "entry_time": pos["entry_time"], "exit_time": int(bar["t"]),
+            "entry": round(pos["entry_fill"], 8), "exit": round(exit_fill, 8),
+            "reason": reason, "bars_held": pos["bars_held"],
+            "stop": round(pos["stop"], 8), "target": round(pos["target"], 8),
+            "return_pct": round((new_equity / pos["equity_before"] - 1) * 100, 6),
+            "pnl_equity": round(pnl, 8),
+        }
+        return new_equity, trade
+
     for i in range(1, len(rows)):
         bar = rows[i]
-        # A position opened at a prior bar's open is checked against this bar.
+        # Entry availability is decided at the bar open. A position that exits
+        # intrabar must not be replaced using a signal at that same bar's open.
+        can_enter_at_open = position is None
+        opened_this_bar = False
+        # A position carried into this candle is checked against this bar.
         if position is not None:
             position["bars_held"] += 1
             exit_price = None
@@ -133,25 +157,12 @@ def run_ema_cross_backtest(
             elif i == len(rows) - 1:
                 exit_price, reason = float(bar["c"]), "END_OF_DATA"
             if exit_price is not None:
-                side = position["side"]
-                # Adverse slippage on both fills; long sells lower, short buys higher.
-                exit_fill = exit_price * (1 - slippage_rate if side == 1 else 1 + slippage_rate)
-                gross_pnl = position["qty"] * side * (exit_fill - position["entry_fill"])
-                exit_fee = abs(position["qty"] * exit_fill) * fee_rate
-                funding_cost = position["qty"] * position["entry_fill"] * funding_rate_per_bar * side * position["bars_held"]
-                pnl = gross_pnl - position["entry_fee"] - exit_fee - funding_cost
-                equity += pnl
-                ret_pct = (equity / position["equity_before"] - 1) * 100
-                trades.append({"side": "LONG" if side == 1 else "SHORT",
-                               "entry_time": position["entry_time"], "exit_time": int(bar["t"]),
-                               "entry": round(position["entry_fill"], 8), "exit": round(exit_fill, 8),
-                               "reason": reason, "bars_held": position["bars_held"],
-                               "stop": round(position["stop"], 8), "target": round(position["target"], 8),
-                               "return_pct": round(ret_pct, 6), "pnl_equity": round(pnl, 8)})
+                equity, trade = finalize_position(position, bar, exit_price, reason, equity)
+                trades.append(trade)
                 position = None
 
         # Signal is known only after the previous bar closes; fill at current open.
-        if (position is None and (trade_start_ts is None or int(bar["t"]) >= trade_start_ts)
+        if (can_enter_at_open and position is None and (trade_start_ts is None or int(bar["t"]) >= trade_start_ts)
                 and fast_ema[i - 1] is not None and slow_ema[i - 1] is not None
                 and fast_ema[i - 2] is not None and slow_ema[i - 2] is not None and atrs[i - 1]):
             prior_diff = fast_ema[i - 2] - slow_ema[i - 2]
@@ -171,32 +182,45 @@ def run_ema_cross_backtest(
                             "entry_time": int(bar["t"]), "bars_held": 0,
                             "equity_before": equity, "qty": qty,
                             "entry_fee": abs(qty * entry_fill) * fee_rate}
+                opened_this_bar = True
+
+        # The position was filled at this bar's open, so its stop/target may
+        # already be hit within this same OHLC candle. Resolve stop first.
+        if opened_this_bar and position is not None:
+            if position["side"] == 1:
+                stop_hit = float(bar["l"]) <= position["stop"]
+                target_hit = float(bar["h"]) >= position["target"]
+            else:
+                stop_hit = float(bar["h"]) >= position["stop"]
+                target_hit = float(bar["l"]) <= position["target"]
+            if stop_hit or target_hit:
+                reason = "STOP" if stop_hit else "TARGET"
+                exit_price = position["stop"] if stop_hit else position["target"]
+                equity, trade = finalize_position(position, bar, exit_price, reason, equity)
+                trades.append(trade)
+                position = None
+
         # Mark open positions to market so drawdown includes unrealized losses.
         marked_equity = equity
         if position is not None:
             mark_price = float(bar["c"])
-            marked_equity += position["qty"] * position["side"] * (mark_price - position["entry_fill"])
-            marked_equity -= abs(position["qty"] * mark_price) * fee_rate
+            unrealized_pnl = position["qty"] * position["side"] * (mark_price - position["entry_fill"])
+            estimated_exit_fee = abs(position["qty"] * mark_price) * fee_rate
+            accrued_funding = (position["qty"] * position["entry_fill"] * funding_rate_per_bar
+                               * position["side"] * position["bars_held"])
+            marked_equity += (unrealized_pnl - position["entry_fee"]
+                              - estimated_exit_fee - accrued_funding)
         peak = max(peak, marked_equity)
         max_dd = max(max_dd, (peak - marked_equity) / peak if peak else 0)
         equity_curve.append(marked_equity)
 
     if position is not None:
         bar = rows[-1]
-        side = position["side"]
-        exit_fill = float(bar["c"]) * (1 - slippage_rate if side == 1 else 1 + slippage_rate)
-        gross_pnl = position["qty"] * side * (exit_fill - position["entry_fill"])
-        exit_fee = abs(position["qty"] * exit_fill) * fee_rate
-        funding_cost = position["qty"] * position["entry_fill"] * funding_rate_per_bar * side * position["bars_held"]
-        pnl = gross_pnl - position["entry_fee"] - exit_fee - funding_cost
-        equity += pnl
-        trades.append({"side": "LONG" if side == 1 else "SHORT",
-                       "entry_time": position["entry_time"], "exit_time": int(bar["t"]),
-                       "entry": round(position["entry_fill"], 8), "exit": round(exit_fill, 8),
-                       "reason": "END_OF_DATA", "bars_held": position["bars_held"],
-                       "stop": round(position["stop"], 8), "target": round(position["target"], 8),
-                       "return_pct": round((equity / position["equity_before"] - 1) * 100, 6),
-                       "pnl_equity": round(pnl, 8)})
+        equity, trade = finalize_position(position, bar, float(bar["c"]), "END_OF_DATA", equity)
+        trades.append(trade)
+        # Include the final liquidation value in maximum drawdown.
+        peak = max(peak, equity)
+        max_dd = max(max_dd, (peak - equity) / peak if peak else 0.0)
 
     wins = [t["pnl_equity"] for t in trades if t["pnl_equity"] > 0]
     losses = [-t["pnl_equity"] for t in trades if t["pnl_equity"] < 0]
