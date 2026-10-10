@@ -49,6 +49,23 @@ class HistoricalDataAuditTests(unittest.TestCase):
         self.assertFalse(result["pass_basic_integrity"])
         self.assertEqual(result["invalid_ohlc_rows"], 1)
 
+    def test_timezone_naive_timestamp_fails_closed(self):
+        rows = [{"timestamp": "2025-01-01T00:59:59.999", "open": "100", "high": "102", "low": "99", "close": "101"}]
+        result = audit(self.write_csv(rows), "1h")
+        self.assertFalse(result["pass_basic_integrity"])
+        self.assertEqual(result["timestamp_errors"], 1)
+
+    def test_non_finite_ohlc_fails(self):
+        rows = [{"timestamp": "2025-01-01T00:59:59.999Z", "open": "NaN", "high": "102", "low": "99", "close": "101"}]
+        result = audit(self.write_csv(rows), "1h")
+        self.assertFalse(result["pass_basic_integrity"])
+        self.assertEqual(result["invalid_ohlc_rows"], 1)
+
+    def test_unsupported_interval_is_rejected(self):
+        row = {"timestamp": "2025-01-01T00:59:59.999Z", "open": "100", "high": "102", "low": "99", "close": "101"}
+        with self.assertRaises(ValueError):
+            audit(self.write_csv([row]), "3h")
+
 
 if __name__ == "__main__":
     unittest.main()
