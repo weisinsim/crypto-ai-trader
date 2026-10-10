@@ -26,8 +26,12 @@ def load_funding_csv(path: str) -> list[dict]:
     with open(path, newline="", encoding="utf-8") as handle:
         rows = [{"funding_time": int(row["funding_time"]),
                  "funding_rate": float(row["funding_rate"]),
-                 "mark_price": float(row["mark_price"])}
+                 "mark_price": float(row["mark_price"]),
+                 "symbol": row.get("symbol", "").strip().upper()}
                 for row in csv.DictReader(handle)]
+    symbols = {row["symbol"] for row in rows}
+    if not rows or "" in symbols or len(symbols) != 1:
+        raise ValueError("funding CSV must contain rows for exactly one non-empty symbol")
     rows.sort(key=lambda row: row["funding_time"])
     for left, right in zip(rows, rows[1:]):
         if left["funding_time"] == right["funding_time"]:
@@ -84,6 +88,8 @@ def main() -> None:
         raise ValueError("not enough bars for warm-up, holdout and walk-forward")
 
     historical_funding = load_funding_csv(args.funding_csv) if args.funding_csv else None
+    if historical_funding is not None and historical_funding[0]["symbol"] != args.symbol.upper():
+        raise ValueError("funding CSV symbol does not match --symbol")
     common = dict(fast=args.fast, slow=args.slow, fee_rate=args.fee_rate,
                   slippage_rate=args.slippage_rate,
                   funding_rate_per_bar=args.funding_rate_per_bar,
@@ -133,7 +139,12 @@ def main() -> None:
         "interval": args.interval,
         "interval_note": "CSV timestamps were validated for exact interval continuity; verify source and range before interpreting metrics.",
         "bars": len(rows), "first_ts": rows[0]["t"], "last_ts": rows[-1]["t"],
-        "parameters": common,
+        "parameters": {key: value for key, value in common.items() if key != "funding_rates"},
+        "funding_data": ({"source": args.funding_csv, "records": len(historical_funding),
+                          "first_ts": historical_funding[0]["funding_time"],
+                          "last_ts": historical_funding[-1]["funding_time"],
+                          "symbol": historical_funding[0]["symbol"]}
+                         if historical_funding else {"source": None, "records": 0}),
         "split": {"train_fraction": args.train_fraction, "boundary_ts": boundary_ts,
                   "warmup_bars": split, "holdout_bars": len(holdout)},
         "holdout": {
