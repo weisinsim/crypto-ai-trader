@@ -52,9 +52,9 @@ def main() -> None:
     holdout = rows[split:]
     # Include prior bars for indicator warm-up, but report only trades whose
     # entries occur at or after the holdout boundary.
-    holdout_result = run_ema_cross_backtest(warmup + holdout, **common)
     boundary_ts = holdout[0]["t"]
-    holdout_trades = [t for t in holdout_result["trade_log"] if t["entry_time"] >= boundary_ts]
+    holdout_result = run_ema_cross_backtest(warmup + holdout, trade_start_ts=boundary_ts, **common)
+    holdout_trades = holdout_result["trade_log"]
     # Convert fixed-notional trade PnL to the starting-equity basis used by the runner.
     holdout_pnls = [t["pnl_equity"] for t in holdout_trades]
     holdout_profit = sum(p for p in holdout_pnls if p > 0)
@@ -70,9 +70,9 @@ def main() -> None:
         if b - a < args.slow + 2:
             continue
         history_start = max(0, a - args.slow * 3)
-        fold_result = run_ema_cross_backtest(rows[history_start:b], **common)
         start_ts = rows[a]["t"]
-        fold_trades = [t for t in fold_result["trade_log"] if t["entry_time"] >= start_ts]
+        fold_result = run_ema_cross_backtest(rows[history_start:b], trade_start_ts=start_ts, **common)
+        fold_trades = fold_result["trade_log"]
         walk_results.append({
             "fold": fold + 1, "start_ts": start_ts, "end_ts": rows[b - 1]["t"],
             "bars": b - a, "trades": len(fold_trades),
