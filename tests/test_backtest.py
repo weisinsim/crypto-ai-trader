@@ -86,7 +86,7 @@ class BacktestTests(unittest.TestCase):
                 both_hit = bar["l"] <= trade["stop"] and bar["h"] >= trade["target"]
             else:
                 both_hit = bar["h"] >= trade["stop"] and bar["l"] <= trade["target"]
-            if both_hit and trade["reason"] != "END_OF_DATA":
+            if both_hit:
                 self.assertEqual(trade["reason"], "STOP")
 
 
