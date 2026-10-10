@@ -117,7 +117,12 @@ def main():
             reports.append({"symbol": symbol, "status": "INSUFFICIENT_DATA", "missing": missing})
             continue
         integrity, failed_intervals = check_candle_integrity(candle_file, four_hour_file)
-        alignment = check_timeframe_alignment(candle_file, four_hour_file)
+        # Do not parse alignment timestamps after the integrity gate has already
+        # found malformed/naive timestamps; report the failure instead of aborting
+        # the entire multi-asset batch.
+        alignment = (check_timeframe_alignment(candle_file, four_hour_file)
+                     if not failed_intervals else {"pass": False, "skipped": True,
+                     "reason": "Candle integrity failed; timestamp alignment was not evaluated."})
         if failed_intervals or not alignment["pass"]:
             reports.append({
                 "symbol": symbol, "status": "DATA_INTEGRITY_FAILED",
