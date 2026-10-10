@@ -44,6 +44,10 @@ def main() -> None:
         raise ValueError("train-fraction must be between 0.3 and 0.8")
     if args.folds < 2:
         raise ValueError("folds must be >= 2")
+    if args.fast < 2 or args.slow <= args.fast:
+        raise ValueError("require 2 <= fast < slow")
+    if args.fee_rate < 0 or args.slippage_rate < 0:
+        raise ValueError("fee-rate and slippage-rate cannot be negative")
     if len(rows) < args.slow * 3:
         raise ValueError("not enough bars for warm-up, holdout and walk-forward")
 
@@ -80,6 +84,8 @@ def main() -> None:
             "fold": fold + 1, "start_ts": start_ts, "end_ts": rows[b - 1]["t"],
             "bars": b - a, "trades": len(fold_trades),
             "net_return_pct": round(sum(t["pnl_equity"] for t in fold_trades) * 100, 4),
+            "max_drawdown_pct": fold_result["max_drawdown_pct"],
+            "equity_final": fold_result["equity_final"],
             "win_rate_pct": round(sum(t["pnl_equity"] > 0 for t in fold_trades) / len(fold_trades) * 100, 2) if fold_trades else None,
             "profit_factor": round(sum(t["pnl_equity"] for t in fold_trades if t["pnl_equity"] > 0) / -sum(t["pnl_equity"] for t in fold_trades if t["pnl_equity"] < 0), 4) if any(t["pnl_equity"] < 0 for t in fold_trades) else (None if not any(t["pnl_equity"] > 0 for t in fold_trades) else "INF"),
             "trade_log": fold_trades,
@@ -97,6 +103,8 @@ def main() -> None:
         "holdout": {
             "bars": len(holdout), "trades": len(holdout_trades),
             "net_return_pct": round(sum(holdout_pnls) * 100, 4),
+            "max_drawdown_pct": holdout_result["max_drawdown_pct"],
+            "equity_final": holdout_result["equity_final"],
             "win_rate_pct": round(sum(p > 0 for p in holdout_pnls) / len(holdout_pnls) * 100, 2) if holdout_pnls else None,
             "profit_factor": round(holdout_profit / holdout_loss, 4) if holdout_loss else (None if not holdout_profit else "INF"),
             "expectancy_equity_pct": round(mean(holdout_pnls) * 100, 4) if holdout_pnls else None,
