@@ -105,6 +105,8 @@ def evaluate(candles, signals, target_r, stop_atr, cost_bps, max_hold):
                 outcome, reason, exit_ts = d * (stop_fill - entry) / risk, "SL", candle["ts"]
                 break
             if target_hit:
+                # A favorable gap beyond the target is capped at the target;
+                # this avoids crediting optimistic price improvement without tick data.
                 outcome, reason, exit_ts = target_r, "TP", candle["ts"]
                 break
         if outcome is None:
