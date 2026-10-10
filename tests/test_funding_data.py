@@ -11,6 +11,7 @@ class FundingDataTests(unittest.TestCase):
     def test_parse_filters_range_and_sorts(self):
         rows = parse_funding_rows([record(200), record(100), record(300)], "btcusdt", 100, 300)
         self.assertEqual([r["funding_time"] for r in rows], [100, 200])
+        self.assertEqual(rows[0]["mark_price"], 100.0)
 
     def test_download_paginates_without_timestamp_duplicates(self):
         def fake_fetch(params):
