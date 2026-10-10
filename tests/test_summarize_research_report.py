@@ -13,6 +13,12 @@ class ResearchReportTests(unittest.TestCase):
                 "symbol": "BTCUSDT", "cost_bps": 5, "status": "RESEARCH_ONLY",
                 "holdout_min_trade_count_across_exit_variants": 31,
                 "holdout_max_trade_count_across_exit_variants": 38,
+                "development_metrics_by_exit": {
+                    "target_2.5R": {
+                        "signal_level": {"trades": 80, "profit_factor": 1.4, "net_R": 12.0},
+                        "single_position": {"trades": 40, "profit_factor": 1.2, "net_R": 5.0},
+                    },
+                },
                 "holdout_metrics_by_exit": {
                     "target_2.5R": {
                         "signal_level": {"trades": 38, "win_rate_pct": 55.0, "profit_factor": 1.2, "net_R": 4.2, "avg_R": 0.11, "max_drawdown_R": 2.0},
@@ -32,6 +38,8 @@ class ResearchReportTests(unittest.TestCase):
         self.assertIn("signal_level", report)
         self.assertIn("single_position", report)
         self.assertIn("4.5000", report)
+        self.assertIn("Development vs Holdout comparison", report)
+        self.assertIn("80 | 1.4000 | 12.0000", report)
         self.assertIn("not a full portfolio simulator", report)
 
     def test_non_research_status_is_listed_but_not_misrepresented_as_metrics(self):
