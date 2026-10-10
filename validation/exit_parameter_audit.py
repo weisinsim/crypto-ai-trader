@@ -15,7 +15,7 @@ import argparse
 import csv
 import json
 import math
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 
@@ -27,7 +27,7 @@ def parse_ts(value):
         return int(numeric / 1000) if abs(numeric) >= 100_000_000_000 else int(numeric)
     except ValueError:
         dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        if dt.tzinfo is None:
+        if dt.tzinfo is None or dt.utcoffset() is None:
             raise ValueError(f"Timestamp must include timezone: {value!r}")
         return dt.timestamp()
 
@@ -37,7 +37,10 @@ def read_candles(path):
     with open(path, newline="", encoding="utf-8-sig") as f:
         for row in csv.DictReader(f):
             c = {k: float(row[k]) for k in ("open", "high", "low", "close")}
-            if c["low"] > min(c["open"], c["close"]) or c["high"] < max(c["open"], c["close"]) or c["low"] > c["high"]:
+            if (not all(math.isfinite(v) and v > 0 for v in c.values())
+                    or c["low"] > min(c["open"], c["close"])
+                    or c["high"] < max(c["open"], c["close"])
+                    or c["low"] > c["high"]):
                 raise ValueError(f"Invalid OHLC values at {row['timestamp']}")
             rows.append({"ts": parse_ts(row["timestamp"]), **c})
     rows.sort(key=lambda x: x["ts"])
@@ -56,11 +59,11 @@ def read_signals(path):
             if side not in ("LONG", "SHORT"):
                 raise ValueError(f"Invalid side {side!r}; expected LONG or SHORT")
             entry, atr = float(row["entry"]), float(row["atr"])
-            if entry <= 0 or atr <= 0:
-                raise ValueError("Entry and ATR must be positive")
+            if not math.isfinite(entry) or not math.isfinite(atr) or entry <= 0 or atr <= 0:
+                raise ValueError("Entry and ATR must be finite and positive")
             stop = float(row["stop"]) if row.get("stop", "").strip() else None
-            if stop is not None and stop <= 0:
-                raise ValueError("Stop must be positive when supplied")
+            if stop is not None and (not math.isfinite(stop) or stop <= 0):
+                raise ValueError("Stop must be finite and positive when supplied")
             rows.append({"ts": parse_ts(row["timestamp"]), "side": side, "entry": entry, "atr": atr, "stop": stop})
     rows.sort(key=lambda x: x["ts"])
     if len({r["ts"] for r in rows}) != len(rows):
