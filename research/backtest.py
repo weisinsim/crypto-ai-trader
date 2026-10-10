@@ -64,6 +64,7 @@ def run_ema_cross_backtest(
     *,
     fast: int = 20,
     slow: int = 50,
+    trend_period: int = 0,
     atr_period: int = 14,
     stop_atr: float = 1.5,
     target_atr: float = 2.0,
@@ -105,8 +106,8 @@ def run_ema_cross_backtest(
                 )
             funding_events[funding_ts] = {"funding_rate": rate, "mark_price": mark_price}
             previous_funding_ts = funding_ts
-    if fast < 2 or slow <= fast or atr_period < 1:
-        raise ValueError("require 2 <= fast < slow and atr_period >= 1")
+    if fast < 2 or slow <= fast or atr_period < 1 or trend_period < 0:
+        raise ValueError("require 2 <= fast < slow, atr_period >= 1 and trend_period >= 0")
     numeric_params = {
         "stop_atr": stop_atr, "target_atr": target_atr,
         "fee_rate": fee_rate, "slippage_rate": slippage_rate,
@@ -128,6 +129,9 @@ def run_ema_cross_backtest(
 
     closes = [float(r["c"]) for r in rows]
     fast_ema, slow_ema = _ema(closes, fast), _ema(closes, slow)
+    trend_ema = _ema(closes, trend_period) if trend_period >= 2 else None
+    if trend_period == 1:
+        raise ValueError("trend_period must be 0 (disabled) or >= 2")
     atrs = _atr(rows, atr_period)
     equity = 1.0
     peak = equity
@@ -206,6 +210,11 @@ def run_ema_cross_backtest(
             prior_diff = fast_ema[i - 2] - slow_ema[i - 2]
             current_diff = fast_ema[i - 1] - slow_ema[i - 1]
             side = 1 if prior_diff <= 0 < current_diff else (-1 if prior_diff >= 0 > current_diff and allow_short else 0)
+            if side and trend_ema is not None:
+                trend_value = trend_ema[i - 1]
+                close_value = float(rows[i - 1]["c"])
+                if trend_value is None or (side == 1 and close_value <= trend_value) or (side == -1 and close_value >= trend_value):
+                    side = 0
             if side:
                 open_price = float(bar["o"])
                 risk = float(atrs[i - 1]) * stop_atr
