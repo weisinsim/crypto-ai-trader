@@ -89,6 +89,13 @@ jobs:
             --out-dir research-results/exit-audits --min-trades 30 \
             > research-results/batch-manifest.json
           cat research-results/batch-manifest.json
+      - name: Build readable research summary
+        if: always() && hashFiles('research-results/batch-manifest.json') != ''
+        run: |
+          python validation/summarize_research_report.py \
+            --manifest research-results/batch-manifest.json \
+            --out research-results/summary.md
+          cat research-results/summary.md
       - name: Upload raw data and research outputs
         if: always()
         uses: actions/upload-artifact@v4
