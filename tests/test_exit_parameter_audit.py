@@ -107,6 +107,38 @@ class ExitAuditTests(unittest.TestCase):
         self.assertEqual(trades[0]["exit_reason"], "TIME")
         self.assertEqual(trades[0]["gross_R"], 1.0)
 
+    def test_cli_fails_closed_on_missing_candle_interval(self):
+        import subprocess
+        import sys
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            candles = root / "candles.csv"
+            signals = root / "signals.csv"
+            out = root / "out.json"
+            candles.write_text(
+                "timestamp,open,high,low,close\\n"
+                "2025-01-01T00:59:59Z,100,101,99,100\\n"
+                "2025-01-01T01:59:59Z,100,101,99,100\\n"
+                "2025-01-01T03:59:59Z,100,101,99,100\\n",
+                encoding="utf-8",
+            )
+            signals.write_text(
+                "timestamp,side,entry,atr\\n"
+                "2025-01-01T00:59:59Z,LONG,100,1\\n",
+                encoding="utf-8",
+            )
+            script = Path(__file__).resolve().parents[1] / "validation" / "exit_parameter_audit.py"
+            run = subprocess.run([
+                sys.executable, str(script), "--candles", str(candles),
+                "--signals", str(signals), "--interval", "1h", "--out", str(out),
+            ], capture_output=True, text=True)
+            self.assertNotEqual(run.returncode, 0)
+            self.assertIn("cadence validation failed", (run.stderr + run.stdout).lower())
+            self.assertFalse(out.exists())
+
     def test_match_rate_threshold_is_enforced_by_cli(self):
         import subprocess
         import sys
