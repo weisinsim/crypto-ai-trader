@@ -114,6 +114,16 @@ def main():
                                 "returncode": run.returncode, "stderr": run.stderr[-1500:]})
                 continue
             result = json.loads(dest.read_text(encoding="utf-8"))
+            # Verify the child audit actually used the expected funding file.
+            # In required mode, never treat an unadjusted audit as a valid result.
+            used_funding_file = result.get("inputs", {}).get("funding_file")
+            if args.require_funding and not used_funding_file:
+                reports.append({
+                    "symbol": symbol, "cost_bps": cost, "status": "AUDIT_FAILED",
+                    "reason": "Funding was required but the child audit did not record a funding file.",
+                    "audit_file": str(dest),
+                })
+                continue
             holdout = result.get("periods", {}).get("holdout", {})
             trades = holdout_max_trade_count(holdout)
             min_variant_trades = holdout_min_trade_count(holdout)
@@ -131,7 +141,8 @@ def main():
                 "candle_integrity": {k: v.get("pass_basic_integrity") for k, v in integrity.items()},
                 "holdout_metrics_by_exit": variant_metrics,
                 "audit_file": str(dest),
-                "funding_history_used": funding_file.exists(),
+                "funding_history_used": bool(used_funding_file),
+                "funding_file_recorded_by_audit": used_funding_file,
                 "warning": "Research output only; inspect both exit variants, all cost assumptions, parity, and data quality. Funding-adjusted conclusions require verified complete funding history."
             })
     summary = {
