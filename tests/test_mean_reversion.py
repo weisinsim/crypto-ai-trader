@@ -1,6 +1,6 @@
 import math
 
-from research.mean_reversion import indicators, simulate
+from research.mean_reversion import funding_cashflow, indicators, simulate
 
 
 def make_rows(n=240):
@@ -48,3 +48,36 @@ def test_mean_reversion_rejects_invalid_range():
         assert "evaluation range" in str(exc)
     else:
         raise AssertionError("invalid evaluation range should raise ValueError")
+
+
+
+def test_funding_cashflow_long_pays_and_short_receives_positive_funding():
+    events = [
+        {"funding_time": 200, "funding_rate": 0.001, "mark_price": 100.0, "symbol": "BTCUSDT"},
+    ]
+    long_pnl, long_count = funding_cashflow(1, 2.0, 100, 300, events)
+    short_pnl, short_count = funding_cashflow(-1, 2.0, 100, 300, events)
+    assert long_pnl == -0.2
+    assert short_pnl == 0.2
+    assert long_count == short_count == 1
+
+
+def test_funding_cashflow_excludes_entry_timestamp_and_after_exit():
+    events = [
+        {"funding_time": 100, "funding_rate": 0.01, "mark_price": 100.0},
+        {"funding_time": 200, "funding_rate": 0.01, "mark_price": 100.0},
+        {"funding_time": 301, "funding_rate": 0.01, "mark_price": 100.0},
+    ]
+    pnl, count = funding_cashflow(1, 1.0, 100, 300, events)
+    assert pnl == -1.0
+    assert count == 1
+
+
+def test_funding_cashflow_rejects_invalid_mark_price():
+    events = [{"funding_time": 200, "funding_rate": 0.01, "mark_price": 0.0}]
+    try:
+        funding_cashflow(1, 1.0, 100, 300, events)
+    except ValueError as exc:
+        assert "invalid funding" in str(exc)
+    else:
+        raise AssertionError("invalid mark price should raise ValueError")
