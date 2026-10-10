@@ -10,7 +10,7 @@ from statistics import mean
 from research.backtest import run_ema_cross_backtest, validate_candles
 
 
-def load_csv(path: str) -> list[dict]:
+def load_csv(path: str, interval_ms: int) -> list[dict]:
     with open(path, newline="", encoding="utf-8") as handle:
         rows = []
         for row in csv.DictReader(handle):
@@ -19,13 +19,15 @@ def load_csv(path: str) -> list[dict]:
                 "l": float(row["l"]), "c": float(row["c"]),
                 "v": float(row.get("v", 0) or 0), "q": float(row.get("q", 0) or 0),
             })
-    return validate_candles(rows)
+    return validate_candles(rows, interval_ms=interval_ms)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--csv", required=True, help="closed-candle CSV from research.binance_data")
     parser.add_argument("--symbol", required=True)
+    parser.add_argument("--interval", choices=("1h", "4h"), required=True,
+                        help="expected candle interval; gaps are rejected")
     parser.add_argument("--train-fraction", type=float, default=0.6)
     parser.add_argument("--folds", type=int, default=4)
     parser.add_argument("--fast", type=int, default=20)
@@ -36,7 +38,8 @@ def main() -> None:
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
-    rows = load_csv(args.csv)
+    interval_ms = {"1h": 3_600_000, "4h": 14_400_000}[args.interval]
+    rows = load_csv(args.csv, interval_ms)
     if not 0.3 <= args.train_fraction <= 0.8:
         raise ValueError("train-fraction must be between 0.3 and 0.8")
     if args.folds < 2:
@@ -85,7 +88,8 @@ def main() -> None:
     report = {
         "status": "RESEARCH_ONLY",
         "symbol": args.symbol.upper(),
-        "interval_note": "Input CSV interval must be consistent; verify source and range before interpreting metrics.",
+        "interval": args.interval,
+        "interval_note": "CSV timestamps were validated for exact interval continuity; verify source and range before interpreting metrics.",
         "bars": len(rows), "first_ts": rows[0]["t"], "last_ts": rows[-1]["t"],
         "parameters": common,
         "split": {"train_fraction": args.train_fraction, "boundary_ts": boundary_ts,
