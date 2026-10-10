@@ -45,6 +45,20 @@ class BacktestTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             run_ema_cross_backtest(rows, fast=10, slow=5)
 
+    def test_trend_filter_period_must_be_zero_or_at_least_two(self):
+        rows = candles_from_closes([100 + ((i % 9) - 4) for i in range(120)])
+        with self.assertRaisesRegex(ValueError, "trend_period"):
+            run_ema_cross_backtest(rows, fast=3, slow=9, atr_period=3, trend_period=1)
+
+    def test_trend_filter_is_optional_and_runs_with_long_period(self):
+        rows = candles_from_closes([100 + ((i % 9) - 4) for i in range(180)])
+        result = run_ema_cross_backtest(
+            rows, fast=3, slow=9, atr_period=3, trend_period=50,
+            fee_rate=0, slippage_rate=0,
+        )
+        self.assertEqual(result["status"], "COMPLETED")
+        self.assertGreaterEqual(result["trades"], 0)
+
     def test_non_finite_cost_and_funding_parameters_rejected(self):
         rows = candles_from_closes([100 + (i % 5) for i in range(80)])
         for name, value in (("fee_rate", float("nan")),
