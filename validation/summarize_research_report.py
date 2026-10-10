@@ -16,9 +16,10 @@ def fmt(value, digits=2):
     return "—"
 
 
-def target_metrics(report, target, mode):
-    holdout = report.get("holdout_metrics_by_exit", {})
-    target_data = holdout.get(f"target_{target}R", {})
+def target_metrics(report, target, mode, period="holdout"):
+    key = "development_metrics_by_exit" if period == "development" else "holdout_metrics_by_exit"
+    metrics_by_exit = report.get(key, {})
+    target_data = metrics_by_exit.get(f"target_{target}R", {})
     metrics = target_data.get(mode, {})
     return metrics if isinstance(metrics, dict) else {}
 
@@ -48,6 +49,29 @@ def render(manifest):
                       if isinstance(r.get("holdout_max_trade_count_across_exit_variants"), int)]
         count_text = f"{min(counts)}–{max(max_counts)}" if counts and max_counts else "—"
         lines.append(f"| {symbol} | {statuses} | {count_text} |")
+    lines.extend([
+        "",
+        "## Development vs Holdout comparison",
+        "",
+        "Compare the same target, cost, and execution mode across the chronological development and Holdout periods. A strong Holdout result does not erase weak development performance.",
+        "",
+        "| Symbol | Cost (bps) | Target | Mode | Dev trades | Dev PF | Dev Net R | Holdout trades | Holdout PF | Holdout Net R |",
+        "|---|---:|---:|---|---:|---:|---:|---:|---:|---:|",
+    ])
+    for report in sorted(reports, key=lambda r: (r.get("symbol", ""), r.get("cost_bps", -1))):
+        if report.get("status") not in ("RESEARCH_ONLY", "INSUFFICIENT_SAMPLE"):
+            continue
+        for target in ("2.5", "3.0"):
+            for mode in ("signal_level", "single_position"):
+                dev = target_metrics(report, target, mode, "development")
+                hold = target_metrics(report, target, mode, "holdout")
+                if not dev and not hold:
+                    continue
+                lines.append(
+                    f"| {report.get('symbol', '—')} | {report.get('cost_bps', '—')} | {target}R | {mode} | "
+                    f"{dev.get('trades', '—')} | {fmt(dev.get('profit_factor'), 4)} | {fmt(dev.get('net_R'), 4)} | "
+                    f"{hold.get('trades', '—')} | {fmt(hold.get('profit_factor'), 4)} | {fmt(hold.get('net_R'), 4)} |"
+                )
     lines.extend([
         "",
         "## Holdout metrics by cost, target, and execution mode",
