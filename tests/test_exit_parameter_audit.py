@@ -67,6 +67,39 @@ class ExitAuditTests(unittest.TestCase):
         self.assertEqual(trades[0]["exit_reason"], "SL")
         self.assertEqual(trades[0]["gross_R"], -2.5)
 
+    def test_candle_reader_rejects_out_of_order_rows(self):
+        import tempfile
+        from pathlib import Path
+        from validation.exit_parameter_audit import read_candles
+
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "candles.csv"
+            path.write_text(
+                "timestamp,open,high,low,close\n"
+                "2025-01-01T02:59:59Z,100,101,99,100\n"
+                "2025-01-01T00:59:59Z,100,101,99,100\n"
+                "2025-01-01T01:59:59Z,100,101,99,100\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "strictly increasing"):
+                read_candles(path)
+
+    def test_signal_reader_rejects_out_of_order_rows(self):
+        import tempfile
+        from pathlib import Path
+        from validation.exit_parameter_audit import read_signals
+
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "signals.csv"
+            path.write_text(
+                "timestamp,side,entry,atr\n"
+                "2025-01-01T02:59:59Z,LONG,100,1\n"
+                "2025-01-01T00:59:59Z,LONG,100,1\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "chronological"):
+                read_signals(path)
+
     def test_funding_reader_rejects_duplicate_timestamps(self):
         import tempfile
         from pathlib import Path
