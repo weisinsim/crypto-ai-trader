@@ -1,6 +1,7 @@
 import asyncio
 import json
 import time
+from validation.candle_closure import filter_closed_candles
 from pathlib import Path
 
 import httpx
@@ -234,8 +235,7 @@ def set_series(s, interval, klines):
 def closed_series_rows(s, interval, now_ms=None):
     """Return only candles whose full interval has elapsed; kline t is open time."""
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
-    duration_ms = 3_600_000 if interval == "1h" else 14_400_000
-    return [row for row in series[s][interval] if int(row["t"]) + duration_ms <= now_ms]
+    return filter_closed_candles(series[s][interval], interval, now_ms)
 
 def record_confirmed_signal(s, candle_close_ms=None):
     """Freeze the 1H signal at candle close so intrabar flips do not create fake entries."""
