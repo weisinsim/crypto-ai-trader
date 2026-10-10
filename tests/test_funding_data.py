@@ -25,7 +25,7 @@ class FundingDataTests(unittest.TestCase):
         self.assertEqual([r["funding_time"] for r in rows], [100, 200, 300])
 
     def test_rejects_non_finite_funding_rate(self):
-        with self.assertRaisesRegex(ValueError, "non-finite"):
+        with self.assertRaisesRegex(ValueError, "invalid funding rate"):
             parse_funding_rows([record(100, "nan")], "BTCUSDT", 0, 200)
 
     def test_rejects_invalid_symbol_and_pause(self):
