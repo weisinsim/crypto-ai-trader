@@ -89,6 +89,13 @@ class RunnerInputTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid mark prices"):
             load_funding_csv(path)
 
+    def test_load_funding_csv_rejects_empty_symbol(self):
+        path = self._write_funding_csv([
+            {"funding_time": 100, "funding_rate": "0.001", "mark_price": "100", "symbol": ""},
+        ])
+        with self.assertRaisesRegex(ValueError, "exactly one"):
+            load_funding_csv(path)
+
 
 if __name__ == "__main__":
     unittest.main()
