@@ -51,6 +51,13 @@ jobs:
           --start "${{ inputs.start_date }}"
           --end "${{ inputs.end_date }}"
           --out-dir data/funding
+      - name: Audit exact requested candle window
+        run: |
+          python validation/audit_window_coverage.py \
+            --data-dir data/historical \
+            --start "${{ inputs.start_date }}" --end "${{ inputs.end_date }}" \
+            --out research-results/window-coverage.json
+          cat research-results/window-coverage.json
       - name: Audit candle integrity
         run: |
           mkdir -p research-results
