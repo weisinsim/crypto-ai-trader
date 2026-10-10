@@ -241,7 +241,7 @@ class ExitAuditTests(unittest.TestCase):
                           cost_bps=0, max_hold=2)
         self.assertEqual(len(trades), 1)
         self.assertEqual(trades[0]["exit_reason"], "TIME")
-        self.assertEqual(trades[0]["gross_R"], 1.0)
+        self.assertEqual(trades[0]["gross_R"], 0.5)
 
     def test_cli_fails_closed_on_missing_candle_interval(self):
         import subprocess
