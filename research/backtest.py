@@ -80,6 +80,7 @@ def run_ema_cross_backtest(
     Signals are computed from completed bar i-1 and filled at bar i open.
     Optional historical funding events are settled only when an existing position
     is open at an event timestamp; event rows require funding_time/rate/mark_price.
+    To avoid silently mis-timing fees, every event must align with a candle open.
     If a bar touches both stop and target, stop is assumed first. Fees are
     charged on entry and exit notional; funding is charged per held bar.
     Returns percentage-equity results with one unit of initial equity and no leverage.
@@ -87,6 +88,7 @@ def run_ema_cross_backtest(
     rows = validate_candles(candles)
     funding_events = {}
     if funding_rates is not None:
+        candle_timestamps = {int(row["t"]) for row in rows}
         previous_funding_ts = None
         for event in sorted(list(funding_rates), key=lambda item: int(item["funding_time"])):
             funding_ts = int(event["funding_time"])
@@ -96,6 +98,11 @@ def run_ema_cross_backtest(
                 raise ValueError("funding events require finite rates and positive finite mark prices")
             if previous_funding_ts == funding_ts:
                 raise ValueError(f"duplicate funding timestamp: {funding_ts}")
+            if funding_ts not in candle_timestamps:
+                raise ValueError(
+                    f"funding timestamp {funding_ts} does not align with a candle open; "
+                    "use a finer candle interval or event-aware execution data"
+                )
             funding_events[funding_ts] = {"funding_rate": rate, "mark_price": mark_price}
             previous_funding_ts = funding_ts
     if fast < 2 or slow <= fast or atr_period < 1:
