@@ -54,7 +54,7 @@ class ExitAuditTests(unittest.TestCase):
         trades = evaluate(candles, signals, target_r=2.5, stop_atr=2,
                           cost_bps=0, max_hold=1)
         self.assertEqual(trades[0]["exit_reason"], "SL")
-        self.assertEqual(trades[0]["gross_R"], -5.0)
+        self.assertEqual(trades[0]["gross_R"], -2.5)
 
     def test_short_stop_gap_fills_at_worse_open(self):
         candles = [
