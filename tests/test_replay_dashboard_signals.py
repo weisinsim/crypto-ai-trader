@@ -17,6 +17,13 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 read_rows(path)
 
+    def test_non_finite_volume_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "bad_volume.csv"
+            path.write_text("timestamp,open,high,low,close,volume,quote_volume\\n2025-01-01T01:00:00Z,100,101,99,100,NaN,100\\n", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                read_rows(path)
+
     def test_only_closed_higher_timeframe_bars_are_used(self):
         bars = [{"ts": 100, "c": 1}, {"ts": 200, "c": 2}, {"ts": 300, "c": 3}]
         self.assertEqual(closed_rows_at(bars, 200), bars[:2])
