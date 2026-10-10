@@ -61,6 +61,17 @@ class ExitAuditTests(unittest.TestCase):
         signals = [{"ts": 9, "side": "LONG", "entry": 100, "atr": 1}]
         self.assertEqual(evaluate(candles, signals, 2.5, 2, 0, 5), [])
 
+    def test_signal_specific_stop_overrides_fallback_atr(self):
+        candles = [
+            candle(1, 100, 101, 99, 100),
+            candle(2, 100, 107, 99, 106),
+        ]
+        signals = [{"ts": 1, "side": "LONG", "entry": 100, "atr": 1, "stop": 98}]
+        trades = evaluate(candles, signals, target_r=2.5, stop_atr=9,
+                          cost_bps=0, max_hold=5)
+        self.assertEqual(trades[0]["exit_reason"], "TP")
+        self.assertAlmostEqual(trades[0]["net_R"], 2.5)
+
     def test_summary_counts_trades(self):
         stats = summarize([
             {"net_R": 2.0, "exit_reason": "TP"},
