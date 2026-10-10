@@ -114,6 +114,31 @@ jobs:
             --symbol "${SYMBOL}" --interval 1h \
             --train-fraction 0.6 \
             --output "reports/${SYMBOL}_1h_breakout_retest.json"
+      - name: Run mean-reversion research
+        env:
+          SYMBOL: ${{ matrix.symbol }}
+        run: |
+          python -m research.mean_reversion \
+            --csv "data/${SYMBOL}_1h.csv" \
+            --symbol "${SYMBOL}" --interval 1h \
+            --train-fraction 0.6 \
+            --output "reports/${SYMBOL}_1h_mean_reversion.json"
+      - name: Print mean-reversion research summary
+        if: success()
+        env:
+          SYMBOL: ${{ matrix.symbol }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          symbol = os.environ["SYMBOL"]
+          report = json.loads(Path(f"reports/{symbol}_1h_mean_reversion.json").read_text())
+          print("=== MEAN REVERSION (RESEARCH ONLY) ===")
+          print(f"symbol={symbol} candidates={report['candidate_count']} eligible={report['eligible_count']}")
+          print(f"selected_parameters={report['selected_parameters']}")
+          print(f"holdout={report['holdout']}")
+          print(f"stress_holdout={report['stress_holdout_0_30pct_round_trip']}")
+          PY
       - name: Upload raw data and report
         if: always()
         uses: actions/upload-artifact@v4
@@ -124,5 +149,6 @@ jobs:
             reports/${{ matrix.symbol }}_1h_baseline.json
             reports/${{ matrix.symbol }}_1h_adaptive.json
             reports/${{ matrix.symbol }}_1h_breakout_retest.json
+            reports/${{ matrix.symbol }}_1h_mean_reversion.json
           if-no-files-found: warn
           retention-days: 30
