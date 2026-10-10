@@ -80,6 +80,22 @@ class ResearchReportTests(unittest.TestCase):
         report = render(manifest)
         self.assertIn("1/2 | FAIL_CROSS_COST_ROBUSTNESS", report)
 
+    def test_cross_cost_gate_fails_if_a_configured_cost_tier_is_missing(self):
+        manifest = {
+            "min_trades_threshold": 2,
+            "cost_sensitivity_bps": [5, 10, 20],
+            "reports": [
+                {"symbol": "BTCUSDT", "cost_bps": 5, "status": "RESEARCH_ONLY",
+                 "development_metrics_by_exit": {"target_3.0R": {"single_position": {"net_R": 5}}},
+                 "holdout_metrics_by_exit": {"target_3.0R": {"single_position": {"trades": 4, "net_R": 3, "profit_factor": 1.4}}}},
+                {"symbol": "BTCUSDT", "cost_bps": 10, "status": "RESEARCH_ONLY",
+                 "development_metrics_by_exit": {"target_3.0R": {"single_position": {"net_R": 5}}},
+                 "holdout_metrics_by_exit": {"target_3.0R": {"single_position": {"trades": 4, "net_R": 2, "profit_factor": 1.2}}}},
+            ],
+        }
+        report = render(manifest)
+        self.assertIn("2/3 | FAIL_CROSS_COST_ROBUSTNESS", report)
+
     def test_flags_opposite_development_and_holdout_signs(self):
         manifest = {"reports": [
             {"symbol": "BTCUSDT", "cost_bps": 10, "status": "RESEARCH_ONLY",
