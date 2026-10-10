@@ -93,11 +93,15 @@ def read_funding(path):
     return rows
 
 
-def validate_funding_coverage(funding_rows, candles, expected_interval_seconds):
+def validate_funding_coverage(funding_rows, candles, expected_interval_seconds, max_gap_hours=24.0):
     """Fail closed when funding events do not cover the full candle window."""
+    if not candles:
+        raise ValueError("Cannot validate funding coverage against empty candles")
+    if not funding_rows:
+        raise ValueError("Funding history is empty")
     first_ts, last_ts = candles[0]["ts"], candles[-1]["ts"]
     events = [row["ts"] for row in funding_rows]
-    max_gap = max(24 * 3600, expected_interval_seconds * 24)
+    max_gap = max(max_gap_hours * 3600, expected_interval_seconds * 24)
     # Funding events are discrete and may not occur exactly on candle boundaries.
     # Allow bounded edge distance, but fail closed if either edge is too far away.
     if events[0] - first_ts > max_gap or last_ts - events[-1] > max_gap:
@@ -266,6 +270,8 @@ def main():
                    help="Fallback stress proxy: adverse funding cost in bps per 8h")
     p.add_argument("--funding-file", default=None,
                    help="Optional CSV with timestamp,funding_rate; uses actual side-aware event rates")
+    p.add_argument("--funding-max-gap-hours", type=float, default=24.0,
+                   help="Maximum allowed gap between funding events and at coverage edges (hours)")
     p.add_argument("--max-hold", type=int, default=72)
     p.add_argument("--interval", choices=("15m", "30m", "1h", "2h", "4h", "1d"), default="1h",
                    help="Expected candle cadence; gaps and irregular intervals abort the audit")
@@ -273,18 +279,19 @@ def main():
     p.add_argument("--min-match-pct", type=float, default=95.0, help="Abort if fewer than this percent of signals match candle timestamps")
     p.add_argument("--out", default="exit_audit_results.json")
     a = p.parse_args()
-    numeric_params = (a.stop_atr, a.cost_bps, a.funding_bps_per_8h, a.holdout_fraction, a.min_match_pct)
+    numeric_params = (a.stop_atr, a.cost_bps, a.funding_bps_per_8h, a.holdout_fraction, a.min_match_pct, a.funding_max_gap_hours)
     if (not all(math.isfinite(value) for value in numeric_params)
             or a.stop_atr <= 0 or a.cost_bps < 0 or a.funding_bps_per_8h < 0
+            or a.funding_max_gap_hours <= 0
             or a.max_hold < 1 or not 0.05 <= a.holdout_fraction <= 0.45
             or not 0 <= a.min_match_pct <= 100):
-        p.error("Invalid parameters: numeric values must be finite; stop-atr > 0, cost-bps >= 0, funding-bps-per-8h >= 0, max-hold >= 1, holdout fraction 0.05–0.45, match threshold 0–100")
+        p.error("Invalid parameters: numeric values must be finite; stop-atr > 0, cost-bps >= 0, funding-bps-per-8h >= 0, funding-max-gap-hours > 0, max-hold >= 1, holdout fraction 0.05–0.45, match threshold 0–100")
     candles, signals = read_candles(a.candles), read_signals(a.signals)
     interval_seconds = {"15m": 900, "30m": 1800, "1h": 3600, "2h": 7200, "4h": 14400, "1d": 86400}[a.interval]
     funding_rows = read_funding(a.funding_file) if a.funding_file else None
     if funding_rows is not None:
         try:
-            validate_funding_coverage(funding_rows, candles, interval_seconds)
+            validate_funding_coverage(funding_rows, candles, interval_seconds, a.funding_max_gap_hours)
         except ValueError as exc:
             raise SystemExit(f"Funding history validation failed: {exc}")
     cadence_errors = [
