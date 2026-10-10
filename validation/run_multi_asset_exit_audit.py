@@ -84,7 +84,7 @@ def check_timeframe_alignment(candle_file, four_hour_file):
         "four_hour_closes_missing_from_1h": len(missing),
         "missing_examples_ms": missing[:10],
         "four_hour_closes_off_utc_boundary": len(misaligned),
-        "misaligned_examples_ms": misaligned[:10],
+        "four_hour_misaligned_examples_ms": misaligned[:10],
     }
 
 
