@@ -124,8 +124,8 @@ class ExitAuditTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "funding.csv"
             path.write_text(
-                "timestamp,funding_rate\\n"
-                "2025-01-01T00:00:00Z,8\\n",
+                "timestamp,funding_rate\n"
+                "2025-01-01T00:00:00Z,8\n",
                 encoding="utf-8",
             )
             with self.assertRaisesRegex(ValueError, "sanity limit"):
