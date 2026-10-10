@@ -52,6 +52,32 @@ def check_candle_integrity(candle_file, four_hour_file):
     return integrity, failed
 
 
+def check_timeframe_alignment(candle_file, four_hour_file):
+    """Require every 4h close timestamp to exist in the 1h series."""
+    def timestamps(path):
+        with open(path, newline="", encoding="utf-8-sig") as stream:
+            return {parse_timestamp(row["timestamp"]) for row in csv.DictReader(stream)}
+
+    hourly = timestamps(candle_file)
+    four_hourly = timestamps(four_hour_file)
+    missing = sorted(four_hourly - hourly)
+    return {
+        "pass": bool(hourly and four_hourly) and not missing,
+        "hourly_rows": len(hourly),
+        "four_hour_rows": len(four_hourly),
+        "four_hour_closes_missing_from_1h": len(missing),
+        "missing_examples_ms": missing[:10],
+    }
+
+
+def parse_timestamp(value):
+    from datetime import datetime
+    dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if dt.tzinfo is None or dt.utcoffset() is None:
+        raise ValueError(f"Timestamp must include timezone: {value!r}")
+    return int(dt.timestamp() * 1000)
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--data-dir", default="data/historical")
@@ -90,12 +116,14 @@ def main():
             reports.append({"symbol": symbol, "status": "INSUFFICIENT_DATA", "missing": missing})
             continue
         integrity, failed_intervals = check_candle_integrity(candle_file, four_hour_file)
-        if failed_intervals:
+        alignment = check_timeframe_alignment(candle_file, four_hour_file)
+        if failed_intervals or not alignment["pass"]:
             reports.append({
                 "symbol": symbol, "status": "DATA_INTEGRITY_FAILED",
                 "failed_intervals": failed_intervals,
                 "integrity": integrity,
-                "notice": "No exit audit was run for this symbol because its candle data failed integrity checks."
+                "timeframe_alignment": alignment,
+                "notice": "No exit audit was run for this symbol because candle integrity or 1h/4h timestamp alignment failed."
             })
             continue
         for cost in COSTS:
