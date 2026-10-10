@@ -77,7 +77,7 @@ class BatchAuditTests(unittest.TestCase):
         four = self.write_candles("4h")
         content = four.read_text(encoding="utf-8")
         lines = content.splitlines()
-        lines[2] = lines[2].replace("T07:", "T02:", 1)
+        lines[3] = lines[3].replace("T07:", "T02:", 1)
         four.write_text("\n".join(lines) + "\n", encoding="utf-8")
         results, failed = check_candle_integrity(one, four)
         self.assertIn("4h", failed)
