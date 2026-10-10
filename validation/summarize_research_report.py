@@ -76,10 +76,14 @@ def render(manifest):
     symbols = sorted({r.get("symbol", "unknown") for r in reports})
     for symbol in symbols:
         asset_reports = [r for r in reports if r.get("symbol", "unknown") == symbol]
-        present = {r.get("cost_bps") for r in asset_reports if r.get("cost_bps") is not None}
+        cost_values = [r.get("cost_bps") for r in asset_reports if r.get("cost_bps") is not None]
+        present = set(cost_values)
+        duplicate_costs = sorted({cost for cost in cost_values if cost_values.count(cost) > 1})
         missing_costs = [cost for cost in expected_costs if cost not in present]
         statuses = sorted({r.get("status", "UNKNOWN") for r in asset_reports})
         blockers = [status for status in statuses if status not in ("RESEARCH_ONLY", "INSUFFICIENT_SAMPLE")]
+        if duplicate_costs:
+            blockers.append("DUPLICATE_COST_REPORTS")
         coverage_status = "BLOCKED:" + ",".join(blockers) if blockers else (
             "COMPLETE" if not missing_costs and len(present) == len(expected_costs) else "INCOMPLETE_COST_COVERAGE"
         )
