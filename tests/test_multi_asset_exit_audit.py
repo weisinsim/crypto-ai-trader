@@ -7,6 +7,17 @@ from validation.run_multi_asset_exit_audit import check_candle_integrity
 
 
 class BatchAuditTests(unittest.TestCase):
+    def test_batch_cli_rejects_invalid_thresholds(self):
+        import subprocess
+        import sys
+        script = Path(__file__).resolve().parents[1] / "validation" / "run_multi_asset_exit_audit.py"
+        run = subprocess.run(
+            [sys.executable, str(script), "--max-hold", "0"],
+            capture_output=True, text=True,
+        )
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("--max-hold must be >= 1", run.stderr)
+
     def test_ignores_metadata_fields(self):
         from validation.run_multi_asset_exit_audit import holdout_max_trade_count
         holdout = {
