@@ -158,6 +158,15 @@ class ExitAuditTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 read_signals(path)
 
+    def test_summary_reports_overlapping_trades(self):
+        stats = summarize([
+            {"timestamp": 100, "exit_timestamp": 300, "net_R": 1.0, "exit_reason": "TP"},
+            {"timestamp": 200, "exit_timestamp": 400, "net_R": -1.0, "exit_reason": "SL"},
+            {"timestamp": 400, "exit_timestamp": 500, "net_R": 0.5, "exit_reason": "TIME"},
+        ])
+        self.assertEqual(stats["overlapping_trade_count"], 2)
+        self.assertEqual(stats["max_concurrent_trades"], 2)
+
     def test_summary_counts_trades(self):
         stats = summarize([
             {"net_R": 2.0, "exit_reason": "TP"},
