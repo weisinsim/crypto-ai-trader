@@ -75,6 +75,20 @@ class RunnerInputTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "exactly one"):
             load_funding_csv(path)
 
+    def test_load_funding_csv_rejects_non_finite_rate(self):
+        path = self._write_funding_csv([
+            {"funding_time": 100, "funding_rate": "nan", "mark_price": "100", "symbol": "BTCUSDT"},
+        ])
+        with self.assertRaisesRegex(ValueError, "non-finite rates"):
+            load_funding_csv(path)
+
+    def test_load_funding_csv_rejects_invalid_mark_price(self):
+        path = self._write_funding_csv([
+            {"funding_time": 100, "funding_rate": "0.001", "mark_price": "0", "symbol": "BTCUSDT"},
+        ])
+        with self.assertRaisesRegex(ValueError, "invalid mark prices"):
+            load_funding_csv(path)
+
 
 if __name__ == "__main__":
     unittest.main()
