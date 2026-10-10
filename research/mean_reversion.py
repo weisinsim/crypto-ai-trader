@@ -118,12 +118,25 @@ def simulate(rows: list[dict], params: dict, start: int, end: int,
     wins = [t for t in trades if t["pnl_equity"] > 0]
     losses = [t for t in trades if t["pnl_equity"] < 0]
     gp, gl = sum(t["pnl_equity"] for t in wins), -sum(t["pnl_equity"] for t in losses)
+    def side_summary(side: str) -> dict:
+        side_trades = [t for t in trades if t["side"] == side]
+        side_wins = [t["pnl_equity"] for t in side_trades if t["pnl_equity"] > 0]
+        side_losses = [-t["pnl_equity"] for t in side_trades if t["pnl_equity"] < 0]
+        side_gp, side_gl = sum(side_wins), sum(side_losses)
+        return {
+            "trades": len(side_trades),
+            "net_pnl_equity_pct": round(sum(t["pnl_equity"] for t in side_trades) * 100, 4),
+            "win_rate_pct": round(len(side_wins) / len(side_trades) * 100, 2) if side_trades else None,
+            "profit_factor": round(side_gp / side_gl, 4) if side_gl else ("INF" if side_gp else None),
+        }
     return {"trades":len(trades), "net_return_pct":round((equity-1)*100,4),
             "max_drawdown_pct":round(max_dd*100,4),
             "win_rate_pct":round(len(wins)/len(trades)*100,2) if trades else None,
             "profit_factor":round(gp/gl,4) if gl else ("INF" if gp else None),
             "long_trades":sum(t["side"]=="LONG" for t in trades),
             "short_trades":sum(t["side"]=="SHORT" for t in trades),
+            "long_stats": side_summary("LONG"),
+            "short_stats": side_summary("SHORT"),
             "trade_log":trades}
 
 
