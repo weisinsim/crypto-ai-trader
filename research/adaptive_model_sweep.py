@@ -16,6 +16,7 @@ GRID = [
     for fast, slow in ((10, 30), (15, 40), (20, 50), (30, 80))
     for stop in (1.5, 2.0)
     for target in (1.5, 2.0, 2.5)
+    for trend in (0, 100, 200)
 ]
 
 
@@ -107,7 +108,8 @@ def main() -> None:
             p1 = other["parameters"]
             if p1 == p0:
                 continue
-            if (abs(p1["fast"] - p0["fast"]) <= 5
+            if (p1["trend_period"] == p0["trend_period"]
+                and abs(p1["fast"] - p0["fast"]) <= 5
                 and abs(p1["slow"] - p0["slow"]) <= 30
                 and abs(p1["stop_atr"] - p0["stop_atr"]) <= 0.5
                 and abs(p1["target_atr"] - p0["target_atr"]) <= 0.5):
@@ -183,7 +185,7 @@ def main() -> None:
             "stress_round_trip_cost_approx_pct": 0.30,
             "funding": "NOT INCLUDED: historical funding must be added before any deployment decision"
         },
-        "selection_method": "24 predeclared parameter sets; three chronological training folds; score=median return minus 0.5x median drawdown; requires >=15 trades, >=3 trades/fold, positive median return, >=2 positive folds, worst fold >= -3.0%, positive score and >=50% positive median-return neighbors; all selection gates use training data only",
+        "selection_method": "72 predeclared parameter sets including disabled/100/200-period trend EMA filter; three chronological training folds; score=median return minus 0.5x median drawdown; requires >=15 trades, >=3 trades/fold, positive median return, >=2 positive folds, worst fold >= -3.0%, positive score and >=50% positive median-return neighbors; all selection gates use training data only",
         "candidate_count": len(candidates), "eligible_count": len(eligible_candidates),
         "selected_parameters": selected["parameters"] if selected else None,
         "training_selection_metrics": ({k: v for k, v in selected.items() if k != "training_folds"}
