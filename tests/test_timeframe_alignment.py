@@ -41,6 +41,23 @@ class TimeframeAlignmentTests(unittest.TestCase):
             self.assertFalse(result["pass"])
             self.assertEqual(result["four_hour_closes_missing_from_1h"], 1)
 
+    def test_fails_when_four_hour_series_is_off_utc_boundary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            hourly = Path(tmp) / "hourly.csv"
+            four_hour = Path(tmp) / "four_hour.csv"
+            self.write_candles(hourly, [
+                "2025-01-01T00:59:59.999Z",
+                "2025-01-01T01:59:59.999Z",
+                "2025-01-01T02:59:59.999Z",
+                "2025-01-01T03:59:59.999Z",
+                "2025-01-01T04:59:59.999Z",
+            ])
+            # This timestamp is hourly-aligned but is not a Binance UTC 4h close.
+            self.write_candles(four_hour, ["2025-01-01T01:59:59.999Z"])
+            result = check_timeframe_alignment(hourly, four_hour)
+            self.assertFalse(result["pass"])
+            self.assertEqual(result["four_hour_closes_off_utc_boundary"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
