@@ -128,6 +128,36 @@ class ExitAuditTests(unittest.TestCase):
             self.assertNotEqual(run.returncode, 0)
             self.assertIn("No backtest was performed", run.stderr + run.stdout)
 
+    def test_read_candles_rejects_non_finite_ohlc(self):
+        import tempfile
+        from pathlib import Path
+        from validation.exit_parameter_audit import read_candles
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "candles.csv"
+            path.write_text(
+                "timestamp,open,high,low,close\\n"
+                "2025-01-01T00:59:59Z,NaN,101,99,100\\n"
+                "2025-01-01T01:59:59Z,100,101,99,100\\n"
+                "2025-01-01T02:59:59Z,100,101,99,100\\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                read_candles(path)
+
+    def test_read_signals_rejects_non_finite_parameters(self):
+        import tempfile
+        from pathlib import Path
+        from validation.exit_parameter_audit import read_signals
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "signals.csv"
+            path.write_text(
+                "timestamp,side,entry,atr\\n"
+                "2025-01-01T00:59:59Z,LONG,100,NaN\\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                read_signals(path)
+
     def test_summary_counts_trades(self):
         stats = summarize([
             {"net_R": 2.0, "exit_reason": "TP"},
