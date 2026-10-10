@@ -297,7 +297,7 @@ class ExitAuditTests(unittest.TestCase):
             signals.write_text(
                 "timestamp,side,entry,atr\n"
                 "2025-01-01T00:59:59Z,LONG,100,1\n"
-                "2025-01-01T00:00:00Z,LONG,100,1\n",
+                "2025-01-01T04:00:00Z,LONG,100,1\n",
                 encoding="utf-8",
             )
             script = Path(__file__).resolve().parents[1] / "validation" / "exit_parameter_audit.py"
