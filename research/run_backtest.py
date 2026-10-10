@@ -5,6 +5,7 @@ import argparse
 import csv
 import json
 from pathlib import Path
+from statistics import mean
 
 from research.backtest import run_ema_cross_backtest, validate_candles
 
@@ -54,6 +55,10 @@ def main() -> None:
     holdout_result = run_ema_cross_backtest(warmup + holdout, **common)
     boundary_ts = holdout[0]["t"]
     holdout_trades = [t for t in holdout_result["trade_log"] if t["entry_time"] >= boundary_ts]
+    # Convert fixed-notional trade PnL to the starting-equity basis used by the runner.
+    holdout_pnls = [t["pnl_equity"] for t in holdout_trades]
+    holdout_profit = sum(p for p in holdout_pnls if p > 0)
+    holdout_loss = -sum(p for p in holdout_pnls if p < 0)
     walk_results = []
     n = len(rows)
     # Expanding history windows with non-overlapping forward evaluation windows.
@@ -73,6 +78,7 @@ def main() -> None:
             "bars": b - a, "trades": len(fold_trades),
             "net_return_pct": round(sum(t["pnl_equity"] for t in fold_trades) * 100, 4),
             "win_rate_pct": round(sum(t["pnl_equity"] > 0 for t in fold_trades) / len(fold_trades) * 100, 2) if fold_trades else None,
+            "profit_factor": round(sum(t["pnl_equity"] for t in fold_trades if t["pnl_equity"] > 0) / -sum(t["pnl_equity"] for t in fold_trades if t["pnl_equity"] < 0), 4) if any(t["pnl_equity"] < 0 for t in fold_trades) else (None if not any(t["pnl_equity"] > 0 for t in fold_trades) else "INF"),
             "trade_log": fold_trades,
         })
 
@@ -86,14 +92,16 @@ def main() -> None:
                   "warmup_bars": len(warmup), "holdout_bars": len(holdout)},
         "holdout": {
             "bars": len(holdout), "trades": len(holdout_trades),
-            "net_return_pct": round(sum(t["pnl_equity"] for t in holdout_trades) * 100, 4),
-            "win_rate_pct": round(sum(t["pnl_equity"] > 0 for t in holdout_trades) / len(holdout_trades) * 100, 2) if holdout_trades else None,
+            "net_return_pct": round(sum(holdout_pnls) * 100, 4),
+            "win_rate_pct": round(sum(p > 0 for p in holdout_pnls) / len(holdout_pnls) * 100, 2) if holdout_pnls else None,
+            "profit_factor": round(holdout_profit / holdout_loss, 4) if holdout_loss else (None if not holdout_profit else "INF"),
+            "expectancy_equity_pct": round(mean(holdout_pnls) * 100, 4) if holdout_pnls else None,
             "trade_log": holdout_trades,
         },
         "walk_forward": walk_results,
         "warnings": [
             "This runner evaluates a fixed EMA baseline; it does not optimize or certify a profitable model.",
-            "Trade-level return aggregation is based on fixed-equity-unit PnL; do not interpret as compounded portfolio return.",
+            "Trade-level returns are not compounded portfolio returns; inspect the trade log and equity path before interpreting profitability.",
             "Funding is a constant per-bar assumption here, not historical realized funding. Use a historical funding series before production decisions.",
             "All report results require independent review of CSV coverage, exchange data and execution assumptions."
         ],
