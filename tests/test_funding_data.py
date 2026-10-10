@@ -17,8 +17,8 @@ class FundingDataTests(unittest.TestCase):
             cursor = params["startTime"]
             if cursor <= 100:
                 return [record(100), record(200)]
-            if cursor <= 200:
-                return [record(200), record(300)]
+            if cursor <= 201:
+                return [record(300)]
             return []
         rows = download_funding_rates("BTCUSDT", 100, 301, fetch_page=fake_fetch, limit=2, pause_seconds=0)
         self.assertEqual([r["funding_time"] for r in rows], [100, 200, 300])
