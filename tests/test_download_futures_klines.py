@@ -27,7 +27,10 @@ class FuturesKlineDownloaderTests(unittest.TestCase):
             [start, "100", "102", "99", "101", "10", start + hour - 1, "1000", 20, "5", "500", "0"],
             [start + hour, "101", "103", "100", "102", "11", start + 2 * hour - 1, "1100", 21, "6", "600", "0"],
         ]
-        rows = download("BTCUSDT", "1h", start, start + 2 * hour, now_ms=start + 3 * hour)
+        # End is exclusive as a timestamp boundary: a candle closing at end-1ms
+        # is still inside the requested interval, so use the next open boundary
+        # to prove that the candle whose open equals end is excluded.
+        rows = download("BTCUSDT", "1h", start, start + hour, now_ms=start + 3 * hour)
         self.assertEqual(len(rows), 1)
 
 
