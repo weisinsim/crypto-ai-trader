@@ -56,6 +56,10 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--data-dir", default="data/historical")
     p.add_argument("--signals-dir", default="data/replay")
+    p.add_argument("--funding-dir", default="data/funding",
+                   help="Directory with SYMBOL_funding.csv files")
+    p.add_argument("--require-funding", action="store_true",
+                   help="Mark a symbol insufficient if its historical funding file is missing")
     p.add_argument("--out-dir", default="data/exit_audits")
     p.add_argument("--symbols", nargs="+", default=SYMBOLS)
     p.add_argument("--max-hold", type=int, default=72)
@@ -78,7 +82,10 @@ def main():
         candle_file = data / f"{symbol}_1h.csv"
         four_hour_file = data / f"{symbol}_4h.csv"
         signal_file = signals / f"{symbol}_signals.csv"
+        funding_file = Path(args.funding_dir) / f"{symbol}_funding.csv"
         missing = [str(x) for x in (candle_file, four_hour_file, signal_file) if not x.exists()]
+        if args.require_funding and not funding_file.exists():
+            missing.append(str(funding_file))
         if missing:
             reports.append({"symbol": symbol, "status": "INSUFFICIENT_DATA", "missing": missing})
             continue
@@ -99,6 +106,8 @@ def main():
                 "--cost-bps", str(cost), "--max-hold", str(args.max_hold),
                 "--holdout-fraction", str(args.holdout_fraction), "--out", str(dest),
             ]
+            if funding_file.exists():
+                cmd.extend(["--funding-file", str(funding_file)])
             run = subprocess.run(cmd, capture_output=True, text=True)
             if run.returncode != 0 or not dest.exists():
                 reports.append({"symbol": symbol, "cost_bps": cost, "status": "AUDIT_FAILED",
@@ -122,7 +131,8 @@ def main():
                 "candle_integrity": {k: v.get("pass_basic_integrity") for k, v in integrity.items()},
                 "holdout_metrics_by_exit": variant_metrics,
                 "audit_file": str(dest),
-                "warning": "Research output only; inspect both exit variants, all cost assumptions, parity, and data quality."
+                "funding_history_used": funding_file.exists(),
+                "warning": "Research output only; inspect both exit variants, all cost assumptions, parity, and data quality. Funding-adjusted conclusions require verified complete funding history."
             })
     summary = {
         "notice": "Automated batch runner. No profitability claim. Check audit files, data integrity, parity, funding, slippage and independent holdout.",
