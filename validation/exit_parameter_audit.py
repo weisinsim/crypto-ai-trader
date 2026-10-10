@@ -213,8 +213,12 @@ def main():
     p.add_argument("--min-match-pct", type=float, default=95.0, help="Abort if fewer than this percent of signals match candle timestamps")
     p.add_argument("--out", default="exit_audit_results.json")
     a = p.parse_args()
-    if a.stop_atr <= 0 or a.cost_bps < 0 or a.funding_bps_per_8h < 0 or a.max_hold < 1 or not 0.05 <= a.holdout_fraction <= 0.45 or not 0 <= a.min_match_pct <= 100:
-        p.error("Invalid parameters: stop-atr > 0, cost-bps >= 0, funding-bps-per-8h >= 0, max-hold >= 1, holdout fraction 0.05–0.45, match threshold 0–100")
+    numeric_params = (a.stop_atr, a.cost_bps, a.funding_bps_per_8h, a.holdout_fraction, a.min_match_pct)
+    if (not all(math.isfinite(value) for value in numeric_params)
+            or a.stop_atr <= 0 or a.cost_bps < 0 or a.funding_bps_per_8h < 0
+            or a.max_hold < 1 or not 0.05 <= a.holdout_fraction <= 0.45
+            or not 0 <= a.min_match_pct <= 100):
+        p.error("Invalid parameters: numeric values must be finite; stop-atr > 0, cost-bps >= 0, funding-bps-per-8h >= 0, max-hold >= 1, holdout fraction 0.05–0.45, match threshold 0–100")
     candles, signals = read_candles(a.candles), read_signals(a.signals)
     interval_seconds = {"15m": 900, "30m": 1800, "1h": 3600, "2h": 7200, "4h": 14400, "1d": 86400}[a.interval]
     cadence_errors = [
