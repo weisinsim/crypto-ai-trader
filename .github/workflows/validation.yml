@@ -1,0 +1,30 @@
+name: Validation audit tests
+
+on:
+  push:
+    paths:
+      - "validation/**"
+      - "tests/**"
+      - ".github/workflows/validation.yml"
+  pull_request:
+    paths:
+      - "validation/**"
+      - "tests/**"
+      - ".github/workflows/validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run deterministic unit tests
+        run: python -m unittest discover -s tests -v
