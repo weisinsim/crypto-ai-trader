@@ -100,7 +100,7 @@ def run_ema_cross_backtest(
     position = None
     trades = []
     equity_curve = [equity]
-    fee_slip = fee_rate + slippage_rate
+    # Slippage affects fill prices; commissions are deducted separately on both fills.
 
     for i in range(1, len(rows)):
         bar = rows[i]
@@ -124,10 +124,11 @@ def run_ema_cross_backtest(
             if exit_price is not None:
                 side = position["side"]
                 # Adverse slippage on both fills; long sells lower, short buys higher.
-                exit_fill = exit_price * (1 - fee_slip if side == 1 else 1 + fee_slip)
-                gross = side * (exit_fill - position["entry_fill"]) / position["entry_fill"]
-                funding_cost = abs(position["entry_fill"] * position["qty"]) * funding_rate_per_bar * position["bars_held"]
-                pnl = position["equity_before"] * gross - position["entry_fee"] - position["equity_before"] * abs(funding_rate_per_bar) * position["bars_held"]
+                exit_fill = exit_price * (1 - slippage_rate if side == 1 else 1 + slippage_rate)
+                gross_pnl = position["qty"] * side * (exit_fill - position["entry_fill"])
+                exit_fee = abs(position["qty"] * exit_fill) * fee_rate
+                funding_cost = position["qty"] * position["entry_fill"] * funding_rate_per_bar * side * position["bars_held"]
+                pnl = gross_pnl - position["entry_fee"] - exit_fee - funding_cost
                 equity += pnl
                 ret_pct = (equity / position["equity_before"] - 1) * 100
                 trades.append({"side": "LONG" if side == 1 else "SHORT",
@@ -145,23 +146,26 @@ def run_ema_cross_backtest(
             if side:
                 open_price = float(bar["o"])
                 risk = float(atrs[i - 1]) * stop_atr
-                entry_fill = open_price * (1 + fee_slip if side == 1 else 1 - fee_slip)
+                entry_fill = open_price * (1 + slippage_rate if side == 1 else 1 - slippage_rate)
                 position = {"side": side, "entry_fill": entry_fill,
                             "stop": open_price - side * risk,
                             "target": open_price + side * risk * target_atr,
                             "entry_time": int(bar["t"]), "bars_held": 0,
-                            "equity_before": equity, "entry_fee": equity * fee_rate,
-                            "qty": equity / max(entry_fill, 1e-12)}
+                            "equity_before": equity,
+                            "qty": equity / max(entry_fill, 1e-12),
+                            "entry_fee": abs((equity / max(entry_fill, 1e-12)) * entry_fill) * fee_rate}
         peak = max(peak, equity)
         max_dd = max(max_dd, (peak - equity) / peak if peak else 0)
         equity_curve.append(equity)
 
     if position is not None:
         bar = rows[-1]
-        exit_fill = float(bar["c"]) * (1 - fee_slip if position["side"] == 1 else 1 + fee_slip)
         side = position["side"]
-        gross = side * (exit_fill - position["entry_fill"]) / position["entry_fill"]
-        pnl = position["equity_before"] * gross - position["entry_fee"]
+        exit_fill = float(bar["c"]) * (1 - slippage_rate if side == 1 else 1 + slippage_rate)
+        gross_pnl = position["qty"] * side * (exit_fill - position["entry_fill"])
+        exit_fee = abs(position["qty"] * exit_fill) * fee_rate
+        funding_cost = position["qty"] * position["entry_fill"] * funding_rate_per_bar * side * position["bars_held"]
+        pnl = gross_pnl - position["entry_fee"] - exit_fee - funding_cost
         equity += pnl
         trades.append({"side": "LONG" if side == 1 else "SHORT",
                        "entry_time": position["entry_time"], "exit_time": int(bar["t"]),
