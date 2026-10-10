@@ -10,6 +10,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from validation.audit_historical_data import audit as audit_candles
+
 SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT", "XRPUSDT"]
 COSTS = [5, 10, 20, 30]
 
@@ -34,10 +36,25 @@ def main():
     reports = []
     for symbol in args.symbols:
         candle_file = data / f"{symbol}_1h.csv"
+        four_hour_file = data / f"{symbol}_4h.csv"
         signal_file = signals / f"{symbol}_signals.csv"
-        if not candle_file.exists() or not signal_file.exists():
-            reports.append({"symbol": symbol, "status": "INSUFFICIENT_DATA",
-                            "missing": [str(x) for x in (candle_file, signal_file) if not x.exists()]})
+        missing = [str(x) for x in (candle_file, four_hour_file, signal_file) if not x.exists()]
+        if missing:
+            reports.append({"symbol": symbol, "status": "INSUFFICIENT_DATA", "missing": missing})
+            continue
+        integrity = {
+            "1h": audit_candles(candle_file, "1h"),
+            "4h": audit_candles(four_hour_file, "4h"),
+        }
+        failed_intervals = [interval for interval, result in integrity.items()
+                            if not result.get("pass_basic_integrity", False)]
+        if failed_intervals:
+            reports.append({
+                "symbol": symbol, "status": "DATA_INTEGRITY_FAILED",
+                "failed_intervals": failed_intervals,
+                "integrity": integrity,
+                "notice": "No exit audit was run for this symbol because its candle data failed integrity checks."
+            })
             continue
         for cost in COSTS:
             dest = out / f"{symbol}_cost_{cost}bps.json"
@@ -65,6 +82,7 @@ def main():
                 "status": "RESEARCH_ONLY" if trades >= args.min_trades else "INSUFFICIENT_SAMPLE",
                 "holdout_max_trade_count_across_exit_variants": trades,
                 "signal_timestamp_match_pct": inputs.get("signal_timestamp_match_pct"),
+                "candle_integrity": {k: v.get("pass_basic_integrity") for k, v in integrity.items()},
                 "holdout_metrics_by_exit": variant_metrics,
                 "audit_file": str(dest),
                 "warning": "Research output only; inspect both exit variants, all cost assumptions, parity, and data quality."
