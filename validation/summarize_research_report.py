@@ -65,6 +65,30 @@ def render(manifest):
         lines.append(f"| {symbol} | {statuses} | {count_text} |")
     lines.extend([
         "",
+        "## Asset and cost coverage",
+        "",
+        "Every requested asset should have one report row at each configured cost tier. Non-research statuses are blockers, not model failures or passes.",
+        "",
+        "| Symbol | Status rows | Cost tiers present / expected | Missing cost tiers | Asset coverage status |",
+        "|---|---:|---:|---|---|",
+    ])
+    expected_costs = manifest.get("cost_sensitivity_bps", [])
+    symbols = sorted({r.get("symbol", "unknown") for r in reports})
+    for symbol in symbols:
+        asset_reports = [r for r in reports if r.get("symbol", "unknown") == symbol]
+        present = {r.get("cost_bps") for r in asset_reports if r.get("cost_bps") is not None}
+        missing_costs = [cost for cost in expected_costs if cost not in present]
+        statuses = sorted({r.get("status", "UNKNOWN") for r in asset_reports})
+        blockers = [status for status in statuses if status not in ("RESEARCH_ONLY", "INSUFFICIENT_SAMPLE")]
+        coverage_status = "BLOCKED:" + ",".join(blockers) if blockers else (
+            "COMPLETE" if not missing_costs and len(present) == len(expected_costs) else "INCOMPLETE_COST_COVERAGE"
+        )
+        lines.append(
+            f"| {symbol} | {len(asset_reports)} | {len(present)}/{len(expected_costs)} | "
+            f"{', '.join(map(str, missing_costs)) if missing_costs else '—'} | {coverage_status} |"
+        )
+    lines.extend([
+        "",
         "## Development vs Holdout comparison",
         "",
         "Compare the same target, cost, and execution mode across the chronological development and Holdout periods. A strong Holdout result does not erase weak development performance.",
