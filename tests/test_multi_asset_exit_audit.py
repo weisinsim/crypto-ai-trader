@@ -7,8 +7,8 @@ class BatchAuditTests(unittest.TestCase):
     def test_ignores_metadata_fields(self):
         holdout = {
             "signal_rows": 12,
-            "target_2.5R": {"trades": 8},
-            "target_3.0R": {"trades": 9},
+            "target_2.5R": {"trades": 8, "net_R": 2.1},
+            "target_3.0R": {"trades": 9, "net_R": 2.8},
         }
         self.assertEqual(holdout_max_trade_count(holdout), 9)
 
