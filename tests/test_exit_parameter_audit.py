@@ -1,6 +1,6 @@
 import unittest
 
-from validation.exit_parameter_audit import evaluate, summarize
+from validation.exit_parameter_audit import evaluate, summarize, parse_ts
 
 
 def candle(ts, open_, high, low, close):
@@ -8,6 +8,9 @@ def candle(ts, open_, high, low, close):
 
 
 class ExitAuditTests(unittest.TestCase):
+    def test_epoch_milliseconds_are_normalized_to_seconds(self):
+        self.assertEqual(parse_ts("1791600000000"), 1791600000)
+
     def test_target_hit_on_future_candle(self):
         candles = [
             candle(1, 100, 101, 99, 100),
