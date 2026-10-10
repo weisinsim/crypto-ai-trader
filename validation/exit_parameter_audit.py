@@ -156,6 +156,29 @@ def summarize(trades):
     }
 
 
+def filter_single_position(trades):
+    """Keep the first signal only when no prior simulated trade remains open.
+
+    Uses exit timestamps from the OHLC replay. This is a conservative, single-position
+    comparison, not a multi-asset portfolio simulator or a fill/fee engine.
+    """
+    ordered = sorted(trades, key=lambda t: t.get("timestamp", 0))
+    accepted = []
+    active_until = None
+    skipped = 0
+    for trade in ordered:
+        entry_ts = trade.get("timestamp")
+        exit_ts = trade.get("exit_timestamp", entry_ts)
+        if entry_ts is None or exit_ts is None:
+            raise ValueError("Single-position filtering requires timestamp and exit_timestamp")
+        if active_until is not None and entry_ts < active_until:
+            skipped += 1
+            continue
+        accepted.append(trade)
+        active_until = exit_ts
+    return accepted, skipped
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--candles", required=True)
@@ -203,7 +226,12 @@ def main():
         output["periods"][name]["signal_rows"] = len(subset["signals"])
         for r in (2.5, 3.0):
             trades = evaluate(subset["candles"], subset["signals"], r, a.stop_atr, a.cost_bps, a.max_hold)
-            output["periods"][name][f"target_{r}R"] = summarize(trades)
+            sequential, skipped = filter_single_position(trades)
+            output["periods"][name][f"target_{r}R"] = {
+                "signal_level": summarize(trades),
+                "single_position": summarize(sequential),
+                "single_position_skipped_overlapping_signals": skipped,
+            }
     Path(a.out).write_text(json.dumps(output, indent=2), encoding="utf-8")
     print(json.dumps(output, indent=2))
 
