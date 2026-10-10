@@ -20,10 +20,14 @@ def audit(path, interval):
     duplicates = len(ts) - len(set(ts))
     non_increasing = sum(1 for a, b in zip(ts, ts[1:]) if b <= a)
     gaps = []
+    cadence_anomalies = []
     step = INTERVAL_MS[interval]
     for a, b in zip(ts, ts[1:]):
-        if b - a > step:
-            gaps.append({"after": a, "before": b, "missing_approx": max(0, (b-a)//step-1)})
+        delta = b - a
+        if delta > step:
+            gaps.append({"after": a, "before": b, "missing_approx": max(0, delta//step-1)})
+        if delta != step:
+            cadence_anomalies.append({"after": a, "before": b, "delta_ms": delta})
     invalid_ohlc = 0
     for r in rows:
         o, h, l, c = (float(r[k]) for k in ("open", "high", "low", "close"))
@@ -32,9 +36,10 @@ def audit(path, interval):
     return {"file": str(path), "rows": len(rows), "first_close_ms": ts[0] if ts else None,
             "last_close_ms": ts[-1] if ts else None, "duplicates": duplicates,
             "non_increasing_pairs": non_increasing, "gap_count": len(gaps),
+            "cadence_anomaly_count": len(cadence_anomalies), "cadence_anomalies_sample": cadence_anomalies[:10],
             "missing_candles_approx": sum(g["missing_approx"] for g in gaps),
             "invalid_ohlc_rows": invalid_ohlc, "gaps_sample": gaps[:10],
-            "pass_basic_integrity": bool(rows) and duplicates == 0 and non_increasing == 0 and invalid_ohlc == 0}
+            "pass_basic_integrity": bool(rows) and duplicates == 0 and non_increasing == 0 and invalid_ohlc == 0 and not cadence_anomalies}
 
 
 def main():
