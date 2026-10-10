@@ -43,6 +43,34 @@ def load_funding_csv(path: str) -> list[dict]:
     return rows
 
 
+def build_walk_forward_windows(n: int, start_eval: int, folds: int, min_bars: int) -> list[tuple[int, int]]:
+    """Build contiguous, non-overlapping forward windows or fail if a fold is too short."""
+    if n < 0 or start_eval < 0 or start_eval >= n:
+        raise ValueError("start_eval must be inside the available data")
+    if folds < 2:
+        raise ValueError("folds must be >= 2")
+    if min_bars < 1:
+        raise ValueError("min_bars must be >= 1")
+    eval_width = (n - start_eval) // folds
+    if eval_width < min_bars:
+        raise ValueError(
+            f"insufficient bars per walk-forward fold: available={n - start_eval}, "
+            f"folds={folds}, minimum_per_fold={min_bars}"
+        )
+    windows = []
+    for fold in range(folds):
+        a = start_eval + fold * eval_width
+        b = n if fold == folds - 1 else a + eval_width
+        if b - a < min_bars:
+            raise ValueError(f"walk-forward fold {fold + 1} is too short: {b - a} bars")
+        windows.append((a, b))
+    if windows[0][0] != start_eval or windows[-1][1] != n:
+        raise AssertionError("walk-forward windows do not cover the evaluation range")
+    if any(left[1] != right[0] for left, right in zip(windows, windows[1:])):
+        raise AssertionError("walk-forward windows overlap or leave gaps")
+    return windows
+
+
 def max_drawdown_pct(points: list[dict], initial_equity: float = 1.0) -> float:
     """Compute peak-to-trough drawdown, including the evaluation's starting equity."""
     peak = float(initial_equity)
@@ -119,14 +147,10 @@ def main() -> None:
     holdout_loss = -sum(p for p in holdout_pnls if p < 0)
     walk_results = []
     n = len(rows)
-    # Expanding history windows with non-overlapping forward evaluation windows.
+    # Expanding history windows with contiguous, non-overlapping forward evaluation windows.
     start_eval = max(split, args.slow * 3)
-    eval_width = max(1, (n - start_eval) // args.folds)
-    for fold in range(args.folds):
-        a = start_eval + fold * eval_width
-        b = n if fold == args.folds - 1 else min(n, a + eval_width)
-        if b - a < args.slow + 2:
-            continue
+    windows = build_walk_forward_windows(n, start_eval, args.folds, args.slow + 2)
+    for fold, (a, b) in enumerate(windows):
         # Expanding-window evaluation: preserve all historical indicator
         # state available before the fold, but only count entries in this fold.
         start_ts = rows[a]["t"]
