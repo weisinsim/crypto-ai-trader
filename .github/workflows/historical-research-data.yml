@@ -56,8 +56,8 @@ jobs:
           mkdir -p research-results
           python validation/audit_historical_data.py --data-dir data/historical > research-results/candle-integrity.json
           cat research-results/candle-integrity.json
+          python -c 'import json; r=json.load(open("research-results/candle-integrity.json")); assert r.get("all_basic_integrity_pass"), "Candle integrity gate failed"'
       - name: Audit funding integrity
-        if: always()
         run: |
           python validation/audit_funding_history.py \
             data/funding/BTCUSDT_funding.csv data/funding/ETHUSDT_funding.csv \
@@ -65,11 +65,11 @@ jobs:
             data/funding/XRPUSDT_funding.csv --max-gap-hours 24 \
             > research-results/funding-integrity.json
           cat research-results/funding-integrity.json
+          python -c 'import json; r=json.load(open("research-results/funding-integrity.json")); assert r.get("all_basic_integrity_pass"), "Funding integrity gate failed"'
       - name: Replay asset-specific signals
         run: |
           python validation/replay_dashboard_signals.py --data-dir data/historical --out-dir data/replay
       - name: Run cost sensitivity and holdout audits
-        if: always()
         run: |
           python validation/run_multi_asset_exit_audit.py \
             --data-dir data/historical --signals-dir data/replay --funding-dir data/funding \
