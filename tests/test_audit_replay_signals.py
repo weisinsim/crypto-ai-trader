@@ -78,5 +78,21 @@ class ReplaySignalAuditTests(unittest.TestCase):
             self.assertEqual(result["errors_sample"][0]["error"], "STOP_TARGET_DIRECTION_INVALID")
 
 
+    def test_zero_signals_is_not_a_data_integrity_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            candles = root / "candles.csv"
+            signals = root / "signals.csv"
+            self.write_csv(candles, ["timestamp", "close"], [
+                {"timestamp": "2025-01-01T00:59:59.999Z", "close": "100"}
+            ])
+            self.write_csv(signals, ["timestamp", "side", "entry", "atr", "stop", "target"], [])
+            result = audit("ETHUSDT", candles, signals)
+            self.assertTrue(result["pass"])
+            self.assertEqual(result["status"], "NO_SIGNALS")
+            self.assertEqual(result["matched_signal_count"], 0)
+
+
+
 if __name__ == "__main__":
     unittest.main()
