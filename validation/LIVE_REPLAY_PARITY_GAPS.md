@@ -1,19 +1,30 @@
 # Live-vs-replay parity gap report
 
-## Finding confirmed in app.py
-`analyze_symbol()` currently assigns `p = c1[-1]` and computes indicators over all rows in `series[s]["1h"]` and `series[s]["4h"]`. The ingestion path retains the latest kline, which may still be forming. Elsewhere the dashboard derives `last_closed_candle` from the prior 1h row, indicating the display has a separate closed-candle concept. Unless the feed layer is proven to remove in-progress bars before `analyze_symbol()` runs, this is a look-ahead / timing-parity defect for any claim that historical close-based replay reproduces live alerts.
+## Status after closed-candle patch
 
-## Required resolution before strategy-performance claims
-1. Confirm the exchange's kline close flag / close time and exclude any bar that is not fully closed before computing decision indicators.
-2. Apply the same closed-bar filtering to both 1h and 4h inputs.
-3. Ensure `confirmed_signal_time`, entry, stop and target are all derived from the same closed 1h bar.
-4. Add regression tests with a deliberately extreme in-progress candle and assert that the signal does not change until that candle closes.
-5. Compare replay and live decision outputs on frozen fixtures for every asset family.
+The live `app.py` now calls `closed_series_rows(s, interval)` inside `analyze_symbol()` for both 1h and 4h. That helper calls `filter_closed_candles`, which admits a candle only when its open timestamp plus the interval duration is no later than the current UTC epoch time. This removes the latest still-forming candle from the live indicator input under the expected exchange timestamp contract.
 
-## Additional parity observations
-- Replay indicator functions are intended to mirror the implementations in app.py (EMA, RSI, ATR, approximate ADX, VWAP, and 48-bar support/resistance), but automated numeric parity fixtures have not yet been added.
-- Asset-specific signal rules and ETH suppression are represented in the replay tool, but the replay has not yet been demonstrated to match every live field and state transition.
-- The replay intentionally records only LONG/SHORT entries, not WATCH states. The backtest is therefore an entry-candidate replay, not a full UI state replay.
+Regression coverage was added in:
+- `tests/test_candle_closure.py` (duration and boundary behavior)
+- `tests/test_app_closed_candle_guard.py` (static guard that live analysis uses both filtered intervals)
+- `tests/test_indicator_parity.py` (numeric parity checks for EMA, RSI, ATR, ADX, VWAP, support/resistance)
+
+These tests have been committed but their latest CI result must still be checked before calling the patch verified.
+
+## Remaining parity work
+
+1. Confirm the runtime feed timestamps always represent candle open time for both Binance and the Bybit fallback.
+2. Run the complete CI suite and repair any failures.
+3. Compare replay and live decision outputs on frozen fixtures for every asset family, including entry, stop, target, score and WATCH/NO-TRADE transitions.
+4. Reconcile replay behavior with the live model library and any symbol-specific overrides before performance evaluation.
+
+## Additional observations
+
+- Replay indicator functions are intended to mirror `app.py`; the numeric tests are now present, but they are not yet confirmed passing.
+- Replay currently records only LONG/SHORT entry candidates, not the full UI state machine.
+- Historical signal replay is a research reconstruction; it does not prove those signals were emitted in live operation.
+- Funding, partial take profits, trailing stops, order-book execution, market impact, liquidation and overlapping portfolio exposure are not fully modeled by the current exit audit.
 
 ## Gate
-Until the closed-candle ingestion behavior is confirmed or fixed and indicator/signal parity tests pass, treat historical results as exploratory. Do not promote any asset model to production based on replay output alone.
+
+Until CI passes and the signal-by-signal parity work is complete, treat any resulting backtest as exploratory. Do not promote a model to production based on replay output alone.
