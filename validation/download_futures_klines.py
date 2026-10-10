@@ -60,9 +60,13 @@ def get_json(params, retries=5):
     raise RuntimeError("Retry budget exhausted")
 
 
-def download(symbol, interval, start_ms, end_ms):
+def download(symbol, interval, start_ms, end_ms, now_ms=None):
     rows, cursor = [], start_ms
     step = INTERVAL_MS[interval]
+    # Binance kline close_time is inclusive (e.g. ...:59.999). Do not persist
+    # any candle whose close timestamp is not strictly before the current time.
+    if now_ms is None:
+        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
     while cursor < end_ms:
         batch = get_json({
             "symbol": symbol,
@@ -75,7 +79,7 @@ def download(symbol, interval, start_ms, end_ms):
             break
         for item in batch:
             open_ms, close_ms = int(item[0]), int(item[6])
-            if open_ms < start_ms or close_ms >= end_ms:
+            if open_ms < start_ms or close_ms >= end_ms or close_ms >= now_ms:
                 continue
             rows.append({
                 "timestamp": iso_utc(close_ms),
