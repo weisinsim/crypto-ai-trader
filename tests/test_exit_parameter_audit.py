@@ -91,8 +91,21 @@ class ExitAuditTests(unittest.TestCase):
         signals = [{"ts": 1, "side": "LONG", "entry": 100, "atr": 1}]
         trades = evaluate(dev_candles, signals, target_r=2.5, stop_atr=2,
                           cost_bps=0, max_hold=72)
+        # The split boundary must not shorten the holding window or borrow holdout candles.
+        self.assertEqual(trades, [])
+
+    def test_full_holding_window_without_hit_uses_time_exit(self):
+        candles = [
+            candle(1, 100, 101, 99, 100),
+            candle(2, 100, 101, 99, 100),
+            candle(3, 100, 101, 99, 101),
+        ]
+        signals = [{"ts": 1, "side": "LONG", "entry": 100, "atr": 1}]
+        trades = evaluate(candles, signals, target_r=2.5, stop_atr=2,
+                          cost_bps=0, max_hold=2)
+        self.assertEqual(len(trades), 1)
         self.assertEqual(trades[0]["exit_reason"], "TIME")
-        self.assertEqual(trades[0]["gross_R"], 0.0)
+        self.assertEqual(trades[0]["gross_R"], 1.0)
 
     def test_match_rate_threshold_is_enforced_by_cli(self):
         import subprocess
