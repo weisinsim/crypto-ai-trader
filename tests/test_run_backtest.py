@@ -3,10 +3,19 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from research.run_backtest import load_csv
+from research.run_backtest import load_csv, max_drawdown_pct
 
 
 class RunnerInputTests(unittest.TestCase):
+    def test_max_drawdown_uses_only_supplied_window_points(self):
+        earlier_history = [{"t": 0, "equity": 1.0}, {"t": 1, "equity": 0.5}]
+        later_window = [{"t": 2, "equity": 1.0}, {"t": 3, "equity": 0.9}]
+        self.assertEqual(max_drawdown_pct(later_window), 10.0)
+        self.assertEqual(max_drawdown_pct(earlier_history), 50.0)
+
+    def test_max_drawdown_empty_curve_is_zero(self):
+        self.assertEqual(max_drawdown_pct([]), 0.0)
+
     def _write_csv(self, timestamps):
         handle = tempfile.NamedTemporaryFile(mode="w", newline="", encoding="utf-8", delete=False)
         writer = csv.DictWriter(handle, fieldnames=("t", "o", "h", "l", "c", "v", "q"))
