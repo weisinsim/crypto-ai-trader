@@ -37,7 +37,7 @@ The audit checks timezone-aware timestamps, finite rates, ordering, duplicates, 
 python validation/audit_historical_data.py --data-dir data/historical
 ```
 
-Review every file for missing files, duplicate timestamps, invalid OHLC values and candle gaps. A basic integrity pass does not guarantee complete history; expected row counts and the chosen date boundaries must also be checked.
+Review every file for missing files, duplicate timestamps, invalid OHLC values and candle gaps. A basic integrity pass does not guarantee complete history; expected row counts and the chosen date boundaries must also be checked. The automated research workflow also runs `validation/audit_window_coverage.py` against the exact requested UTC `[start, end)` window. It checks expected candle close timestamps for each symbol/interval and fails closed on missing, extra, or out-of-window rows. Use it only when the symbol existed and was listed throughout the entire window; newly listed or renamed contracts require a symbol-specific start date.
 
 ## 3. Replay asset-specific signals
 
