@@ -114,7 +114,9 @@ def summarize(trades):
     if not trades:
         return {"trades": 0, "win_rate_pct": None, "profit_factor": None,
                 "net_R": 0.0, "avg_R": None, "max_drawdown_R": None}
-    vals = [t["net_R"] for t in trades]
+    # Drawdown must follow chronological trade order, not an incidental caller order.
+    chronological = sorted(trades, key=lambda t: t.get("timestamp", 0))
+    vals = [t["net_R"] for t in chronological]
     gross_profit = sum(x for x in vals if x > 0)
     gross_loss = -sum(x for x in vals if x < 0)
     equity = peak = dd = 0.0
