@@ -67,6 +67,21 @@ class ExitAuditTests(unittest.TestCase):
         self.assertEqual(trades[0]["exit_reason"], "SL")
         self.assertEqual(trades[0]["gross_R"], -2.5)
 
+    def test_funding_coverage_rejects_truncated_history(self):
+        from validation.exit_parameter_audit import validate_funding_coverage
+        candles = [candle(100, 100, 101, 99, 100), candle(200, 100, 101, 99, 100)]
+        funding = [{"ts": 101, "rate": 0.0001}, {"ts": 200, "rate": 0.0001}]
+        with self.assertRaisesRegex(ValueError, "does not cover"):
+            validate_funding_coverage(funding, candles, 3600)
+
+    def test_funding_coverage_rejects_large_internal_gap(self):
+        from validation.exit_parameter_audit import validate_funding_coverage
+        candles = [candle(0, 100, 101, 99, 100), candle(200_000, 100, 101, 99, 100)]
+        funding = [{"ts": 0, "rate": 0.0001}, {"ts": 100_000, "rate": 0.0001},
+                   {"ts": 200_000, "rate": 0.0001}]
+        with self.assertRaisesRegex(ValueError, "internal gaps"):
+            validate_funding_coverage(funding, candles, 3600)
+
     def test_actual_funding_events_are_side_aware(self):
         from validation.exit_parameter_audit import funding_cost_r
         funding = [
