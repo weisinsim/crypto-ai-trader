@@ -235,12 +235,23 @@ def summarize(trades):
         active += delta
         max_active = max(max_active, active)
     pf = gross_profit / gross_loss if gross_loss else (None if gross_profit == 0 else "Infinity")
+    winning_values = sorted((x for x in vals if x > 0), reverse=True)
+    largest_win_share_pct = (
+        100 * winning_values[0] / gross_profit if gross_profit > 0 and winning_values else None
+    )
+    top_three_win_share_pct = (
+        100 * sum(winning_values[:3]) / gross_profit if gross_profit > 0 and winning_values else None
+    )
     return {
         "trades": len(vals),
         "win_rate_pct": round(100 * sum(x > 0 for x in vals) / len(vals), 2),
         "profit_factor": round(pf, 4) if isinstance(pf, float) else pf,
         "net_R": round(sum(vals), 4),
         "avg_R": round(sum(vals) / len(vals), 4),
+        "max_win_R": round(max(vals), 4),
+        "max_loss_R": round(min(vals), 4),
+        "largest_win_share_pct": round(largest_win_share_pct, 2) if largest_win_share_pct is not None else None,
+        "top_three_wins_share_pct": round(top_three_win_share_pct, 2) if top_three_win_share_pct is not None else None,
         "max_drawdown_R": round(dd, 4),
         "overlapping_trade_count": overlap_count,
         "max_concurrent_trades": max_active,
