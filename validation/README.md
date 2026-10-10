@@ -45,7 +45,7 @@ Review every file for missing files, duplicate timestamps, invalid OHLC values a
 python validation/replay_dashboard_signals.py --data-dir data/historical --out-dir data/replay
 ```
 
-This creates one signal CSV per coin and a manifest. It is a first-pass translation of dashboard rules into a causal historical replay, not a claim that the same signals were emitted in production. Before interpreting performance, test timestamp alignment, indicator parity, 4h close availability and signal-by-signal parity with the live implementation. The current dashboard includes approximations and refreshes that can use the latest in-progress bar; replay must not.
+This creates one signal CSV per coin and a manifest. It is a first-pass translation of dashboard rules into a causal historical replay, not a claim that the same signals were emitted in production. Before interpreting performance, test timestamp alignment, indicator parity, 4h close availability and signal-by-signal parity with the live implementation. The current dashboard includes approximations and refreshes that can use the latest in-progress bar; replay must not. The automated research workflow now runs `validation/audit_replay_signals.py` before exit audits; it checks signal timestamps against source candles, entry prices against the signal candle close, and stop/target direction. Passing this input audit still does not prove indicator or live-strategy parity.
 
 ## 4. Compare 2.5R vs 3R exits
 
