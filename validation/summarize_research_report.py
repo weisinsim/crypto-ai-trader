@@ -24,6 +24,20 @@ def target_metrics(report, target, mode, period="holdout"):
     return metrics if isinstance(metrics, dict) else {}
 
 
+def screening_status(dev, hold, min_trades):
+    trades = hold.get('trades')
+    if not isinstance(trades, int) or trades < min_trades:
+        return 'FAIL_INSUFFICIENT_HOLDOUT_TRADES'
+    dev_net, hold_net = dev.get('net_R'), hold.get('net_R')
+    if any(not isinstance(v, (int, float)) or not math.isfinite(v) for v in (dev_net, hold_net)):
+        return 'FAIL_MISSING_OR_INVALID_NET_R'
+    if dev_net <= 0 or hold_net <= 0:
+        return 'FAIL_NONPOSITIVE_DEVELOPMENT_OR_HOLDOUT'
+    pf = hold.get('profit_factor')
+    if not isinstance(pf, (int, float)) or not math.isfinite(pf) or pf <= 1:
+        return 'FAIL_HOLDOUT_PROFIT_FACTOR'
+    return 'PASS_PRELIMINARY_SCREEN_ONLY'
+
 def render(manifest):
     reports = manifest.get("reports", [])
     lines = [
@@ -107,7 +121,31 @@ def render(manifest):
                 )
     lines.extend([
         "",
-        "## Holdout metrics by cost, target, and execution mode",
+        "## Preliminary screening (not production approval)",
+        "",
+        "PASS only clears limited numerical checks. It does not prove live parity, portfolio risk, or profitability.",
+        "",
+        "| Symbol | Cost (bps) | Target | Mode | Holdout trades | Dev Net R | Holdout PF | Holdout Net R | Screen |",
+        "|---|---:|---:|---|---:|---:|---:|---:|---|",
+    ])
+    minimum_trades = manifest.get("min_trades_threshold", 30)
+    for report in sorted(reports, key=lambda r: (r.get("symbol", ""), r.get("cost_bps", -1))):
+        if report.get("status") not in ("RESEARCH_ONLY", "INSUFFICIENT_SAMPLE"):
+            continue
+        for target in ("2.5", "3.0"):
+            for mode in ("signal_level", "single_position"):
+                dev = target_metrics(report, target, mode, "development")
+                hold = target_metrics(report, target, mode)
+                if not dev and not hold:
+                    continue
+                status = screening_status(dev, hold, minimum_trades)
+                lines.append(
+                    f"| {report.get('symbol', '—')} | {report.get('cost_bps', '—')} | {target}R | {mode} | "
+                    f"{hold.get('trades', '—')} | {fmt(dev.get('net_R'), 4)} | "
+                    f"{fmt(hold.get('profit_factor'), 4)} | {fmt(hold.get('net_R'), 4)} | {status} |"
+                )
+    lines.extend([
+                "## Holdout metrics by cost, target, and execution mode",
         "",
         "| Symbol | Cost (bps) | Target | Mode | Trades | Win rate % | PF | Net R | Avg R | Max DD R | Max win R | Largest win % | Top 3 wins % |",
         "|---|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
