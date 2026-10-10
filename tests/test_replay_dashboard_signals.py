@@ -20,14 +20,14 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
     def test_missing_volume_columns_rejected(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "missing_volume.csv"
-            path.write_text("timestamp,open,high,low,close\\n2025-01-01T01:00:00Z,100,101,99,100\\n", encoding="utf-8")
+            path.write_text("timestamp,open,high,low,close\n2025-01-01T01:00:00Z,100,101,99,100\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "Missing required columns"):
                 read_rows(path)
 
     def test_malformed_numeric_field_rejected(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "bad_number.csv"
-            path.write_text("timestamp,open,high,low,close,volume,quote_volume\\n2025-01-01T01:00:00Z,not-a-number,101,99,100,1,100\\n", encoding="utf-8")
+            path.write_text("timestamp,open,high,low,close,volume,quote_volume\n2025-01-01T01:00:00Z,not-a-number,101,99,100,1,100\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "Invalid timestamp or numeric OHLCV field"):
                 read_rows(path)
 
