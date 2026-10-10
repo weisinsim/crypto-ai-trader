@@ -94,6 +94,13 @@ def main() -> None:
     historical_funding = load_funding_csv(args.funding_csv) if args.funding_csv else None
     if historical_funding is not None and historical_funding[0]["symbol"] != args.symbol.upper():
         raise ValueError("funding CSV symbol does not match --symbol")
+    if historical_funding is not None:
+        historical_funding = [
+            event for event in historical_funding
+            if rows[0]["t"] <= event["funding_time"] <= rows[-1]["t"]
+        ]
+        if not historical_funding:
+            raise ValueError("funding CSV has no settlement events inside the candle data range")
     common = dict(fast=args.fast, slow=args.slow, fee_rate=args.fee_rate,
                   slippage_rate=args.slippage_rate,
                   funding_rate_per_bar=args.funding_rate_per_bar,
