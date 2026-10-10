@@ -23,6 +23,10 @@ class FundingDataTests(unittest.TestCase):
         rows = download_funding_rates("BTCUSDT", 100, 301, fetch_page=fake_fetch, limit=2, pause_seconds=0)
         self.assertEqual([r["funding_time"] for r in rows], [100, 200, 300])
 
+    def test_rejects_non_finite_funding_rate(self):
+        with self.assertRaisesRegex(ValueError, "non-finite"):
+            parse_funding_rows([record(100, "nan")], "BTCUSDT", 0, 200)
+
     def test_rejects_invalid_symbol_and_pause(self):
         with self.assertRaisesRegex(ValueError, "symbol"):
             download_funding_rates("BTC/USDT", 0, 100, fetch_page=lambda _: [])
