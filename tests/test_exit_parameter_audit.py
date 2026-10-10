@@ -72,6 +72,12 @@ class ExitAuditTests(unittest.TestCase):
         self.assertEqual(trades[0]["exit_reason"], "TP")
         self.assertAlmostEqual(trades[0]["net_R"], 2.5)
 
+    def test_invalid_signal_stop_is_rejected(self):
+        candles = [candle(1, 100, 101, 99, 100), candle(2, 100, 101, 99, 100)]
+        signals = [{"ts": 1, "side": "LONG", "entry": 100, "atr": 1, "stop": 101}]
+        with self.assertRaises(ValueError):
+            evaluate(candles, signals, 2.5, 2, 0, 5)
+
     def test_summary_counts_trades(self):
         stats = summarize([
             {"net_R": 2.0, "exit_reason": "TP"},
