@@ -55,6 +55,30 @@ class BacktestTests(unittest.TestCase):
                     run_ema_cross_backtest(rows, fast=3, slow=7, atr_period=3,
                                            **{name: value})
 
+    def test_historical_funding_is_applied_at_settlement_timestamp(self):
+        rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(160)])
+        base = run_ema_cross_backtest(rows, fast=3, slow=9, atr_period=3,
+                                      fee_rate=0, slippage_rate=0)
+        held_trade = next((t for t in base["trade_log"]
+                           if t["exit_time"] > t["entry_time"]), None)
+        self.assertIsNotNone(held_trade)
+        event_ts = held_trade["exit_time"]
+        with_cost = run_ema_cross_backtest(
+            rows, fast=3, slow=9, atr_period=3, fee_rate=0, slippage_rate=0,
+            funding_rates=[{"funding_time": event_ts, "funding_rate": 0.01,
+                            "mark_price": 100.0}],
+        )
+        target_trade = next(t for t in with_cost["trade_log"]
+                            if t["entry_time"] == held_trade["entry_time"])
+        self.assertNotEqual(target_trade["pnl_equity"], held_trade["pnl_equity"])
+
+    def test_duplicate_historical_funding_timestamps_rejected(self):
+        rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(100)])
+        event = {"funding_time": rows[50]["t"], "funding_rate": 0.001, "mark_price": 100.0}
+        with self.assertRaisesRegex(ValueError, "duplicate funding timestamp"):
+            run_ema_cross_backtest(rows, fast=3, slow=9, atr_period=3,
+                                   funding_rates=[event, event])
+
     def test_risk_fraction_must_be_between_zero_and_one(self):
         rows = candles_from_closes([100 + (i % 5) for i in range(80)])
         for risk in (0, -0.1, 1.1):
