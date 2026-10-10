@@ -406,6 +406,16 @@ class ExitAuditTests(unittest.TestCase):
         self.assertEqual(trade["exit_reason"], "TP")
         self.assertAlmostEqual(trade["net_R"], trade["gross_R"] - trade["cost_R"] - trade["funding_R"])
 
+    def test_summary_reports_winning_trade_concentration(self):
+        stats = summarize([
+            {"timestamp": 1, "net_R": 8.0, "exit_reason": "TP"},
+            {"timestamp": 2, "net_R": 1.0, "exit_reason": "TP"},
+            {"timestamp": 3, "net_R": -1.0, "exit_reason": "SL"},
+        ])
+        self.assertEqual(stats["max_win_R"], 8.0)
+        self.assertAlmostEqual(stats["largest_win_share_pct"], 88.89, places=2)
+        self.assertAlmostEqual(stats["top_three_wins_share_pct"], 100.0, places=2)
+
     def test_summary_counts_trades(self):
         stats = summarize([
             {"net_R": 2.0, "exit_reason": "TP"},
