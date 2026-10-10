@@ -164,6 +164,18 @@ def main():
                 "notice": "No exit audit was run for this symbol because candle integrity or 1h/4h timestamp alignment failed."
             })
             continue
+        # Distinguish a valid no-entry model from malformed or missing data.
+        # The replay audit has already validated the signal file in the workflow;
+        # report zero signals as insufficient evidence rather than subprocess errors.
+        with open(signal_file, newline="", encoding="utf-8-sig") as stream:
+            signal_count = sum(1 for _ in csv.DictReader(stream))
+        if signal_count == 0:
+            reports.append({
+                "symbol": symbol, "status": "NO_SIGNALS",
+                "signal_count": 0,
+                "notice": "No entries were emitted by the replay model; this is not evidence of profitability or model failure."
+            })
+            continue
         for cost in COSTS:
             dest = out / f"{symbol}_cost_{cost}bps.json"
             cmd = [
