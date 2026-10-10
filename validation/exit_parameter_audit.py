@@ -123,7 +123,8 @@ def summarize(trades):
         peak = max(peak, equity)
         dd = max(dd, peak - equity)
     # This is signal-level research, not a sequential single-position portfolio.
-    ordered = sorted(trades, key=lambda t: t["timestamp"])
+    timed_trades = [t for t in trades if "timestamp" in t]
+    ordered = sorted(timed_trades, key=lambda t: t["timestamp"])
     overlap_count = 0
     for i, trade in enumerate(ordered):
         end_ts = trade.get("exit_timestamp", trade["timestamp"])
@@ -131,7 +132,7 @@ def summarize(trades):
                for j, other in enumerate(ordered) if i != j):
             overlap_count += 1
     events = []
-    for trade in trades:
+    for trade in timed_trades:
         events.append((trade["timestamp"], 1))
         events.append((trade.get("exit_timestamp", trade["timestamp"]), -1))
     events.sort(key=lambda event: (event[0], event[1]))
