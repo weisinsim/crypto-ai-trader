@@ -67,6 +67,14 @@ class RunnerInputTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "duplicate funding timestamp"):
             load_funding_csv(path)
 
+    def test_load_funding_csv_rejects_mixed_symbols(self):
+        path = self._write_funding_csv([
+            {"funding_time": 100, "funding_rate": "0.001", "mark_price": "100", "symbol": "BTCUSDT"},
+            {"funding_time": 200, "funding_rate": "0.001", "mark_price": "101", "symbol": "ETHUSDT"},
+        ])
+        with self.assertRaisesRegex(ValueError, "exactly one"):
+            load_funding_csv(path)
+
 
 if __name__ == "__main__":
     unittest.main()
