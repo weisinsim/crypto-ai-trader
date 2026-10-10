@@ -37,7 +37,7 @@ This creates one signal CSV per coin and a manifest. It is a first-pass translat
 python validation/exit_parameter_audit.py --candles data/historical/BTCUSDT_1h.csv --signals data/replay/BTCUSDT_signals.csv --cost-bps 10 --max-hold 72 --out data/replay/BTCUSDT_exit_audit.json
 ```
 
-Repeat for each coin. The signal file's `stop` column is used when present; otherwise the fallback ATR stop applies. Target distance is measured from entry using the actual entry-to-stop risk. The cost is a simplified round-trip bps assumption. Run cost sensitivity (for example 5, 10, 20, 30 bps) and do not choose a winner from a single cost assumption.
+Repeat for each coin. The signal file's `stop` column is used when present; otherwise the fallback ATR stop applies. Target distance is measured from entry using the actual entry-to-stop risk. The cost is a simplified round-trip bps assumption. Run cost sensitivity (for example 5, 10, 20, 30 bps) and do not choose a winner from a single cost assumption. The audit now fails closed if any adjacent candle timestamps do not match the expected interval cadence; for 4h data, pass `--interval 4h` explicitly.
 
 ## Input and execution assumptions
 
