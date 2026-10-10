@@ -54,6 +54,30 @@ def atr_series(rows: list[dict], period: int = 14) -> list[float | None]:
     return out
 
 
+def funding_cashflow(side: int, quantity: float, entry_ts: int, exit_ts: int,
+                    funding_rates: list[dict] | None) -> tuple[float, int]:
+    """Return realized funding cashflow and settlement count for a held position.
+
+    Timestamps are candle-open timestamps. Settlements must be strictly after
+    entry-bar open and no later than exit-bar open; exact intrabar order cannot
+    be recovered from OHLC candles.
+    """
+    if side not in (-1, 1) or quantity < 0 or exit_ts < entry_ts:
+        raise ValueError("invalid side, quantity, or trade timestamps")
+    pnl = 0.0
+    count = 0
+    for event in funding_rates or []:
+        ts = int(event["funding_time"])
+        if entry_ts < ts <= exit_ts:
+            rate = float(event["funding_rate"])
+            mark = float(event["mark_price"])
+            if not math.isfinite(rate) or not math.isfinite(mark) or mark <= 0:
+                raise ValueError("invalid funding rate or mark price")
+            pnl += -side * quantity * mark * rate
+            count += 1
+    return pnl, count
+
+
 def simulate(rows: list[dict], params: dict, start: int, end: int,
              fee: float = 0.0005, slippage: float = 0.0002,
              funding_rates: list[dict] | None = None, symbol: str | None = None) -> dict:
@@ -134,14 +158,9 @@ def simulate(rows: list[dict], params: dict, start: int, end: int,
         # Candle timestamps are open times; same-timestamp entry settlements are excluded.
         entry_ts = int(rows[entry_idx]["t"])
         exit_ts = int(rows[exit_idx]["t"])
-        funding_pnl = 0.0
-        funding_events = 0
-        if funding_rates is not None:
-            for event in funding_rates:
-                ts = int(event["funding_time"])
-                if entry_ts < ts <= exit_ts:
-                    funding_pnl += -side * qty * float(event["mark_price"]) * float(event["funding_rate"])
-                    funding_events += 1
+        funding_pnl, funding_events = funding_cashflow(
+            side, qty, entry_ts, exit_ts, funding_rates
+        )
         pnl = price_pnl - trading_cost + funding_pnl
         before = equity
         equity = max(1e-6, equity+pnl)
