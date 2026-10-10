@@ -72,6 +72,7 @@ def run_ema_cross_backtest(
     funding_rate_per_bar: float = 0.0,
     allow_short: bool = True,
     risk_fraction: float = 0.01,
+    trade_start_ts: int | None = None,
 ) -> dict:
     """Next-open EMA cross baseline with fixed-risk exits and conservative same-bar ordering.
 
@@ -150,7 +151,9 @@ def run_ema_cross_backtest(
                 position = None
 
         # Signal is known only after the previous bar closes; fill at current open.
-        if position is None and fast_ema[i - 1] is not None and slow_ema[i - 1] is not None and fast_ema[i - 2] is not None and slow_ema[i - 2] is not None and atrs[i - 1]:
+        if (position is None and (trade_start_ts is None or int(bar["t"]) >= trade_start_ts)
+                and fast_ema[i - 1] is not None and slow_ema[i - 1] is not None
+                and fast_ema[i - 2] is not None and slow_ema[i - 2] is not None and atrs[i - 1]):
             prior_diff = fast_ema[i - 2] - slow_ema[i - 2]
             current_diff = fast_ema[i - 1] - slow_ema[i - 1]
             side = 1 if prior_diff <= 0 < current_diff else (-1 if prior_diff >= 0 > current_diff and allow_short else 0)
