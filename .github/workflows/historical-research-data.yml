@@ -69,6 +69,12 @@ jobs:
       - name: Replay asset-specific signals
         run: |
           python validation/replay_dashboard_signals.py --data-dir data/historical --out-dir data/replay
+      - name: Audit replay signal consistency
+        run: |
+          python validation/audit_replay_signals.py \
+            --data-dir data/historical --signals-dir data/replay \
+            --out research-results/signal-audit.json
+          cat research-results/signal-audit.json
       - name: Run cost sensitivity and holdout audits
         run: |
           python validation/run_multi_asset_exit_audit.py \
