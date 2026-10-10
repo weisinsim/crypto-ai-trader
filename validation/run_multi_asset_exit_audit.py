@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 from validation.audit_historical_data import audit as audit_candles
+from validation.audit_funding_history import audit as audit_funding
 
 SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT", "XRPUSDT"]
 COSTS = [5, 10, 20, 30]
@@ -123,6 +124,20 @@ def main():
             reports.append({"symbol": symbol, "status": "INSUFFICIENT_DATA", "missing": missing})
             continue
         integrity, failed_intervals = check_candle_integrity(candle_file, four_hour_file)
+        funding_integrity = None
+        if funding_file.exists():
+            try:
+                funding_integrity = audit_funding(funding_file)
+            except (OSError, ValueError) as exc:
+                funding_integrity = {"file": str(funding_file), "pass_basic_integrity": False,
+                                     "error": str(exc)}
+        if funding_integrity is not None and not funding_integrity.get("pass_basic_integrity", False):
+            reports.append({
+                "symbol": symbol, "status": "FUNDING_INTEGRITY_FAILED",
+                "funding_integrity": funding_integrity,
+                "notice": "No exit audit was run because funding history failed basic integrity checks."
+            })
+            continue
         # Do not parse alignment timestamps after the integrity gate has already
         # found malformed/naive timestamps; report the failure instead of aborting
         # the entire multi-asset batch.
@@ -134,6 +149,7 @@ def main():
                 "symbol": symbol, "status": "DATA_INTEGRITY_FAILED",
                 "failed_intervals": failed_intervals,
                 "integrity": integrity,
+                "funding_integrity": funding_integrity,
                 "timeframe_alignment": alignment,
                 "notice": "No exit audit was run for this symbol because candle integrity or 1h/4h timestamp alignment failed."
             })
@@ -183,6 +199,7 @@ def main():
                 "audit_file": str(dest),
                 "funding_history_used": bool(used_funding_file),
                 "funding_file_recorded_by_audit": used_funding_file,
+                "funding_integrity": funding_integrity,
                 "warning": "Research output only; inspect both exit variants, all cost assumptions, parity, and data quality. Funding-adjusted conclusions require verified complete funding history."
             })
     summary = {
