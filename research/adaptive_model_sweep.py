@@ -12,7 +12,7 @@ from research.run_backtest import load_csv, max_drawdown_pct
 
 # Small, pre-declared grid limits the search space and discourages overfitting.
 GRID = [
-    {"fast": fast, "slow": slow, "stop_atr": stop, "target_atr": target}
+    {"fast": fast, "slow": slow, "stop_atr": stop, "target_atr": target, "trend_period": trend}
     for fast, slow in ((10, 30), (15, 40), (20, 50), (30, 80))
     for stop in (1.5, 2.0)
     for target in (1.5, 2.0, 2.5)
@@ -155,7 +155,8 @@ def main() -> None:
             p = item["parameters"]
             if p == selected_params:
                 continue
-            if (abs(p["fast"] - selected_params["fast"]) <= 5
+            if (p["trend_period"] == selected_params["trend_period"]
+                and abs(p["fast"] - selected_params["fast"]) <= 5
                 and abs(p["slow"] - selected_params["slow"]) <= 30
                 and abs(p["stop_atr"] - selected_params["stop_atr"]) <= 0.5
                 and abs(p["target_atr"] - selected_params["target_atr"]) <= 0.5):
