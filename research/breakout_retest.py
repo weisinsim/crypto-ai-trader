@@ -227,6 +227,12 @@ def main():
     print(f"selected_parameters={report['selected_parameters']}")
     print(f"holdout={report['holdout']}")
     print(f"stress_holdout={report['stress_holdout_0_30pct_round_trip']}")
+    print("top_training_candidates=" + json.dumps([
+        {k: item[k] for k in ("parameters", "median_fold_return_pct",
+                              "median_fold_drawdown_pct", "positive_folds",
+                              "worst_fold_return_pct", "score", "eligible")}
+        for item in sorted(candidates, key=lambda item: item["score"], reverse=True)[:3]
+    ]))
 
 
 if __name__ == "__main__":
