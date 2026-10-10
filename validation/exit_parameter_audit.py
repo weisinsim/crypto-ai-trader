@@ -102,7 +102,11 @@ def evaluate(candles, signals, target_r, stop_atr, cost_bps, max_hold):
                 outcome, reason, exit_ts = target_r, "TP", candle["ts"]
                 break
         if outcome is None:
-            close = next(c["close"] for c in future if c["ts"] == exit_ts)
+            # A partial holding window at the end of a split is not a valid time exit.
+            # Drop it rather than biasing results with an artificially short horizon.
+            if len(future) < max_hold:
+                continue
+            close = future[-1]["close"]
             outcome = d * (close - entry) / risk
         cost_r = (cost_bps / 10000.0) * entry / risk
         results.append({"timestamp": sig["ts"], "exit_timestamp": exit_ts, "side": sig["side"], "exit_reason": reason,
@@ -226,6 +230,8 @@ def main():
     for name, subset in periods.items():
         output["periods"][name] = {}
         output["periods"][name]["signal_rows"] = len(subset["signals"])
+        subset_candle_ts = {c["ts"] for c in subset["candles"]}
+        matched_subset_signals = sum(s["ts"] in subset_candle_ts for s in subset["signals"])
         for r in (2.5, 3.0):
             trades = evaluate(subset["candles"], subset["signals"], r, a.stop_atr, a.cost_bps, a.max_hold)
             sequential, skipped = filter_single_position(trades)
@@ -233,6 +239,7 @@ def main():
                 "signal_level": summarize(trades),
                 "single_position": summarize(sequential),
                 "single_position_skipped_overlapping_signals": skipped,
+                "signals_without_trade_result": matched_subset_signals - len(trades),
             }
     Path(a.out).write_text(json.dumps(output, indent=2), encoding="utf-8")
     print(json.dumps(output, indent=2))
