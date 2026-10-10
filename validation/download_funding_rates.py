@@ -7,7 +7,9 @@ time in UTC and funding_rate is the decimal rate (0.0001 = 0.01%).
 import argparse
 import csv
 import json
+import io
 import time
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -47,28 +49,93 @@ def get_json(params, retries=5):
     raise RuntimeError("Retry budget exhausted")
 
 
+def download_archive(symbol, start_ms, end_ms):
+    """Fallback to Binance public funding-rate archives if REST is region-blocked."""
+    from calendar import monthrange
+
+    start = datetime.fromtimestamp(start_ms / 1000, tz=timezone.utc).date()
+    end = datetime.fromtimestamp((end_ms - 1) / 1000, tz=timezone.utc).date()
+    today = datetime.now(timezone.utc).date()
+    rows = []
+
+    def read_archive(kind, period):
+        stamp = period.strftime("%Y-%m-%d") if kind == "daily" else period.strftime("%Y-%m")
+        url = (f"https://data.binance.vision/data/futures/um/{kind}/fundingRate/"
+               f"{symbol}/{symbol}-fundingRate-{stamp}.zip")
+        req = Request(url, headers={"User-Agent": "crypto-ai-trader-research/1.0"})
+        try:
+            with urlopen(req, timeout=30) as response:
+                payload = response.read()
+        except HTTPError as exc:
+            if exc.code == 404:
+                return False
+            raise RuntimeError(f"Binance funding archive HTTP {exc.code}: {url}") from exc
+        with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+            names = [name for name in archive.namelist() if name.lower().endswith(".csv")]
+            if not names:
+                raise RuntimeError(f"No CSV found in funding archive {url}")
+            with archive.open(names[0]) as raw:
+                reader = csv.reader(io.TextIOWrapper(raw, encoding="utf-8"))
+                for item in reader:
+                    if not item or not item[0].isdigit() or len(item) < 2:
+                        continue
+                    ts = int(item[0])
+                    if start_ms <= ts < end_ms:
+                        rows.append({"timestamp": iso_utc(ts), "funding_rate": item[1]})
+        return True
+
+    month = start.replace(day=1)
+    while month <= end:
+        last_day = monthrange(month.year, month.month)[1]
+        month_end = month.replace(day=last_day)
+        current_month = month.year == today.year and month.month == today.month
+        if not current_month and read_archive("monthly", month):
+            pass
+        else:
+            day = max(start, month)
+            last = min(end, month_end)
+            while day <= last:
+                if day <= today and not read_archive("daily", day):
+                    raise RuntimeError(
+                        f"Official Binance funding archive missing for {symbol} {day}; "
+                        "cannot safely use incomplete funding history."
+                    )
+                day = day.fromordinal(day.toordinal() + 1)
+        if month.month == 12:
+            month = month.replace(year=month.year + 1, month=1)
+        else:
+            month = month.replace(month=month.month + 1)
+    by_ts = {row["timestamp"]: row for row in rows}
+    return [by_ts[key] for key in sorted(by_ts)]
+
+
 def download(symbol, start_ms, end_ms):
     rows, cursor = [], start_ms
-    while cursor < end_ms:
-        batch = get_json({
-            "symbol": symbol,
-            "startTime": cursor,
-            "endTime": end_ms - 1,
-            "limit": LIMIT,
-        })
-        if not batch:
-            break
-        for item in batch:
-            ts = int(item["fundingTime"])
-            if start_ms <= ts < end_ms:
-                rows.append({"timestamp": iso_utc(ts), "funding_rate": item["fundingRate"]})
-        next_cursor = int(batch[-1]["fundingTime"]) + 1
-        if next_cursor <= cursor:
-            raise RuntimeError(f"Pagination did not advance for {symbol}")
-        cursor = next_cursor
-        if len(batch) < LIMIT:
-            break
-        time.sleep(0.15)
+    try:
+        while cursor < end_ms:
+            batch = get_json({
+                "symbol": symbol,
+                "startTime": cursor,
+                "endTime": end_ms - 1,
+                "limit": LIMIT,
+            })
+            if not batch:
+                break
+            for item in batch:
+                ts = int(item["fundingTime"])
+                if start_ms <= ts < end_ms:
+                    rows.append({"timestamp": iso_utc(ts), "funding_rate": item["fundingRate"]})
+            next_cursor = int(batch[-1]["fundingTime"]) + 1
+            if next_cursor <= cursor:
+                raise RuntimeError(f"Pagination did not advance for {symbol}")
+            cursor = next_cursor
+            if len(batch) < LIMIT:
+                break
+            time.sleep(0.15)
+    except HTTPError as exc:
+        if exc.code != 451:
+            raise
+        rows = download_archive(symbol, start_ms, end_ms)
     by_ts = {row["timestamp"]: row for row in rows}
     return [by_ts[k] for k in sorted(by_ts)]
 
