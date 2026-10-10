@@ -74,6 +74,39 @@ def render(manifest):
                 )
     lines.extend([
         "",
+        "## Development/Holdout stability flags",
+        "",
+        "Flags below are diagnostics, not model rankings. A positive Holdout result paired with negative development performance is treated as regime instability, not proof of edge.",
+        "",
+        "| Symbol | Cost (bps) | Target | Mode | Dev Net R | Holdout Net R | Diagnostic |",
+        "|---|---:|---:|---|---:|---:|---|",
+    ])
+    for report in sorted(reports, key=lambda r: (r.get("symbol", ""), r.get("cost_bps", -1))):
+        if report.get("status") not in ("RESEARCH_ONLY", "INSUFFICIENT_SAMPLE"):
+            continue
+        for target in ("2.5", "3.0"):
+            for mode in ("signal_level", "single_position"):
+                dev = target_metrics(report, target, mode, "development")
+                hold = target_metrics(report, target, mode)
+                if not dev or not hold:
+                    continue
+                dev_net, hold_net = dev.get("net_R"), hold.get("net_R")
+                if not isinstance(dev_net, (int, float)) or not isinstance(hold_net, (int, float)):
+                    diagnostic = "METRICS_MISSING"
+                elif dev_net < 0 <= hold_net:
+                    diagnostic = "REGIME_INSTABILITY: dev loss / holdout gain"
+                elif dev_net >= 0 > hold_net:
+                    diagnostic = "GENERALIZATION_FAILURE: dev gain / holdout loss"
+                elif dev_net < 0 and hold_net < 0:
+                    diagnostic = "NEGATIVE_BOTH_PERIODS"
+                else:
+                    diagnostic = "POSITIVE_BOTH_PERIODS; still check sample/cost gates"
+                lines.append(
+                    f"| {report.get('symbol', '—')} | {report.get('cost_bps', '—')} | {target}R | {mode} | "
+                    f"{fmt(dev_net, 4)} | {fmt(hold_net, 4)} | {diagnostic} |"
+                )
+    lines.extend([
+        "",
         "## Holdout metrics by cost, target, and execution mode",
         "",
         "| Symbol | Cost (bps) | Target | Mode | Trades | Win rate % | PF | Net R | Avg R | Max DD R | Max win R | Largest win % | Top 3 wins % |",
