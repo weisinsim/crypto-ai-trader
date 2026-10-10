@@ -22,7 +22,9 @@ from pathlib import Path
 def parse_ts(value):
     value = value.strip()
     try:
-        numeric = float(value)\n        # Treat 13-digit Unix timestamps as milliseconds; 10-digit values are seconds.\n        return int(numeric / 1000) if abs(numeric) >= 100_000_000_000 else int(numeric)
+        numeric = float(value)
+        # Treat 13-digit Unix timestamps as milliseconds; 10-digit values are seconds.
+        return int(numeric / 1000) if abs(numeric) >= 100_000_000_000 else int(numeric)
     except ValueError:
         dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
         if dt.tzinfo is None:
