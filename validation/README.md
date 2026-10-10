@@ -13,7 +13,15 @@ python validation/download_futures_klines.py --symbols BTCUSDT ETHUSDT SOLUSDT A
 python validation/download_futures_klines.py --symbols BTCUSDT ETHUSDT SOLUSDT AVAXUSDT XRPUSDT --interval 4h --start 2024-10-01 --end 2026-10-01 --out-dir data/historical
 ```
 
-The downloader uses public Binance USD-M Futures endpoints; no API key is needed. Check that the symbols and requested history exist for the chosen venue. Keep the raw data and download manifests under versioned research artifacts when practical.
+The candle downloader uses public Binance USD-M Futures endpoints; no API key is needed. Check that the symbols and requested history exist for the chosen venue. Keep the raw data and download manifests under versioned research artifacts when practical.
+
+Download timestamped historical funding events separately:
+
+```bash
+python validation/download_funding_rates.py --symbols BTCUSDT ETHUSDT SOLUSDT AVAXUSDT XRPUSDT --start 2024-10-01 --end 2026-10-01 --out-dir data/funding
+```
+
+This writes `SYMBOL_funding.csv` with `timestamp,funding_rate`; funding rate is a decimal fraction and timestamp is the UTC funding event time.
 
 ## 2. Audit data integrity
 
@@ -34,10 +42,10 @@ This creates one signal CSV per coin and a manifest. It is a first-pass translat
 ## 4. Compare 2.5R vs 3R exits
 
 ```bash
-python validation/exit_parameter_audit.py --candles data/historical/BTCUSDT_1h.csv --signals data/replay/BTCUSDT_signals.csv --cost-bps 10 --max-hold 72 --out data/replay/BTCUSDT_exit_audit.json
+python validation/exit_parameter_audit.py --candles data/historical/BTCUSDT_1h.csv --signals data/replay/BTCUSDT_signals.csv --funding-file data/funding/BTCUSDT_funding.csv --cost-bps 10 --max-hold 72 --out data/replay/BTCUSDT_exit_audit.json
 ```
 
-Repeat for each coin. The signal file's `stop` column is used when present; otherwise the fallback ATR stop applies. Target distance is measured from entry using the actual entry-to-stop risk. The cost is a simplified round-trip bps assumption. Run cost sensitivity (for example 5, 10, 20, 30 bps) and do not choose a winner from a single cost assumption. The audit now fails closed if any adjacent candle timestamps do not match the expected interval cadence; for 4h data, pass `--interval 4h` explicitly. An optional `--funding-bps-per-8h` parameter applies a constant adverse funding-cost sensitivity prorated by elapsed holding time. This is only a stress-test proxy, not actual historical funding; real funding validation requires timestamped funding-rate history and side-aware cash-flow accounting.
+Repeat for each coin. The signal file's `stop` column is used when present; otherwise the fallback ATR stop applies. Target distance is measured from entry using the actual entry-to-stop risk. The cost is a simplified round-trip bps assumption. Run cost sensitivity (for example 5, 10, 20, 30 bps) and do not choose a winner from a single cost assumption. The audit now fails closed if any adjacent candle timestamps do not match the expected interval cadence; for 4h data, pass `--interval 4h` explicitly. Use `--funding-file` to apply timestamped funding events. Positive funding is charged to longs and credited to shorts; negative funding reverses the direction. Events at entry are excluded and events through the exit timestamp are included. If no file is supplied, the optional `--funding-bps-per-8h` constant adverse-cost sensitivity is only a stress-test proxy, not actual historical funding. Verify that the funding file covers the entire candle window; missing historical events could otherwise understate costs.
 
 ## Input and execution assumptions
 
