@@ -175,10 +175,13 @@ def main():
             "split":{"train_fraction":args.train_fraction,"train_bars":split,"holdout_bars":len(rows)-split},
             "strategy":"causal rolling mean-reversion: prior-window z-score, optional RSI extreme filter, next-open entry, mean target, ATR stop; conservative stop-first same-bar handling",
             "candidate_count":len(candidates),"eligible_count":len(eligible),
-            "selected_parameters":selected["parameters"] if selected else None,\n            "diagnostic_only_parameters":diagnostic["parameters"] if diagnostic and not selected else None,\n            "diagnostic_only_not_selected":bool(diagnostic and not selected),
+            "selected_parameters":selected["parameters"] if selected else None,
+            "diagnostic_only_parameters":diagnostic["parameters"] if diagnostic and not selected else None,
+            "diagnostic_only_not_selected":bool(diagnostic and not selected),
             "training_selection_metrics":{k:v for k,v in selected.items() if k!="folds"} if selected else None,
             "candidate_diagnostics":sorted(candidates,key=lambda x:x["score"],reverse=True),
-            "holdout":{k:v for k,v in holdout.items() if k!="trade_log"} if holdout else None,\n            "holdout_interpretation":"SELECTED_CANDIDATE" if selected else "DIAGNOSTIC_ONLY_NOT_SELECTED",
+            "holdout":{k:v for k,v in holdout.items() if k!="trade_log"} if holdout else None,
+            "holdout_interpretation":"SELECTED_CANDIDATE" if selected else "DIAGNOSTIC_ONLY_NOT_SELECTED",
             "stress_holdout_0_30pct_round_trip":{k:v for k,v in stress.items() if k!="trade_log"} if stress else None,
             "warnings":["Research only; historical funding not included.","No deployment decision without independent forward validation."]}
     Path(args.output).parent.mkdir(parents=True,exist_ok=True)
