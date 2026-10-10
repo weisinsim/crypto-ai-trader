@@ -114,7 +114,7 @@ class ExitAuditTests(unittest.TestCase):
         from validation.exit_parameter_audit import validate_funding_coverage
         candles = [candle(100, 100, 101, 99, 100), candle(200, 100, 101, 99, 100)]
         funding = [{"ts": 100 + 100_000, "rate": 0.0001}, {"ts": 200 + 100_000, "rate": 0.0001}]
-        with self.assertRaisesRegex(ValueError, "does not cover"):
+        with self.assertRaisesRegex(ValueError, "does not adequately cover"):
             validate_funding_coverage(funding, candles, 3600)
 
     def test_funding_coverage_rejects_large_internal_gap(self):
