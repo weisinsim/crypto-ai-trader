@@ -70,7 +70,7 @@ class ExitAuditTests(unittest.TestCase):
     def test_funding_coverage_rejects_truncated_history(self):
         from validation.exit_parameter_audit import validate_funding_coverage
         candles = [candle(100, 100, 101, 99, 100), candle(200, 100, 101, 99, 100)]
-        funding = [{"ts": 101, "rate": 0.0001}, {"ts": 200, "rate": 0.0001}]
+        funding = [{"ts": 100 + 100_000, "rate": 0.0001}, {"ts": 200 + 100_000, "rate": 0.0001}]
         with self.assertRaisesRegex(ValueError, "does not cover"):
             validate_funding_coverage(funding, candles, 3600)
 
