@@ -360,11 +360,15 @@ def main():
         for r in (2.5, 3.0):
             trades = evaluate(subset["candles"], subset["signals"], r, a.stop_atr, a.cost_bps, a.max_hold, a.funding_bps_per_8h, funding_rows)
             sequential, skipped = filter_single_position(trades)
+            # Preserve per-trade evidence so aggregate R/PF/DD can be independently
+            # reconciled and suspicious outliers traced to entry, exit, costs, and funding.
             output["periods"][name][f"target_{r}R"] = {
                 "signal_level": summarize(trades),
                 "single_position": summarize(sequential),
                 "single_position_skipped_overlapping_signals": skipped,
                 "signals_without_trade_result": matched_subset_signals - len(trades),
+                "signal_level_trades": trades,
+                "single_position_trades": sequential,
             }
     Path(a.out).write_text(json.dumps(output, indent=2), encoding="utf-8")
     print(json.dumps(output, indent=2))
