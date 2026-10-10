@@ -4,6 +4,22 @@
 
 Compare 2.5R and 3R take-profit distances while holding the entry signal and 2 ATR stop fixed. This is an audit harness, not proof of profitability and not an execution bot.
 
+## Download public market data
+
+For example, download one year of hourly BTCUSDT candles and funding history (replace the dates as needed):
+
+```bash
+python validation/fetch_binance_futures_data.py \
+  --symbol BTCUSDT --interval 1h \
+  --start 2025-10-01T00:00:00Z \
+  --end 2026-10-01T00:00:00Z \
+  --funding --out-dir data/raw
+```
+
+The downloader uses public Binance USD-M Futures endpoints and does not need an API key. Confirm that the requested symbol and period are available for your venue. It excludes the still-open candle by default. The resulting candles CSV contains extra columns, which are ignored by the audit script.
+
+**Important:** downloading candles does not create model signals. The frozen strategy must produce `signals.csv` independently without look-ahead. Until that signal-generation pipeline is implemented and reviewed, this is only an exit-parameter harness, not a full strategy backtest.
+
 ## Required input files
 
 ### candles.csv
@@ -16,7 +32,7 @@ timestamp,open,high,low,close
 ```
 
 - Timestamps must be ISO-8601 with timezone (or Unix epoch seconds/milliseconds).
-- The timestamp must identify the candle close time and match the signal timestamp.
+- The timestamp identifies the candle by its OPEN time (the Binance downloader's `timestamp` column). Signal timestamps must use that same candle-open timestamp; the signal itself must only use data available after that candle has closed.
 - Use one continuous market series, sorted automatically by timestamp.
 - Exclude unfinished candles.
 
