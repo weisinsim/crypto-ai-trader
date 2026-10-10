@@ -17,9 +17,18 @@ COSTS = [5, 10, 20, 30]
 
 
 def holdout_trade_counts(holdout):
-    # Compare exit variants fairly: metadata such as signal_rows is not a trade result.
-    variants = [v.get("trades", 0) for v in holdout.values()
-                if isinstance(v, dict) and "trades" in v]
+    # Read both legacy flat metrics and current nested signal/single-position metrics.
+    variants = []
+    for value in holdout.values():
+        if not isinstance(value, dict):
+            continue
+        if "signal_level" in value or "single_position" in value:
+            for mode in ("signal_level", "single_position"):
+                metrics = value.get(mode)
+                if isinstance(metrics, dict) and "trades" in metrics:
+                    variants.append(metrics["trades"])
+        elif "trades" in value:
+            variants.append(value["trades"])
     return variants
 
 
