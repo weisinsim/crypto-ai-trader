@@ -1,0 +1,90 @@
+name: Historical multi-asset research
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: "UTC inclusive start date (YYYY-MM-DD)"
+        required: true
+        default: "2024-10-01"
+        type: string
+      end_date:
+        description: "UTC exclusive end date (YYYY-MM-DD)"
+        required: true
+        default: "2026-10-10"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  historical-research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download closed 1h candles
+        run: >-
+          python validation/download_futures_klines.py
+          --symbols BTCUSDT ETHUSDT SOLUSDT AVAXUSDT XRPUSDT
+          --interval 1h
+          --start "${{ inputs.start_date }}"
+          --end "${{ inputs.end_date }}"
+          --out-dir data/historical
+      - name: Download closed 4h candles
+        run: >-
+          python validation/download_futures_klines.py
+          --symbols BTCUSDT ETHUSDT SOLUSDT AVAXUSDT XRPUSDT
+          --interval 4h
+          --start "${{ inputs.start_date }}"
+          --end "${{ inputs.end_date }}"
+          --out-dir data/historical
+      - name: Download historical funding events
+        run: >-
+          python validation/download_funding_rates.py
+          --symbols BTCUSDT ETHUSDT SOLUSDT AVAXUSDT XRPUSDT
+          --start "${{ inputs.start_date }}"
+          --end "${{ inputs.end_date }}"
+          --out-dir data/funding
+      - name: Audit candle integrity
+        run: |
+          mkdir -p research-results
+          python validation/audit_historical_data.py --data-dir data/historical > research-results/candle-integrity.json
+          cat research-results/candle-integrity.json
+      - name: Audit funding integrity
+        if: always()
+        run: |
+          python validation/audit_funding_history.py \
+            data/funding/BTCUSDT_funding.csv data/funding/ETHUSDT_funding.csv \
+            data/funding/SOLUSDT_funding.csv data/funding/AVAXUSDT_funding.csv \
+            data/funding/XRPUSDT_funding.csv --max-gap-hours 24 \
+            > research-results/funding-integrity.json
+          cat research-results/funding-integrity.json
+      - name: Replay asset-specific signals
+        run: |
+          python validation/replay_dashboard_signals.py --data-dir data/historical --out-dir data/replay
+      - name: Run cost sensitivity and holdout audits
+        if: always()
+        run: |
+          python validation/run_multi_asset_exit_audit.py \
+            --data-dir data/historical --signals-dir data/replay --funding-dir data/funding \
+            --out-dir research-results/exit-audits --min-trades 30 \
+            > research-results/batch-manifest.json
+          cat research-results/batch-manifest.json
+      - name: Upload raw data and research outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: historical-research-${{ inputs.start_date }}-to-${{ inputs.end_date }}
+          path: |
+            data/historical/
+            data/funding/
+            data/replay/
+            research-results/
+          if-no-files-found: warn
+          retention-days: 30
