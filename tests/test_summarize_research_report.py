@@ -80,6 +80,18 @@ class ResearchReportTests(unittest.TestCase):
         report = render(manifest)
         self.assertIn("1/2 | FAIL_CROSS_COST_ROBUSTNESS", report)
 
+    def test_asset_coverage_blocks_unexpected_cost_tier(self):
+        manifest = {
+            "cost_sensitivity_bps": [5, 10],
+            "reports": [
+                {"symbol": "BTCUSDT", "cost_bps": 5, "status": "RESEARCH_ONLY"},
+                {"symbol": "BTCUSDT", "cost_bps": 10, "status": "RESEARCH_ONLY"},
+                {"symbol": "BTCUSDT", "cost_bps": 15, "status": "RESEARCH_ONLY"},
+            ],
+        }
+        report = render(manifest)
+        self.assertIn("BTCUSDT | 3 | 3/2 | — | BLOCKED:UNEXPECTED_COST_TIERS", report)
+
     def test_asset_coverage_blocks_duplicate_cost_rows(self):
         manifest = {
             "cost_sensitivity_bps": [5, 10],
