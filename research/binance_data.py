@@ -53,8 +53,12 @@ def download_klines(
     Inject fetch_page(params) for deterministic tests. Raises rather than
     silently claiming complete coverage when a timestamp gap is detected.
     """
+    if not isinstance(symbol, str) or not symbol.strip() or not symbol.strip().isalnum():
+        raise ValueError("symbol must be a non-empty alphanumeric exchange symbol")
     if interval not in INTERVAL_MS:
         raise ValueError(f"unsupported interval: {interval}")
+    if pause_seconds < 0:
+        raise ValueError("pause_seconds cannot be negative")
     if start_ms < 0 or end_ms <= start_ms:
         raise ValueError("require 0 <= start_ms < end_ms")
     if not 1 <= limit <= 1500:
@@ -63,6 +67,7 @@ def download_klines(
     if start_ms % duration or end_ms % duration:
         raise ValueError("start_ms and end_ms must align to interval boundaries")
 
+    client = None
     if fetch_page is None:
         client = httpx.Client(timeout=15.0)
         def fetch_page(params):
@@ -72,24 +77,28 @@ def download_klines(
 
     rows = []
     cursor = start_ms
-    while cursor < end_ms:
-        page = fetch_page({
-            "symbol": symbol.upper(), "interval": interval,
-            "startTime": cursor, "endTime": end_ms - 1, "limit": limit,
-        })
-        if not page:
-            break
-        parsed = parse_klines(page, duration, end_ms)
-        rows.extend(r for r in parsed if start_ms <= r["t"] < end_ms)
-        last_ts = max(int(r[0]) for r in page)
-        next_cursor = last_ts + duration
-        if next_cursor <= cursor:
-            raise RuntimeError("pagination did not advance; aborting to avoid an infinite loop")
-        cursor = next_cursor
-        if len(page) < limit:
-            break
-        if pause_seconds:
-            time.sleep(pause_seconds)
+    try:
+        while cursor < end_ms:
+            page = fetch_page({
+                "symbol": symbol.upper(), "interval": interval,
+                "startTime": cursor, "endTime": end_ms - 1, "limit": limit,
+            })
+            if not page:
+                break
+            parsed = parse_klines(page, duration, end_ms)
+            rows.extend(r for r in parsed if start_ms <= r["t"] < end_ms)
+            last_ts = max(int(r[0]) for r in page)
+            next_cursor = last_ts + duration
+            if next_cursor <= cursor:
+                raise RuntimeError("pagination did not advance; aborting to avoid an infinite loop")
+            cursor = next_cursor
+            if len(page) < limit:
+                break
+            if pause_seconds:
+                time.sleep(pause_seconds)
+    finally:
+        if client is not None:
+            client.close()
 
     rows.sort(key=lambda r: r["t"])
     unique = {}
