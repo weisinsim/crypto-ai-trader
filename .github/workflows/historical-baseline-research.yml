@@ -52,6 +52,32 @@ jobs:
             --symbol "$SYMBOL" --interval 1h \
             --train-fraction 0.6 --folds 4 \
             --output "reports/${SYMBOL}_1h_baseline.json"
+      - name: Print compact metrics for review
+        if: success()
+        env:
+          SYMBOL: ${{ matrix.symbol }}
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path(f"reports/{__import__('os').environ['SYMBOL']}_1h_baseline.json")
+          report = json.loads(path.read_text(encoding="utf-8"))
+          holdout = report["holdout"]
+          print("=== RESEARCH SUMMARY (NOT A PRODUCTION CERTIFICATION) ===")
+          print(f"symbol={report['symbol']} interval={report['interval']} bars={report['bars']}")
+          print(f"funding_records={report['funding_data']['records']} funding_source={report['funding_data']['source']}")
+          print(f"holdout_trades={holdout['trades']} net_return_pct={holdout['net_return_pct']}")
+          print(f"holdout_max_drawdown_pct={holdout['max_drawdown_pct']} win_rate_pct={holdout['win_rate_pct']}")
+          print(f"holdout_profit_factor={holdout['profit_factor']} expectancy_equity_pct={holdout['expectancy_equity_pct']}")
+          for fold in report["walk_forward"]:
+              print(
+                  f"fold={fold['fold']} bars={fold['bars']} trades={fold['trades']} "
+                  f"net_return_pct={fold['net_return_pct']} max_drawdown_pct={fold['max_drawdown_pct']} "
+                  f"win_rate_pct={fold['win_rate_pct']} profit_factor={fold['profit_factor']}"
+              )
+          print("WARN: default workflow does not provide historical funding CSV; do not treat funding as validated.")
+          PY
       - name: Upload raw data and report
         if: always()
         uses: actions/upload-artifact@v4
