@@ -116,6 +116,21 @@ class ExitAuditTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Duplicate"):
                 read_funding(path)
 
+    def test_funding_reader_rejects_archive_interval_misparsed_as_rate(self):
+        import tempfile
+        from pathlib import Path
+        from validation.exit_parameter_audit import read_funding
+
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "funding.csv"
+            path.write_text(
+                "timestamp,funding_rate\\n"
+                "2025-01-01T00:00:00Z,8\\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "sanity limit"):
+                read_funding(path)
+
     def test_funding_reader_rejects_nonfinite_rates(self):
         import tempfile
         from pathlib import Path
