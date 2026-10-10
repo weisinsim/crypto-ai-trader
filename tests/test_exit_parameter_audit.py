@@ -67,6 +67,37 @@ class ExitAuditTests(unittest.TestCase):
         self.assertEqual(trades[0]["exit_reason"], "SL")
         self.assertEqual(trades[0]["gross_R"], -2.5)
 
+    def test_funding_reader_rejects_duplicate_timestamps(self):
+        import tempfile
+        from pathlib import Path
+        from validation.exit_parameter_audit import read_funding
+
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "funding.csv"
+            path.write_text(
+                "timestamp,funding_rate\n"
+                "2025-01-01T00:00:00Z,0.0001\n"
+                "2025-01-01T00:00:00Z,0.0002\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "Duplicate"):
+                read_funding(path)
+
+    def test_funding_reader_rejects_nonfinite_rates(self):
+        import tempfile
+        from pathlib import Path
+        from validation.exit_parameter_audit import read_funding
+
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "funding.csv"
+            path.write_text(
+                "timestamp,funding_rate\n"
+                "2025-01-01T00:00:00Z,nan\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "finite"):
+                read_funding(path)
+
     def test_funding_coverage_rejects_truncated_history(self):
         from validation.exit_parameter_audit import validate_funding_coverage
         candles = [candle(100, 100, 101, 99, 100), candle(200, 100, 101, 99, 100)]
