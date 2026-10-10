@@ -6,7 +6,7 @@ on:
       start_date:
         description: "UTC inclusive start date (YYYY-MM-DD)"
         required: true
-        default: "2024-10-01"
+        default: "2026-04-10"
         type: string
       end_date:
         description: "UTC exclusive end date (YYYY-MM-DD)"
