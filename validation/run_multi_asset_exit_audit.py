@@ -85,8 +85,8 @@ def main():
     p.add_argument("--signals-dir", default="data/replay")
     p.add_argument("--funding-dir", default="data/funding",
                    help="Directory with SYMBOL_funding.csv files")
-    p.add_argument("--require-funding", action="store_true",
-                   help="Mark a symbol insufficient if its historical funding file is missing")
+    p.add_argument("--allow-missing-funding", action="store_true",
+                   help="Allow research-only audits without historical funding; results are not funding-adjusted")
     p.add_argument("--out-dir", default="data/exit_audits")
     p.add_argument("--symbols", nargs="+", default=SYMBOLS)
     p.add_argument("--max-hold", type=int, default=72)
@@ -111,7 +111,7 @@ def main():
         signal_file = signals / f"{symbol}_signals.csv"
         funding_file = Path(args.funding_dir) / f"{symbol}_funding.csv"
         missing = [str(x) for x in (candle_file, four_hour_file, signal_file) if not x.exists()]
-        if args.require_funding and not funding_file.exists():
+        if not args.allow_missing_funding and not funding_file.exists():
             missing.append(str(funding_file))
         if missing:
             reports.append({"symbol": symbol, "status": "INSUFFICIENT_DATA", "missing": missing})
@@ -151,7 +151,7 @@ def main():
             # Verify the child audit actually used the expected funding file.
             # In required mode, never treat an unadjusted audit as a valid result.
             used_funding_file = result.get("inputs", {}).get("funding_file")
-            if args.require_funding and not used_funding_file:
+            if not args.allow_missing_funding and not used_funding_file:
                 reports.append({
                     "symbol": symbol, "cost_bps": cost, "status": "AUDIT_FAILED",
                     "reason": "Funding was required but the child audit did not record a funding file.",
@@ -182,6 +182,7 @@ def main():
     summary = {
         "notice": "Automated batch runner. No profitability claim. Check audit files, data integrity, parity, funding, slippage and independent holdout.",
         "min_trades_threshold": args.min_trades,
+        "historical_funding_required": not args.allow_missing_funding,
         "cost_sensitivity_bps": COSTS,
         "reports": reports,
     }
