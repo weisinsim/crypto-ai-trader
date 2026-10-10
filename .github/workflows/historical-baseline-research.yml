@@ -1,0 +1,64 @@
+name: Historical baseline research
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "UTC history length (days)"
+        required: true
+        default: "180"
+        type: choice
+        options:
+          - "90"
+          - "180"
+          - "365"
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    name: ${{ matrix.symbol }} 1H baseline
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        symbol: [BTCUSDT, ETHUSDT, SOLUSDT, AVAXUSDT, XRPUSDT]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - name: Install dependencies
+        run: python -m pip install httpx
+      - name: Download complete closed-candle history
+        env:
+          SYMBOL: ${{ matrix.symbol }}
+          DAYS: ${{ inputs.days }}
+        run: |
+          START="$(date -u -d "${DAYS} days ago" +%F)"
+          END="$(date -u +%F)"
+          python -m research.binance_data \
+            --symbol "$SYMBOL" --interval 1h \
+            --start "$START" --end "$END" \
+            --output "data/${SYMBOL}_1h.csv"
+      - name: Run research-only baseline and walk-forward report
+        env:
+          SYMBOL: ${{ matrix.symbol }}
+        run: |
+          python -m research.run_backtest \
+            --csv "data/${SYMBOL}_1h.csv" \
+            --symbol "$SYMBOL" --interval 1h \
+            --train-fraction 0.6 --folds 4 \
+            --output "reports/${SYMBOL}_1h_baseline.json"
+      - name: Upload raw data and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-${{ matrix.symbol }}-1h
+          path: |
+            data/${{ matrix.symbol }}_1h.csv
+            reports/${{ matrix.symbol }}_1h_baseline.json
+          if-no-files-found: warn
+          retention-days: 30
