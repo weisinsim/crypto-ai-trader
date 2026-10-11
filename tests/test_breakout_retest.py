@@ -1,6 +1,6 @@
 import unittest
 
-from research.breakout_retest import atr_values, run_breakout_retest
+from research.breakout_retest import atr_values, funding_cashflow, run_breakout_retest
 
 
 def make_rows(n=240):
@@ -55,6 +55,21 @@ class BreakoutRetestTests(unittest.TestCase):
         params = {"lookback": 24, "max_wait": 6, "target_r": 2.0}
         with self.assertRaisesRegex(ValueError, "fees and slippage"):
             run_breakout_retest(rows, params, 100, len(rows), fee_rate=float("nan"))
+
+    def test_funding_cashflow_long_pays_and_short_receives(self):
+        events = [{"funding_time": 200, "funding_rate": 0.001, "mark_price": 100.0}]
+        self.assertAlmostEqual(funding_cashflow(1, 2.0, 100, 300, events)[0], -0.2)
+        self.assertAlmostEqual(funding_cashflow(-1, 2.0, 100, 300, events)[0], 0.2)
+
+    def test_funding_cashflow_excludes_entry_time_and_after_exit(self):
+        events = [
+            {"funding_time": 100, "funding_rate": 0.01, "mark_price": 100.0},
+            {"funding_time": 200, "funding_rate": 0.01, "mark_price": 100.0},
+            {"funding_time": 301, "funding_rate": 0.01, "mark_price": 100.0},
+        ]
+        pnl, count = funding_cashflow(1, 1.0, 100, 300, events)
+        self.assertAlmostEqual(pnl, -1.0)
+        self.assertEqual(count, 1)
 
     def test_invalid_window_rejected(self):
         rows = make_rows()
