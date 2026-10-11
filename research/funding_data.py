@@ -215,12 +215,15 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                             mark_source = "mark_kline_open_nearest_1s"
                     if mark is None and mark_1m_closes:
                         prior = [item for item in mark_1m_closes if item[0] <= ts]
-                        if prior and ts - prior[-1][0] <= 1000:
+                        # Funding timestamps can carry millisecond offsets; allow
+                        # the immediately preceding official 1m close, never a future
+                        # candle. This is a provenance tolerance, not a trade-price proxy.
+                        if prior and 0 <= ts - prior[-1][0] <= 60_000:
                             mark = prior[-1][1]
                             mark_source = "mark_kline_1m_prior_close"
                     if mark is None:
                         raise ValueError(
-                            f"missing official mark price within 1s of funding timestamp {ts} "
+                            f"missing prior official mark price within 60s of funding timestamp {ts} "
                             f"for {symbol}; refusing trade-price proxy"
                         )
                     if not isfinite(rate) or not isfinite(mark) or mark <= 0:
