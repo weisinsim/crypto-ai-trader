@@ -104,12 +104,29 @@ def main() -> None:
                 rows, params, start_idx, end_idx, fee_rate=per_side_cost / 2,
                 slippage_rate=per_side_cost / 2, funding_rates=funding, symbol=args.symbol,
             )
+            no_funding_result = run_breakout_retest(
+                rows, params, start_idx, end_idx, fee_rate=per_side_cost / 2,
+                slippage_rate=per_side_cost / 2, funding_rates=[], symbol=args.symbol,
+            )
         else:
             result = simulate_mean_reversion(
                 rows, params, start_idx, end_idx, fee=per_side_cost / 2,
                 slippage=per_side_cost / 2, funding_rates=funding, symbol=args.symbol,
             )
-        results[f"round_trip_cost_{rt_cost_pct:.2f}pct"] = summarize(result)
+            no_funding_result = simulate_mean_reversion(
+                rows, params, start_idx, end_idx, fee=per_side_cost / 2,
+                slippage=per_side_cost / 2, funding_rates=[], symbol=args.symbol,
+            )
+        with_funding = summarize(result)
+        without_funding = summarize(no_funding_result)
+        with_funding["funding_counterfactual_net_return_pct"] = without_funding["net_return_pct"]
+        if isinstance(with_funding["net_return_pct"], (int, float)) and isinstance(without_funding["net_return_pct"], (int, float)):
+            with_funding["funding_return_delta_pct_points"] = round(
+                with_funding["net_return_pct"] - without_funding["net_return_pct"], 8
+            )
+        else:
+            with_funding["funding_return_delta_pct_points"] = None
+        results[f"round_trip_cost_{rt_cost_pct:.2f}pct"] = with_funding
 
     report = {
         "status": "RESEARCH_ONLY",
