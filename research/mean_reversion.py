@@ -292,6 +292,7 @@ def main():
     print(f"holdout={report['holdout']}")
     print(f"stress_holdout={report['stress_holdout_0_30pct_round_trip']}")
     print(f"funding_data={report['funding_data']} funding_pnl_holdout_equity={report['funding_pnl_holdout_equity']}")
+    print(f"funding_counterfactual_same_parameters={report['funding_counterfactual_same_parameters']}")
     print("top_training_candidates="+json.dumps([{k:x[k] for k in ("parameters","median_fold_return_pct","median_fold_drawdown_pct","positive_folds","worst_fold_return_pct","score","eligible")} for x in sorted(candidates,key=lambda x:x["score"],reverse=True)[:3]]))
 
 
