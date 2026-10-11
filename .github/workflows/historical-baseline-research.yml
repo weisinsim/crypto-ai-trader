@@ -226,5 +226,6 @@ jobs:
             reports/${{ matrix.symbol }}_1h_breakout_retest.json
             reports/${{ matrix.symbol }}_1h_mean_reversion.json
             reports/${{ matrix.symbol }}_1h_frozen_stability.json
+            reports/${{ matrix.symbol }}_funding_audit.json
           if-no-files-found: warn
           retention-days: 30
