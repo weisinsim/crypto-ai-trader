@@ -159,26 +159,34 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                 # Use the mark-price candle OPEN at settlement time, not its
                 # close eight hours later (which would introduce look-ahead).
                 marks[ts] = mark_open
-            # Some archive months contain funding records whose timestamps do not
-            # exactly align with mark-kline timestamps. Build a clearly labeled
-            # prior-close proxy from the public 8h trade-kline archive; never use
-            # a candle closing after the settlement time.
-            proxy_url = f"https://data.binance.vision/data/futures/um/monthly/klines/{symbol}/8h/{symbol}-8h-{ym}.zip"
-            proxy_resp = client.get(proxy_url)
-            proxy_resp.raise_for_status()
-            with zipfile.ZipFile(io.BytesIO(proxy_resp.content)) as zf:
-                proxy_name = next((n for n in zf.namelist() if n.lower().endswith(".csv")), None)
-                if not proxy_name:
-                    raise ValueError(f"8h kline archive has no CSV: {proxy_url}")
-                proxy_rows = list(csv.reader(io.TextIOWrapper(zf.open(proxy_name), encoding="utf-8")))
-            prior_closes = []
-            for row in proxy_rows:
-                try:
-                    ts, close = int(float(row[0])), float(row[4])
-                except (ValueError, IndexError):
-                    continue
-                prior_closes.append((ts + 8 * 60 * 60 * 1000, close))
-            prior_closes.sort()
+            # If an 8h mark-price archive lacks a settlement timestamp, retry
+            # with the official 1m mark-price archive for the same month. Never
+            # substitute a trade-kline close for an exchange mark price.
+            mark_1m = {}
+            missing_8h_times = {
+                int(float(row[0])) for row in rate_rows
+                if start_ms <= int(float(row[0])) < end_ms
+                and int(float(row[0])) not in marks
+                and not any(abs(mark_ts - int(float(row[0]))) <= 1000 for mark_ts in marks)
+            }
+            if missing_8h_times:
+                mark_1m_url = (
+                    f"https://data.binance.vision/data/futures/um/monthly/markPriceKlines/"
+                    f"{symbol}/1m/{symbol}-1m-{ym}.zip"
+                )
+                mark_1m_resp = client.get(mark_1m_url)
+                mark_1m_resp.raise_for_status()
+                with zipfile.ZipFile(io.BytesIO(mark_1m_resp.content)) as zf:
+                    mark_1m_name = next((n for n in zf.namelist() if n.lower().endswith(".csv")), None)
+                    if not mark_1m_name:
+                        raise ValueError(f"1m mark-price archive has no CSV: {mark_1m_url}")
+                    mark_1m_rows = csv.reader(io.TextIOWrapper(zf.open(mark_1m_name), encoding="utf-8"))
+                    for item in mark_1m_rows:
+                        try:
+                            mark_ts, mark_open = int(float(item[0])), float(item[1])
+                        except (ValueError, IndexError):
+                            continue
+                        mark_1m[mark_ts] = mark_open
             for row in rate_rows:
                 try:
                     ts = int(float(row[0]))
@@ -194,13 +202,18 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                         if abs(nearest_ts - ts) <= 1000:
                             mark = marks[nearest_ts]
                             mark_source = "mark_kline_open_nearest_1s"
+                    if mark is None and mark_1m:
+                        nearest_ts = min(mark_1m, key=lambda mark_ts: abs(mark_ts - ts))
+                        if abs(nearest_ts - ts) <= 1000:
+                            mark = mark_1m[nearest_ts]
+                            mark_source = "mark_kline_1m_open_nearest_1s"
                     if mark is None:
-                        eligible = [item for item in prior_closes if item[0] <= ts]
-                        if eligible:
-                            mark = eligible[-1][1]
-                            mark_source = "prior_trade_kline_close_proxy"
-                    if mark is None or not isfinite(rate) or not isfinite(mark) or mark <= 0:
-                        raise ValueError(f"missing/invalid settlement price proxy at {ts} for {symbol}")
+                        raise ValueError(
+                            f"missing official mark price within 1s of funding timestamp {ts} "
+                            f"for {symbol}; refusing trade-price proxy"
+                        )
+                    if not isfinite(rate) or not isfinite(mark) or mark <= 0:
+                        raise ValueError(f"invalid funding rate or official mark price at {ts} for {symbol}")
                     rows.append({"funding_time": ts, "funding_rate": rate,
                                  "mark_price": mark, "symbol": symbol,
                                  "mark_price_source": mark_source})
