@@ -119,31 +119,8 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
             rate_resp = client.get(rate_url)
             if rate_resp.status_code == 404:
                 # Current-month monthly archives may not be published yet.
-                # Try Binance's public data REST hostname before archive fallbacks;
-                # the primary futures host can return HTTP 451 in some CI regions.
-                month_start_ms = max(start_ms, int(month.timestamp() * 1000))
-                next_month = month.replace(
-                    year=month.year + (month.month == 12),
-                    month=1 if month.month == 12 else month.month + 1,
-                )
-                month_end_ms = min(end_ms, int(next_month.timestamp() * 1000))
-                # data-api.binance.vision does not expose the USD-M Futures
-                # fundingRate endpoint (it returns 404); do not treat it as a
-                # valid fallback. Keep the failure explicit until a supported
-                # official futures endpoint/archive is available.
-                mirror_error = "unsupported endpoint: data-api.binance.vision/fapi/v1/fundingRate (HTTP 404)"
-                mirror_rows = []
-                if mirror_rows:
-                    rows.extend(mirror_rows)
-                    continue
-                # Assemble the requested portion from official daily fundingRate
-                # archives; fail closed if neither official source is available.
-                month_start_ms = max(start_ms, int(month.timestamp() * 1000))
-                next_month = month.replace(
-                    year=month.year + (month.month == 12),
-                    month=1 if month.month == 12 else month.month + 1,
-                )
-                month_end_ms = min(end_ms, int(next_month.timestamp() * 1000))
+                # Use only official daily funding archives as a fallback.
+                # Never estimate or synthesize missing funding records.
                 day = datetime.fromtimestamp(month_start_ms / 1000, timezone.utc).replace(
                     hour=0, minute=0, second=0, microsecond=0
                 )
@@ -167,8 +144,8 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                 if not daily_rate_rows:
                     raise ValueError(
                         f"missing funding archive for requested month {ym} ({rate_url}); "
-                        f"public REST mirror result: {mirror_error or 'empty response'}; "
-                        "no official daily funding archives were available"
+                        "no official daily funding archives were available; "
+                        "funding acquisition blocked, refusing to synthesize records"
                     )
                 # Build an in-memory CSV archive so the shared mark-price
                 # provenance checks below apply identically to monthly and daily data.
