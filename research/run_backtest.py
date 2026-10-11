@@ -28,7 +28,8 @@ def load_funding_csv(path: str) -> list[dict]:
         rows = [{"funding_time": int(row["funding_time"]),
                  "funding_rate": float(row["funding_rate"]),
                  "mark_price": float(row["mark_price"]),
-                 "symbol": row.get("symbol", "").strip().upper()}
+                 "symbol": row.get("symbol", "").strip().upper(),
+                 "mark_price_source": row.get("mark_price_source", "unspecified").strip() or "unspecified"}
                 for row in csv.DictReader(handle)]
     symbols = {row["symbol"] for row in rows}
     if not rows or "" in symbols or len(symbols) != 1:
