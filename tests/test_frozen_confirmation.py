@@ -36,6 +36,18 @@ class FrozenConfirmationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             confirmation_window_indices(gapped, start, start + 4 * 3_600_000)
 
+    def test_confirmation_window_rejects_any_internal_hour_gap(self):
+        start = utc_ms("2026-10-02")
+        rows = [{"t": start + i * 3_600_000} for i in range(6)]
+        rows.pop(2)
+        with self.assertRaisesRegex(ValueError, "missing or misaligned hourly interval"):
+            confirmation_window_indices(rows, start, start + 5 * 3_600_000)
+
+    def test_confirmation_window_rejects_empty_rows(self):
+        start = utc_ms("2026-10-02")
+        with self.assertRaisesRegex(ValueError, "does not cover confirmation start"):
+            confirmation_window_indices([], start, start + 3_600_000)
+
     def test_confirmation_window_rejects_duplicate_timestamps_and_invalid_range(self):
         start = utc_ms("2026-10-02")
         rows = [{"t": start + i * 3_600_000} for i in range(5)]
