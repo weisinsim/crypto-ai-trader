@@ -306,6 +306,21 @@ def main():
                            "rejection_reasons": rejection_reasons, "eligible": eligible})
     eligible = sorted((x for x in candidates if x["eligible"]), key=lambda x: x["score"], reverse=True)
     selected = eligible[0] if eligible else None
+    direction_summary = {}
+    for direction in ("LONG", "SHORT", "BOTH"):
+        group = [item for item in candidates if item["parameters"]["direction"] == direction]
+        passing = sorted((item for item in group if item["eligible"]), key=lambda item: item["score"], reverse=True)
+        best = passing[0] if passing else max(group, key=lambda item: item["score"])
+        direction_summary[direction] = {
+            "candidate_count": len(group),
+            "eligible_count": len(passing),
+            "best_parameters": best["parameters"],
+            "best_candidate_eligible": best["eligible"],
+            "best_score": best["score"],
+            "best_median_fold_return_pct": best["median_fold_return_pct"],
+            "best_worst_fold_return_pct": best["worst_fold_return_pct"],
+            "best_rejection_reasons": best["rejection_reasons"],
+        }
     holdout = stress = severe = None
     if selected:
         params = selected["parameters"]
@@ -321,6 +336,7 @@ def main():
         "grid": GRID, "candidate_count": len(candidates), "eligible_count": len(eligible),
         "rejection_reason_counts": {reason: sum(reason in item["rejection_reasons"] for item in candidates)
                                     for reason in sorted({reason for item in candidates for reason in item["rejection_reasons"]})},
+        "direction_summary": direction_summary,
         "selected_parameters": selected["parameters"] if selected else None,
         "training_selection_metrics": {k:v for k,v in selected.items() if k != "folds"} if selected else None,
         "candidate_diagnostics": sorted(candidates, key=lambda x: x["score"], reverse=True),
@@ -347,6 +363,7 @@ def main():
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"status=RESEARCH_ONLY symbol={args.symbol.upper()} bars={len(rows)} candidates={len(candidates)} eligible={len(eligible)} selected={bool(selected)}")
+    print(f"direction_summary={report['direction_summary']}")
     print(f"selected_parameters={report['selected_parameters']}")
     print(f"holdout={report['holdout']}")
     print(f"stress_holdout={report['stress_holdout_0_30pct_round_trip']}")
