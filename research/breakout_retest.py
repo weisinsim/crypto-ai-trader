@@ -15,7 +15,7 @@ GRID = [
      "breakout_atr": breakout_atr, "retest_atr": retest_atr, "body_confirm_atr": body_confirm_atr}
     for lookback in (24, 48, 72)
     for max_wait in (3, 6)
-    for target_r in (1.5, 2.0)
+    for target_r in (1.5, 2.0, 2.5, 3.0)
     for trend_period in (0, 100, 200)
     for volatility_filter in (0.0, 1.0, 1.2)
     for direction in ("BOTH", "LONG", "SHORT")
