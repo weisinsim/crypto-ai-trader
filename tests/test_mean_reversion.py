@@ -1,6 +1,6 @@
 import math
 
-from research.mean_reversion import funding_cashflow, indicators, simulate
+from research.mean_reversion import cost_robustness_gate, funding_cashflow, indicators, simulate
 
 
 def make_rows(n=240):
@@ -81,3 +81,23 @@ def test_funding_cashflow_rejects_invalid_mark_price():
         assert "invalid funding" in str(exc)
     else:
         raise AssertionError("invalid mark price should raise ValueError")
+
+
+def test_cost_robustness_gate_rejects_candidate_failing_severe_costs():
+    holdout = {"net_return_pct": 14.7, "profit_factor": 1.37}
+    stress = {"net_return_pct": 5.5, "profit_factor": 1.12}
+    severe = {"net_return_pct": -2.89, "profit_factor": 0.94}
+    assert cost_robustness_gate(holdout, stress, severe)["status"] == "FAIL_COST_ROBUSTNESS"
+
+
+def test_cost_robustness_gate_requires_all_cost_levels_to_pass():
+    metrics = {"net_return_pct": 1.0, "profit_factor": 1.1}
+    assert cost_robustness_gate(metrics, metrics, metrics)["status"] == "PASS_PRELIMINARY_ONLY"
+    assert cost_robustness_gate(metrics, None, metrics)["status"] == "NOT_EVALUATED"
+
+
+def test_cost_robustness_gate_rejects_non_finite_metrics():
+    import math
+    metrics = {"net_return_pct": math.nan, "profit_factor": 1.1}
+    good = {"net_return_pct": 1.0, "profit_factor": 1.1}
+    assert cost_robustness_gate(metrics, good, good)["status"] == "FAIL_COST_ROBUSTNESS"
