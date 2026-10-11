@@ -64,3 +64,42 @@ def test_approved_mark_price_sources_pass_provenance_gate():
     report = audit_funding(rows, candles(24), "BTCUSDT")
     assert report["status"] == "PASS"
     assert report["unverified_price_source_records"] == 0
+
+
+def test_audit_rejects_funding_event_outside_candle_coverage():
+    with pytest.raises(ValueError, match="outside candle coverage"):
+        audit_funding(funding([-1]), candles(), "BTCUSDT")
+
+
+def test_audit_rejects_non_finite_funding_rate():
+    rows = funding([0])
+    rows[0]["funding_rate"] = float("nan")
+    with pytest.raises(ValueError, match="invalid funding record"):
+        audit_funding(rows, candles(), "BTCUSDT")
+
+
+def test_audit_rejects_non_positive_mark_price():
+    rows = funding([0])
+    rows[0]["mark_price"] = 0
+    with pytest.raises(ValueError, match="invalid funding record"):
+        audit_funding(rows, candles(), "BTCUSDT")
+
+
+def test_audit_rejects_unsorted_funding_events():
+    with pytest.raises(ValueError, match="not sorted"):
+        audit_funding(funding([8*3_600_000, 0]), candles(24), "BTCUSDT")
+
+
+def test_audit_rejects_unsorted_candles():
+    rows = candles()
+    rows[0], rows[1] = rows[1], rows[0]
+    with pytest.raises(ValueError, match="candle timestamps"):
+        audit_funding(funding([0]), rows, "BTCUSDT")
+
+
+def test_audit_reports_16_hour_gap_without_claiming_complete_coverage():
+    report = audit_funding(funding([0, 16*3_600_000]), candles(24), "BTCUSDT")
+    assert report["status"] == "PASS"
+    assert report["gaps_over_8h"] == 1
+    assert report["max_gap_hours"] == 16
+    assert any("do not prove" in item for item in report["limitations"])
