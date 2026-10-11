@@ -18,6 +18,8 @@ GRID = [
     for trend_period in (0, 100, 200)
     for volatility_filter in (0.0, 1.0, 1.2)
     for direction in ("BOTH", "LONG", "SHORT")
+    for breakout_atr in (0.05, 0.15)
+    for retest_atr in (0.20, 0.40)
 ]
 
 
@@ -89,10 +91,14 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
     trend_period = params.get("trend_period", 0)
     volatility_filter = params.get("volatility_filter", 0.0)
     direction_filter = params.get("direction", "BOTH")
+    breakout_atr = params.get("breakout_atr", 0.05)
+    retest_atr = params.get("retest_atr", 0.30)
     if (lookback < 5 or max_wait < 1 or target_r <= 0
             or trend_period not in (0, 100, 200)
             or volatility_filter not in (0.0, 1.0, 1.2)
-            or direction_filter not in ("BOTH", "LONG", "SHORT")):
+            or direction_filter not in ("BOTH", "LONG", "SHORT")
+            or breakout_atr not in (0.05, 0.15)
+            or retest_atr not in (0.20, 0.30, 0.40)):
         raise ValueError("invalid strategy parameters")
     atr = atr_values(rows)
     trend_ema = ema_values(rows, trend_period)
@@ -121,10 +127,10 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
                 continue
             resistance = max(x["h"] for x in prior)
             support = min(x["l"] for x in prior)
-            if rows[j]["c"] > resistance + 0.05 * atr[j]:
+            if rows[j]["c"] > resistance + breakout_atr * atr[j]:
                 if direction_filter in ("BOTH", "LONG") and (trend_period == 0 or (trend_ema[j] is not None and rows[j]["c"] > trend_ema[j])):
                     signal = (1, resistance, j)
-            elif rows[j]["c"] < support - 0.05 * atr[j]:
+            elif rows[j]["c"] < support - breakout_atr * atr[j]:
                 if direction_filter in ("BOTH", "SHORT") and (trend_period == 0 or (trend_ema[j] is not None and rows[j]["c"] < trend_ema[j])):
                     signal = (-1, support, j)
         if signal is None:
@@ -136,7 +142,7 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
         for k in range(breakout_idx + 1, search_end):
             if atr[k] is None or atr[k] <= 0:
                 continue
-            tol = 0.30 * atr[k]
+            tol = retest_atr * atr[k]
             row = rows[k]
             if side == 1:
                 retested = row["l"] <= level + tol and row["l"] >= level - 1.5 * tol
