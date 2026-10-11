@@ -2,7 +2,7 @@ import json
 import unittest
 
 from research.frozen_confirmation import (
-    FROZEN_PATH, SOURCE_DATA_END, sha256, summarize, utc_ms, validate_funding_events,
+    FROZEN_PATH, SOURCE_DATA_END, confirmation_window_indices, sha256, summarize, utc_ms, validate_funding_events,
 )
 
 
@@ -21,6 +21,28 @@ class FrozenConfirmationTests(unittest.TestCase):
     def test_confirmation_window_boundary_is_explicit_utc(self):
         self.assertEqual(utc_ms("2026-10-01"), int(SOURCE_DATA_END.timestamp() * 1000))
         self.assertLess(utc_ms("2026-10-01"), utc_ms("2026-10-02"))
+
+    def test_confirmation_window_indices_select_exact_half_open_window(self):
+        start = utc_ms("2026-10-02")
+        rows = [{"t": start + i * 3_600_000} for i in range(27)]
+        self.assertEqual(confirmation_window_indices(rows, start + 3_600_000, start + 25 * 3_600_000), (1, 25))
+
+    def test_confirmation_window_rejects_missing_start_or_gap_at_end(self):
+        start = utc_ms("2026-10-02")
+        rows = [{"t": start + i * 3_600_000} for i in range(5)]
+        with self.assertRaisesRegex(ValueError, "exact confirmation start"):
+            confirmation_window_indices(rows, start + 30 * 60_000, start + 4 * 3_600_000)
+        gapped = [row for row in rows if row["t"] != start + 2 * 3_600_000]
+        with self.assertRaises(ValueError):
+            confirmation_window_indices(gapped, start, start + 4 * 3_600_000)
+
+    def test_confirmation_window_rejects_duplicate_timestamps_and_invalid_range(self):
+        start = utc_ms("2026-10-02")
+        rows = [{"t": start + i * 3_600_000} for i in range(5)]
+        with self.assertRaisesRegex(ValueError, "duplicate candle"):
+            confirmation_window_indices(rows + [rows[0]], start, start + 4 * 3_600_000)
+        with self.assertRaisesRegex(ValueError, "invalid confirmation window"):
+            confirmation_window_indices(rows, start, start)
 
     def test_summarize_reports_funding_cashflow(self):
         report = summarize({
