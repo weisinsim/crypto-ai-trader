@@ -147,6 +147,12 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                 if start_ms <= ts < end_ms:
                     # Settlement records align to the open of the 8h mark-price candle.
                     mark = marks.get(ts)
+                    if mark is None and marks:
+                        # Binance archive settlement timestamps can differ from the
+                        # corresponding 8h mark-kline open by a few milliseconds.
+                        nearest_ts = min(marks, key=lambda mark_ts: abs(mark_ts - ts))
+                        if abs(nearest_ts - ts) <= 1000:
+                            mark = marks[nearest_ts]
                     if mark is None or not isfinite(rate) or not isfinite(mark) or mark <= 0:
                         raise ValueError(f"missing/invalid settlement mark price at {ts} for {symbol}")
                     rows.append({"funding_time": ts, "funding_rate": rate,
