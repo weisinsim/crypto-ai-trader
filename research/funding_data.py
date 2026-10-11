@@ -127,12 +127,14 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                     month=1 if month.month == 12 else month.month + 1,
                 )
                 month_end_ms = min(end_ms, int(next_month.timestamp() * 1000))
+                mirror_error = None
                 try:
                     mirror_rows = download_funding_rates(
                         symbol, month_start_ms, month_end_ms,
                         base_url="https://data-api.binance.vision",
                     )
-                except Exception:
+                except Exception as exc:
+                    mirror_error = f"{type(exc).__name__}: {exc}"
                     mirror_rows = []
                 if mirror_rows:
                     rows.extend(mirror_rows)
@@ -167,8 +169,9 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                     day = day.replace(day=day.day) + __import__("datetime").timedelta(days=1)
                 if not daily_rate_rows:
                     raise ValueError(
-                        f"missing funding archive for requested month {ym} ({rate_url}) "
-                        "and no official daily funding archives were available"
+                        f"missing funding archive for requested month {ym} ({rate_url}); "
+                        f"public REST mirror result: {mirror_error or 'empty response'}; "
+                        "no official daily funding archives were available"
                     )
                 # Build an in-memory CSV archive so the shared mark-price
                 # provenance checks below apply identically to monthly and daily data.
