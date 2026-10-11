@@ -7,7 +7,7 @@ from pathlib import Path
 from statistics import mean, median
 
 from research.backtest import run_ema_cross_backtest
-from research.run_backtest import load_csv, max_drawdown_pct
+from research.run_backtest import load_csv, load_funding_csv, max_drawdown_pct
 
 
 # Small, pre-declared grid limits the search space and discourages overfitting.
@@ -37,12 +37,17 @@ def summarize(result: dict, start_ts: int, end_ts: int) -> dict:
 
 
 def evaluate_window(rows: list[dict], start: int, end: int, params: dict,
-                    fee_rate: float, slippage_rate: float) -> dict:
+                    fee_rate: float, slippage_rate: float,
+                    funding_rates: list[dict] | None = None) -> dict:
     # Prefix history warms up indicators; trade_start_ts gates entries to this window.
+    # Restrict settlements to the data actually supplied to this fold.
+    window_funding = ([event for event in funding_rates
+                       if rows[0]["t"] <= event["funding_time"] <= rows[end - 1]["t"]]
+                      if funding_rates is not None else None)
     result = run_ema_cross_backtest(
         rows[:end], trade_start_ts=rows[start]["t"],
         fee_rate=fee_rate, slippage_rate=slippage_rate, risk_fraction=0.01,
-        **params,
+        funding_rates=window_funding, **params,
     )
     return summarize(result, rows[start]["t"], rows[end - 1]["t"])
 
@@ -55,11 +60,20 @@ def main() -> None:
     parser.add_argument("--train-fraction", type=float, default=0.6)
     parser.add_argument("--fee-rate", type=float, default=0.0005)
     parser.add_argument("--slippage-rate", type=float, default=0.0002)
+    parser.add_argument("--funding-csv", help="optional historical funding CSV")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
     interval_ms = {"1h": 3_600_000, "4h": 14_400_000}[args.interval]
     rows = load_csv(args.csv, interval_ms)
+    funding_rates = load_funding_csv(args.funding_csv) if args.funding_csv else None
+    if funding_rates is not None:
+        if funding_rates[0]["symbol"] != args.symbol.upper():
+            raise ValueError("funding CSV symbol does not match --symbol")
+        funding_rates = [event for event in funding_rates
+                         if rows[0]["t"] <= event["funding_time"] <= rows[-1]["t"]]
+        if not funding_rates:
+            raise ValueError("funding CSV has no settlement events inside candle data range")
     if not 0.3 <= args.train_fraction <= 0.8:
         raise ValueError("train-fraction must be between 0.3 and 0.8")
     if not rows or len(rows) < 500:
@@ -77,8 +91,8 @@ def main() -> None:
                for i in range(3)]
     candidates = []
     for params in GRID:
-        folds = [evaluate_window(rows, a, b, params, args.fee_rate, args.slippage_rate)
-                 for a, b in windows]
+        folds = [evaluate_window(rows, a, b, params, args.fee_rate, args.slippage_rate,
+                             funding_rates=funding_rates) for a, b in windows]
         # Score robustly: median fold return penalized by median drawdown.
         # Candidates with too few trades or a losing median fold are not deployable.
         median_return = median(x["net_return_pct"] for x in folds)
@@ -139,6 +153,9 @@ def main() -> None:
         holdout_result = run_ema_cross_backtest(
             rows, trade_start_ts=boundary, fee_rate=args.fee_rate,
             slippage_rate=args.slippage_rate, risk_fraction=0.01,
+            funding_rates=([event for event in funding_rates
+                            if rows[0]["t"] <= event["funding_time"] <= rows[-1]["t"]]
+                           if funding_rates is not None else None),
             **selected["parameters"],
         )
         holdout = summarize(holdout_result, boundary, rows[-1]["t"])
@@ -146,6 +163,9 @@ def main() -> None:
         stress_result = run_ema_cross_backtest(
             rows, trade_start_ts=boundary, fee_rate=0.0005,
             slippage_rate=0.0010, risk_fraction=0.01,
+            funding_rates=([event for event in funding_rates
+                            if rows[0]["t"] <= event["funding_time"] <= rows[-1]["t"]]
+                           if funding_rates is not None else None),
             **selected["parameters"],
         )
         stress_holdout = summarize(stress_result, boundary, rows[-1]["t"])
@@ -184,7 +204,10 @@ def main() -> None:
             "stress_fee_rate_per_fill": 0.0005,
             "stress_slippage_rate_per_fill": 0.0010,
             "stress_round_trip_cost_approx_pct": 0.30,
-            "funding": "NOT INCLUDED: historical funding must be added before any deployment decision"
+            "funding": ("Historical funding CSV applied at settlement candle timestamps."
+                        if funding_rates is not None else
+                        "NOT INCLUDED: historical funding must be added before any deployment decision"),
+            "funding_records": len(funding_rates) if funding_rates is not None else 0
         },
         "selection_method": "72 predeclared parameter sets including disabled/100/200-period trend EMA filter; three chronological training folds; score=median return minus 0.5x median drawdown; requires >=15 trades, >=3 trades/fold, positive median return, >=2 positive folds, worst fold >= -3.0%, positive score and >=50% positive median-return neighbors; all selection gates use training data only",
         "candidate_count": len(candidates), "eligible_count": len(eligible_candidates),
@@ -201,7 +224,9 @@ def main() -> None:
             "This is a long/short EMA-cross research baseline, not a production or profitability certification.",
             "Stress test approximates 0.30% round-trip fees plus slippage; it is not a calibrated fill simulator.",
             "Training selection rejects candidates with a fold worse than -3%, fewer than 15 trades, or fewer than two positive folds.",
-            "No historical funding data is included; do not use these results to justify live trading.",
+            ("Historical funding CSV was applied, but mark-price provenance and intrabar settlement/exit ordering require separate audit."
+             if funding_rates is not None else
+             "No historical funding data is included; do not use these results to justify live trading."),
         ],
     }
     output = Path(args.output)
