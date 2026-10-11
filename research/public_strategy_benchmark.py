@@ -105,7 +105,7 @@ def funding_cost(events: list[dict], entry_ts: int, exit_ts: int, entry_price: f
     # Long-only position: positive funding is paid; negative funding is received.
     # Strict bounds avoid charging an event at or before entry / at exit.
     return sum(event["rate"] * event["mark"] / entry_price
-               for event in events if entry_ts < event["t"] < exit_ts)
+               for event in events if entry_ts < event["t"] <= exit_ts)
 
 
 def simulate(rows: list[dict], strategy: str, start: int, end: int, round_trip_cost: float,
