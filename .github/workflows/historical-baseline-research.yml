@@ -134,6 +134,29 @@ jobs:
             --train-fraction 0.6 \
             --funding-csv "data/${SYMBOL}_funding.csv" \
             --output "reports/${SYMBOL}_1h_breakout_retest.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          symbol = os.environ["SYMBOL"]
+          report = json.loads(Path(f"reports/{symbol}_1h_breakout_retest.json").read_text())
+          print("=== BREAKOUT/RETEST CANDIDATE DIAGNOSTICS ===")
+          print(f"symbol={symbol} candidates={report['candidate_count']} eligible={report['eligible_count']}")
+          for candidate in report["candidate_diagnostics"][:5]:
+              print(
+                  f"params={candidate['parameters']} eligible={candidate['eligible']} "
+                  f"median_fold_return_pct={candidate['median_fold_return_pct']} "
+                  f"median_fold_drawdown_pct={candidate['median_fold_drawdown_pct']} "
+                  f"positive_folds={candidate['positive_folds']} "
+                  f"worst_fold_return_pct={candidate['worst_fold_return_pct']} "
+                  f"score={candidate['score']} folds={candidate['folds']}"
+              )
+          print(f"selected_parameters={report['selected_parameters']}")
+          print(f"holdout={report['holdout']}")
+          print(f"stress_holdout={report['stress_holdout_0_30pct_round_trip']}")
+          print(f"severe_holdout={report['severe_holdout_0_46pct_round_trip']}")
+          print(f"funding_data={report['funding_data']}")
+          print(f"cost_robustness_gate={report['cost_robustness_gate']}")
+          PY
       - name: Run mean-reversion research
         env:
           SYMBOL: ${{ matrix.symbol }}
