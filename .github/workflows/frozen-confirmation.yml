@@ -113,6 +113,7 @@ jobs:
             --funding-csv "data/confirm_${SYMBOL}_funding.csv" \
             --candle-csv "data/confirm_${SYMBOL}_1h.csv" \
             --symbol "$SYMBOL" \
+            --max-gap-hours 8 \
             --output "reports/confirm_${SYMBOL}_funding_audit.json"
       - name: Run frozen confirmation only
         env:
