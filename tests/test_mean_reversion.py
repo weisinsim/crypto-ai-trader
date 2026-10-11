@@ -78,7 +78,7 @@ def test_funding_cashflow_rejects_invalid_mark_price():
     try:
         funding_cashflow(1, 1.0, 100, 300, events)
     except ValueError as exc:
-        assert "invalid funding" in str(exc)
+        assert "invalid mark price" in str(exc)
     else:
         raise AssertionError("invalid mark price should raise ValueError")
 
