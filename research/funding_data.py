@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
 import time
+import zipfile
+from datetime import datetime, timezone
 from math import isfinite
 from pathlib import Path
 from typing import Callable
@@ -89,6 +92,74 @@ def download_funding_rates(
     return list(by_time.values())
 
 
+def _month_starts(start_ms: int, end_ms: int):
+    start = datetime.fromtimestamp(start_ms / 1000, timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    end = datetime.fromtimestamp(end_ms / 1000, timezone.utc)
+    current = start
+    while current < end:
+        yield current
+        current = current.replace(year=current.year + (current.month == 12), month=1 if current.month == 12 else current.month + 1)
+
+
+def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[dict]:
+    """Fetch monthly Binance Vision fundingRate and 8h mark-price archives.
+
+    REST funding endpoints can be jurisdiction-blocked. The public archive
+    provides rates; markPriceKlines supplies the 8h settlement-price proxy.
+    """
+    symbol = symbol.upper()
+    rows = []
+    with httpx.Client(timeout=30.0, follow_redirects=True) as client:
+        for month in _month_starts(start_ms, end_ms):
+            ym = month.strftime("%Y-%m")
+            rate_url = f"https://data.binance.vision/data/futures/um/monthly/fundingRate/{symbol}/{symbol}-fundingRate-{ym}.zip"
+            mark_url = f"https://data.binance.vision/data/futures/um/monthly/markPriceKlines/{symbol}/8h/{symbol}-8h-{ym}.zip"
+            rate_resp = client.get(rate_url)
+            if rate_resp.status_code == 404:
+                # Recent/incomplete months may not yet have a monthly archive.
+                continue
+            rate_resp.raise_for_status()
+            mark_resp = client.get(mark_url)
+            mark_resp.raise_for_status()
+            with zipfile.ZipFile(io.BytesIO(rate_resp.content)) as zf:
+                rate_name = next((n for n in zf.namelist() if n.lower().endswith(".csv")), None)
+                if not rate_name:
+                    raise ValueError(f"funding archive has no CSV: {rate_url}")
+                rate_rows = list(csv.reader(io.TextIOWrapper(zf.open(rate_name), encoding="utf-8")))
+            with zipfile.ZipFile(io.BytesIO(mark_resp.content)) as zf:
+                mark_name = next((n for n in zf.namelist() if n.lower().endswith(".csv")), None)
+                if not mark_name:
+                    raise ValueError(f"mark-price archive has no CSV: {mark_url}")
+                mark_rows = list(csv.reader(io.TextIOWrapper(zf.open(mark_name), encoding="utf-8")))
+            marks = {}
+            for row in mark_rows:
+                try:
+                    ts, close = int(float(row[0])), float(row[4])
+                except (ValueError, IndexError):
+                    continue
+                marks[ts] = close
+            for row in rate_rows:
+                try:
+                    ts = int(float(row[0]))
+                    rate = float(row[-1])
+                except (ValueError, IndexError):
+                    continue
+                if start_ms <= ts < end_ms:
+                    # Settlement records align to the open of the 8h mark-price candle.
+                    mark = marks.get(ts)
+                    if mark is None or not isfinite(rate) or not isfinite(mark) or mark <= 0:
+                        raise ValueError(f"missing/invalid settlement mark price at {ts} for {symbol}")
+                    rows.append({"funding_time": ts, "funding_rate": rate,
+                                 "mark_price": mark, "symbol": symbol})
+    rows.sort(key=lambda row: row["funding_time"])
+    if not rows:
+        raise ValueError(f"no funding archive records returned for {symbol}")
+    for left, right in zip(rows, rows[1:]):
+        if left["funding_time"] == right["funding_time"]:
+            raise ValueError(f"duplicate funding timestamp: {left['funding_time']}")
+    return rows
+
+
 def save_funding_csv(rows: list[dict], path: str | Path) -> None:
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -105,9 +176,15 @@ def main() -> None:
     parser.add_argument("--end-ms", type=int, required=True)
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
-    rows = download_funding_rates(args.symbol, args.start_ms, args.end_ms)
+    try:
+        rows = download_funding_rates(args.symbol, args.start_ms, args.end_ms)
+        source = "binance_rest"
+    except httpx.HTTPStatusError:
+        # The official public archive is independent of the jurisdiction-restricted REST host.
+        rows = download_archive_funding(args.symbol, args.start_ms, args.end_ms)
+        source = "binance_vision_archive"
     save_funding_csv(rows, args.output)
-    print(f"status=COMPLETE symbol={args.symbol.upper()} records={len(rows)} output={args.output}")
+    print(f"status=COMPLETE source={source} symbol={args.symbol.upper()} records={len(rows)} output={args.output}")
 
 
 if __name__ == "__main__":
