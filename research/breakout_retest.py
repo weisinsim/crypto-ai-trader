@@ -12,7 +12,7 @@ from research.run_backtest import load_csv, load_funding_csv
 GRID = [
     {"lookback": lookback, "max_wait": max_wait, "target_r": target_r,
      "trend_period": trend_period, "volatility_filter": volatility_filter, "direction": direction,
-     "breakout_atr": breakout_atr, "retest_atr": retest_atr}
+     "breakout_atr": breakout_atr, "retest_atr": retest_atr, "body_confirm_atr": body_confirm_atr}
     for lookback in (24, 48, 72)
     for max_wait in (3, 6)
     for target_r in (1.5, 2.0)
@@ -21,6 +21,7 @@ GRID = [
     for direction in ("BOTH", "LONG", "SHORT")
     for breakout_atr in (0.05, 0.15)
     for retest_atr in (0.20, 0.40)
+    for body_confirm_atr in (0.0, 0.15)
 ]
 
 
@@ -94,12 +95,14 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
     direction_filter = params.get("direction", "BOTH")
     breakout_atr = params.get("breakout_atr", 0.05)
     retest_atr = params.get("retest_atr", 0.30)
+    body_confirm_atr = params.get("body_confirm_atr", 0.0)
     if (lookback < 5 or max_wait < 1 or target_r <= 0
             or trend_period not in (0, 100, 200)
             or volatility_filter not in (0.0, 1.0, 1.2)
             or direction_filter not in ("BOTH", "LONG", "SHORT")
             or breakout_atr not in (0.05, 0.15)
-            or retest_atr not in (0.20, 0.30, 0.40)):
+            or retest_atr not in (0.20, 0.30, 0.40)
+            or body_confirm_atr not in (0.0, 0.15)):
         raise ValueError("invalid strategy parameters")
     atr = atr_values(rows)
     trend_ema = ema_values(rows, trend_period)
@@ -147,11 +150,13 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
             row = rows[k]
             if side == 1:
                 retested = row["l"] <= level + tol and row["l"] >= level - 1.5 * tol
-                confirms = row["c"] > level and row["c"] > row["o"]
+                confirms = (row["c"] > level and row["c"] > row["o"]
+                            and row["c"] - row["o"] >= body_confirm_atr * atr[k])
                 stop = min(row["l"], level) - 0.15 * atr[k]
             else:
                 retested = row["h"] >= level - tol and row["h"] <= level + 1.5 * tol
-                confirms = row["c"] < level and row["c"] < row["o"]
+                confirms = (row["c"] < level and row["c"] < row["o"]
+                            and row["o"] - row["c"] >= body_confirm_atr * atr[k])
                 stop = max(row["h"], level) + 0.15 * atr[k]
             if retested and confirms:
                 entry_idx = k + 1
