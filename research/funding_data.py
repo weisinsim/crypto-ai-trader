@@ -38,7 +38,8 @@ def parse_funding_rows(raw_rows: list[dict], symbol: str, start_ms: int, end_ms:
 
 def download_funding_rates(
     symbol: str, start_ms: int, end_ms: int, *,
-    fetch_page: Callable | None = None, limit: int = 1000, pause_seconds: float = 0.05,\n    base_url: str = BASE_URL,
+    fetch_page: Callable | None = None, limit: int = 1000, pause_seconds: float = 0.05,
+    base_url: str = BASE_URL,
 ) -> list[dict]:
     """Download historical funding records in [start_ms, end_ms), failing on malformed rows."""
     if not isinstance(symbol, str) or not symbol.strip() or not symbol.strip().isalnum():
