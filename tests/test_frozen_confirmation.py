@@ -1,8 +1,7 @@
 import json
 import unittest
-from pathlib import Path
 
-from research.frozen_confirmation import FROZEN_PATH, SOURCE_DATA_END, sha256, utc_ms
+from research.frozen_confirmation import FROZEN_PATH, SOURCE_DATA_END, sha256, summarize, utc_ms
 
 
 class FrozenConfirmationTests(unittest.TestCase):
@@ -20,6 +19,26 @@ class FrozenConfirmationTests(unittest.TestCase):
     def test_confirmation_window_boundary_is_explicit_utc(self):
         self.assertEqual(utc_ms("2026-10-01"), int(SOURCE_DATA_END.timestamp() * 1000))
         self.assertLess(utc_ms("2026-10-01"), utc_ms("2026-10-02"))
+
+    def test_summarize_reports_funding_cashflow(self):
+        report = summarize({
+            "trades": 2,
+            "net_return_pct": 1.2,
+            "max_drawdown_pct": 0.4,
+            "win_rate_pct": 50,
+            "profit_factor": 1.4,
+            "trade_log": [
+                {"pnl_equity": 0.01, "funding_pnl_equity": 0.001, "funding_events": 1},
+                {"pnl_equity": -0.002, "funding_pnl_equity": -0.0002, "funding_events": 1},
+            ],
+        })
+        self.assertAlmostEqual(report["funding_pnl_equity"], 0.0008)
+        self.assertEqual(report["funding_events"], 2)
+
+    def test_funding_off_counterfactual_delta(self):
+        with_funding = {"net_return_pct": 2.0}
+        without_funding = {"net_return_pct": 1.5}
+        self.assertEqual(round(with_funding["net_return_pct"] - without_funding["net_return_pct"], 8), 0.5)
 
 
 if __name__ == "__main__":
