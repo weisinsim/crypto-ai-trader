@@ -138,6 +138,26 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                 except (ValueError, IndexError):
                     continue
                 marks[ts] = close
+            # Some archive months contain funding records whose timestamps do not
+            # exactly align with mark-kline timestamps. Build a clearly labeled
+            # prior-close proxy from the public 8h trade-kline archive; never use
+            # a candle closing after the settlement time.
+            proxy_url = f"https://data.binance.vision/data/futures/um/monthly/klines/{symbol}/8h/{symbol}-8h-{ym}.zip"
+            proxy_resp = client.get(proxy_url)
+            proxy_resp.raise_for_status()
+            with zipfile.ZipFile(io.BytesIO(proxy_resp.content)) as zf:
+                proxy_name = next((n for n in zf.namelist() if n.lower().endswith(".csv")), None)
+                if not proxy_name:
+                    raise ValueError(f"8h kline archive has no CSV: {proxy_url}")
+                proxy_rows = list(csv.reader(io.TextIOWrapper(zf.open(proxy_name), encoding="utf-8")))
+            prior_closes = []
+            for row in proxy_rows:
+                try:
+                    ts, close = int(float(row[0])), float(row[4])
+                except (ValueError, IndexError):
+                    continue
+                prior_closes.append((ts + 8 * 60 * 60 * 1000, close))
+            prior_closes.sort()
             for row in rate_rows:
                 try:
                     ts = int(float(row[0]))
@@ -148,13 +168,15 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                     # Settlement records align to the open of the 8h mark-price candle.
                     mark = marks.get(ts)
                     if mark is None and marks:
-                        # Binance archive settlement timestamps can differ from the
-                        # corresponding 8h mark-kline open by a few milliseconds.
                         nearest_ts = min(marks, key=lambda mark_ts: abs(mark_ts - ts))
                         if abs(nearest_ts - ts) <= 1000:
                             mark = marks[nearest_ts]
+                    if mark is None:
+                        eligible = [item for item in prior_closes if item[0] <= ts]
+                        if eligible:
+                            mark = eligible[-1][1]
                     if mark is None or not isfinite(rate) or not isfinite(mark) or mark <= 0:
-                        raise ValueError(f"missing/invalid settlement mark price at {ts} for {symbol}")
+                        raise ValueError(f"missing/invalid settlement price proxy at {ts} for {symbol}")
                     rows.append({"funding_time": ts, "funding_rate": rate,
                                  "mark_price": mark, "symbol": symbol})
     rows.sort(key=lambda row: row["funding_time"])
