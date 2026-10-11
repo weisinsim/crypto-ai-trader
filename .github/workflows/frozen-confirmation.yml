@@ -68,14 +68,20 @@ jobs:
           python - <<'PY'
           import os
           from datetime import datetime, timedelta, timezone
-          from research.binance_archive_data import utc_ms, download_archive
-          from research.run_backtest import save_csv
+          import csv
+          from pathlib import Path
+          from research.binance_archive_data import download_archive
           symbol = os.environ["SYMBOL"]
           start = datetime.strptime(os.environ["START_DATE"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
           end = datetime.strptime(os.environ["END_DATE"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
           warm_start = start - timedelta(hours=300)
           rows = download_archive(symbol, "1h", int(warm_start.timestamp()*1000), int(end.timestamp()*1000))
-          save_csv(rows, f"data/confirm_{symbol}_1h.csv")
+          output = Path(f"data/confirm_{symbol}_1h.csv")
+          output.parent.mkdir(parents=True, exist_ok=True)
+          with output.open("w", newline="", encoding="utf-8") as handle:
+              writer = csv.DictWriter(handle, fieldnames=("t", "o", "h", "l", "c", "v", "q"))
+              writer.writeheader()
+              writer.writerows(rows)
           print(f"candles={len(rows)} warm_start={warm_start.isoformat()} end_exclusive={end.isoformat()}")
           PY
 
