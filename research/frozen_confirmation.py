@@ -51,23 +51,7 @@ def confirmation_window_indices(rows: list[dict], start_ms: int, end_ms: int) ->
         raise ValueError("invalid confirmation window")
     if not rows:
         raise ValueError("candle data does not cover confirmation start")
-    candle_times = [row["t"] for row in rows]
-    if len(candle_times) != len(set(candle_times)):
-        raise ValueError("duplicate candle timestamps detected")
-    if any(right - left != 3_600_000 for left, right in zip(candle_times, candle_times[1:])):
-        raise ValueError("candle timestamps contain a missing or misaligned hourly interval")
-    start_matches = [i for i, timestamp in enumerate(candle_times) if timestamp >= start_ms]
-    end_matches = [i for i, timestamp in enumerate(candle_times) if timestamp >= end_ms]
-    if not start_matches:
-        raise ValueError("candle data does not cover confirmation start")
-    start_idx = start_matches[0]
-    end_idx = end_matches[0] if end_matches else len(rows)
-    if start_idx >= end_idx or rows[start_idx]["t"] != start_ms:
-        raise ValueError("candle data must contain the exact confirmation start hour")
-    if end_idx < len(rows) and rows[end_idx]["t"] != end_ms:
-        raise ValueError("candle data has no exact exclusive end boundary")
-    if rows[end_idx - 1]["t"] != end_ms - 3_600_000:
-        raise ValueError("candle data does not contain every closed hour through the confirmation window")
+    start_idx, end_idx = confirmation_window_indices(rows, start_ms, end_ms)
     return start_idx, end_idx
 
 
