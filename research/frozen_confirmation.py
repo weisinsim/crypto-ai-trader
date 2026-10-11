@@ -109,6 +109,8 @@ def main() -> None:
     candle_times = [row["t"] for row in rows]
     if len(candle_times) != len(set(candle_times)):
         raise ValueError("duplicate candle timestamps detected")
+    if any(right - left != 3_600_000 for left, right in zip(candle_times, candle_times[1:])):
+        raise ValueError("candle timestamps contain a missing or misaligned hourly interval")
     start_matches = [i for i, timestamp in enumerate(candle_times) if timestamp >= start_ms]
     end_matches = [i for i, timestamp in enumerate(candle_times) if timestamp >= end_ms]
     if not start_matches:
