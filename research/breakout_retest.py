@@ -11,7 +11,8 @@ from research.run_backtest import load_csv, load_funding_csv
 
 GRID = [
     {"lookback": lookback, "max_wait": max_wait, "target_r": target_r,
-     "trend_period": trend_period, "volatility_filter": volatility_filter, "direction": direction}
+     "trend_period": trend_period, "volatility_filter": volatility_filter, "direction": direction,
+     "breakout_atr": breakout_atr, "retest_atr": retest_atr}
     for lookback in (24, 48, 72)
     for max_wait in (3, 6)
     for target_r in (1.5, 2.0)
