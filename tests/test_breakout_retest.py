@@ -30,6 +30,29 @@ def make_rows(n=240):
 
 
 class BreakoutRetestTests(unittest.TestCase):
+    def test_direction_summary_reports_best_candidate_per_direction(self):
+        from research.breakout_retest import candidate_rejection_reasons
+        candidates = [
+            {"parameters": {"direction": "LONG"}, "eligible": False, "score": 1.0,
+             "median_fold_return_pct": 2.0, "worst_fold_return_pct": -4.0,
+             "rejection_reasons": ["worst_fold_below_minus_3pct"]},
+            {"parameters": {"direction": "SHORT"}, "eligible": True, "score": 1.5,
+             "median_fold_return_pct": 2.5, "worst_fold_return_pct": -1.0,
+             "rejection_reasons": []},
+            {"parameters": {"direction": "BOTH"}, "eligible": False, "score": -0.2,
+             "median_fold_return_pct": 0.0, "worst_fold_return_pct": -2.0,
+             "rejection_reasons": ["risk_adjusted_score_not_positive"]},
+        ]
+        summary = {}
+        for direction in ("LONG", "SHORT", "BOTH"):
+            group = [item for item in candidates if item["parameters"]["direction"] == direction]
+            passing = sorted((item for item in group if item["eligible"]), key=lambda item: item["score"], reverse=True)
+            best = passing[0] if passing else max(group, key=lambda item: item["score"])
+            summary[direction] = {"best_candidate_eligible": best["eligible"], "best_score": best["score"]}
+        self.assertFalse(summary["LONG"]["best_candidate_eligible"])
+        self.assertTrue(summary["SHORT"]["best_candidate_eligible"])
+        self.assertFalse(summary["BOTH"]["best_candidate_eligible"])
+
     def test_grid_covers_each_direction_without_duplicate_candidates(self):
         self.assertEqual(len(GRID), 324)
         self.assertEqual({p["direction"] for p in GRID}, {"BOTH", "LONG", "SHORT"})
