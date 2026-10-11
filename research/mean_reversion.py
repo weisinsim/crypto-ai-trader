@@ -198,6 +198,27 @@ def simulate(rows: list[dict], params: dict, start: int, end: int,
             "trade_log":trades}
 
 
+def cost_robustness_gate(holdout: dict | None, stress: dict | None, severe: dict | None) -> dict:
+    """Require positive net return and PF > 1 at every declared cost level."""
+    rule = "holdout, 0.30% round-trip stress, and 0.46% round-trip severe stress must all have positive return and profit factor > 1"
+    if not holdout or not stress or not severe:
+        return {"status": "NOT_EVALUATED", "rule": rule, "not_production_approval": True}
+    passed = all(
+        isinstance(item.get("net_return_pct"), (int, float))
+        and math.isfinite(item["net_return_pct"])
+        and item["net_return_pct"] > 0
+        and isinstance(item.get("profit_factor"), (int, float))
+        and math.isfinite(item["profit_factor"])
+        and item["profit_factor"] > 1
+        for item in (holdout, stress, severe)
+    )
+    return {
+        "status": "PASS_PRELIMINARY_ONLY" if passed else "FAIL_COST_ROBUSTNESS",
+        "rule": rule,
+        "not_production_approval": True,
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--csv", required=True)
@@ -270,14 +291,7 @@ def main():
             "holdout_interpretation":"SELECTED_CANDIDATE" if selected else "DIAGNOSTIC_ONLY_NOT_SELECTED",
             "stress_holdout_0_30pct_round_trip":{k:v for k,v in stress.items() if k!="trade_log"} if stress else None,
             "severe_holdout_0_46pct_round_trip":{k:v for k,v in severe.items() if k!="trade_log"} if severe else None,
-            "cost_robustness_gate": ({
-                "status": ("PASS_PRELIMINARY_ONLY" if all(
-                    item["net_return_pct"] > 0 and isinstance(item["profit_factor"], (int, float)) and item["profit_factor"] > 1
-                    for item in (holdout, stress, severe)
-                ) else "FAIL_COST_ROBUSTNESS"),
-                "rule": "holdout, 0.30% round-trip stress, and 0.46% round-trip severe stress must all have positive return and profit factor > 1",
-                "not_production_approval": True
-            } if holdout and stress and severe else {"status":"NOT_EVALUATED"}),
+            "cost_robustness_gate": cost_robustness_gate(holdout, stress, severe),
             "funding_counterfactual_same_parameters": ({
                 "holdout_without_funding": {k:v for k,v in holdout_no_funding.items() if k!="trade_log"},
                 "stress_without_funding": {k:v for k,v in stress_no_funding.items() if k!="trade_log"},
