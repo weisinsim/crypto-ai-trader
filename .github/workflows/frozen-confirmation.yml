@@ -12,7 +12,7 @@ on:
         description: "Exclusive UTC end date; only fully closed 1H candles are eligible"
         required: true
         type: string
-        default: "2026-10-12"
+        default: "2026-10-11"
 
 permissions:
   contents: read
