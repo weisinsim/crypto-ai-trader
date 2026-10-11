@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "status": "FROZEN_RESEARCH_ONLY",
+  "source_workflow": "https://github.com/weisinsim/crypto-ai-trader/actions/runs/38127055306",
+  "source_commit": "63fc86677d0d5ff1ac33af2e26de21b65ed0816d",
+  "warning": "These candidates failed at least one cost-robustness gate. Freezing parameters is for independent confirmation only, not approval or recommendation to trade.",
+  "candidates": {
+    "BTCUSDT": {
+      "strategy": "breakout_retest",
+      "parameters": {
+        "lookback": 24,
+        "max_wait": 6,
+        "target_r": 2.5,
+        "trend_period": 200,
+        "volatility_filter": 1.0,
+        "direction": "SHORT",
+        "breakout_atr": 0.05,
+        "retest_atr": 0.4,
+        "body_confirm_atr": 0.15
+      },
+      "prior_holdout": {
+        "trades": 24,
+        "net_return_pct": 7.608,
+        "profit_factor": 1.4383,
+        "stress_0_30pct_return_pct": 0.0048,
+        "stress_0_46pct_return_pct": -7.0851,
+        "cost_robustness_gate": "FAIL"
+      }
+    },
+    "AVAXUSDT": {
+      "strategy": "mean_reversion",
+      "parameters": {
+        "window": 48,
+        "entry_z": 2.0,
+        "stop_atr": 1.5,
+        "rsi_filter": 0,
+        "direction": "SHORT",
+        "target_mode": "R_MULTIPLE",
+        "target_r": 1.5,
+        "trend_filter": 0
+      },
+      "prior_holdout": {
+        "trades": 66,
+        "net_return_pct": 11.1196,
+        "profit_factor": 1.2818,
+        "stress_0_30pct_return_pct": 4.0647,
+        "stress_0_46pct_return_pct": -2.5496,
+        "cost_robustness_gate": "FAIL"
+      }
+    }
+  },
+  "confirmation_policy": {
+    "parameter_search_allowed": false,
+    "require_non_overlapping_later_window": true,
+    "cost_scenarios_round_trip_pct": [0.14, 0.30, 0.46],
+    "research_only": true,
+    "live_trading_allowed": false
+  }
+}
