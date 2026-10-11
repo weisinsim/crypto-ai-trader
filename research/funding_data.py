@@ -117,39 +117,91 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
             mark_url = f"https://data.binance.vision/data/futures/um/monthly/markPriceKlines/{symbol}/8h/{symbol}-8h-{ym}.zip"
             rate_resp = client.get(rate_url)
             if rate_resp.status_code == 404:
-                # Monthly archives may not exist yet for the current/incomplete
-                # month. Fill that exact month from the authoritative REST endpoint;
-                # if REST is unavailable, fail closed rather than skipping history.
-                month_start_ms = int(month.timestamp() * 1000)
+                # Current-month monthly archives may not be published yet.
+                # Assemble the requested portion from official daily fundingRate
+                # archives; do not depend on a jurisdiction-restricted REST host.
+                month_start_ms = max(start_ms, int(month.timestamp() * 1000))
                 next_month = month.replace(
                     year=month.year + (month.month == 12),
                     month=1 if month.month == 12 else month.month + 1,
                 )
                 month_end_ms = min(end_ms, int(next_month.timestamp() * 1000))
-                try:
-                    rest_rows = download_funding_rates(
-                        symbol, max(start_ms, month_start_ms), month_end_ms
+                day = datetime.fromtimestamp(month_start_ms / 1000, timezone.utc).replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                )
+                daily_rate_rows = []
+                while int(day.timestamp() * 1000) < month_end_ms:
+                    date_str = day.strftime("%Y-%m-%d")
+                    daily_url = (
+                        f"https://data.binance.vision/data/futures/um/daily/fundingRate/"
+                        f"{symbol}/{symbol}-fundingRate-{date_str}.zip"
                     )
-                except Exception as exc:
+                    daily_resp = client.get(daily_url)
+                    if daily_resp.status_code == 200:
+                        with zipfile.ZipFile(io.BytesIO(daily_resp.content)) as zf:
+                            daily_name = next((n for n in zf.namelist() if n.lower().endswith(".csv")), None)
+                            if not daily_name:
+                                raise ValueError(f"daily funding archive has no CSV: {daily_url}")
+                            daily_rate_rows.extend(csv.reader(io.TextIOWrapper(zf.open(daily_name), encoding="utf-8")))
+                    elif daily_resp.status_code != 404:
+                        daily_resp.raise_for_status()
+                    day = day.replace(day=day.day) + __import__("datetime").timedelta(days=1)
+                if not daily_rate_rows:
                     raise ValueError(
                         f"missing funding archive for requested month {ym} ({rate_url}) "
-                        "and REST fallback failed; refusing incomplete history"
-                    ) from exc
-                rows.extend(rest_rows)
-                continue
-            rate_resp.raise_for_status()
+                        "and no official daily funding archives were available"
+                    )
+                # Build an in-memory CSV archive so the shared mark-price
+                # provenance checks below apply identically to monthly and daily data.
+                csv_buffer = io.StringIO()
+                csv.writer(csv_buffer).writerows(daily_rate_rows)
+                archive_buffer = io.BytesIO()
+                with zipfile.ZipFile(archive_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                    zf.writestr("daily-funding.csv", csv_buffer.getvalue())
+                rate_payload = archive_buffer.getvalue()
+            else:
+                rate_resp.raise_for_status()
+                rate_payload = rate_resp.content
             mark_resp = client.get(mark_url)
-            mark_resp.raise_for_status()
-            with zipfile.ZipFile(io.BytesIO(rate_resp.content)) as zf:
+            if mark_resp.status_code == 404:
+                # Current month 8h mark-price archives may also be unpublished.
+                mark_payload = None
+            else:
+                mark_resp.raise_for_status()
+                mark_payload = mark_resp.content
+            with zipfile.ZipFile(io.BytesIO(rate_payload)) as zf:
                 rate_name = next((n for n in zf.namelist() if n.lower().endswith(".csv")), None)
                 if not rate_name:
                     raise ValueError(f"funding archive has no CSV: {rate_url}")
                 rate_rows = list(csv.reader(io.TextIOWrapper(zf.open(rate_name), encoding="utf-8")))
-            with zipfile.ZipFile(io.BytesIO(mark_resp.content)) as zf:
-                mark_name = next((n for n in zf.namelist() if n.lower().endswith(".csv")), None)
-                if not mark_name:
-                    raise ValueError(f"mark-price archive has no CSV: {mark_url}")
-                mark_rows = list(csv.reader(io.TextIOWrapper(zf.open(mark_name), encoding="utf-8")))
+            mark_rows = []
+            if mark_payload is not None:
+                with zipfile.ZipFile(io.BytesIO(mark_payload)) as zf:
+                    mark_name = next((n for n in zf.namelist() if n.lower().endswith(".csv")), None)
+                    if not mark_name:
+                        raise ValueError(f"mark-price archive has no CSV: {mark_url}")
+                    mark_rows = list(csv.reader(io.TextIOWrapper(zf.open(mark_name), encoding="utf-8")))
+            else:
+                # Fetch daily 1m official mark-price archives for current-month
+                # settlement dates. Later fallback logic verifies each timestamp.
+                for date_str in sorted({
+                    datetime.fromtimestamp(int(float(row[0])) / 1000, timezone.utc).strftime("%Y-%m-%d")
+                    for row in rate_rows if row and row[0].strip().replace(".", "", 1).isdigit()
+                    and start_ms <= int(float(row[0])) < end_ms
+                }):
+                    daily_url = (
+                        f"https://data.binance.vision/data/futures/um/daily/markPriceKlines/"
+                        f"{symbol}/1m/{symbol}-1m-{date_str}.zip"
+                    )
+                    daily_resp = client.get(daily_url)
+                    if daily_resp.status_code == 404:
+                        continue
+                    daily_resp.raise_for_status()
+                    with zipfile.ZipFile(io.BytesIO(daily_resp.content)) as zf:
+                        daily_name = next((n for n in zf.namelist() if n.lower().endswith(".csv")), None)
+                        if not daily_name:
+                            raise ValueError(f"daily mark-price archive has no CSV: {daily_url}")
+                        mark_rows.extend(csv.reader(io.TextIOWrapper(zf.open(daily_name), encoding="utf-8")))
             marks = {}
             for row in mark_rows:
                 try:
