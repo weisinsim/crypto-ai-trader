@@ -45,6 +45,32 @@ def summarize(result: dict) -> dict:
     }
 
 
+def validate_funding_events(funding: list[dict], symbol: str, start_ms: int, end_ms: int) -> dict:
+    """Validate in-window settlement cadence and provenance; return source counts."""
+    if any(event.get("symbol") != symbol for event in funding):
+        raise ValueError("funding symbol does not match requested symbol")
+    window = [event for event in funding if start_ms <= int(event["funding_time"]) < end_ms]
+    if not window:
+        raise ValueError("no funding events inside confirmation window")
+    event_times = [int(event["funding_time"]) for event in window]
+    if len(event_times) != len(set(event_times)):
+        raise ValueError("duplicate funding settlement timestamps detected")
+    if any(t % 28_800_000 != 0 for t in event_times):
+        raise ValueError("funding settlement timestamp is not aligned to the expected 8-hour UTC schedule")
+    sources: dict[str, int] = {}
+    for event in window:
+        source = event.get("mark_price_source", "unspecified")
+        sources[source] = sources.get(source, 0) + 1
+    allowed_sources = {
+        "mark_kline_open", "mark_kline_open_nearest_1s",
+        "mark_price_kline_open", "exchange_funding_mark_price", "rest_mark_price",
+    }
+    untrusted_sources = sorted(set(sources) - allowed_sources)
+    if untrusted_sources:
+        raise ValueError(f"unverified funding mark-price provenance: {untrusted_sources}")
+    return {"records_in_window": len(window), "mark_price_sources": sources}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--symbol", required=True, choices=["BTCUSDT", "AVAXUSDT"])
@@ -69,41 +95,9 @@ def main() -> None:
 
     rows = load_csv(args.csv, 3_600_000)
     funding = load_funding_csv(args.funding_csv)
-    if any(event["symbol"] != args.symbol for event in funding):
-        raise ValueError("funding symbol does not match requested symbol")
-    # Retain pre-window bars strictly for causal indicator warm-up. Only the
-    # requested window is eligible for new entries and must be fully covered.
-    rows = [row for row in rows if row["t"] < end_ms and row["t"] + 3_600_000 <= end_ms]
-    eligible = [i for i, row in enumerate(rows) if start_ms <= row["t"] < end_ms]
-    if not eligible:
-        raise ValueError("no closed candles in confirmation window")
-    start_idx, end_idx = eligible[0], eligible[-1] + 1
-    if rows[start_idx]["t"] != start_ms or rows[end_idx - 1]["t"] + 3_600_000 != end_ms:
-        raise ValueError("candle data does not cover the full requested window")
-    if any(b["t"] - a["t"] != 3_600_000 for a, b in zip(rows, rows[1:])):
-        raise ValueError("candle data contains gaps, including warm-up history")
+    funding_summary = validate_funding_events(funding, args.symbol, start_ms, end_ms)
     funding = [event for event in funding if start_ms <= event["funding_time"] < end_ms]
-    if not funding:
-        raise ValueError("no funding events inside confirmation window")
-    event_times = [int(event["funding_time"]) for event in funding]
-    if len(event_times) != len(set(event_times)):
-        raise ValueError("duplicate funding settlement timestamps detected")
-    if any(t % 28_800_000 != 0 for t in event_times):
-        raise ValueError("funding settlement timestamp is not aligned to the expected 8-hour UTC schedule")
-    sources = {}
-    for event in funding:
-        source = event.get("mark_price_source", "unspecified")
-        sources[source] = sources.get(source, 0) + 1
-    # Fail closed: unknown provenance is not equivalent to authoritative data.
-    allowed_sources = {
-        # Exact labels emitted by research.funding_data.download_archive_funding,
-        # plus explicitly supported exchange/REST provenance labels.
-        "mark_kline_open", "mark_kline_open_nearest_1s",
-        "mark_price_kline_open", "exchange_funding_mark_price", "rest_mark_price",
-    }
-    untrusted_sources = sorted(set(sources) - allowed_sources)
-    if untrusted_sources:
-        raise ValueError(f"unverified funding mark-price provenance: {untrusted_sources}")
+    sources = funding_summary["mark_price_sources"]
 
     # Run only the exact frozen parameter set. The same closed-candle window is
     # evaluated at three cost assumptions; no selection occurs on these results.
@@ -150,8 +144,7 @@ def main() -> None:
         "frozen_parameters": params,
         "frozen_parameters_sha256": params_sha,
         "frozen_config_sha256": frozen_sha,
-        "funding": {"records_in_window": len(funding), "mark_price_sources": sources,
-                    "pnl_included": True},
+        "funding": {**funding_summary, "pnl_included": True},
         "results": results,
         "gate": {
             "minimum_trades_30": all(v["trades"] >= 30 for v in results.values()),
