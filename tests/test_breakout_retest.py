@@ -61,11 +61,12 @@ class BreakoutRetestTests(unittest.TestCase):
         self.assertFalse(profit_factor_above_one(float("nan")))
 
     def test_grid_covers_each_direction_without_duplicate_candidates(self):
-        self.assertEqual(len(GRID), 2592)
+        self.assertEqual(len(GRID), 3888)
         self.assertEqual({p["direction"] for p in GRID}, {"BOTH", "LONG", "SHORT"})
         self.assertEqual({p["breakout_atr"] for p in GRID}, {0.05, 0.15})
         self.assertEqual({p["retest_atr"] for p in GRID}, {0.20, 0.40})
         self.assertEqual({p["body_confirm_atr"] for p in GRID}, {0.0, 0.15})
+        self.assertEqual({p["target_r"] for p in GRID}, {1.5, 2.0, 2.5, 3.0})
         self.assertEqual({p["breakout_atr"] for p in GRID}, {0.05, 0.15})
         self.assertEqual({p["retest_atr"] for p in GRID}, {0.20, 0.40})
         self.assertEqual(len({tuple(sorted(p.items())) for p in GRID}), len(GRID))
