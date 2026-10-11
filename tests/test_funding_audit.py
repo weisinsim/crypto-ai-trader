@@ -1,0 +1,43 @@
+import pytest
+
+from research.funding_audit import audit_funding
+
+
+def candles(n=10):
+    return [{"t": i * 3_600_000, "o": 100, "h": 101, "l": 99, "c": 100, "v": 1, "q": 100}
+            for i in range(n)]
+
+
+def funding(times, source="mark_kline_open"):
+    return [{"funding_time": t, "funding_rate": 0.0001, "mark_price": 100,
+             "symbol": "BTCUSDT", "mark_price_source": source} for t in times]
+
+
+def test_audit_passes_sorted_unique_in_range_events():
+    report = audit_funding(funding([0, 8*3_600_000, 16*3_600_000]),
+                           candles(24), "BTCUSDT")
+    assert report["status"] == "PASS"
+    assert report["funding_records"] == 3
+    assert report["max_gap_hours"] == 8
+
+
+def test_audit_flags_large_gap():
+    report = audit_funding(funding([0, 48*3_600_000]), candles(72), "BTCUSDT")
+    assert report["status"] == "FAIL_GAP"
+    assert report["gaps_over_24h"] == 1
+
+
+def test_audit_rejects_wrong_symbol():
+    with pytest.raises(ValueError, match="symbol mismatch"):
+        audit_funding(funding([0]), candles(), "ETHUSDT")
+
+
+def test_audit_rejects_duplicate_timestamps():
+    with pytest.raises(ValueError, match="duplicate"):
+        audit_funding(funding([0, 0]), candles(), "BTCUSDT")
+
+
+def test_audit_reports_proxy_prices():
+    report = audit_funding(funding([0], "prior_trade_kline_close_proxy"),
+                           candles(), "BTCUSDT")
+    assert report["proxy_price_records"] == 1
