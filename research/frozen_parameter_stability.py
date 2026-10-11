@@ -94,7 +94,7 @@ def main() -> None:
     selected_params = None
     if args.params_json:
         source_report = json.loads(Path(args.params_json).read_text(encoding="utf-8"))
-        selected_params = source_report.get("selected_params") or source_report.get("parameters") or source_report.get("best_params")
+        selected_params = source_report.get("selected_parameters") or source_report.get("selected_params") or source_report.get("parameters") or source_report.get("best_params")
         if not isinstance(selected_params, dict):
             raise ValueError(f"could not find selected_params/parameters/best_params in {args.params_json}")
     report = evaluate(rows, args.train_fraction, historical_funding, args.symbol, selected_params)
