@@ -148,7 +148,8 @@ jobs:
                   f"median_fold_drawdown_pct={candidate['median_fold_drawdown_pct']} "
                   f"positive_folds={candidate['positive_folds']} "
                   f"worst_fold_return_pct={candidate['worst_fold_return_pct']} "
-                  f"score={candidate['score']} folds={candidate['folds']}"
+                  f"score={candidate['score']} "
+                  f"folds={[{k: fold.get(k) for k in ('trades', 'net_return_pct', 'max_drawdown_pct', 'win_rate_pct', 'profit_factor')} for fold in candidate['folds']]}"
               )
           print(f"selected_parameters={report['selected_parameters']}")
           print(f"holdout={report['holdout']}")
