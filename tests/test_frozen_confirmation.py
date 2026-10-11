@@ -1,7 +1,7 @@
 import json
 import unittest
 
-from research.frozen_confirmation import FROZEN_PATH, SOURCE_DATA_END, sha256, summarize, utc_ms
+from research.frozen_confirmation import (\n    FROZEN_PATH, SOURCE_DATA_END, sha256, summarize, utc_ms, validate_funding_events,\n)
 
 
 class FrozenConfirmationTests(unittest.TestCase):
@@ -40,26 +40,24 @@ class FrozenConfirmationTests(unittest.TestCase):
         without_funding = {"net_return_pct": 1.5}
         self.assertEqual(round(with_funding["net_return_pct"] - without_funding["net_return_pct"], 8), 0.5)
 
-    def test_funding_event_validation_rejects_duplicate_and_proxy_sources(self):
-        def validate(events):
-            times = [int(event["funding_time"]) for event in events]
-            if len(times) != len(set(times)):
-                raise ValueError("duplicate funding settlement timestamps detected")
-            if any(t % 28_800_000 != 0 for t in times):
-                raise ValueError("funding settlement timestamp is not aligned")
-            sources = {event.get("mark_price_source", "unspecified") for event in events}
-            allowed = {
-                "mark_kline_open", "mark_kline_open_nearest_1s",
-                "mark_price_kline_open", "exchange_funding_mark_price", "rest_mark_price",
-            }
-            if sources - allowed:
-                raise ValueError("unverified funding mark-price provenance")
+    def test_funding_event_validation_accepts_archive_labels_and_rejects_proxy(self):
         valid_time = 1_791_820_800_000
-        valid = {"funding_time": valid_time, "mark_price_source": "mark_price_kline_open"}
-        with self.assertRaises(ValueError):
-            validate([valid, valid.copy()])
-        with self.assertRaises(ValueError):
-            validate([{"funding_time": valid_time, "mark_price_source": "prior_trade_kline_close_proxy"}])
+        source_labels = ["mark_kline_open", "mark_kline_open_nearest_1s", "rest_mark_price"]
+        events = [
+            {"funding_time": valid_time + i * 28_800_000, "symbol": "BTCUSDT",
+             "mark_price_source": source}
+            for i, source in enumerate(source_labels)
+        ]
+        summary = validate_funding_events(events, "BTCUSDT", valid_time, valid_time + 3 * 28_800_000)
+        self.assertEqual(summary["records_in_window"], 3)
+        self.assertEqual(summary["mark_price_sources"]["mark_kline_open"], 1)
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            validate_funding_events([events[0], events[0]], "BTCUSDT", valid_time, valid_time + 28_800_000)
+        proxy = {**events[0], "mark_price_source": "prior_trade_kline_close_proxy"}
+        with self.assertRaisesRegex(ValueError, "unverified"):
+            validate_funding_events([proxy], "BTCUSDT", valid_time, valid_time + 28_800_000)
+        with self.assertRaisesRegex(ValueError, "symbol"):
+            validate_funding_events([events[0]], "AVAXUSDT", valid_time, valid_time + 28_800_000)
 
 
 if __name__ == "__main__":
