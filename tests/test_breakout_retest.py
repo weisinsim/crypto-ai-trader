@@ -50,6 +50,14 @@ class BreakoutRetestTests(unittest.TestCase):
             self.assertIn(trade["side"], ("LONG", "SHORT"))
             self.assertGreaterEqual(trade["entry_time"], rows[100]["t"])
 
+    def test_direction_filter_restricts_breakout_side(self):
+        rows = make_rows()
+        base = {"lookback": 24, "max_wait": 6, "target_r": 2.0}
+        long_result = run_breakout_retest(rows, base | {"direction": "LONG"}, 100, len(rows))
+        short_result = run_breakout_retest(rows, base | {"direction": "SHORT"}, 100, len(rows))
+        self.assertTrue(all(t["side"] == "LONG" for t in long_result["trade_log"]))
+        self.assertTrue(all(t["side"] == "SHORT" for t in short_result["trade_log"]))
+
     def test_invalid_costs_rejected(self):
         rows = make_rows()
         params = {"lookback": 24, "max_wait": 6, "target_r": 2.0}
