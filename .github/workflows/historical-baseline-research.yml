@@ -141,6 +141,7 @@ jobs:
           report = json.loads(Path(f"reports/{symbol}_1h_breakout_retest.json").read_text())
           print("=== BREAKOUT/RETEST CANDIDATE DIAGNOSTICS ===")
           print(f"symbol={symbol} candidates={report['candidate_count']} eligible={report['eligible_count']}")
+          print(f"rejection_reason_counts={report['rejection_reason_counts']}")
           for candidate in report["candidate_diagnostics"][:5]:
               print(
                   f"params={candidate['parameters']} eligible={candidate['eligible']} "
@@ -149,6 +150,7 @@ jobs:
                   f"positive_folds={candidate['positive_folds']} "
                   f"worst_fold_return_pct={candidate['worst_fold_return_pct']} "
                   f"score={candidate['score']} "
+                  f"rejection_reasons={candidate['rejection_reasons']} "
                   f"folds={[{k: fold.get(k) for k in ('trades', 'net_return_pct', 'max_drawdown_pct', 'win_rate_pct', 'profit_factor')} for fold in candidate['folds']]}"
               )
           print(f"selected_parameters={report['selected_parameters']}")
