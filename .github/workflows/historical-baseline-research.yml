@@ -80,6 +80,34 @@ jobs:
             --symbol "${SYMBOL}" \
             --funding-csv "data/${SYMBOL}_funding.csv" \
             --output "reports/${SYMBOL}_1h_public_strategy_benchmark.json"
+      - name: Diagnose funding and candle timestamp grids
+        env:
+          SYMBOL: ${{ matrix.symbol }}
+        run: |
+          python - <<'PY'
+          import csv, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          symbol = os.environ["SYMBOL"]
+          candles = list(csv.DictReader(Path(f"data/{symbol}_1h.csv").open()))
+          funding = list(csv.DictReader(Path(f"data/{symbol}_funding.csv").open()))
+          candle_ts = [int(row["t"]) for row in candles]
+          funding_ts = [int(row["funding_time"]) for row in funding]
+          print(f"=== TIMESTAMP GRID DIAGNOSTIC {symbol} ===")
+          print(f"candle_count={len(candle_ts)} funding_count={len(funding_ts)}")
+          def show(label, values):
+              print(label)
+              for ts in values:
+                  print(f"  raw_ms={ts} utc={datetime.fromtimestamp(ts/1000, timezone.utc).isoformat()} modulo_hour={ts % 3600000}")
+          show("candle_first", candle_ts[:3])
+          show("candle_last", candle_ts[-3:])
+          show("funding_first", funding_ts[:3])
+          show("funding_last", funding_ts[-3:])
+          print("funding_nearest_candle_delta_ms:")
+          for ts in funding_ts[:10]:
+              nearest = min(candle_ts, key=lambda value: abs(value-ts))
+              print(f"  funding={ts} nearest={nearest} delta_ms={nearest-ts}")
+          PY
       - name: Run research-only baseline and walk-forward report
         env:
           SYMBOL: ${{ matrix.symbol }}
