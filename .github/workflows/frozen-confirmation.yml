@@ -135,5 +135,6 @@ jobs:
           name: frozen-confirmation-${{ matrix.symbol }}-${{ inputs.start_date }}-${{ inputs.end_date }}
           path: |
             reports/confirm_${{ matrix.symbol }}_${{ inputs.start_date }}_${{ inputs.end_date }}.json
+            reports/confirm_${{ matrix.symbol }}_funding_audit.json
           if-no-files-found: warn
           retention-days: 30
