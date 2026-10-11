@@ -92,7 +92,10 @@ jobs:
                   f"net_return_pct={fold['net_return_pct']} max_drawdown_pct={fold['max_drawdown_pct']} "
                   f"win_rate_pct={fold['win_rate_pct']} profit_factor={fold['profit_factor']}"
               )
-          print("WARN: default workflow does not provide historical funding CSV; do not treat funding as validated.")
+          if report["funding_data"]["records"] == 0:
+              print("WARN: historical funding unavailable; baseline excludes realized funding cashflows.")
+          else:
+              print("INFO: historical funding CSV supplied to baseline backtest.")
           PY
       - name: Run train-only adaptive parameter sweep
         env:
