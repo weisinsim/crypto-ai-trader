@@ -45,6 +45,14 @@ def summarize(result: dict) -> dict:
     }
 
 
+def confirmation_window_indices(rows: list[dict], start_ms: int, end_ms: int) -> tuple[int, int]:
+    """Return exact hourly candle indices for a half-open UTC confirmation window."""
+    if not isinstance(start_ms, int) or not isinstance(end_ms, int) or end_ms <= start_ms:
+        raise ValueError("invalid confirmation window")
+    start_idx, end_idx = confirmation_window_indices(rows, start_ms, end_ms)
+    return start_idx, end_idx
+
+
 def validate_funding_events(funding: list[dict], symbol: str, start_ms: int, end_ms: int) -> dict:
     """Validate in-window settlement cadence and provenance; return source counts."""
     if not isinstance(start_ms, int) or not isinstance(end_ms, int) or end_ms <= start_ms:
