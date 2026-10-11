@@ -1,6 +1,6 @@
 import unittest
 
-from research.breakout_retest import atr_values, funding_cashflow, run_breakout_retest
+from research.breakout_retest import atr_values, candidate_rejection_reasons, funding_cashflow, run_breakout_retest
 
 
 def make_rows(n=240):
@@ -70,6 +70,17 @@ class BreakoutRetestTests(unittest.TestCase):
         pnl, count = funding_cashflow(1, 1.0, 100, 300, events)
         self.assertAlmostEqual(pnl, -1.0)
         self.assertEqual(count, 1)
+
+    def test_candidate_rejection_reasons_explain_weak_folds(self):
+        folds = [
+            {"trades": 5, "net_return_pct": 2.0},
+            {"trades": 4, "net_return_pct": 1.0},
+            {"trades": 4, "net_return_pct": -4.0},
+        ]
+        reasons = candidate_rejection_reasons(folds, -0.5)
+        self.assertIn("worst_fold_below_minus_3pct", reasons)
+        self.assertIn("risk_adjusted_score_not_positive", reasons)
+        self.assertNotIn("total_trades_below_12", reasons)
 
     def test_invalid_window_rejected(self):
         rows = make_rows()
