@@ -95,7 +95,7 @@ def main() -> None:
         source = event.get("mark_price_source", "unspecified")
         sources[source] = sources.get(source, 0) + 1
     # Fail closed: unknown provenance is not equivalent to authoritative data.
-    allowed_sources = {"mark_price_kline_open", "exchange_funding_mark_price"}
+    allowed_sources = {"mark_price_kline_open", "exchange_funding_mark_price", "rest_mark_price"}
     untrusted_sources = sorted(set(sources) - allowed_sources)
     if untrusted_sources:
         raise ValueError(f"unverified funding mark-price provenance: {untrusted_sources}")
