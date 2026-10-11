@@ -168,7 +168,11 @@ jobs:
           print(f"selected_parameters={report['selected_parameters']}")
           print(f"training_selection_metrics={report['training_selection_metrics']}")
           print(f"holdout={report['holdout']}")
-          print("WARNING: historical funding is not included; research-only.")
+          funding_count = report["costs"].get("funding_records", 0)
+          print(f"funding_records={funding_count} funding_status={report['costs'].get('funding')}")
+          if funding_count <= 0:
+              raise SystemExit("ERROR: adaptive sweep did not include historical funding; refusing comparable result.")
+          print("STATUS: research-only; funding mark-price provenance and intrabar settlement ordering still require audit.")
           PY
       - name: Run breakout-retest-confirmation research
         env:
