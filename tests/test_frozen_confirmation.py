@@ -40,6 +40,24 @@ class FrozenConfirmationTests(unittest.TestCase):
         without_funding = {"net_return_pct": 1.5}
         self.assertEqual(round(with_funding["net_return_pct"] - without_funding["net_return_pct"], 8), 0.5)
 
+    def test_funding_event_validation_rejects_duplicate_and_proxy_sources(self):
+        def validate(events):
+            times = [int(event["funding_time"]) for event in events]
+            if len(times) != len(set(times)):
+                raise ValueError("duplicate funding settlement timestamps detected")
+            if any(t % 28_800_000 != 0 for t in times):
+                raise ValueError("funding settlement timestamp is not aligned")
+            sources = {event.get("mark_price_source", "unspecified") for event in events}
+            allowed = {"mark_price_kline_open", "exchange_funding_mark_price"}
+            if sources - allowed:
+                raise ValueError("unverified funding mark-price provenance")
+        valid_time = 1_791_820_800_000
+        valid = {"funding_time": valid_time, "mark_price_source": "mark_price_kline_open"}
+        with self.assertRaises(ValueError):
+            validate([valid, valid.copy()])
+        with self.assertRaises(ValueError):
+            validate([{"funding_time": valid_time, "mark_price_source": "prior_trade_kline_close_proxy"}])
+
 
 if __name__ == "__main__":
     unittest.main()
