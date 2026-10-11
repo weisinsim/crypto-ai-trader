@@ -74,6 +74,32 @@ def download_archive(symbol: str, interval: str, start_ms: int, end_ms: int) -> 
     deduped = {row["t"]: row for row in rows}
     rows = list(deduped.values())
     expected = list(range(start_ms, end_ms, step))
+    present = {row["t"] for row in rows}
+    missing = [ts for ts in expected if ts not in present]
+    # Binance Vision may lag for the current month. Fill only missing, fully
+    # closed candles from the official USD-M Futures REST kline endpoint.
+    # Keep archive rows authoritative wherever they exist.
+    if missing:
+        api_url = "https://fapi.binance.com/fapi/v1/klines"
+        with httpx.Client(timeout=30.0, follow_redirects=True) as client:
+            for offset in range(0, len(missing), 1000):
+                batch = missing[offset:offset + 1000]
+                response = client.get(api_url, params={
+                    "symbol": symbol, "interval": interval,
+                    "startTime": batch[0], "endTime": batch[-1] + step - 1,
+                    "limit": min(1500, len(batch) + 100),
+                })
+                response.raise_for_status()
+                for raw in response.json():
+                    ts = int(raw[0])
+                    close_ts = int(raw[6])
+                    if ts in batch and close_ts < int(datetime.now(timezone.utc).timestamp() * 1000):
+                        deduped[ts] = {
+                            "t": ts, "o": float(raw[1]), "h": float(raw[2]),
+                            "l": float(raw[3]), "c": float(raw[4]), "v": float(raw[5]),
+                            "q": float(raw[7]),
+                        }
+        rows = [deduped[ts] for ts in sorted(deduped)]
     actual = [row["t"] for row in rows]
     if actual != expected:
         missing = sorted(set(expected) - set(actual))
