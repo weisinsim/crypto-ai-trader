@@ -47,6 +47,25 @@ def ema_values(rows: list[dict], period: int) -> list[float | None]:
     return out
 
 
+def funding_cashflow(side: int, quantity: float, entry_ts: int, exit_ts: int,
+                    funding_rates: list[dict] | None) -> tuple[float, int]:
+    """Calculate held-position funding cashflow; exact entry-time settlements are excluded."""
+    if side not in (-1, 1) or quantity < 0 or exit_ts < entry_ts:
+        raise ValueError("invalid side, quantity, or trade timestamps")
+    pnl = 0.0
+    count = 0
+    for event in funding_rates or []:
+        ts = int(event["funding_time"])
+        rate = float(event["funding_rate"])
+        mark = float(event["mark_price"])
+        if not math.isfinite(rate) or not math.isfinite(mark) or mark <= 0:
+            raise ValueError("invalid funding rate or mark price")
+        if entry_ts < ts <= exit_ts:
+            pnl += -side * quantity * mark * rate
+            count += 1
+    return pnl, count
+
+
 def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx: int,
                         fee_rate: float = 0.0005, slippage_rate: float = 0.0002,
                         risk_fraction: float = 0.01, max_leverage: float = 3.0,
@@ -161,14 +180,11 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
                 costs = qty * (entry + exit_price) * (fee_rate + slippage_rate)
                 entry_ts = int(rows[entry_idx]["t"])
                 exit_ts = int(rows[exit_idx]["t"])
-                funding_pnl = 0.0
-                funding_events = 0
-                for event in funding_rates or []:
-                    # Exclude settlement exactly at entry-bar open; OHLC data cannot
-                    # resolve whether the position existed before that settlement.
-                    if entry_ts < int(event["funding_time"]) <= exit_ts:
-                        funding_pnl += -side * qty * float(event["mark_price"]) * float(event["funding_rate"])
-                        funding_events += 1
+                # Exclude settlement exactly at entry-bar open; OHLC data cannot
+                # resolve whether the position existed before that settlement.
+                funding_pnl, funding_events = funding_cashflow(
+                    side, qty, entry_ts, exit_ts, funding_rates
+                )
                 pnl = gross - costs + funding_pnl
                 before = equity
                 equity = max(0.000001, equity + pnl)
