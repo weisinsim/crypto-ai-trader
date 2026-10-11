@@ -155,7 +155,17 @@ def main() -> None:
         # Expanding-window evaluation: preserve all historical indicator
         # state available before the fold, but only count entries in this fold.
         start_ts = rows[a]["t"]
-        fold_result = run_ema_cross_backtest(rows[:b], trade_start_ts=start_ts, **common)
+        # The simulator validates every supplied funding event against its
+        # candle slice. Pass only settlements available within this expanding
+        # history window; future events beyond rows[:b] must not cause a false
+        # timestamp-alignment failure or leak into the fold.
+        fold_common = dict(common)
+        if historical_funding is not None:
+            fold_common["funding_rates"] = [
+                event for event in historical_funding
+                if rows[0]["t"] <= event["funding_time"] <= rows[b - 1]["t"]
+            ]
+        fold_result = run_ema_cross_backtest(rows[:b], trade_start_ts=start_ts, **fold_common)
         fold_trades = [t for t in fold_result["trade_log"] if start_ts <= t["entry_time"] <= rows[b - 1]["t"]]
         fold_curve = [p for p in fold_result["equity_curve"] if start_ts <= p["t"] <= rows[b - 1]["t"]]
         walk_results.append({
