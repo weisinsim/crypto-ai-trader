@@ -117,8 +117,12 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
             mark_url = f"https://data.binance.vision/data/futures/um/monthly/markPriceKlines/{symbol}/8h/{symbol}-8h-{ym}.zip"
             rate_resp = client.get(rate_url)
             if rate_resp.status_code == 404:
-                # Recent/incomplete months may not yet have a monthly archive.
-                continue
+                # Fail closed: silently skipping a requested month would create
+                # incomplete funding history and invalidate downstream backtests.
+                raise ValueError(
+                    f"missing funding archive for requested month {ym} ({rate_url}); "
+                    "retrieve an authoritative alternative or narrow the requested range explicitly"
+                )
             rate_resp.raise_for_status()
             mark_resp = client.get(mark_url)
             mark_resp.raise_for_status()
