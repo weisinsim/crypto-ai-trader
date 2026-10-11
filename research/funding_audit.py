@@ -75,7 +75,9 @@ def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str
         "gaps_over_8h": sum(g > 8.01 for g in gaps),
         "gaps_over_24h": sum(g > 24.01 for g in gaps),
         "mark_price_source_counts": dict(sorted(sources.items())),
-        "proxy_price_records": proxy_count,\n        "unverified_price_source_records": unverified_count,\n        "approved_mark_price_sources": sorted(approved_sources),
+        "proxy_price_records": proxy_count,
+        "unverified_price_source_records": unverified_count,
+        "approved_mark_price_sources": sorted(approved_sources),
         "max_gap_gate_hours": max_gap_hours,
         "limitations": [
             "Gap checks do not prove that every funding event is present.",
