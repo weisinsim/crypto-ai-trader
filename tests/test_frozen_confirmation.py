@@ -1,7 +1,9 @@
 import json
 import unittest
 
-from research.frozen_confirmation import (\n    FROZEN_PATH, SOURCE_DATA_END, sha256, summarize, utc_ms, validate_funding_events,\n)
+from research.frozen_confirmation import (
+    FROZEN_PATH, SOURCE_DATA_END, sha256, summarize, utc_ms, validate_funding_events,
+)
 
 
 class FrozenConfirmationTests(unittest.TestCase):
