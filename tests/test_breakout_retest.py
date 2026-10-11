@@ -1,6 +1,6 @@
 import unittest
 
-from research.breakout_retest import atr_values, candidate_rejection_reasons, funding_cashflow, run_breakout_retest
+from research.breakout_retest import GRID, atr_values, candidate_rejection_reasons, funding_cashflow, run_breakout_retest
 
 
 def make_rows(n=240):
@@ -30,6 +30,11 @@ def make_rows(n=240):
 
 
 class BreakoutRetestTests(unittest.TestCase):
+    def test_grid_covers_each_direction_without_duplicate_candidates(self):
+        self.assertEqual(len(GRID), 324)
+        self.assertEqual({p["direction"] for p in GRID}, {"BOTH", "LONG", "SHORT"})
+        self.assertEqual(len({tuple(sorted(p.items())) for p in GRID}), len(GRID))
+
     def test_atr_warmup_and_positive_values(self):
         rows = make_rows()
         atr = atr_values(rows, period=14)
