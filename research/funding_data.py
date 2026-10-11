@@ -38,7 +38,7 @@ def parse_funding_rows(raw_rows: list[dict], symbol: str, start_ms: int, end_ms:
 
 def download_funding_rates(
     symbol: str, start_ms: int, end_ms: int, *,
-    fetch_page: Callable | None = None, limit: int = 1000, pause_seconds: float = 0.05,
+    fetch_page: Callable | None = None, limit: int = 1000, pause_seconds: float = 0.05,\n    base_url: str = BASE_URL,
 ) -> list[dict]:
     """Download historical funding records in [start_ms, end_ms), failing on malformed rows."""
     if not isinstance(symbol, str) or not symbol.strip() or not symbol.strip().isalnum():
@@ -55,7 +55,7 @@ def download_funding_rates(
         client = httpx.Client(timeout=15.0)
 
         def fetch_page(params):
-            response = client.get(BASE_URL + "/fapi/v1/fundingRate", params=params)
+            response = client.get(base_url.rstrip("/") + "/fapi/v1/fundingRate", params=params)
             response.raise_for_status()
             return response.json()
 
@@ -118,8 +118,26 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
             rate_resp = client.get(rate_url)
             if rate_resp.status_code == 404:
                 # Current-month monthly archives may not be published yet.
+                # Try Binance's public data REST hostname before archive fallbacks;
+                # the primary futures host can return HTTP 451 in some CI regions.
+                month_start_ms = max(start_ms, int(month.timestamp() * 1000))
+                next_month = month.replace(
+                    year=month.year + (month.month == 12),
+                    month=1 if month.month == 12 else month.month + 1,
+                )
+                month_end_ms = min(end_ms, int(next_month.timestamp() * 1000))
+                try:
+                    mirror_rows = download_funding_rates(
+                        symbol, month_start_ms, month_end_ms,
+                        base_url="https://data-api.binance.vision",
+                    )
+                except Exception:
+                    mirror_rows = []
+                if mirror_rows:
+                    rows.extend(mirror_rows)
+                    continue
                 # Assemble the requested portion from official daily fundingRate
-                # archives; do not depend on a jurisdiction-restricted REST host.
+                # archives; fail closed if neither official source is available.
                 month_start_ms = max(start_ms, int(month.timestamp() * 1000))
                 next_month = month.replace(
                     year=month.year + (month.month == 12),
