@@ -327,7 +327,38 @@ def main():
         holdout = run_breakout_retest(rows, params, split, len(rows), funding_rates=historical_funding, symbol=args.symbol)
         stress = run_breakout_retest(rows, params, split, len(rows), fee_rate=0.0005, slippage_rate=0.001, funding_rates=historical_funding, symbol=args.symbol)
         severe = run_breakout_retest(rows, params, split, len(rows), fee_rate=0.0005, slippage_rate=0.0018, funding_rates=historical_funding, symbol=args.symbol)
-        # Summaries only in the report; keep detailed trades to aid audit.
+    # Diagnostic only: each direction's candidate is selected on training data,
+    # then evaluated on the same holdout. These are not independent validation samples.
+    direction_holdout = {}
+    for direction in ("LONG", "SHORT", "BOTH"):
+        group = [item for item in candidates if item["parameters"]["direction"] == direction and item["eligible"]]
+        if not group:
+            direction_holdout[direction] = {"status": "NO_ELIGIBLE_TRAINING_CANDIDATE"}
+            continue
+        candidate = max(group, key=lambda item: item["score"])
+        params = candidate["parameters"]
+        results = [
+            run_breakout_retest(rows, params, split, len(rows), funding_rates=historical_funding, symbol=args.symbol),
+            run_breakout_retest(rows, params, split, len(rows), fee_rate=0.0005, slippage_rate=0.001, funding_rates=historical_funding, symbol=args.symbol),
+            run_breakout_retest(rows, params, split, len(rows), fee_rate=0.0005, slippage_rate=0.0018, funding_rates=historical_funding, symbol=args.symbol),
+        ]
+        compact = [{k: value for k, value in result.items() if k != "trade_log"} for result in results]
+        passed = all(
+            isinstance(item.get("net_return_pct"), (int, float)) and math.isfinite(item["net_return_pct"])
+            and item["net_return_pct"] > 0
+            and isinstance(item.get("profit_factor"), (int, float)) and math.isfinite(item["profit_factor"])
+            and item["profit_factor"] > 1
+            for item in compact
+        )
+        direction_holdout[direction] = {
+            "status": "PASS_PRELIMINARY_ONLY" if passed else "FAIL_COST_ROBUSTNESS",
+            "parameters": params,
+            "training_score": candidate["score"],
+            "base_cost_holdout": compact[0],
+            "stress_0_30pct_round_trip": compact[1],
+            "severe_0_46pct_round_trip": compact[2],
+            "not_production_approval": True,
+        }
     report = {
         "status": "RESEARCH_ONLY", "symbol": args.symbol.upper(), "interval": args.interval,
         "bars": len(rows), "first_ts": rows[0]["t"], "last_ts": rows[-1]["t"],
@@ -337,6 +368,7 @@ def main():
         "rejection_reason_counts": {reason: sum(reason in item["rejection_reasons"] for item in candidates)
                                     for reason in sorted({reason for item in candidates for reason in item["rejection_reasons"]})},
         "direction_summary": direction_summary,
+        "direction_holdout_diagnostics": direction_holdout,
         "selected_parameters": selected["parameters"] if selected else None,
         "training_selection_metrics": {k:v for k,v in selected.items() if k != "folds"} if selected else None,
         "candidate_diagnostics": sorted(candidates, key=lambda x: x["score"], reverse=True),
@@ -364,6 +396,7 @@ def main():
     output.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"status=RESEARCH_ONLY symbol={args.symbol.upper()} bars={len(rows)} candidates={len(candidates)} eligible={len(eligible)} selected={bool(selected)}")
     print(f"direction_summary={report['direction_summary']}")
+    print(f"direction_holdout_diagnostics={report['direction_holdout_diagnostics']}")
     print(f"selected_parameters={report['selected_parameters']}")
     print(f"holdout={report['holdout']}")
     print(f"stress_holdout={report['stress_holdout_0_30pct_round_trip']}")
