@@ -7,7 +7,7 @@ import math
 from pathlib import Path
 from statistics import median
 
-from research.run_backtest import load_csv
+from research.run_backtest import load_csv, load_funding_csv
 
 GRID = [
     {"lookback": lookback, "max_wait": max_wait, "target_r": target_r,
@@ -49,7 +49,8 @@ def ema_values(rows: list[dict], period: int) -> list[float | None]:
 
 def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx: int,
                         fee_rate: float = 0.0005, slippage_rate: float = 0.0002,
-                        risk_fraction: float = 0.01, max_leverage: float = 3.0) -> dict:
+                        risk_fraction: float = 0.01, max_leverage: float = 3.0,
+                        funding_rates: list[dict] | None = None, symbol: str | None = None) -> dict:
     """Simulate long and short separately; entries occur at next bar open after confirmation."""
     if not (0 <= start_idx < end_idx <= len(rows)):
         raise ValueError("invalid evaluation indices")
@@ -57,6 +58,13 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
         raise ValueError("invalid risk or leverage setting")
     if any(not math.isfinite(x) or x < 0 for x in (fee_rate, slippage_rate)):
         raise ValueError("fees and slippage must be finite and non-negative")
+    if funding_rates is not None:
+        if not symbol or any(event.get("symbol", "").upper() != symbol.upper() for event in funding_rates):
+            raise ValueError("funding CSV symbol does not match --symbol")
+        if any(not math.isfinite(float(event["funding_rate"])) or
+               not math.isfinite(float(event["mark_price"])) or float(event["mark_price"]) <= 0
+               for event in funding_rates):
+            raise ValueError("funding data contains invalid rates or mark prices")
     lookback, max_wait, target_r = params["lookback"], params["max_wait"], params["target_r"]
     trend_period = params.get("trend_period", 0)
     volatility_filter = params.get("volatility_filter", 0.0)
@@ -151,7 +159,17 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
                         break
                 gross = qty * (exit_price - entry) * side
                 costs = qty * (entry + exit_price) * (fee_rate + slippage_rate)
-                pnl = gross - costs
+                entry_ts = int(rows[entry_idx]["t"])
+                exit_ts = int(rows[exit_idx]["t"])
+                funding_pnl = 0.0
+                funding_events = 0
+                for event in funding_rates or []:
+                    # Exclude settlement exactly at entry-bar open; OHLC data cannot
+                    # resolve whether the position existed before that settlement.
+                    if entry_ts < int(event["funding_time"]) <= exit_ts:
+                        funding_pnl += -side * qty * float(event["mark_price"]) * float(event["funding_rate"])
+                        funding_events += 1
+                pnl = gross - costs + funding_pnl
                 before = equity
                 equity = max(0.000001, equity + pnl)
                 trades.append({
@@ -161,6 +179,10 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
                     "entry": round(entry, 8), "stop": round(stop, 8), "target": round(target, 8),
                     "exit": round(exit_price, 8), "reason": reason,
                     "pnl_equity": round(equity - before, 8),
+                    "gross_pnl_equity": round(gross, 8),
+                    "trading_cost_equity": round(costs, 8),
+                    "funding_pnl_equity": round(funding_pnl, 8),
+                    "funding_events": funding_events,
                     "return_pct": round((equity / before - 1) * 100, 5),
                 })
                 peak = max(peak, equity)
@@ -200,9 +222,18 @@ def main():
     parser.add_argument("--symbol", required=True)
     parser.add_argument("--interval", choices=("1h",), default="1h")
     parser.add_argument("--train-fraction", type=float, default=0.6)
+    parser.add_argument("--funding-csv", help="optional historical funding CSV")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     rows = load_csv(args.csv, 3_600_000)
+    historical_funding = load_funding_csv(args.funding_csv) if args.funding_csv else None
+    if historical_funding is not None:
+        if historical_funding[0]["symbol"] != args.symbol.upper():
+            raise ValueError("funding CSV symbol does not match --symbol")
+        historical_funding = [event for event in historical_funding
+                              if rows[0]["t"] <= event["funding_time"] <= rows[-1]["t"]]
+        if not historical_funding:
+            raise ValueError("funding CSV has no settlement events inside candle data range")
     if len(rows) < 1000:
         raise ValueError("breakout/retest research requires at least 1000 hourly bars")
     if not 0.3 <= args.train_fraction <= 0.8:
@@ -219,7 +250,7 @@ def main():
                for n in range(3)]
     candidates = []
     for params in GRID:
-        folds = [run_breakout_retest(rows[:b], params, a, b) for a, b in windows]
+        folds = [run_breakout_retest(rows[:b], params, a, b, funding_rates=historical_funding, symbol=args.symbol) for a, b in windows]
         fold_returns = [f["net_return_pct"] for f in folds]
         fold_dd = [f["max_drawdown_pct"] for f in folds]
         trade_count = sum(f["trades"] for f in folds)
@@ -235,11 +266,12 @@ def main():
                            "eligible": eligible})
     eligible = sorted((x for x in candidates if x["eligible"]), key=lambda x: x["score"], reverse=True)
     selected = eligible[0] if eligible else None
-    holdout = stress = None
+    holdout = stress = severe = None
     if selected:
         params = selected["parameters"]
-        holdout = run_breakout_retest(rows, params, split, len(rows))
-        stress = run_breakout_retest(rows, params, split, len(rows), fee_rate=0.0005, slippage_rate=0.001)
+        holdout = run_breakout_retest(rows, params, split, len(rows), funding_rates=historical_funding, symbol=args.symbol)
+        stress = run_breakout_retest(rows, params, split, len(rows), fee_rate=0.0005, slippage_rate=0.001, funding_rates=historical_funding, symbol=args.symbol)
+        severe = run_breakout_retest(rows, params, split, len(rows), fee_rate=0.0005, slippage_rate=0.0018, funding_rates=historical_funding, symbol=args.symbol)
         # Summaries only in the report; keep detailed trades to aid audit.
     report = {
         "status": "RESEARCH_ONLY", "symbol": args.symbol.upper(), "interval": args.interval,
@@ -252,7 +284,22 @@ def main():
         "candidate_diagnostics": sorted(candidates, key=lambda x: x["score"], reverse=True),
         "holdout": {k:v for k,v in holdout.items() if k != "trade_log"} | {"trades_by_side": {"long": holdout["long"], "short": holdout["short"]}} if holdout else None,
         "stress_holdout_0_30pct_round_trip": {k:v for k,v in stress.items() if k != "trade_log"} | {"trades_by_side": {"long": stress["long"], "short": stress["short"]}} if stress else None,
-        "warnings": ["Research only; historical funding rates are not included.", "OHLCV cannot resolve intrabar order; stop is conservatively prioritized.", "No deployment decision without independent forward validation."],
+        "severe_holdout_0_46pct_round_trip": {k:v for k,v in severe.items() if k != "trade_log"} | {"trades_by_side": {"long": severe["long"], "short": severe["short"]}} if severe else None,
+        "funding_data": ({"records": len(historical_funding), "symbol": args.symbol.upper(),
+                          "mark_price_sources": {source: sum(1 for event in historical_funding if event.get("mark_price_source", "unspecified") == source)
+                                                 for source in sorted({event.get("mark_price_source", "unspecified") for event in historical_funding})}}
+                         if historical_funding is not None else {"records": 0, "source": None}),
+        "cost_robustness_gate": ({"status": "NOT_EVALUATED"} if not selected else
+            {"status": "PASS_PRELIMINARY_ONLY" if all(
+                isinstance(item.get("net_return_pct"), (int, float)) and math.isfinite(item["net_return_pct"])
+                and item["net_return_pct"] > 0 and isinstance(item.get("profit_factor"), (int, float))
+                and math.isfinite(item["profit_factor"]) and item["profit_factor"] > 1
+                for item in (holdout, stress, severe)) else "FAIL_COST_ROBUSTNESS",
+             "not_production_approval": True}),
+        "warnings": ["Research only; funding is included only when historical funding CSV is supplied.",
+                     "Funding settlement timestamps are strictly after entry-bar open through exit-bar open.",
+                     "OHLCV cannot resolve intrabar order; stop is conservatively prioritized.",
+                     "No deployment decision without independent forward validation."],
     }
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -261,6 +308,9 @@ def main():
     print(f"selected_parameters={report['selected_parameters']}")
     print(f"holdout={report['holdout']}")
     print(f"stress_holdout={report['stress_holdout_0_30pct_round_trip']}")
+    print(f"severe_holdout={report['severe_holdout_0_46pct_round_trip']}")
+    print(f"funding_data={report['funding_data']}")
+    print(f"cost_robustness_gate={report['cost_robustness_gate']}")
     print("top_training_candidates=" + json.dumps([
         {k: item[k] for k in ("parameters", "median_fold_return_pct",
                               "median_fold_drawdown_pct", "positive_folds",
