@@ -235,6 +235,13 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
     }
 
 
+def profit_factor_above_one(value) -> bool:
+    """Accept infinite PF when there are profits and no losses; reject null/NaN."""
+    if value == "INF":
+        return True
+    return isinstance(value, (int, float)) and math.isfinite(value) and value > 1
+
+
 def candidate_rejection_reasons(folds: list[dict], score: float) -> list[str]:
     """Explain training-fold rejection without relaxing any acceptance thresholds."""
     if not folds:
@@ -346,8 +353,7 @@ def main():
         passed = all(
             isinstance(item.get("net_return_pct"), (int, float)) and math.isfinite(item["net_return_pct"])
             and item["net_return_pct"] > 0
-            and isinstance(item.get("profit_factor"), (int, float)) and math.isfinite(item["profit_factor"])
-            and item["profit_factor"] > 1
+            and profit_factor_above_one(item.get("profit_factor"))
             for item in compact
         )
         direction_holdout[direction] = {
@@ -382,8 +388,8 @@ def main():
         "cost_robustness_gate": ({"status": "NOT_EVALUATED"} if not selected else
             {"status": "PASS_PRELIMINARY_ONLY" if all(
                 isinstance(item.get("net_return_pct"), (int, float)) and math.isfinite(item["net_return_pct"])
-                and item["net_return_pct"] > 0 and isinstance(item.get("profit_factor"), (int, float))
-                and math.isfinite(item["profit_factor"]) and item["profit_factor"] > 1
+                and item["net_return_pct"] > 0
+                and profit_factor_above_one(item.get("profit_factor"))
                 for item in (holdout, stress, severe)) else "FAIL_COST_ROBUSTNESS",
              "not_production_approval": True}),
         "warnings": ["Research only; funding is included only when historical funding CSV is supplied.",
