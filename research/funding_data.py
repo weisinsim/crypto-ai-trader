@@ -163,12 +163,19 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
             # with the official 1m mark-price archive for the same month. Never
             # substitute a trade-kline close for an exchange mark price.
             mark_1m = {}
-            missing_8h_times = {
-                int(float(row[0])) for row in rate_rows
-                if start_ms <= int(float(row[0])) < end_ms
-                and int(float(row[0])) not in marks
-                and not any(abs(mark_ts - int(float(row[0]))) <= 1000 for mark_ts in marks)
-            }
+            missing_8h_times = set()
+            for funding_row in rate_rows:
+                try:
+                    funding_ts = int(float(funding_row[0]))
+                except (ValueError, IndexError):
+                    continue
+                if not (start_ms <= funding_ts < end_ms):
+                    continue
+                if funding_ts in marks:
+                    continue
+                if any(abs(mark_ts - funding_ts) <= 1000 for mark_ts in marks):
+                    continue
+                missing_8h_times.add(funding_ts)
             if missing_8h_times:
                 mark_1m_url = (
                     f"https://data.binance.vision/data/futures/um/monthly/markPriceKlines/"
