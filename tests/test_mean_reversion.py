@@ -1,6 +1,6 @@
 import math
 
-from research.mean_reversion import cost_robustness_gate, funding_cashflow, indicators, simulate
+from research.mean_reversion import GRID, cost_robustness_gate, funding_cashflow, indicators, simulate
 
 
 def make_rows(n=240):
@@ -101,3 +101,40 @@ def test_cost_robustness_gate_rejects_non_finite_metrics():
     metrics = {"net_return_pct": math.nan, "profit_factor": 1.1}
     good = {"net_return_pct": 1.0, "profit_factor": 1.1}
     assert cost_robustness_gate(metrics, good, good)["status"] == "FAIL_COST_ROBUSTNESS"
+
+
+
+def test_mean_reversion_grid_compares_mean_and_fixed_r_targets():
+    assert len(GRID) == 288
+    modes = {item["target_mode"] for item in GRID}
+    assert modes == {"MEAN", "R_MULTIPLE"}
+    assert {item["target_r"] for item in GRID if item["target_mode"] == "R_MULTIPLE"} == {1.0, 1.5, 2.0}
+
+
+def test_mean_reversion_accepts_fixed_r_target():
+    rows = make_rows()
+    result = simulate(
+        rows,
+        {"window": 24, "entry_z": 1.5, "stop_atr": 2.0, "rsi_filter": 0,
+         "direction": "BOTH", "target_mode": "R_MULTIPLE", "target_r": 1.5},
+        100,
+        len(rows),
+    )
+    assert result["trades"] >= 0
+    assert math.isfinite(result["net_return_pct"])
+
+
+def test_mean_reversion_rejects_invalid_fixed_r_target():
+    rows = make_rows()
+    try:
+        simulate(
+            rows,
+            {"window": 24, "entry_z": 1.5, "stop_atr": 2.0, "rsi_filter": 0,
+             "target_mode": "R_MULTIPLE", "target_r": 0},
+            100,
+            len(rows),
+        )
+    except ValueError as exc:
+        assert "positive finite target_r" in str(exc)
+    else:
+        raise AssertionError("invalid fixed-R target should raise ValueError")
