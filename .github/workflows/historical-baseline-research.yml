@@ -71,6 +71,17 @@ jobs:
             --candle-csv "data/${{ matrix.symbol }}_1h.csv" \
             --symbol "${{ matrix.symbol }}" \
             --output "reports/${{ matrix.symbol }}_funding_audit.json"
+      - name: Enforce funding audit gate
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("reports/${{ matrix.symbol }}_funding_audit.json").read_text())
+          summary = {key: report.get(key) for key in ("symbol", "status", "funding_records", "proxy_price_records", "unverified_price_source_records", "gaps_over_8h")}
+          print(json.dumps(summary, indent=2))
+          if report.get("status") != "PASS":
+              raise SystemExit("Funding audit failed; downstream strategy metrics must not be treated as comparable.")
+          PY
       - name: Benchmark public strategy archetypes (diagnostic; funding excluded)
         env:
           SYMBOL: ${{ matrix.symbol }}
