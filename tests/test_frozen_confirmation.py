@@ -65,6 +65,10 @@ class FrozenConfirmationTests(unittest.TestCase):
             validate_funding_events([misaligned], "BTCUSDT", valid_time, valid_time + 28_800_000)
         with self.assertRaisesRegex(ValueError, "no funding events"):
             validate_funding_events([], "BTCUSDT", valid_time, valid_time + 28_800_000)
+        with self.assertRaisesRegex(ValueError, "window"):
+            validate_funding_events(events, "BTCUSDT", valid_time, valid_time)
+        with self.assertRaisesRegex(ValueError, "non-empty string"):
+            validate_funding_events(events, "", valid_time, valid_time + 3 * 28_800_000)
 
 
 if __name__ == "__main__":
