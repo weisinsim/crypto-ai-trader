@@ -14,7 +14,7 @@ from typing import Callable
 import httpx
 
 BASE_URL = "https://fapi.binance.com"
-FIELDS = ("funding_time", "funding_rate", "mark_price", "symbol")
+FIELDS = ("funding_time", "funding_rate", "mark_price", "symbol", "mark_price_source")
 
 
 def parse_funding_rows(raw_rows: list[dict], symbol: str, start_ms: int, end_ms: int) -> list[dict]:
@@ -27,7 +27,8 @@ def parse_funding_rows(raw_rows: list[dict], symbol: str, start_ms: int, end_ms:
             raise ValueError(f"invalid funding rate or mark price at {ts}")
         if start_ms <= ts < end_ms:
             rows.append({"funding_time": ts, "funding_rate": rate,
-                         "mark_price": mark_price, "symbol": symbol.upper()})
+                         "mark_price": mark_price, "symbol": symbol.upper(),
+                         "mark_price_source": "rest_mark_price"})
     rows.sort(key=lambda row: row["funding_time"])
     for left, right in zip(rows, rows[1:]):
         if left["funding_time"] == right["funding_time"]:
@@ -134,10 +135,12 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
             marks = {}
             for row in mark_rows:
                 try:
-                    ts, close = int(float(row[0])), float(row[4])
+                    ts, mark_open = int(float(row[0])), float(row[1])
                 except (ValueError, IndexError):
                     continue
-                marks[ts] = close
+                # Use the mark-price candle OPEN at settlement time, not its
+                # close eight hours later (which would introduce look-ahead).
+                marks[ts] = mark_open
             # Some archive months contain funding records whose timestamps do not
             # exactly align with mark-kline timestamps. Build a clearly labeled
             # prior-close proxy from the public 8h trade-kline archive; never use
@@ -167,18 +170,22 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                 if start_ms <= ts < end_ms:
                     # Settlement records align to the open of the 8h mark-price candle.
                     mark = marks.get(ts)
+                    mark_source = "mark_kline_open"
                     if mark is None and marks:
                         nearest_ts = min(marks, key=lambda mark_ts: abs(mark_ts - ts))
                         if abs(nearest_ts - ts) <= 1000:
                             mark = marks[nearest_ts]
+                            mark_source = "mark_kline_open_nearest_1s"
                     if mark is None:
                         eligible = [item for item in prior_closes if item[0] <= ts]
                         if eligible:
                             mark = eligible[-1][1]
+                            mark_source = "prior_trade_kline_close_proxy"
                     if mark is None or not isfinite(rate) or not isfinite(mark) or mark <= 0:
                         raise ValueError(f"missing/invalid settlement price proxy at {ts} for {symbol}")
                     rows.append({"funding_time": ts, "funding_rate": rate,
-                                 "mark_price": mark, "symbol": symbol})
+                                 "mark_price": mark, "symbol": symbol,
+                                 "mark_price_source": mark_source})
     rows.sort(key=lambda row: row["funding_time"])
     if not rows:
         raise ValueError(f"no funding archive records returned for {symbol}")
