@@ -85,12 +85,20 @@ def main() -> None:
     funding = [event for event in funding if start_ms <= event["funding_time"] < end_ms]
     if not funding:
         raise ValueError("no funding events inside confirmation window")
+    event_times = [int(event["funding_time"]) for event in funding]
+    if len(event_times) != len(set(event_times)):
+        raise ValueError("duplicate funding settlement timestamps detected")
+    if any(t % 28_800_000 != 0 for t in event_times):
+        raise ValueError("funding settlement timestamp is not aligned to the expected 8-hour UTC schedule")
     sources = {}
     for event in funding:
         source = event.get("mark_price_source", "unspecified")
         sources[source] = sources.get(source, 0) + 1
-    if any(source == "prior_trade_kline_close_proxy" for source in sources):
-        raise ValueError("proxy mark-price events present; reconcile authoritative settlement mark prices before confirmation")
+    # Fail closed: unknown provenance is not equivalent to authoritative data.
+    allowed_sources = {"mark_price_kline_open", "exchange_funding_mark_price"}
+    untrusted_sources = sorted(set(sources) - allowed_sources)
+    if untrusted_sources:
+        raise ValueError(f"unverified funding mark-price provenance: {untrusted_sources}")
 
     # Run only the exact frozen parameter set. The same closed-candle window is
     # evaluated at three cost assumptions; no selection occurs on these results.
