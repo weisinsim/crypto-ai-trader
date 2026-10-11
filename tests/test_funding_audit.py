@@ -103,3 +103,12 @@ def test_audit_reports_16_hour_gap_without_claiming_complete_coverage():
     assert report["gaps_over_8h"] == 1
     assert report["max_gap_hours"] == 16
     assert any("do not prove" in item for item in report["limitations"])
+
+
+
+def test_official_rest_mark_price_source_passes_provenance_gate():
+    report = audit_funding(
+        funding([0], "rest_mark_price"), candles(), "BTCUSDT"
+    )
+    assert report["status"] == "PASS"
+    assert report["unverified_price_source_records"] == 0
