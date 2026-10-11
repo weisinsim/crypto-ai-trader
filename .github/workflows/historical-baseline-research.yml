@@ -44,7 +44,7 @@ jobs:
         run: |
           # Public archives may publish the latest UTC day with a delay.
           # Use the last fully closed UTC day as the exclusive end boundary.
-          END="$(date -u -d "yesterday" +%F)"
+          END="$(date -u +%Y-%m-01)"
           START="$(date -u -d "$END -${DAYS} days" +%F)"
           python -m research.binance_archive_data \
             --symbol "$SYMBOL" --interval 1h \
@@ -56,7 +56,7 @@ jobs:
           SYMBOL: ${{ matrix.symbol }}
           DAYS: ${{ inputs.days || '365' }}
         run: |
-          END="$(date -u -d "yesterday" +%F)"
+          END="$(date -u +%Y-%m-01)"
           START="$(date -u -d "$END -${DAYS} days" +%F)"
           START_MS="$(date -u -d "$START" +%s000)"
           END_MS="$(date -u -d "$END" +%s000)"
