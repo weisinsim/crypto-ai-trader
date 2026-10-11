@@ -65,7 +65,11 @@ def main():
     if {e["symbol"] for e in funding} != {args.symbol.upper()}:
         raise ValueError("funding symbol mismatch")
     funding = [e for e in funding if rows[0]["t"] <= e["funding_time"] <= rows[-1]["t"]]
+    if not funding:
+        raise ValueError("funding CSV has no settlement events inside candle data range")
     report = json.loads(Path(args.params_json).read_text(encoding="utf-8"))
+    if report.get("symbol", "").upper() != args.symbol.upper():
+        raise ValueError("parameter report symbol does not match requested symbol")
     params = report.get("selected_parameters")
     if not isinstance(params, dict):
         raise ValueError("report must contain selected_parameters; diagnostic-only candidates are not accepted")
