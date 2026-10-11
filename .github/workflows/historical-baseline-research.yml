@@ -71,6 +71,14 @@ jobs:
             --candle-csv "data/${{ matrix.symbol }}_1h.csv" \
             --symbol "${{ matrix.symbol }}" \
             --output "reports/${{ matrix.symbol }}_funding_audit.json"
+      - name: Benchmark public strategy archetypes (diagnostic; funding excluded)
+        env:
+          SYMBOL: ${{ matrix.symbol }}
+        run: |
+          python -m research.public_strategy_benchmark \
+            --csv "data/${SYMBOL}_1h.csv" \
+            --symbol "${SYMBOL}" \
+            --output "reports/${SYMBOL}_1h_public_strategy_benchmark.json"
       - name: Run research-only baseline and walk-forward report
         env:
           SYMBOL: ${{ matrix.symbol }}
