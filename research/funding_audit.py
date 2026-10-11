@@ -46,15 +46,22 @@ def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str
     max_gap = max(gaps, default=0.0)
     sources = Counter(source for _, source in events)
     proxy_count = sum(n for name, n in sources.items() if "proxy" in name.lower())
+    approved_sources = {"mark_kline_open", "mark_kline_open_nearest_1s"}
+    unverified_count = sum(n for name, n in sources.items()
+                           if name not in approved_sources)
     expected = (end-start)/(8*3_600_000)
-    # A proxy close is not an exchange mark-price observation. Do not label a
-    # dataset clean when any funding cashflow uses a proxy valuation.
+    # Proxy closes and unknown source labels are not verified exchange mark
+    # prices. Do not mark the dataset clean if either appears.
     if max_gap > max_gap_hours and proxy_count:
         status = "FAIL_GAP_AND_PROXY_PRICE"
+    elif max_gap > max_gap_hours and unverified_count:
+        status = "FAIL_GAP_AND_UNVERIFIED_SOURCE"
     elif max_gap > max_gap_hours:
         status = "FAIL_GAP"
     elif proxy_count:
         status = "FAIL_PROXY_MARK_PRICE"
+    elif unverified_count:
+        status = "FAIL_UNVERIFIED_MARK_PRICE_SOURCE"
     else:
         status = "PASS"
     return {
@@ -68,7 +75,7 @@ def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str
         "gaps_over_8h": sum(g > 8.01 for g in gaps),
         "gaps_over_24h": sum(g > 24.01 for g in gaps),
         "mark_price_source_counts": dict(sorted(sources.items())),
-        "proxy_price_records": proxy_count,
+        "proxy_price_records": proxy_count,\n        "unverified_price_source_records": unverified_count,\n        "approved_mark_price_sources": sorted(approved_sources),
         "max_gap_gate_hours": max_gap_hours,
         "limitations": [
             "Gap checks do not prove that every funding event is present.",
