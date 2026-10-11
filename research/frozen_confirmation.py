@@ -71,13 +71,17 @@ def main() -> None:
     funding = load_funding_csv(args.funding_csv)
     if any(event["symbol"] != args.symbol for event in funding):
         raise ValueError("funding symbol does not match requested symbol")
-    rows = [row for row in rows if start_ms <= row["t"] < end_ms and row["t"] + 3_600_000 <= end_ms]
-    if not rows:
+    # Retain pre-window bars strictly for causal indicator warm-up. Only the
+    # requested window is eligible for new entries and must be fully covered.
+    rows = [row for row in rows if row["t"] < end_ms and row["t"] + 3_600_000 <= end_ms]
+    eligible = [i for i, row in enumerate(rows) if start_ms <= row["t"] < end_ms]
+    if not eligible:
         raise ValueError("no closed candles in confirmation window")
-    if rows[0]["t"] != start_ms or rows[-1]["t"] + 3_600_000 != end_ms:
+    start_idx, end_idx = eligible[0], eligible[-1] + 1
+    if rows[start_idx]["t"] != start_ms or rows[end_idx - 1]["t"] + 3_600_000 != end_ms:
         raise ValueError("candle data does not cover the full requested window")
     if any(b["t"] - a["t"] != 3_600_000 for a, b in zip(rows, rows[1:])):
-        raise ValueError("confirmation candles contain gaps")
+        raise ValueError("candle data contains gaps, including warm-up history")
     funding = [event for event in funding if start_ms <= event["funding_time"] < end_ms]
     if not funding:
         raise ValueError("no funding events inside confirmation window")
@@ -97,12 +101,12 @@ def main() -> None:
         per_side_cost = (rt_cost_pct / 100) / 2
         if args.symbol == "BTCUSDT":
             result = run_breakout_retest(
-                rows, params, 0, len(rows), fee_rate=per_side_cost / 2,
+                rows, params, start_idx, end_idx, fee_rate=per_side_cost / 2,
                 slippage_rate=per_side_cost / 2, funding_rates=funding, symbol=args.symbol,
             )
         else:
             result = simulate_mean_reversion(
-                rows, params, 0, len(rows), fee=per_side_cost / 2,
+                rows, params, start_idx, end_idx, fee=per_side_cost / 2,
                 slippage=per_side_cost / 2, funding_rates=funding, symbol=args.symbol,
             )
         results[f"round_trip_cost_{rt_cost_pct:.2f}pct"] = summarize(result)
