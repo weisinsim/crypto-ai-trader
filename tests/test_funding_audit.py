@@ -50,3 +50,17 @@ def test_mixed_sources_fail_clean_audit_when_any_proxy_is_present():
     report = audit_funding(rows, candles(24), "BTCUSDT")
     assert report["status"] == "FAIL_PROXY_MARK_PRICE"
     assert report["proxy_price_records"] == 1
+
+
+def test_unknown_mark_price_source_fails_audit():
+    report = audit_funding(funding([0], "unspecified"), candles(), "BTCUSDT")
+    assert report["status"] == "FAIL_UNVERIFIED_MARK_PRICE_SOURCE"
+    assert report["unverified_price_source_records"] == 1
+
+
+def test_approved_mark_price_sources_pass_provenance_gate():
+    rows = funding([0, 8*3_600_000, 16*3_600_000], "mark_kline_open")
+    rows[1]["mark_price_source"] = "mark_kline_open_nearest_1s"
+    report = audit_funding(rows, candles(24), "BTCUSDT")
+    assert report["status"] == "PASS"
+    assert report["unverified_price_source_records"] == 0
