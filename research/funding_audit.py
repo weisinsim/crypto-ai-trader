@@ -46,7 +46,7 @@ def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str
     max_gap = max(gaps, default=0.0)
     sources = Counter(source for _, source in events)
     proxy_count = sum(n for name, n in sources.items() if "proxy" in name.lower())
-    approved_sources = {"mark_kline_open", "mark_kline_open_nearest_1s", "mark_kline_1m_prior_close", "mark_kline_1m_open_nearest_1s"}
+    approved_sources = {"mark_kline_open", "mark_kline_open_nearest_1s", "mark_kline_1m_prior_close", "mark_kline_1m_open_nearest_1s", "rest_mark_price"}
     unverified_count = sum(n for name, n in sources.items()
                            if name not in approved_sources)
     unverified_records = [
