@@ -127,21 +127,13 @@ jobs:
         env:
           SYMBOL: ${{ matrix.symbol }}
         run: |
-          if [ -s "data/${SYMBOL}_funding.csv" ]; then
-            python -m research.breakout_retest \
-              --csv "data/${SYMBOL}_1h.csv" \
-              --symbol "${SYMBOL}" --interval 1h \
-              --train-fraction 0.6 \
-              --funding-csv "data/${SYMBOL}_funding.csv" \
-              --output "reports/${SYMBOL}_1h_breakout_retest.json"
-          else
-            echo "::warning::Historical funding unavailable; breakout/retest report excludes funding cashflows."
-            python -m research.breakout_retest \
-              --csv "data/${SYMBOL}_1h.csv" \
-              --symbol "${SYMBOL}" --interval 1h \
-              --train-fraction 0.6 \
-              --output "reports/${SYMBOL}_1h_breakout_retest.json"
-          fi
+          test -s "data/${SYMBOL}_funding.csv" || { echo "::error::Historical funding file missing; refusing a non-comparable breakout/retest promotion run."; exit 1; }
+          python -m research.breakout_retest \
+            --csv "data/${SYMBOL}_1h.csv" \
+            --symbol "${SYMBOL}" --interval 1h \
+            --train-fraction 0.6 \
+            --funding-csv "data/${SYMBOL}_funding.csv" \
+            --output "reports/${SYMBOL}_1h_breakout_retest.json"
       - name: Run mean-reversion research
         env:
           SYMBOL: ${{ matrix.symbol }}
