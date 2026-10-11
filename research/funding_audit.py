@@ -49,6 +49,10 @@ def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str
     approved_sources = {"mark_kline_open", "mark_kline_open_nearest_1s"}
     unverified_count = sum(n for name, n in sources.items()
                            if name not in approved_sources)
+    unverified_records = [
+        {"funding_time": ts, "mark_price_source": source}
+        for ts, source in events if source not in approved_sources
+    ]
     expected = (end-start)/(8*3_600_000)
     # Proxy closes and unknown source labels are not verified exchange mark
     # prices. Do not mark the dataset clean if either appears.
@@ -77,6 +81,7 @@ def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str
         "mark_price_source_counts": dict(sorted(sources.items())),
         "proxy_price_records": proxy_count,
         "unverified_price_source_records": unverified_count,
+        "unverified_records": unverified_records,
         "approved_mark_price_sources": sorted(approved_sources),
         "max_gap_gate_hours": max_gap_hours,
         "limitations": [
