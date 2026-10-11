@@ -1,6 +1,6 @@
 import math
 
-from research.mean_reversion import GRID, cost_robustness_gate, funding_cashflow, indicators, simulate
+from research.mean_reversion import GRID, cost_robustness_gate, ema_series, funding_cashflow, indicators, simulate
 
 
 def make_rows(n=240):
@@ -105,9 +105,10 @@ def test_cost_robustness_gate_rejects_non_finite_metrics():
 
 
 def test_mean_reversion_grid_compares_mean_and_fixed_r_targets():
-    assert len(GRID) == 288
+    assert len(GRID) == 864
     modes = {item["target_mode"] for item in GRID}
     assert modes == {"MEAN", "R_MULTIPLE"}
+    assert {item["trend_filter"] for item in GRID} == {0, 100, 200}
     assert {item["target_r"] for item in GRID if item["target_mode"] == "R_MULTIPLE"} == {1.0, 1.5, 2.0}
 
 
@@ -138,3 +139,31 @@ def test_mean_reversion_rejects_invalid_fixed_r_target():
         assert "positive finite target_r" in str(exc)
     else:
         raise AssertionError("invalid fixed-R target should raise ValueError")
+
+
+
+def test_ema_series_is_causal_and_respects_warmup():
+    rows = make_rows(220)
+    ema = ema_series(rows, 100)
+    assert ema[98] is None
+    assert ema[99] is not None
+    changed_future = [dict(row) for row in rows]
+    changed_future[150]["c"] += 1000
+    ema_changed = ema_series(changed_future, 100)
+    assert ema_changed[149] == ema[149]
+
+
+def test_mean_reversion_rejects_invalid_trend_filter():
+    rows = make_rows()
+    try:
+        simulate(
+            rows,
+            {"window": 24, "entry_z": 1.5, "stop_atr": 2.0, "rsi_filter": 0,
+             "trend_filter": 50},
+            100,
+            len(rows),
+        )
+    except ValueError as exc:
+        assert "trend_filter" in str(exc)
+    else:
+        raise AssertionError("invalid trend filter should raise ValueError")
