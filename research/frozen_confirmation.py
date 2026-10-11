@@ -47,6 +47,10 @@ def summarize(result: dict) -> dict:
 
 def validate_funding_events(funding: list[dict], symbol: str, start_ms: int, end_ms: int) -> dict:
     """Validate in-window settlement cadence and provenance; return source counts."""
+    if not isinstance(start_ms, int) or not isinstance(end_ms, int) or end_ms <= start_ms:
+        raise ValueError("funding validation window must satisfy integer start_ms < end_ms")
+    if not isinstance(symbol, str) or not symbol.strip():
+        raise ValueError("funding validation symbol must be a non-empty string")
     if any(event.get("symbol") != symbol for event in funding):
         raise ValueError("funding symbol does not match requested symbol")
     window = [event for event in funding if start_ms <= int(event["funding_time"]) < end_ms]
