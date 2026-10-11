@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from research.public_strategy_benchmark import benchmark, load_candles, rsi, sma, signals
+from research.public_strategy_benchmark import benchmark, funding_cost, load_candles, rsi, sma, signals
 
 
 def rows(n=500):
@@ -51,3 +51,14 @@ def test_loader_rejects_short_dataset(tmp_path: Path):
         writer.writerow({"t": 0, "o": 100, "h": 101, "l": 99, "c": 100, "v": 1})
     with pytest.raises(ValueError, match="250"):
         load_candles(str(path))
+
+
+
+def test_funding_cost_includes_settlement_at_exit_and_excludes_entry():
+    events = [
+        {"t": 100, "rate": 0.01, "mark": 100},
+        {"t": 200, "rate": 0.01, "mark": 100},
+        {"t": 300, "rate": -0.005, "mark": 100},
+    ]
+    # Entry timestamp 100 is excluded; exit timestamp 300 is included.
+    assert funding_cost(events, 100, 300, 100) == pytest.approx(0.005)
