@@ -13,7 +13,7 @@ from research.run_backtest import load_csv, load_funding_csv
 GRID = [
     {"window": window, "entry_z": entry_z, "stop_atr": stop_atr,
      "rsi_filter": rsi_filter, "direction": direction,
-     "target_mode": target_mode, "target_r": target_r}
+     "target_mode": target_mode, "target_r": target_r, "trend_filter": trend_filter}
     for window in (24, 48, 72)
     for entry_z in (1.5, 2.0)
     for stop_atr in (1.5, 2.0)
@@ -21,6 +21,7 @@ GRID = [
     for direction in ("BOTH", "LONG", "SHORT")
     for target_mode, target_r_values in (("MEAN", (None,)), ("R_MULTIPLE", (1.0, 1.5, 2.0)))
     for target_r in target_r_values
+    for trend_filter in (0, 100, 200)
 ]
 
 
@@ -44,6 +45,21 @@ def indicators(rows: list[dict], window: int) -> tuple[list[float | None], list[
                 50.0 if avg_gain == 0 and avg_loss == 0 else
                 0.0 if avg_gain == 0 else 100.0 - 100.0/(1.0 + avg_gain/avg_loss))
     return mean_line, std_line, rsi_line
+
+
+def ema_series(rows: list[dict], period: int) -> list[float | None]:
+    """Causal EMA using only closes up to and including each bar."""
+    out: list[float | None] = [None] * len(rows)
+    if period <= 0:
+        return out
+    alpha = 2.0 / (period + 1)
+    value = None
+    for i, row in enumerate(rows):
+        close = float(row["c"])
+        value = close if value is None else alpha * close + (1 - alpha) * value
+        if i >= period - 1:
+            out[i] = value
+    return out
 
 
 def atr_series(rows: list[dict], period: int = 14) -> list[float | None]:
@@ -93,8 +109,11 @@ def simulate(rows: list[dict], params: dict, start: int, end: int,
     direction = params.get("direction", "BOTH")
     target_mode = params.get("target_mode", "MEAN")
     target_r = params.get("target_r")
+    trend_filter = params.get("trend_filter", 0)
     if direction not in ("BOTH", "LONG", "SHORT"):
         raise ValueError("direction must be BOTH, LONG, or SHORT")
+    if trend_filter not in (0, 100, 200):
+        raise ValueError("trend_filter must be 0, 100, or 200")
     if target_mode not in ("MEAN", "R_MULTIPLE"):
         raise ValueError("target_mode must be MEAN or R_MULTIPLE")
     if target_mode == "R_MULTIPLE" and (
@@ -116,6 +135,7 @@ def simulate(rows: list[dict], params: dict, start: int, end: int,
             raise ValueError("duplicate funding timestamp")
     mean_line, std_line, rsi_line = indicators(rows, window)
     atr = atr_series(rows)
+    trend_ema = ema_series(rows, trend_filter)
     equity, peak, max_dd, trades = 1.0, 1.0, 0.0, []
     i = max(start, window + 14)
     while i < end - 1:
@@ -134,6 +154,10 @@ def simulate(rows: list[dict], params: dict, start: int, end: int,
             side = 0
         elif direction == "SHORT" and side > 0:
             side = 0
+        if side and trend_filter:
+            ema = trend_ema[i]
+            if ema is None or (side == 1 and float(rows[i]["c"]) <= ema) or (side == -1 and float(rows[i]["c"]) >= ema):
+                side = 0
         if not side:
             i += 1
             continue
@@ -291,7 +315,7 @@ def main():
             severe_no_funding=simulate(rows,params,split,len(rows),fee=0.0005,slippage=0.0018, funding_rates=None, symbol=args.symbol)
     report={"status":"RESEARCH_ONLY","symbol":args.symbol.upper(),"interval":args.interval,"bars":len(rows),
             "split":{"train_fraction":args.train_fraction,"train_bars":split,"holdout_bars":len(rows)-split},
-            "strategy":"causal rolling mean-reversion: prior-window z-score, optional RSI extreme filter, direction-specific candidate (BOTH/LONG/SHORT), next-open entry; compares mean target with fixed-R targets (1R/1.5R/2R), ATR stop, conservative stop-first same-bar handling",
+            "strategy":"causal rolling mean-reversion: prior-window z-score, optional RSI extreme filter, direction-specific candidate (BOTH/LONG/SHORT), next-open entry; compares mean target with fixed-R targets (1R/1.5R/2R) and optional causal EMA trend alignment (100/200), ATR stop, conservative stop-first same-bar handling",
             "candidate_count":len(candidates),"eligible_count":len(eligible),
             "selected_parameters":selected["parameters"] if selected else None,
             "diagnostic_only_parameters":diagnostic["parameters"] if diagnostic and not selected else None,
