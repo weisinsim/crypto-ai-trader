@@ -155,6 +155,7 @@ jobs:
             --csv "data/${SYMBOL}_1h.csv" \
             --symbol "${SYMBOL}" --interval 1h \
             --train-fraction 0.6 \
+            --funding-csv "data/${SYMBOL}_funding.csv" \
             --output "reports/${SYMBOL}_1h_adaptive.json"
           python - <<'PY'
           import json
