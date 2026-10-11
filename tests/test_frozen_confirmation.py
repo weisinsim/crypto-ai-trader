@@ -60,6 +60,11 @@ class FrozenConfirmationTests(unittest.TestCase):
             validate_funding_events([proxy], "BTCUSDT", valid_time, valid_time + 28_800_000)
         with self.assertRaisesRegex(ValueError, "symbol"):
             validate_funding_events([events[0]], "AVAXUSDT", valid_time, valid_time + 28_800_000)
+        misaligned = {**events[0], "funding_time": valid_time + 1}
+        with self.assertRaisesRegex(ValueError, "aligned"):
+            validate_funding_events([misaligned], "BTCUSDT", valid_time, valid_time + 28_800_000)
+        with self.assertRaisesRegex(ValueError, "no funding events"):
+            validate_funding_events([], "BTCUSDT", valid_time, valid_time + 28_800_000)
 
 
 if __name__ == "__main__":
