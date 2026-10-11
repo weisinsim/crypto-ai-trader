@@ -89,23 +89,34 @@ def run_ema_cross_backtest(
     rows = validate_candles(candles)
     funding_events = {}
     if funding_rates is not None:
-        candle_timestamps = {int(row["t"]) for row in rows}
+        candle_timestamps = sorted(int(row["t"]) for row in rows)
+        candle_timestamp_set = set(candle_timestamps)
         previous_funding_ts = None
         for event in sorted(list(funding_rates), key=lambda item: int(item["funding_time"])):
-            funding_ts = int(event["funding_time"])
+            raw_funding_ts = int(event["funding_time"])
             rate = float(event["funding_rate"])
             mark_price = float(event["mark_price"])
             if not isfinite(rate) or not isfinite(mark_price) or mark_price <= 0:
                 raise ValueError("funding events require finite rates and positive finite mark prices")
-            if previous_funding_ts == funding_ts:
-                raise ValueError(f"duplicate funding timestamp: {funding_ts}")
-            if funding_ts not in candle_timestamps:
-                raise ValueError(
-                    f"funding timestamp {funding_ts} does not align with a candle open; "
-                    "use a finer candle interval or event-aware execution data"
-                )
+            if previous_funding_ts == raw_funding_ts:
+                raise ValueError(f"duplicate funding timestamp: {raw_funding_ts}")
+            # Exchange funding timestamps can differ from candle-open timestamps
+            # by a few milliseconds. Normalize only tiny clock/serialization offsets;
+            # never map a materially off-grid event to an hourly candle.
+            if raw_funding_ts in candle_timestamp_set:
+                funding_ts = raw_funding_ts
+            else:
+                nearest_ts = min(candle_timestamps, key=lambda ts: abs(ts - raw_funding_ts))
+                if abs(nearest_ts - raw_funding_ts) > 1000:
+                    raise ValueError(
+                        f"funding timestamp {raw_funding_ts} is {abs(nearest_ts - raw_funding_ts)}ms "
+                        "from the nearest candle open (>1000ms); use event-aware execution data"
+                    )
+                funding_ts = nearest_ts
+            if funding_ts in funding_events:
+                raise ValueError(f"funding events normalize to duplicate candle timestamp: {funding_ts}")
             funding_events[funding_ts] = {"funding_rate": rate, "mark_price": mark_price}
-            previous_funding_ts = funding_ts
+            previous_funding_ts = raw_funding_ts
     if fast < 2 or slow <= fast or atr_period < 1 or trend_period < 0:
         raise ValueError("require 2 <= fast < slow, atr_period >= 1 and trend_period >= 0")
     numeric_params = {
