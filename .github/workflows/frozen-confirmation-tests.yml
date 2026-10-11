@@ -1,6 +1,7 @@
 name: Frozen confirmation unit tests
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - "research/frozen_confirmation.py"
