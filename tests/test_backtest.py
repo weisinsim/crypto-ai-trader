@@ -93,6 +93,26 @@ class BacktestTests(unittest.TestCase):
             run_ema_cross_backtest(rows, fast=3, slow=9, atr_period=3,
                                    funding_rates=[event, event])
 
+    def test_funding_timestamp_with_small_millisecond_offset_is_normalized(self):
+        rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(100)])
+        event_ts = rows[50]["t"] + 13
+        result = run_ema_cross_backtest(
+            rows, fast=3, slow=9, atr_period=3, fee_rate=0, slippage_rate=0,
+            funding_rates=[{"funding_time": event_ts, "funding_rate": 0.001,
+                            "mark_price": 100.0}],
+        )
+        self.assertEqual(result["status"], "COMPLETED")
+
+    def test_funding_timestamp_far_from_candle_open_is_rejected(self):
+        rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(100)])
+        event_ts = rows[50]["t"] + 1001
+        with self.assertRaisesRegex(ValueError, "from the nearest candle open"):
+            run_ema_cross_backtest(
+                rows, fast=3, slow=9, atr_period=3,
+                funding_rates=[{"funding_time": event_ts, "funding_rate": 0.001,
+                                "mark_price": 100.0}],
+            )
+
     def test_risk_fraction_must_be_between_zero_and_one(self):
         rows = candles_from_closes([100 + (i % 5) for i in range(80)])
         for risk in (0, -0.1, 1.1):
