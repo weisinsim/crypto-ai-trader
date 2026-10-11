@@ -37,4 +37,4 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install httpx; fi
       - name: Run frozen confirmation tests
-        run: python -m unittest tests.test_frozen_confirmation -v
+        run: python -m unittest discover -s tests -p 'test_frozen_confirmation.py' -v
