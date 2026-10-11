@@ -121,6 +121,12 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                 # Current-month monthly archives may not be published yet.
                 # Use only official daily funding archives as a fallback.
                 # Never estimate or synthesize missing funding records.
+                month_start_ms = max(start_ms, int(month.timestamp() * 1000))
+                next_month = month.replace(
+                    year=month.year + (month.month == 12),
+                    month=1 if month.month == 12 else month.month + 1,
+                )
+                month_end_ms = min(end_ms, int(next_month.timestamp() * 1000))
                 day = datetime.fromtimestamp(month_start_ms / 1000, timezone.utc).replace(
                     hour=0, minute=0, second=0, microsecond=0
                 )
