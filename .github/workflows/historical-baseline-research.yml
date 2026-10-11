@@ -63,6 +63,14 @@ jobs:
           python -m research.funding_data \
             --symbol "$SYMBOL" --start-ms "$START_MS" --end-ms "$END_MS" \
             --output "data/${SYMBOL}_funding.csv"
+      - name: Audit historical funding coverage and price provenance
+        run: |
+          test -s "data/${{ matrix.symbol }}_funding.csv" || { echo "::error::Funding data missing; refusing to treat this run as fully comparable."; exit 1; }
+          python -m research.funding_audit \
+            --funding-csv "data/${{ matrix.symbol }}_funding.csv" \
+            --candle-csv "data/${{ matrix.symbol }}_1h.csv" \
+            --symbol "${{ matrix.symbol }}" \
+            --output "reports/${{ matrix.symbol }}_funding_audit.json"
       - name: Run research-only baseline and walk-forward report
         env:
           SYMBOL: ${{ matrix.symbol }}
