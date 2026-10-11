@@ -42,8 +42,10 @@ jobs:
           SYMBOL: ${{ matrix.symbol }}
           DAYS: ${{ inputs.days || '365' }}
         run: |
-          START="$(date -u -d "${DAYS} days ago" +%F)"
-          END="$(date -u +%F)"
+          # Public archives may publish the latest UTC day with a delay.
+          # Use the last fully closed UTC day as the exclusive end boundary.
+          END="$(date -u -d "yesterday" +%F)"
+          START="$(date -u -d "$END -${DAYS} days" +%F)"
           python -m research.binance_archive_data \
             --symbol "$SYMBOL" --interval 1h \
             --start "$START" --end "$END" \
@@ -54,8 +56,10 @@ jobs:
           SYMBOL: ${{ matrix.symbol }}
           DAYS: ${{ inputs.days || '365' }}
         run: |
-          START_MS="$(date -u -d "${DAYS} days ago" +%s000)"
-          END_MS="$(date -u +%s000)"
+          END="$(date -u -d "yesterday" +%F)"
+          START="$(date -u -d "$END -${DAYS} days" +%F)"
+          START_MS="$(date -u -d "$START" +%s000)"
+          END_MS="$(date -u -d "$END" +%s000)"
           python -m research.funding_data \
             --symbol "$SYMBOL" --start-ms "$START_MS" --end-ms "$END_MS" \
             --output "data/${SYMBOL}_funding.csv"
