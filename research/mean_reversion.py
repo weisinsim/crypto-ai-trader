@@ -12,12 +12,15 @@ from research.run_backtest import load_csv, load_funding_csv
 
 GRID = [
     {"window": window, "entry_z": entry_z, "stop_atr": stop_atr,
-     "rsi_filter": rsi_filter, "direction": direction}
+     "rsi_filter": rsi_filter, "direction": direction,
+     "target_mode": target_mode, "target_r": target_r}
     for window in (24, 48, 72)
     for entry_z in (1.5, 2.0)
     for stop_atr in (1.5, 2.0)
     for rsi_filter in (0, 1)
     for direction in ("BOTH", "LONG", "SHORT")
+    for target_mode, target_r_values in (("MEAN", (None,)), ("R_MULTIPLE", (1.0, 1.5, 2.0)))
+    for target_r in target_r_values
 ]
 
 
@@ -88,8 +91,16 @@ def simulate(rows: list[dict], params: dict, start: int, end: int,
     window, entry_z, stop_atr, rsi_filter = (
         params["window"], params["entry_z"], params["stop_atr"], params["rsi_filter"])
     direction = params.get("direction", "BOTH")
+    target_mode = params.get("target_mode", "MEAN")
+    target_r = params.get("target_r")
     if direction not in ("BOTH", "LONG", "SHORT"):
         raise ValueError("direction must be BOTH, LONG, or SHORT")
+    if target_mode not in ("MEAN", "R_MULTIPLE"):
+        raise ValueError("target_mode must be MEAN or R_MULTIPLE")
+    if target_mode == "R_MULTIPLE" and (
+        not isinstance(target_r, (int, float)) or not math.isfinite(target_r) or target_r <= 0
+    ):
+        raise ValueError("R_MULTIPLE target requires positive finite target_r")
     if funding_rates is not None:
         if not symbol:
             raise ValueError("symbol is required when funding_rates are supplied")
@@ -130,7 +141,7 @@ def simulate(rows: list[dict], params: dict, start: int, end: int,
         entry = float(rows[entry_idx]["o"])
         risk = stop_atr * a
         stop = entry - side * risk
-        target = mu
+        target = mu if target_mode == "MEAN" else entry + side * float(target_r) * risk
         # Avoid a target that is not on the profitable side of the next-open entry.
         if (target-entry)*side <= 0:
             i += 1
@@ -280,7 +291,7 @@ def main():
             severe_no_funding=simulate(rows,params,split,len(rows),fee=0.0005,slippage=0.0018, funding_rates=None, symbol=args.symbol)
     report={"status":"RESEARCH_ONLY","symbol":args.symbol.upper(),"interval":args.interval,"bars":len(rows),
             "split":{"train_fraction":args.train_fraction,"train_bars":split,"holdout_bars":len(rows)-split},
-            "strategy":"causal rolling mean-reversion: prior-window z-score, optional RSI extreme filter, direction-specific candidate (BOTH/LONG/SHORT), next-open entry, mean target, ATR stop; conservative stop-first same-bar handling",
+            "strategy":"causal rolling mean-reversion: prior-window z-score, optional RSI extreme filter, direction-specific candidate (BOTH/LONG/SHORT), next-open entry; compares mean target with fixed-R targets (1R/1.5R/2R), ATR stop, conservative stop-first same-bar handling",
             "candidate_count":len(candidates),"eligible_count":len(eligible),
             "selected_parameters":selected["parameters"] if selected else None,
             "diagnostic_only_parameters":diagnostic["parameters"] if diagnostic and not selected else None,
