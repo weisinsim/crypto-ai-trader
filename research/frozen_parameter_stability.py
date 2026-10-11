@@ -92,6 +92,7 @@ def main() -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"FROZEN PARAMETER STABILITY symbol={args.symbol.upper()} bars={len(rows)}")
+    print(f"funding_data={report['funding_data']}")
     for segment, costs in report["segments"].items():
         for cost_name, metrics in costs.items():
             print(
