@@ -175,6 +175,7 @@ jobs:
           python -m research.frozen_parameter_stability \
             --csv "data/${SYMBOL}_1h.csv" \
             --symbol "${SYMBOL}" --train-fraction 0.6 \
+            --funding-csv "data/${SYMBOL}_funding.csv" \
             --output "reports/${SYMBOL}_1h_frozen_stability.json"
       - name: Upload raw data and report
         if: always()
