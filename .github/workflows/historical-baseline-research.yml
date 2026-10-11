@@ -223,6 +223,28 @@ jobs:
             --funding-csv "data/${SYMBOL}_funding.csv" \
             --params-json "reports/${SYMBOL}_1h_mean_reversion.json" \
             --output "reports/${SYMBOL}_1h_frozen_stability.json"
+      - name: Run AVAX frozen-parameter follow-up diagnostics
+        if: matrix.symbol == 'AVAXUSDT'
+        env:
+          SYMBOL: ${{ matrix.symbol }}
+        run: |
+          test -s "data/${SYMBOL}_funding.csv" || { echo "::error::AVAX follow-up requires historical funding data."; exit 1; }
+          python -m research.avax_followup_diagnostics \
+            --csv "data/${SYMBOL}_1h.csv" \
+            --symbol "${SYMBOL}" \
+            --funding-csv "data/${SYMBOL}_funding.csv" \
+            --params-json "reports/${SYMBOL}_1h_mean_reversion.json" \
+            --train-fraction 0.6 \
+            --output "reports/${SYMBOL}_1h_avax_followup.json"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("reports/AVAXUSDT_1h_avax_followup.json").read_text())
+          print("=== AVAX FOLLOW-UP (RESEARCH ONLY) ===")
+          print(f"parameter_neighborhood_rows={len(report['train_only_parameter_neighborhood'])}")
+          print(f"holdout_half_cost_rows={len(report['chronological_holdout_halves'])}")
+          print(f"production_gate={report['production_gate']}")
+          PY
       - name: Upload raw data and report
         if: always()
         uses: actions/upload-artifact@v4
