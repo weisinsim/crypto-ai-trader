@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Crypto AI Trader V28.1 Asset-Adaptive Multi-Asset</title>
+<title>Crypto AI Trader V28.2 Research-Gated Dashboard</title>
 <style>
 :root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",Arial,sans-serif;background:#0b0f14;color:#eef2f7}
 *{box-sizing:border-box}body{margin:0;background:#0b0f14}.wrap{max-width:1100px;margin:auto;padding:14px}
@@ -18,14 +18,14 @@ h1{font-size:22px;margin:0 0 5px}.sub{font-size:12px;color:#9aa4b2}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}.kv{background:#0d131a;border-radius:9px;padding:7px}.k{font-size:10px;color:#7f8997}.v{font-size:12px;margin-top:2px}
 .signal{margin-top:10px;border-top:1px solid #202a35;padding-top:9px}.score{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:12px}.score b{font-size:15px}.decision{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:7px 0;padding:8px 10px;border-radius:9px;background:#0d131a;border:1px solid #27313d;font-size:11px}.decision b{font-size:12px}.decision.wait{border-color:#665a2b}.decision.wait b{color:#ffe17a}.decision.ready{border-color:#245d3f}.decision.ready b{color:#67f0a4}.decision.blocked{border-color:#5b2730}.decision.blocked b{color:#ff8c98}.risk{font-size:10px;color:#8993a1;line-height:1.5}.levels{font-size:11px;color:#b6bfcb;line-height:1.65}
 .toolbar{display:flex;gap:7px;overflow:auto;margin-top:12px}.filter{border:1px solid #27313d;background:#121820;color:#cbd2dc;border-radius:9px;padding:7px 10px;font-size:11px}.filter.active{background:#26313d;color:#fff}
-.small{font-size:10px;color:#697482;margin-top:12px}.historyPanel{margin-top:14px}.history{background:#121820;border:1px solid #202a35;border-radius:14px;padding:12px}.history h3{margin:0 0 8px;font-size:14px}.histrow{display:grid;grid-template-columns:74px 70px 1fr 62px;gap:6px;padding:8px 0;border-top:1px solid #202a35;font-size:10px;color:#aeb7c4}.histrow:first-child{border-top:0}.histrow b{color:#eef2f7}.activeSig{color:#67f0a4}.invalidSig{color:#ff8c98}
+.small{font-size:10px;color:#697482;margin-top:12px}.historyPanel{margin-top:14px}.researchPanel{margin-top:12px;background:#121820;border:1px solid #344151;border-radius:14px;padding:12px}.researchPanel h2{font-size:14px;margin:0 0 6px}.researchPanel .intro{font-size:11px;color:#aab4c2;line-height:1.5}.researchScroll{overflow-x:auto}.researchTable{width:100%;border-collapse:collapse;margin-top:8px;font-size:10px}.researchTable th,.researchTable td{text-align:left;padding:7px 4px;border-top:1px solid #27313d;white-space:nowrap}.researchTable th{color:#8793a3}.researchTable .fail{color:#ff8c98;font-weight:700}.researchLink{display:inline-block;margin-top:8px;color:#8ab4ff;font-size:11px;text-decoration:none}.history{background:#121820;border:1px solid #202a35;border-radius:14px;padding:12px}.history h3{margin:0 0 8px;font-size:14px}.histrow{display:grid;grid-template-columns:74px 70px 1fr 62px;gap:6px;padding:8px 0;border-top:1px solid #202a35;font-size:10px;color:#aeb7c4}.histrow:first-child{border-top:0}.histrow b{color:#eef2f7}.activeSig{color:#67f0a4}.invalidSig{color:#ff8c98}
 @media(min-width:760px){.cards{grid-template-columns:repeat(3,1fr)}}@media(max-width:420px){.cards{grid-template-columns:1fr}.price{font-size:18px}.card{min-width:0}.row{align-items:flex-start}.badge{font-size:10px}}
 </style>
 </head>
 <body>
 <div class="wrap">
 <header>
-<h1>Crypto AI Trader V28 Asset-Adaptive Multi-Asset</h1>
+<h1>Crypto AI Trader V28.2 · Research-Gated</h1>
 <div class="sub">BTC · ETH · SOL · AVAX · XRP · 各币种独立模型 · 4H Regime + 1H 收盘确认 · WebSocket实时</div>
 <div id="status" class="status"><span class="dot"></span><span id="stxt">连接中…</span></div><div id="diag" class="small">数据源：连接中</div>
 </header>
@@ -35,8 +35,8 @@ h1{font-size:22px;margin:0 0 5px}.sub{font-size:12px;color:#9aa4b2}
 <button class="filter" data-f="SHORT">SHORT</button><button class="filter" data-f="WATCH-LONG">WATCH-LONG</button><button class="filter" data-f="WATCH-SHORT">WATCH-SHORT</button>
 <button class="filter" data-f="NO-TRADE">NO-TRADE</button>
 </div>
-<div id="cards" class="cards"></div><div id="historyPanel" class="historyPanel"></div>
-<div class="small">V28.1：Asset-Adaptive Multi-Asset。每个币种独立模型、方向与持仓时间；ETH暂无生产Alpha，XRP V27.2保持冻结。信号仅用于交易决策辅助，不保证盈利。</div>
+<section class="researchPanel" aria-label="模型验证状态"><h2>模型验证面板 · 2026-10-11</h2><div class="intro">五币种历史研究及资金费率审计流水线成功，但 10/10 个候选组合未通过全部成本稳健性门槛。所有模型保持 RESEARCH ONLY；不构成实盘授权。</div><div class="researchScroll"><table class="researchTable"><thead><tr><th>币种</th><th>候选策略</th><th>基础收益</th><th>成本 0.30%</th><th>成本 0.46%</th><th>状态</th></tr></thead><tbody><tr><td>BTC</td><td>突破回踩 SHORT</td><td>+7.61%</td><td>+0.00%</td><td>-7.09%</td><td class="fail">未通过</td></tr><tr><td>AVAX</td><td>均值回归 SHORT</td><td>+11.12%</td><td>+4.06%</td><td>-2.55%</td><td class="fail">未通过</td></tr><tr><td>XRP</td><td>突破回踩</td><td>+1.73%</td><td>-0.17%</td><td>-2.04%</td><td class="fail">未通过</td></tr><tr><td>ETH</td><td>突破回踩</td><td>-3.12%</td><td>-6.54%</td><td>-9.84%</td><td class="fail">未通过</td></tr><tr><td>SOL</td><td>突破回踩</td><td>-3.94%</td><td>-7.29%</td><td>-10.53%</td><td class="fail">未通过</td></tr></tbody></table></div><a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/actions/runs/38159007954" target="_blank" rel="noopener">打开五币种历史研究报告 ↗</a><div class="intro">晋级需同时审查样本外收益、Profit Factor、最大回撤、交易数量、参数稳定性和独立后续窗口。CI 通过不等于策略盈利。</div></section><div id="cards" class="cards"></div><div id="historyPanel" class="historyPanel"></div>
+<div class="small">V28.2：Research-Gated Dashboard。实时行情与历史回测状态分开显示；所有候选模型仍处于研究阶段，信号不保证盈利。</div>
 </div>
 <script>
 const state={data:{},history:{},filter:"ALL",ws:null};
