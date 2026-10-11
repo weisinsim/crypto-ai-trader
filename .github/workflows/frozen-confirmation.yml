@@ -105,15 +105,39 @@ jobs:
           print(f"funding_records={len(rows)} mark_price_sources={sources}")
           PY
 
+      - name: Prepare exact confirmation-window candles for audit
+        env:
+          SYMBOL: ${{ matrix.symbol }}
+          START_DATE: ${{ inputs.start_date }}
+          END_DATE: ${{ inputs.end_date }}
+        run: |
+          python - <<'PY'
+          import csv, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          start = int(datetime.strptime(os.environ["START_DATE"], "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
+          end = int(datetime.strptime(os.environ["END_DATE"], "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
+          source = Path(f"data/confirm_{os.environ['SYMBOL']}_1h.csv")
+          target = Path(f"data/confirm_{os.environ['SYMBOL']}_audit_1h.csv")
+          with source.open(newline="", encoding="utf-8") as src, target.open("w", newline="", encoding="utf-8") as dst:
+              reader = csv.DictReader(src)
+              writer = csv.DictWriter(dst, fieldnames=reader.fieldnames)
+              writer.writeheader()
+              rows = [row for row in reader if start <= int(row["t"]) < end]
+              writer.writerows(rows)
+          print(f"audit_window_candles={len(rows)}")
+          if not rows:
+              raise SystemExit("No candles inside the confirmation window; refusing audit.")
+          PY
+
       - name: Audit confirmation funding provenance and coverage
         env:
           SYMBOL: ${{ matrix.symbol }}
         run: |
           python -m research.funding_audit \
             --funding-csv "data/confirm_${SYMBOL}_funding.csv" \
-            --candle-csv "data/confirm_${SYMBOL}_1h.csv" \
+            --candle-csv "data/confirm_${SYMBOL}_audit_1h.csv" \
             --symbol "$SYMBOL" \
-            --max-gap-hours 8 \
             --max-gap-hours 8 \
             --output "reports/confirm_${SYMBOL}_funding_audit.json"
       - name: Run frozen confirmation only
