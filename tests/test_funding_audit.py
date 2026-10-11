@@ -112,3 +112,13 @@ def test_official_rest_mark_price_source_passes_provenance_gate():
     )
     assert report["status"] == "PASS"
     assert report["unverified_price_source_records"] == 0
+
+
+
+def test_custom_eight_hour_gate_fails_sixteen_hour_gap():
+    report = audit_funding(
+        funding([0, 16*3_600_000]), candles(24), "BTCUSDT",
+        max_gap_hours=8.0,
+    )
+    assert report["status"] == "FAIL_GAP"
+    assert report["max_gap_gate_hours"] == 8.0
