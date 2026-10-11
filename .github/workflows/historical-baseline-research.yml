@@ -244,6 +244,14 @@ jobs:
           print(f"parameter_neighborhood_rows={len(report['train_only_parameter_neighborhood'])}")
           print(f"holdout_half_cost_rows={len(report['chronological_holdout_halves'])}")
           print(f"production_gate={report['production_gate']}")
+          for item in report["chronological_holdout_halves"]:
+              m = item["metrics"]
+              concentration = item["trade_pnl_concentration"]["positive_pnl_trade_concentration"]
+              print(f"holdout_half={item['half']} cost={item['cost_scenario']} trades={m['trades']} return_pct={m['net_return_pct']} dd_pct={m['max_drawdown_pct']} pf={m['profit_factor']} top1_share_pct={concentration['top_1_share_pct']} top3_share_pct={concentration['top_3_share_pct']} top5_share_pct={concentration['top_5_share_pct']}")
+          print("=== TRAIN-ONLY PARAMETER NEIGHBORHOOD ===")
+          for item in report["train_only_parameter_neighborhood"]:
+              m = item["metrics"]
+              print(f"variant={item['variant']} cost={item['cost_scenario']} trades={m['trades']} return_pct={m['net_return_pct']} pf={m['profit_factor']}")
           PY
       - name: Upload raw data and report
         if: always()
@@ -258,6 +266,7 @@ jobs:
             reports/${{ matrix.symbol }}_1h_breakout_retest.json
             reports/${{ matrix.symbol }}_1h_mean_reversion.json
             reports/${{ matrix.symbol }}_1h_frozen_stability.json
+            reports/${{ matrix.symbol }}_1h_avax_followup.json
             reports/${{ matrix.symbol }}_funding_audit.json
             reports/${{ matrix.symbol }}_1h_public_strategy_benchmark.json
           if-no-files-found: warn
