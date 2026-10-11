@@ -127,15 +127,12 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                     month=1 if month.month == 12 else month.month + 1,
                 )
                 month_end_ms = min(end_ms, int(next_month.timestamp() * 1000))
-                mirror_error = None
-                try:
-                    mirror_rows = download_funding_rates(
-                        symbol, month_start_ms, month_end_ms,
-                        base_url="https://data-api.binance.vision",
-                    )
-                except Exception as exc:
-                    mirror_error = f"{type(exc).__name__}: {exc}"
-                    mirror_rows = []
+                # data-api.binance.vision does not expose the USD-M Futures
+                # fundingRate endpoint (it returns 404); do not treat it as a
+                # valid fallback. Keep the failure explicit until a supported
+                # official futures endpoint/archive is available.
+                mirror_error = "unsupported endpoint: data-api.binance.vision/fapi/v1/fundingRate (HTTP 404)"
+                mirror_rows = []
                 if mirror_rows:
                     rows.extend(mirror_rows)
                     continue
