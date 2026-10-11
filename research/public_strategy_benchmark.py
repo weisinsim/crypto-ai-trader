@@ -87,7 +87,30 @@ def signals(rows: list[dict], strategy: str) -> tuple[list[bool], list[bool]]:
     return enter, exit_
 
 
-def simulate(rows: list[dict], strategy: str, start: int, end: int, round_trip_cost: float) -> dict:
+def load_funding(path: str | None) -> list[dict]:
+    if not path:
+        return []
+    with open(path, newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    parsed = [{"t": int(r["funding_time"]), "rate": float(r["funding_rate"]),
+               "mark": float(r["mark_price"])} for r in rows]
+    if any(not math.isfinite(r["rate"]) or not math.isfinite(r["mark"]) or r["mark"] <= 0 for r in parsed):
+        raise ValueError("invalid funding rate or mark price")
+    if any(parsed[i]["t"] >= parsed[i+1]["t"] for i in range(len(parsed)-1)):
+        raise ValueError("funding timestamps must be unique and ascending")
+    return parsed
+
+
+def funding_cost(events: list[dict], entry_ts: int, exit_ts: int, entry_price: float) -> float:
+    # Long-only position: positive funding is paid; negative funding is received.
+    # Strict bounds avoid charging an event at or before entry / at exit.
+    return sum(event["rate"] * event["mark"] / entry_price
+               for event in events if entry_ts < event["t"] < exit_ts)
+
+
+def simulate(rows: list[dict], strategy: str, start: int, end: int, round_trip_cost: float,
+             funding_events: list[dict] | None = None) -> dict:
+    funding_events = funding_events or []
     entries, exits = signals(rows, strategy)
     equity, peak, max_dd = 1.0, 1.0, 0.0
     trades, wins, gross_win, gross_loss = [], 0, 0.0, 0.0
@@ -103,7 +126,8 @@ def simulate(rows: list[dict], strategy: str, start: int, end: int, round_trip_c
         elif exits[i]:
             exit_price = rows[i+1]["o"]
             gross = exit_price / entry_price - 1
-            net = gross - round_trip_cost
+            funding = funding_cost(funding_events, rows[entry_i]["t"], rows[i+1]["t"], entry_price)
+            net = gross - round_trip_cost - funding
             equity *= max(0.000001, 1 + net)
             trades.append(net)
             if net > 0:
@@ -119,7 +143,8 @@ def simulate(rows: list[dict], strategy: str, start: int, end: int, round_trip_c
         i += 1
     if entry_price is not None and end > start + 1:
         exit_price = rows[end-1]["c"]
-        net = exit_price / entry_price - 1 - round_trip_cost
+        funding = funding_cost(funding_events, rows[entry_i]["t"], rows[end-1]["t"] + 3_600_000, entry_price)
+        net = exit_price / entry_price - 1 - round_trip_cost - funding
         equity *= max(0.000001, 1 + net)
         trades.append(net)
         if net > 0:
@@ -139,7 +164,8 @@ def simulate(rows: list[dict], strategy: str, start: int, end: int, round_trip_c
     }
 
 
-def benchmark(rows: list[dict], symbol: str) -> dict:
+def benchmark(rows: list[dict], symbol: str, funding_events: list[dict] | None = None) -> dict:
+    funding_events = funding_events or []
     # Chronological split: 60% train, next 20% validation, final 20% untouched holdout.
     n = len(rows)
     train_end, valid_end = int(n*0.6), int(n*0.8)
@@ -148,9 +174,9 @@ def benchmark(rows: list[dict], symbol: str) -> dict:
         results[strategy] = {}
         for name, cost in COSTS.items():
             results[strategy][name] = {
-                "train": simulate(rows, strategy, 201, train_end, cost),
-                "validation": simulate(rows, strategy, train_end, valid_end, cost),
-                "holdout": simulate(rows, strategy, valid_end, n, cost)
+                "train": simulate(rows, strategy, 201, train_end, cost, funding_events),
+                "validation": simulate(rows, strategy, train_end, valid_end, cost, funding_events),
+                "holdout": simulate(rows, strategy, valid_end, n, cost, funding_events)
             }
         results[strategy]["gate"] = {
             "status": "PASS_RESEARCH_GATE" if all(
@@ -163,8 +189,9 @@ def benchmark(rows: list[dict], symbol: str) -> dict:
             "strategy_scope": "Public strategy archetypes adapted to 1H candles; not direct reproduction of daily backtests.",
             "cost_assumptions_round_trip": COSTS,
             "split": {"train_end_index": train_end, "validation_end_index": valid_end, "holdout_start_index": valid_end},
-            "funding_included": False,
-            "warning": "This benchmark excludes funding cashflows; do not promote any candidate until funding-adjusted rerun passes.",
+            "funding_included": bool(funding_events),
+            "funding_records": len(funding_events),
+            "warning": "Long-only funding cashflows are estimated from supplied funding rates and mark prices; proxy mark prices are imperfect. Production approval remains false.",
             "results": results}
 
 
@@ -172,9 +199,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--csv", required=True)
     parser.add_argument("--symbol", required=True)
+    parser.add_argument("--funding-csv")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
-    report = benchmark(load_candles(args.csv), args.symbol)
+    report = benchmark(load_candles(args.csv), args.symbol, load_funding(args.funding_csv))
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     Path(args.output).write_text(json.dumps(report, indent=2), encoding="utf-8")
     for name, result in report["results"].items():
