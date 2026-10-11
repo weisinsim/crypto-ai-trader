@@ -244,13 +244,17 @@ def main():
     # Diagnostics only: if no candidate qualifies, evaluate the top-ranked
     # training candidate on holdout, clearly marking it as NOT SELECTED.
     diagnostic=sorted(candidates,key=lambda x:x["score"],reverse=True)[0] if candidates else None
-    holdout=stress=None
-    if selected:
-        holdout=simulate(rows,selected["parameters"],split,len(rows), funding_rates=historical_funding, symbol=args.symbol)
-        stress=simulate(rows,selected["parameters"],split,len(rows),fee=0.0005,slippage=0.001, funding_rates=historical_funding, symbol=args.symbol)
-    elif diagnostic:
-        holdout=simulate(rows,diagnostic["parameters"],split,len(rows), funding_rates=historical_funding, symbol=args.symbol)
-        stress=simulate(rows,diagnostic["parameters"],split,len(rows),fee=0.0005,slippage=0.001, funding_rates=historical_funding, symbol=args.symbol)
+    holdout=stress=holdout_no_funding=stress_no_funding=None
+    evaluated = selected or diagnostic
+    if evaluated:
+        params = evaluated["parameters"]
+        holdout=simulate(rows,params,split,len(rows), funding_rates=historical_funding, symbol=args.symbol)
+        stress=simulate(rows,params,split,len(rows),fee=0.0005,slippage=0.001, funding_rates=historical_funding, symbol=args.symbol)
+        if historical_funding:
+            # Counterfactual: same frozen parameters, same bars, same execution costs,
+            # but with funding cashflows removed to isolate their modeled contribution.
+            holdout_no_funding=simulate(rows,params,split,len(rows), funding_rates=None, symbol=args.symbol)
+            stress_no_funding=simulate(rows,params,split,len(rows),fee=0.0005,slippage=0.001, funding_rates=None, symbol=args.symbol)
     report={"status":"RESEARCH_ONLY","symbol":args.symbol.upper(),"interval":args.interval,"bars":len(rows),
             "split":{"train_fraction":args.train_fraction,"train_bars":split,"holdout_bars":len(rows)-split},
             "strategy":"causal rolling mean-reversion: prior-window z-score, optional RSI extreme filter, direction-specific candidate (BOTH/LONG/SHORT), next-open entry, mean target, ATR stop; conservative stop-first same-bar handling",
@@ -263,6 +267,14 @@ def main():
             "holdout":{k:v for k,v in holdout.items() if k!="trade_log"} if holdout else None,
             "holdout_interpretation":"SELECTED_CANDIDATE" if selected else "DIAGNOSTIC_ONLY_NOT_SELECTED",
             "stress_holdout_0_30pct_round_trip":{k:v for k,v in stress.items() if k!="trade_log"} if stress else None,
+            "funding_counterfactual_same_parameters": ({
+                "holdout_without_funding": {k:v for k,v in holdout_no_funding.items() if k!="trade_log"},
+                "stress_without_funding": {k:v for k,v in stress_no_funding.items() if k!="trade_log"},
+                "holdout_return_delta_percentage_points": round(holdout["net_return_pct"] - holdout_no_funding["net_return_pct"], 4),
+                "stress_return_delta_percentage_points": round(stress["net_return_pct"] - stress_no_funding["net_return_pct"], 4),
+                "holdout_funding_cashflow_equity_pct": round(sum(t["funding_pnl_equity"] for t in holdout["trade_log"])*100, 4),
+                "stress_funding_cashflow_equity_pct": round(sum(t["funding_pnl_equity"] for t in stress["trade_log"])*100, 4)
+            } if historical_funding and holdout and stress and holdout_no_funding and stress_no_funding else None),
             "funding_data": ({"source": args.funding_csv, "records": len(historical_funding),
                               "first_ts": historical_funding[0]["funding_time"],
                               "last_ts": historical_funding[-1]["funding_time"],
