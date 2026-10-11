@@ -78,6 +78,7 @@ jobs:
           python -m research.public_strategy_benchmark \
             --csv "data/${SYMBOL}_1h.csv" \
             --symbol "${SYMBOL}" \
+            --funding-csv "data/${SYMBOL}_funding.csv" \
             --output "reports/${SYMBOL}_1h_public_strategy_benchmark.json"
       - name: Run research-only baseline and walk-forward report
         env:
