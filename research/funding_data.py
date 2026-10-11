@@ -178,6 +178,9 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                     continue
                 missing_8h_times.add(funding_ts)
             if missing_8h_times:
+                # Try the monthly archive first. If it is truncated or has gaps,
+                # fetch daily official mark-price archives for the specific missing
+                # settlement dates instead of widening the time tolerance.
                 mark_1m_url = (
                     f"https://data.binance.vision/data/futures/um/monthly/markPriceKlines/"
                     f"{symbol}/1m/{symbol}-1m-{ym}.zip"
@@ -196,8 +199,39 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                         except (ValueError, IndexError):
                             continue
                         mark_1m_opens[minute_open_ts] = mark_open
-                        # Retain prior closes as a secondary, strictly historical fallback.
                         mark_1m_closes.append((minute_open_ts + 60_000, mark_close))
+
+                unresolved_dates = set()
+                for funding_ts in missing_8h_times:
+                    if funding_ts not in mark_1m_opens and not any(
+                        abs(mark_ts - funding_ts) <= 1000 for mark_ts in mark_1m_opens
+                    ):
+                        unresolved_dates.add(datetime.fromtimestamp(
+                            funding_ts / 1000, timezone.utc
+                        ).strftime("%Y-%m-%d"))
+                for date_str in sorted(unresolved_dates):
+                    daily_url = (
+                        f"https://data.binance.vision/data/futures/um/daily/markPriceKlines/"
+                        f"{symbol}/1m/{symbol}-1m-{date_str}.zip"
+                    )
+                    daily_resp = client.get(daily_url)
+                    if daily_resp.status_code == 404:
+                        continue
+                    daily_resp.raise_for_status()
+                    with zipfile.ZipFile(io.BytesIO(daily_resp.content)) as zf:
+                        daily_name = next((n for n in zf.namelist() if n.lower().endswith(".csv")), None)
+                        if not daily_name:
+                            raise ValueError(f"daily 1m mark-price archive has no CSV: {daily_url}")
+                        daily_rows = csv.reader(io.TextIOWrapper(zf.open(daily_name), encoding="utf-8"))
+                        for item in daily_rows:
+                            try:
+                                minute_open_ts = int(float(item[0]))
+                                mark_open, mark_close = float(item[1]), float(item[4])
+                            except (ValueError, IndexError):
+                                continue
+                            mark_1m_opens[minute_open_ts] = mark_open
+                            mark_1m_closes.append((minute_open_ts + 60_000, mark_close))
+                mark_1m_closes.sort()
                 mark_1m_closes.sort()
             for row in rate_rows:
                 try:
