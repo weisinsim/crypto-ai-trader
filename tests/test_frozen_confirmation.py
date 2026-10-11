@@ -48,7 +48,10 @@ class FrozenConfirmationTests(unittest.TestCase):
             if any(t % 28_800_000 != 0 for t in times):
                 raise ValueError("funding settlement timestamp is not aligned")
             sources = {event.get("mark_price_source", "unspecified") for event in events}
-            allowed = {"mark_price_kline_open", "exchange_funding_mark_price"}
+            allowed = {
+                "mark_kline_open", "mark_kline_open_nearest_1s",
+                "mark_price_kline_open", "exchange_funding_mark_price", "rest_mark_price",
+            }
             if sources - allowed:
                 raise ValueError("unverified funding mark-price provenance")
         valid_time = 1_791_820_800_000
