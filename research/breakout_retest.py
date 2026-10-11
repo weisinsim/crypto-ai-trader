@@ -232,6 +232,28 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
     }
 
 
+def candidate_rejection_reasons(folds: list[dict], score: float) -> list[str]:
+    """Explain training-fold rejection without relaxing any acceptance thresholds."""
+    if not folds:
+        return ["missing_folds"]
+    returns = [float(f["net_return_pct"]) for f in folds]
+    trades = [int(f["trades"]) for f in folds]
+    reasons = []
+    if sum(trades) < 12:
+        reasons.append("total_trades_below_12")
+    if any(n < 2 for n in trades):
+        reasons.append("fold_has_fewer_than_2_trades")
+    if median(returns) <= 0:
+        reasons.append("median_fold_return_not_positive")
+    if sum(x > 0 for x in returns) < 2:
+        reasons.append("fewer_than_2_positive_folds")
+    if min(returns) < -3:
+        reasons.append("worst_fold_below_minus_3pct")
+    if score <= 0:
+        reasons.append("risk_adjusted_score_not_positive")
+    return reasons
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--csv", required=True)
@@ -273,13 +295,12 @@ def main():
         positive_folds = sum(x > 0 for x in fold_returns)
         worst_fold = min(fold_returns)
         score = median(fold_returns) - 0.5 * median(fold_dd)
-        eligible = (trade_count >= 12 and all(f["trades"] >= 2 for f in folds)
-                    and median(fold_returns) > 0 and positive_folds >= 2 and worst_fold >= -3
-                    and score > 0)
+        rejection_reasons = candidate_rejection_reasons(folds, score)
+        eligible = not rejection_reasons
         candidates.append({"parameters": params, "folds": folds, "median_fold_return_pct": round(median(fold_returns), 4),
                            "median_fold_drawdown_pct": round(median(fold_dd), 4), "score": round(score, 4),
                            "positive_folds": positive_folds, "worst_fold_return_pct": round(worst_fold, 4),
-                           "eligible": eligible})
+                           "rejection_reasons": rejection_reasons, "eligible": eligible})
     eligible = sorted((x for x in candidates if x["eligible"]), key=lambda x: x["score"], reverse=True)
     selected = eligible[0] if eligible else None
     holdout = stress = severe = None
@@ -295,6 +316,8 @@ def main():
         "split": {"train_fraction": args.train_fraction, "train_bars": split, "holdout_bars": len(rows)-split},
         "strategy": "confirmed breakout, retest within 0.30 ATR, directional 1H candle close confirmation, next-bar-open entry; optional causal EMA trend filter (0/100/200); stop wins same-bar stop/target tie; max drawdown includes intratrade close-marked equity",
         "grid": GRID, "candidate_count": len(candidates), "eligible_count": len(eligible),
+        "rejection_reason_counts": {reason: sum(reason in item["rejection_reasons"] for item in candidates)
+                                    for reason in sorted({reason for item in candidates for reason in item["rejection_reasons"]})},
         "selected_parameters": selected["parameters"] if selected else None,
         "training_selection_metrics": {k:v for k,v in selected.items() if k != "folds"} if selected else None,
         "candidate_diagnostics": sorted(candidates, key=lambda x: x["score"], reverse=True),
