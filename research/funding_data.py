@@ -117,12 +117,26 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
             mark_url = f"https://data.binance.vision/data/futures/um/monthly/markPriceKlines/{symbol}/8h/{symbol}-8h-{ym}.zip"
             rate_resp = client.get(rate_url)
             if rate_resp.status_code == 404:
-                # Fail closed: silently skipping a requested month would create
-                # incomplete funding history and invalidate downstream backtests.
-                raise ValueError(
-                    f"missing funding archive for requested month {ym} ({rate_url}); "
-                    "retrieve an authoritative alternative or narrow the requested range explicitly"
+                # Monthly archives may not exist yet for the current/incomplete
+                # month. Fill that exact month from the authoritative REST endpoint;
+                # if REST is unavailable, fail closed rather than skipping history.
+                month_start_ms = int(month.timestamp() * 1000)
+                next_month = month.replace(
+                    year=month.year + (month.month == 12),
+                    month=1 if month.month == 12 else month.month + 1,
                 )
+                month_end_ms = min(end_ms, int(next_month.timestamp() * 1000))
+                try:
+                    rest_rows = download_funding_rates(
+                        symbol, max(start_ms, month_start_ms), month_end_ms
+                    )
+                except Exception as exc:
+                    raise ValueError(
+                        f"missing funding archive for requested month {ym} ({rate_url}) "
+                        "and REST fallback failed; refusing incomplete history"
+                    ) from exc
+                rows.extend(rest_rows)
+                continue
             rate_resp.raise_for_status()
             mark_resp = client.get(mark_url)
             mark_resp.raise_for_status()
