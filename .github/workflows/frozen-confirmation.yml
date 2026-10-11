@@ -105,6 +105,15 @@ jobs:
           print(f"funding_records={len(rows)} mark_price_sources={sources}")
           PY
 
+      - name: Audit confirmation funding provenance and coverage
+        env:
+          SYMBOL: ${{ matrix.symbol }}
+        run: |
+          python -m research.funding_audit \
+            --funding-csv "data/confirm_${SYMBOL}_funding.csv" \
+            --candle-csv "data/confirm_${SYMBOL}_1h.csv" \
+            --symbol "$SYMBOL" \
+            --output "reports/confirm_${SYMBOL}_funding_audit.json"
       - name: Run frozen confirmation only
         env:
           SYMBOL: ${{ matrix.symbol }}
