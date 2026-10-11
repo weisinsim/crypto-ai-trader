@@ -226,9 +226,21 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                             mark = prior[-1][1]
                             mark_source = "mark_kline_1m_prior_close"
                     if mark is None:
+                        nearest_1m_open = (
+                            min(mark_1m_opens, key=lambda mark_ts: abs(mark_ts - ts))
+                            if mark_1m_opens else None
+                        )
+                        nearest_1m_close = (
+                            min(mark_1m_closes, key=lambda item: abs(item[0] - ts))
+                            if mark_1m_closes else None
+                        )
                         raise ValueError(
-                            f"missing prior official mark price within 60s of funding timestamp {ts} "
-                            f"for {symbol}; refusing trade-price proxy"
+                            f"missing official mark price for {symbol} at funding timestamp {ts}; "
+                            f"8h_mark_count={len(marks)}, 1m_mark_open_count={len(mark_1m_opens)}, "
+                            f"nearest_1m_open_ts={nearest_1m_open}, "
+                            f"nearest_1m_open_delta_ms="
+                            f"{abs(nearest_1m_open - ts) if nearest_1m_open is not None else None}, "
+                            f"nearest_1m_close={nearest_1m_close}; refusing trade-price proxy"
                         )
                     if not isfinite(rate) or not isfinite(mark) or mark <= 0:
                         raise ValueError(f"invalid funding rate or official mark price at {ts} for {symbol}")
