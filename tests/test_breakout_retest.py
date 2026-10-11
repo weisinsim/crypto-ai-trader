@@ -1,6 +1,6 @@
 import unittest
 
-from research.breakout_retest import GRID, atr_values, candidate_rejection_reasons, funding_cashflow, run_breakout_retest
+from research.breakout_retest import GRID, atr_values, candidate_rejection_reasons, funding_cashflow, profit_factor_above_one, run_breakout_retest
 
 
 def make_rows(n=240):
@@ -52,6 +52,13 @@ class BreakoutRetestTests(unittest.TestCase):
         self.assertFalse(summary["LONG"]["best_candidate_eligible"])
         self.assertTrue(summary["SHORT"]["best_candidate_eligible"])
         self.assertFalse(summary["BOTH"]["best_candidate_eligible"])
+
+    def test_infinite_profit_factor_is_valid_but_null_is_not(self):
+        self.assertTrue(profit_factor_above_one("INF"))
+        self.assertTrue(profit_factor_above_one(1.0001))
+        self.assertFalse(profit_factor_above_one(1.0))
+        self.assertFalse(profit_factor_above_one(None))
+        self.assertFalse(profit_factor_above_one(float("nan")))
 
     def test_grid_covers_each_direction_without_duplicate_candidates(self):
         self.assertEqual(len(GRID), 324)
