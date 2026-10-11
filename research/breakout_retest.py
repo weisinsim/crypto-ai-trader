@@ -11,12 +11,13 @@ from research.run_backtest import load_csv, load_funding_csv
 
 GRID = [
     {"lookback": lookback, "max_wait": max_wait, "target_r": target_r,
-     "trend_period": trend_period, "volatility_filter": volatility_filter}
+     "trend_period": trend_period, "volatility_filter": volatility_filter, "direction": direction}
     for lookback in (24, 48, 72)
     for max_wait in (3, 6)
     for target_r in (1.5, 2.0)
     for trend_period in (0, 100, 200)
     for volatility_filter in (0.0, 1.0, 1.2)
+    for direction in ("BOTH", "LONG", "SHORT")
 ]
 
 
@@ -87,9 +88,11 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
     lookback, max_wait, target_r = params["lookback"], params["max_wait"], params["target_r"]
     trend_period = params.get("trend_period", 0)
     volatility_filter = params.get("volatility_filter", 0.0)
+    direction_filter = params.get("direction", "BOTH")
     if (lookback < 5 or max_wait < 1 or target_r <= 0
             or trend_period not in (0, 100, 200)
-            or volatility_filter not in (0.0, 1.0, 1.2)):
+            or volatility_filter not in (0.0, 1.0, 1.2)
+            or direction_filter not in ("BOTH", "LONG", "SHORT")):
         raise ValueError("invalid strategy parameters")
     atr = atr_values(rows)
     trend_ema = ema_values(rows, trend_period)
@@ -119,10 +122,10 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
             resistance = max(x["h"] for x in prior)
             support = min(x["l"] for x in prior)
             if rows[j]["c"] > resistance + 0.05 * atr[j]:
-                if trend_period == 0 or (trend_ema[j] is not None and rows[j]["c"] > trend_ema[j]):
+                if direction_filter in ("BOTH", "LONG") and (trend_period == 0 or (trend_ema[j] is not None and rows[j]["c"] > trend_ema[j])):
                     signal = (1, resistance, j)
             elif rows[j]["c"] < support - 0.05 * atr[j]:
-                if trend_period == 0 or (trend_ema[j] is not None and rows[j]["c"] < trend_ema[j]):
+                if direction_filter in ("BOTH", "SHORT") and (trend_period == 0 or (trend_ema[j] is not None and rows[j]["c"] < trend_ema[j])):
                     signal = (-1, support, j)
         if signal is None:
             i += 1
