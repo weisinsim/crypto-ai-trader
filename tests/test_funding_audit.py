@@ -41,3 +41,12 @@ def test_audit_reports_proxy_prices():
     report = audit_funding(funding([0], "prior_trade_kline_close_proxy"),
                            candles(), "BTCUSDT")
     assert report["proxy_price_records"] == 1
+    assert report["status"] == "FAIL_PROXY_MARK_PRICE"
+
+
+def test_mixed_sources_fail_clean_audit_when_any_proxy_is_present():
+    rows = funding([0, 8*3_600_000, 16*3_600_000])
+    rows[-1]["mark_price_source"] = "prior_trade_kline_close_proxy"
+    report = audit_funding(rows, candles(24), "BTCUSDT")
+    assert report["status"] == "FAIL_PROXY_MARK_PRICE"
+    assert report["proxy_price_records"] == 1
