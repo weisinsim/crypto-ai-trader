@@ -163,6 +163,7 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
             # with the official 1m mark-price archive for the same month. Never
             # substitute a trade-kline close for an exchange mark price.
             mark_1m_closes = []
+            mark_1m_opens = {}
             missing_8h_times = set()
             for funding_row in rate_rows:
                 try:
@@ -190,12 +191,12 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                     mark_1m_rows = csv.reader(io.TextIOWrapper(zf.open(mark_1m_name), encoding="utf-8"))
                     for item in mark_1m_rows:
                         try:
-                            minute_open_ts, mark_close = int(float(item[0])), float(item[4])
+                            minute_open_ts = int(float(item[0]))
+                            mark_open, mark_close = float(item[1]), float(item[4])
                         except (ValueError, IndexError):
                             continue
-                        # The previous 1m mark candle's close is an official mark
-                        # observation at the settlement boundary; unlike the next
-                        # minute's open, it cannot introduce look-ahead.
+                        mark_1m_opens[minute_open_ts] = mark_open
+                        # Retain prior closes as a secondary, strictly historical fallback.
                         mark_1m_closes.append((minute_open_ts + 60_000, mark_close))
                 mark_1m_closes.sort()
             for row in rate_rows:
@@ -213,11 +214,14 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                         if abs(nearest_ts - ts) <= 1000:
                             mark = marks[nearest_ts]
                             mark_source = "mark_kline_open_nearest_1s"
+                    if mark is None and mark_1m_opens:
+                        nearest_1m_ts = min(mark_1m_opens, key=lambda mark_ts: abs(mark_ts - ts))
+                        if abs(nearest_1m_ts - ts) <= 1000:
+                            mark = mark_1m_opens[nearest_1m_ts]
+                            mark_source = "mark_kline_1m_open_nearest_1s"
                     if mark is None and mark_1m_closes:
                         prior = [item for item in mark_1m_closes if item[0] <= ts]
-                        # Funding timestamps can carry millisecond offsets; allow
-                        # the immediately preceding official 1m close, never a future
-                        # candle. This is a provenance tolerance, not a trade-price proxy.
+                        # Secondary fallback is historical only and limited to one minute.
                         if prior and 0 <= ts - prior[-1][0] <= 60_000:
                             mark = prior[-1][1]
                             mark_source = "mark_kline_1m_prior_close"
