@@ -279,11 +279,14 @@ def main():
                               "first_ts": historical_funding[0]["funding_time"],
                               "last_ts": historical_funding[-1]["funding_time"],
                               "symbol": historical_funding[0]["symbol"],
+                              "mark_price_sources": {source: sum(1 for event in historical_funding if event.get("mark_price_source", "unspecified") == source)
+                                                     for source in sorted({event.get("mark_price_source", "unspecified") for event in historical_funding})},
                               "timing_convention": "funding settlement timestamps strictly after entry-bar open through exit-bar open"}
                              if historical_funding else {"source": None, "records": 0}),
             "funding_pnl_holdout_equity": round(sum(t["funding_pnl_equity"] for t in (holdout or {}).get("trade_log", []))*100, 4),
             "warnings":["Research only; funding is applied only when a historical funding CSV is supplied.",
                         "Funding timing uses candle open timestamps; same-timestamp entry events are excluded because OHLC data cannot resolve intrabar ordering.",
+                        "Funding mark prices may include archive proxies; inspect funding_data.mark_price_sources before interpreting the result.",
                         "No deployment decision without independent forward validation."]}
     Path(args.output).parent.mkdir(parents=True,exist_ok=True)
     Path(args.output).write_text(json.dumps(report,indent=2),encoding="utf-8")
