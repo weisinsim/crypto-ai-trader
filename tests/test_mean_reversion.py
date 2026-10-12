@@ -135,6 +135,18 @@ def test_funding_cashflow_excludes_entry_timestamp_and_after_exit():
     assert count == 2
 
 
+
+def test_funding_cashflow_rejects_non_finite_quantity():
+    events = [{"funding_time": 200, "funding_rate": 0.01, "mark_price": 100.0}]
+    for quantity in (float("nan"), float("inf"), float("-inf")):
+        try:
+            funding_cashflow(1, quantity, 100, 300, events)
+        except ValueError as exc:
+            assert "quantity" in str(exc)
+        else:
+            raise AssertionError("non-finite quantity should raise ValueError")
+
+
 def test_funding_cashflow_rejects_invalid_mark_price():
     events = [{"funding_time": 200, "funding_rate": 0.01, "mark_price": 0.0}]
     try:
