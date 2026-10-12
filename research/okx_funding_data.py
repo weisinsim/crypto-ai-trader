@@ -38,6 +38,8 @@ def download_okx_funding(symbol: str, start_ms: int, end_ms: int, *,
             oldest = min(int(item["fundingTime"]) for item in page)
             if oldest >= cursor:
                 raise RuntimeError("OKX funding pagination did not move backward")
+            if oldest <= start_ms:
+                break
             cursor = oldest
             if pause_seconds:
                 time.sleep(pause_seconds)
