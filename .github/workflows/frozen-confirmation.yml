@@ -60,7 +60,7 @@ jobs:
           from datetime import datetime, timezone
           start = datetime.strptime(os.environ["START_DATE"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
           end = datetime.strptime(os.environ["END_DATE"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
-          boundary = datetime(2026, 9, 1, tzinfo=timezone.utc)
+          boundary = datetime(2026, 10, 1, tzinfo=timezone.utc)
           if start < boundary:
               raise SystemExit("confirmation start must be 2026-10-01 UTC or later")
           if end <= start:
@@ -92,7 +92,7 @@ jobs:
           with output.open("w", newline="", encoding="utf-8") as handle:
               writer = csv.DictWriter(handle, fieldnames=("t", "o", "h", "l", "c", "v", "q"))
               writer.writeheader()
-              writer.writerows(rows)
+              writer.writerows([{key: row[key] for key in ("t", "o", "h", "l", "c", "v", "q")} for row in rows])
           print(f"candles={len(rows)} warm_start={warm_start.isoformat()} end_exclusive={end.isoformat()}")
           PY
 
