@@ -6,7 +6,7 @@ import csv
 import io
 import time
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from math import isfinite
 from pathlib import Path
 from typing import Callable
@@ -146,7 +146,7 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                             daily_rate_rows.extend(csv.reader(io.TextIOWrapper(zf.open(daily_name), encoding="utf-8")))
                     elif daily_resp.status_code != 404:
                         daily_resp.raise_for_status()
-                    day = day.replace(day=day.day) + __import__("datetime").timedelta(days=1)
+                    day += timedelta(days=1)
                 if not daily_rate_rows:
                     raise ValueError(
                         f"missing funding archive for requested month {ym} ({rate_url}); "
@@ -240,20 +240,25 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                     f"{symbol}/1m/{symbol}-1m-{ym}.zip"
                 )
                 mark_1m_resp = client.get(mark_1m_url)
-                mark_1m_resp.raise_for_status()
-                with zipfile.ZipFile(io.BytesIO(mark_1m_resp.content)) as zf:
-                    mark_1m_name = next((n for n in zf.namelist() if n.lower().endswith(".csv")), None)
-                    if not mark_1m_name:
-                        raise ValueError(f"1m mark-price archive has no CSV: {mark_1m_url}")
-                    mark_1m_rows = csv.reader(io.TextIOWrapper(zf.open(mark_1m_name), encoding="utf-8"))
-                    for item in mark_1m_rows:
-                        try:
-                            minute_open_ts = int(float(item[0]))
-                            mark_open, mark_close = float(item[1]), float(item[4])
-                        except (ValueError, IndexError):
-                            continue
-                        mark_1m_opens[minute_open_ts] = mark_open
-                        mark_1m_closes.append((minute_open_ts + 60_000, mark_close))
+                if mark_1m_resp.status_code == 404:
+                    # Some current-month 1m archives are not published yet.
+                    # Continue to the official daily archives below.
+                    pass
+                else:
+                    mark_1m_resp.raise_for_status()
+                    with zipfile.ZipFile(io.BytesIO(mark_1m_resp.content)) as zf:
+                        mark_1m_name = next((n for n in zf.namelist() if n.lower().endswith(".csv")), None)
+                        if not mark_1m_name:
+                            raise ValueError(f"1m mark-price archive has no CSV: {mark_1m_url}")
+                        mark_1m_rows = csv.reader(io.TextIOWrapper(zf.open(mark_1m_name), encoding="utf-8"))
+                        for item in mark_1m_rows:
+                            try:
+                                minute_open_ts = int(float(item[0]))
+                                mark_open, mark_close = float(item[1]), float(item[4])
+                            except (ValueError, IndexError):
+                                continue
+                            mark_1m_opens[minute_open_ts] = mark_open
+                            mark_1m_closes.append((minute_open_ts + 60_000, mark_close))
 
                 unresolved_dates = set()
                 for funding_ts in missing_8h_times:
@@ -285,7 +290,6 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                                 continue
                             mark_1m_opens[minute_open_ts] = mark_open
                             mark_1m_closes.append((minute_open_ts + 60_000, mark_close))
-                mark_1m_closes.sort()
                 mark_1m_closes.sort()
             for row in rate_rows:
                 try:
