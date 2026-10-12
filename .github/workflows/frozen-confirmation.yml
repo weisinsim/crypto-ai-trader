@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - "research/funding_data.py"
+      - "research/bybit_funding_data.py"
+      - "research/bybit_candle_data.py"
       - "research/frozen_confirmation.py"
       - "research/funding_audit.py"
       - ".github/workflows/frozen-confirmation.yml"
@@ -77,12 +79,12 @@ jobs:
           from datetime import datetime, timedelta, timezone
           import csv
           from pathlib import Path
-          from research.binance_archive_data import download_archive
+          from research.bybit_candle_data import download_bybit_candles
           symbol = os.environ["SYMBOL"]
           start = datetime.strptime(os.environ["START_DATE"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
           end = datetime.strptime(os.environ["END_DATE"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
           warm_start = start - timedelta(hours=300)
-          rows = download_archive(symbol, "1h", int(warm_start.timestamp()*1000), int(end.timestamp()*1000))
+          rows = download_bybit_candles(symbol, "60", int(warm_start.timestamp()*1000), int(end.timestamp()*1000))
           output = Path(f"data/confirm_{symbol}_1h.csv")
           output.parent.mkdir(parents=True, exist_ok=True)
           with output.open("w", newline="", encoding="utf-8") as handle:
@@ -101,10 +103,11 @@ jobs:
           python - <<'PY'
           import os
           from datetime import datetime, timezone
-          from research.funding_data import download_archive_funding, save_funding_csv
+          from research.bybit_funding_data import download_bybit_funding
+          from research.funding_data import save_funding_csv
           start = datetime.strptime(os.environ["START_DATE"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
           end = datetime.strptime(os.environ["END_DATE"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
-          rows = download_archive_funding(os.environ["SYMBOL"], int(start.timestamp()*1000), int(end.timestamp()*1000))
+          rows = download_bybit_funding(os.environ["SYMBOL"], int(start.timestamp()*1000), int(end.timestamp()*1000))
           save_funding_csv(rows, f"data/confirm_{os.environ['SYMBOL']}_funding.csv")
           sources = {}
           for row in rows:
