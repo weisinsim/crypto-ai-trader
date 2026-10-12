@@ -158,3 +158,25 @@ def test_audit_fails_when_funding_history_starts_late_inside_requested_window():
     assert report["status"] == "FAIL_GAP"
     assert report["leading_gap_hours"] > 8
     assert report["boundary_gaps_over_8h"] >= 1
+
+
+def test_binance_source_with_explicit_binance_venue_passes():
+    rows = funding([0], "binance_fapi_funding_rate_mark_price")
+    rows[0]["venue"] = "binance"
+    report = audit_funding(rows, candles(), "BTCUSDT")
+    assert report["status"] == "PASS"
+
+
+def test_binance_source_without_venue_fails_closed():
+    rows = funding([0], "binance_fapi_funding_rate_mark_price")
+    report = audit_funding(rows, candles(), "BTCUSDT")
+    assert report["status"] == "FAIL_UNVERIFIED_MARK_PRICE_SOURCE"
+    assert report["unverified_price_source_records"] == 1
+
+
+def test_binance_source_with_conflicting_venue_fails_closed():
+    rows = funding([0], "binance_fapi_funding_rate_mark_price")
+    rows[0]["venue"] = "okx"
+    report = audit_funding(rows, candles(), "BTCUSDT")
+    assert report["status"] == "FAIL_UNVERIFIED_MARK_PRICE_SOURCE"
+    assert report["unverified_price_source_records"] == 1
