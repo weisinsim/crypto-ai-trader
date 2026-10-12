@@ -40,6 +40,23 @@ def test_mean_reversion_simulation_returns_valid_metrics():
     assert result["long_trades"] + result["short_trades"] == result["trades"]
 
 
+
+def test_adverse_funding_increases_intratrade_drawdown():
+    rows = make_rows()
+    params = {"window": 24, "entry_z": 1.5, "stop_atr": 2.0, "rsi_filter": 0}
+    base = simulate(rows, params, 100, len(rows))
+    held = next((trade for trade in base["trade_log"]
+                 if trade["exit_time"] - trade["entry_time"] >= 3_600_000), None)
+    assert held is not None
+    event_ts = held["entry_time"] + 3_600_000
+    adverse_rate = 0.05 if held["side"] == "LONG" else -0.05
+    event = {"funding_time": event_ts, "funding_rate": adverse_rate,
+             "mark_price": 100.0, "symbol": "BTCUSDT"}
+    funded = simulate(rows, params, 100, len(rows),
+                      funding_rates=[event], symbol="BTCUSDT")
+    assert funded["max_drawdown_pct"] > base["max_drawdown_pct"]
+
+
 def test_mean_reversion_rejects_invalid_range():
     rows = make_rows()
     try:
