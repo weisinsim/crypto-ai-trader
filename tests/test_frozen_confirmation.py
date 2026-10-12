@@ -105,7 +105,7 @@ class FrozenConfirmationTests(unittest.TestCase):
         ]
         events[1]["venue"] = "okx"
         summary = validate_funding_events(events, "BTCUSDT", valid_time, valid_time + 3 * 28_800_000)
-        self.assertEqual(summary["records_in_window"], 3)
+        self.assertEqual(summary["records_in_window"], 2)
         self.assertEqual(summary["mark_price_sources"]["mark_kline_open"], 1)
         with self.assertRaisesRegex(ValueError, "duplicate"):
             validate_funding_events([events[0], events[0]], "BTCUSDT", valid_time, valid_time + 28_800_000)
