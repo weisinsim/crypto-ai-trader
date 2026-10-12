@@ -105,6 +105,11 @@ def validate_funding_events(funding: list[dict], symbol: str, start_ms: int, end
                 "OKX mark-price provenance requires explicit venue=okx; "
                 f"got venue={venue or 'missing'}"
             )
+        if source == "binance_fapi_funding_rate_mark_price" and venue != "binance":
+            raise ValueError(
+                "Binance funding provenance requires explicit venue=binance; "
+                f"got venue={venue or 'missing'}"
+            )
         if source == "bybit_mark_kline_open" and venue != "bybit":
             raise ValueError(
                 "Bybit mark-price provenance requires explicit venue=bybit; "
