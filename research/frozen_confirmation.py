@@ -92,7 +92,7 @@ def validate_funding_events(funding: list[dict], symbol: str, start_ms: int, end
         sources[source] = sources.get(source, 0) + 1
     allowed_sources = {
         "mark_kline_open", "mark_kline_open_nearest_1s",
-        "mark_price_kline_open", "exchange_funding_mark_price", "rest_mark_price",
+        "mark_price_kline_open", "exchange_funding_mark_price", "rest_mark_price", "bybit_mark_kline_open",
     }
     untrusted_sources = sorted(set(sources) - allowed_sources)
     if untrusted_sources:
