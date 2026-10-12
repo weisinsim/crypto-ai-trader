@@ -44,3 +44,24 @@ def test_trade_attribution_groups_month_side_and_exit_reason():
 
 def test_trade_attribution_handles_empty_input():
     assert trade_attribution([]) == {}
+
+
+
+def test_trade_attribution_components_reconcile_with_group_pnl():
+    trades = [
+        trade(0.02, side="LONG", reason="MEAN_TARGET"),
+        trade(-0.01, side="SHORT", reason="STOP"),
+    ]
+    result = trade_attribution(trades)
+    side_groups = [value for key, value in result.items() if key.startswith("side:")]
+    assert sum(item["trades"] for item in side_groups) == len(trades)
+    assert round(sum(item["net_trade_pnl_equity_pct_additive"] for item in side_groups), 4) == 1.0
+    assert round(sum(item["price_pnl_equity_pct_additive"] for item in side_groups), 4) == 3.0
+    assert round(sum(item["trading_cost_equity_pct_additive"] for item in side_groups), 4) == 0.2
+
+
+def test_trade_attribution_uses_utc_entry_month():
+    # 2026-10-01 00:30 UTC; grouping is explicitly UTC, not runner-local time.
+    entry = 1_790_814_600_000
+    result = trade_attribution([trade(0.01, entry=entry, exit=entry + 3_600_000)])
+    assert result["month:2026-10"]["trades"] == 1
