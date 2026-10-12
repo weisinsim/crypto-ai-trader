@@ -63,6 +63,7 @@ def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str
         (ts, source, venue) for ts, source, venue in events
         if source not in approved_sources
         or (source == "okx_mark_price_kline_open" and venue != "okx")
+        or (source == "binance_fapi_funding_rate_mark_price" and venue != "binance")
     ]
     unverified_count = len(unverified_events)
     unverified_records = [
