@@ -75,6 +75,20 @@ class FundingManifestTests(unittest.TestCase):
             self.assertEqual(manifest["assessment"]["status"], "REVIEW_REQUIRED")
             self.assertEqual(manifest["dataset"]["proxy_or_prior_close_records"], 1)
 
+    def test_unknown_source_label_forces_review(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = self.write_csv(folder, [self.row(200, source="made_up_official_mark")])
+            manifest = self.build(path)
+            self.assertEqual(manifest["assessment"]["status"], "REVIEW_REQUIRED")
+            self.assertEqual(manifest["dataset"]["unknown_source_records"], 1)
+
+    def test_nearest_second_mark_source_forces_review(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = self.write_csv(folder, [self.row(200, source="mark_kline_open_nearest_1s")])
+            manifest = self.build(path)
+            self.assertEqual(manifest["assessment"]["status"], "REVIEW_REQUIRED")
+            self.assertEqual(manifest["dataset"]["proxy_or_prior_close_records"], 1)
+
     def test_rejects_non_200_source_claim_and_timezone_free_timestamp(self):
         with tempfile.TemporaryDirectory() as folder:
             path = self.write_csv(folder, [self.row(200)])
