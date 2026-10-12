@@ -11,6 +11,7 @@ on:
       - "research/okx_funding_data.py"
       - "research/frozen_confirmation.py"
       - "research/funding_audit.py"
+      - "tests/test_okx_data_adapters.py"
       - ".github/workflows/frozen-confirmation.yml"
   workflow_dispatch:
     inputs:
