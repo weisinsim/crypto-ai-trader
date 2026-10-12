@@ -32,3 +32,23 @@ Status: **PROTOCOL ONLY — no new performance claim**
 ## Operational decision
 
 Do not deploy or automate live orders. The immediate next step is to acquire/prepare an untouched confirmation data window or run a prospective paper-trading observation period, not to expand the parameter grid. Green CI is a software correctness signal, not a profitability signal.
+
+## Addendum — run #160 and latest CI (2026-10-12)
+
+Latest five-asset research run: https://github.com/weisinsim/crypto-ai-trader/actions/runs/38222947432  
+Latest Python validation: https://github.com/weisinsim/crypto-ai-trader/actions/runs/38222947406  
+Latest research test suite: https://github.com/weisinsim/crypto-ai-trader/actions/runs/38222947658  
+Follow-up documentation commit: `9c711ffe5b28d0c4287f64d17bb1384e7a4d1434`.
+
+All five research matrix jobs completed and their funding audit gates passed. All five assets nevertheless failed the predeclared strategy cost-robustness gate for the selected breakout/retest candidate; mean-reversion candidates also failed the severe 0.46% round-trip cost gate. BTC breakout/retest returned +7.6080% at base cost, approximately flat at 0.30% (+0.0048%), and -7.0851% at 0.46%. AVAX mean reversion returned +11.1196% at base cost, +4.0647% at 0.30%, and -2.5496% at 0.46%; its second holdout half was negative under both stress levels.
+
+The inspected run #160 holdout is now consumed evidence and must not be used to select, tune, or rank parameters. Do not carry forward the earlier candidate wording as a promotion recommendation. Any follow-up version is a new hypothesis and requires a new, untouched chronological confirmation period.
+
+### Immediate decision
+
+- **No strategy is approved for live trading.**
+- Keep all five symbols and strategy families at RESEARCH ONLY / NOT APPROVED.
+- The recent green CI runs establish software/test completion only; they do not change this decision.
+- Prefer prospective paper trading with frozen signals and logged no-trade decisions. The recent completed history window ends at the last fully closed UTC month; a few days of newer candles alone are not enough to establish a statistically informative confirmation sample.
+- Do not expand parameter grids until a new confirmation window and its pass/fail thresholds are fixed in advance.
+
