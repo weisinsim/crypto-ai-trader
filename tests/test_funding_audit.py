@@ -149,6 +149,12 @@ def test_custom_eight_hour_gate_fails_sixteen_hour_gap():
     assert report["max_gap_gate_hours"] == 8.0
 
 
+@pytest.mark.parametrize("threshold", [0, -1, float("nan"), float("inf"), float("-inf")])
+def test_audit_rejects_invalid_gap_threshold(threshold):
+    with pytest.raises(ValueError, match="max_gap_hours must be finite and greater than zero"):
+        audit_funding(funding([0]), candles(), "BTCUSDT", max_gap_hours=threshold)
+
+
 def test_audit_fails_when_funding_history_starts_late_inside_requested_window():
     rows = candles(24 * 180)
     first_event = 24 * 90 * 3_600_000
