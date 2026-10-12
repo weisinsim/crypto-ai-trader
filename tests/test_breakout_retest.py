@@ -179,6 +179,24 @@ class BreakoutRetestTests(unittest.TestCase):
         self.assertIn("risk_adjusted_score_not_positive", reasons)
         self.assertNotIn("total_trades_below_12", reasons)
 
+    def test_adverse_funding_increases_intratrade_drawdown(self):
+        rows = make_rows()
+        params = {"lookback": 24, "max_wait": 6, "target_r": 2.0}
+        base = run_breakout_retest(rows, params, 100, len(rows))
+        held = next((trade for trade in base["trade_log"]
+                     if trade["exit_time"] - trade["entry_time"] >= 3_600_000), None)
+        self.assertIsNotNone(held, "fixture must include a trade held across at least one candle")
+        event_ts = held["entry_time"] + 3_600_000
+        adverse_rate = 0.05 if held["side"] == "LONG" else -0.05
+        event = {"funding_time": event_ts, "funding_rate": adverse_rate,
+                 "mark_price": 100.0, "symbol": "BTCUSDT"}
+        funded = run_breakout_retest(
+            rows, params, 100, len(rows),
+            funding_rates=[event], symbol="BTCUSDT",
+        )
+        self.assertGreater(funded["max_drawdown_pct"], base["max_drawdown_pct"])
+
+
     def test_invalid_window_rejected(self):
         rows = make_rows()
         with self.assertRaisesRegex(ValueError, "evaluation indices"):
