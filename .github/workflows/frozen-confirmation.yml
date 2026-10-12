@@ -1,6 +1,13 @@
 name: Frozen candidate independent confirmation
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "research/funding_data.py"
+      - "research/frozen_confirmation.py"
+      - "research/funding_audit.py"
+      - ".github/workflows/frozen-confirmation.yml"
   workflow_dispatch:
     inputs:
       start_date:
