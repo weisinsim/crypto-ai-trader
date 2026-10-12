@@ -64,14 +64,16 @@ class FundingDataTests(unittest.TestCase):
         context.__exit__ = Mock(return_value=False)
 
         with patch("research.funding_data.httpx.Client", return_value=context):
-            with self.assertRaisesRegex(ValueError, "refusing to synthesize records"):
-                download_archive_funding("BTCUSDT", start, end)
+            with patch("research.funding_data.download_funding_rates",
+                       side_effect=RuntimeError("official REST unavailable")) as rest:
+                with self.assertRaisesRegex(ValueError, "refusing to synthesize records"):
+                    download_archive_funding("BTCUSDT", start, end)
 
-        self.assertEqual(client.get.call_count, 3)
+        self.assertEqual(client.get.call_count, 2)
         requested_urls = [call.args[0] for call in client.get.call_args_list]
         self.assertIn("/monthly/fundingRate/", requested_urls[0])
         self.assertIn("/daily/fundingRate/", requested_urls[1])
-        self.assertIn("/fapi/v1/fundingRate", requested_urls[2])
+        rest.assert_called_once_with("BTCUSDT", start, end, base_url="https://fapi.binance.com")
 
     def test_month_starts_handles_year_boundary(self):
         from research.funding_data import _month_starts
