@@ -111,7 +111,7 @@ jobs:
           start = datetime.strptime(os.environ["START_DATE"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
           end = datetime.strptime(os.environ["END_DATE"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
           rows = download_okx_funding(os.environ["SYMBOL"], int(start.timestamp()*1000), int(end.timestamp()*1000))
-          normalized = [{key: row[key] for key in ("funding_time", "funding_rate", "mark_price", "symbol", "mark_price_source")} for row in rows]
+          normalized = [{key: row[key] for key in ("funding_time", "funding_rate", "mark_price", "symbol", "mark_price_source", "venue")} for row in rows]
           save_funding_csv(normalized, f"data/confirm_{os.environ['SYMBOL']}_funding.csv")
           sources = {}
           for row in rows:
