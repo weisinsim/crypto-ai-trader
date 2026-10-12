@@ -1,9 +1,8 @@
-"""AVAX frozen-parameter diagnostics; never select parameters from holdout results."""
+""""AVAX frozen-parameter diagnostics; never select parameters from holdout results."""
 from __future__ import annotations
 
 import argparse
 import json
-import math
 from pathlib import Path
 
 from research.mean_reversion import simulate
@@ -23,20 +22,26 @@ def metrics(trades: list[dict]) -> dict:
 
 
 def concentration(trades: list[dict]) -> dict:
-    ordered = sorted((float(t["pnl_equity"]) for t in trades), reverse=True)
-    positive_total = sum(x for x in ordered if x > 0)
-    result = {"positive_pnl_trade_concentration": {
-        f"top_{n}_share_pct": round(sum(x for x in ordered[:n] if x > 0) / positive_total * 100, 2)
-        if positive_total else None for n in (1, 3, 5)
-    }}
+    pnl = [float(t["pnl_equity"]) for t in trades]
+    winners = sorted((x for x in pnl if x > 0), reverse=True)
+    positive_total = sum(winners)
+    result = {
+        "positive_pnl_trade_concentration": {
+            f"top_{n}_share_pct": round(sum(winners[:n]) / positive_total * 100, 2)
+            if positive_total else None for n in (1, 3, 5)
+        }
+    }
     for n in (1, 3):
-        removed = set(i for i, x in sorted(enumerate([float(t["pnl_equity"]) for t in trades]),
-                                            key=lambda pair: pair[1], reverse=True) if x > 0) 
-        # Recalculate additive trade-PnL diagnostics, explicitly not a portfolio re-simulation.
-        removed_idx = set(sorted((i for i, t in enumerate(trades) if float(t["pnl_equity"]) > 0),
-                                 key=lambda i: float(trades[i]["pnl_equity"]), reverse=True)[:n])
+        removed_idx = set(
+            sorted(
+                (i for i, value in enumerate(pnl) if value > 0),
+                key=lambda i: pnl[i],
+                reverse=True,
+            )[:n]
+        )
+        # Additive trade-PnL diagnostic only; this is not a portfolio re-simulation.
         result[f"after_removing_top_{n}_winning_trades_additive_only"] = metrics(
-            [t for i, t in enumerate(trades) if i not in removed_idx]
+            [trade for i, trade in enumerate(trades) if i not in removed_idx]
         )
     return result
 
