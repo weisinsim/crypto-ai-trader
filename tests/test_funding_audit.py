@@ -90,6 +90,13 @@ def test_okx_source_with_conflicting_venue_fails_closed():
     assert report["unverified_price_source_records"] == 1
 
 
+def test_okx_source_without_explicit_venue_fails_closed():
+    rows = funding([0], "okx_mark_price_kline_open")
+    report = audit_funding(rows, candles(), "BTCUSDT")
+    assert report["status"] == "FAIL_UNVERIFIED_MARK_PRICE_SOURCE"
+    assert report["unverified_price_source_records"] == 1
+
+
 def test_audit_rejects_funding_event_outside_candle_coverage():
     with pytest.raises(ValueError, match="outside candle coverage"):
         audit_funding(funding([-1]), candles(), "BTCUSDT")
