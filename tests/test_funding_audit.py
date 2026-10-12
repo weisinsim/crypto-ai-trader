@@ -122,3 +122,17 @@ def test_custom_eight_hour_gate_fails_sixteen_hour_gap():
     )
     assert report["status"] == "FAIL_GAP"
     assert report["max_gap_gate_hours"] == 8.0
+
+def test_audit_fails_when_funding_history_starts_late_inside_requested_window():
+    # Internal events are perfectly spaced at 8h, but the first ~3 months are
+    # absent. This must fail rather than passing on internal gaps alone.
+    start = 0
+    rows = candles(24 * 180)
+    first_event = 24 * 90 * 3_600_000
+    last_event = first_event + 8 * 3_600_000
+    report = audit_funding(funding([first_event, last_event]), rows, "BTCUSDT",
+                           max_gap_hours=8.0)
+    assert report["status"] == "FAIL_GAP_OR_BOUNDARY_COVERAGE"
+    assert report["leading_gap_hours"] > 8
+    assert report["boundary_gaps_over_8h"] == 1
+
