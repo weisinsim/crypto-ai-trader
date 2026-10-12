@@ -61,11 +61,11 @@ class FundingManifestTests(unittest.TestCase):
 
     def test_manifest_reports_window_boundary_gaps(self):
         with tempfile.TemporaryDirectory() as folder:
-            path = self.write_csv(folder, [self.row(200), self.row(900)])
-            manifest = self.build(path, start_ms=100, end_ms=1000)
+            path = self.write_csv(folder, [self.row(3_600_000), self.row(7_200_000)])
+            manifest = self.build(path, start_ms=0, end_ms=10_800_000)
             dataset = manifest["dataset"]
-            self.assertAlmostEqual(dataset["first_event_offset_from_start_hours"], 100 / 3_600_000)
-            self.assertAlmostEqual(dataset["last_event_offset_from_end_hours"], 100 / 3_600_000)
+            self.assertEqual(dataset["first_event_offset_from_start_hours"], 1.0)
+            self.assertEqual(dataset["last_event_offset_from_end_hours"], 1.0)
             self.assertEqual(dataset["boundary_gaps_over_expected_interval"], 0)
 
     def test_proxy_prices_force_review(self):
