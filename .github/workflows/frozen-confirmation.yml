@@ -6,7 +6,9 @@ on:
     paths:
       - "research/funding_data.py"
       - "research/bybit_funding_data.py"
-      - "research/bybit_candle_data.py"\n      - "research/okx_candle_data.py"\n      - "research/okx_funding_data.py"
+      - "research/bybit_candle_data.py"
+      - "research/okx_candle_data.py"
+      - "research/okx_funding_data.py"
       - "research/frozen_confirmation.py"
       - "research/funding_audit.py"
       - ".github/workflows/frozen-confirmation.yml"
