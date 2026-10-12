@@ -168,6 +168,64 @@ jobs:
             --end "$END_DATE" \
             --output "reports/confirm_${SYMBOL}_${START_DATE}_${END_DATE}.json"
 
+      - name: Publish candidate metrics and gate status
+        if: always()
+        env:
+          SYMBOL: ${{ matrix.symbol }}
+          START_DATE: ${{ inputs.start_date || '2026-10-01' }}
+          END_DATE: ${{ inputs.end_date || '2026-10-12' }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          symbol = os.environ["SYMBOL"]
+          report_path = Path(f"reports/confirm_{symbol}_{os.environ['START_DATE']}_{os.environ['END_DATE']}.json")
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+          if not report_path.exists():
+              message = f"## {symbol} frozen confirmation\n\n**NO REPORT** — confirmation did not produce a report.\n"
+              if summary_path:
+                  with open(summary_path, "a", encoding="utf-8") as handle:
+                      handle.write(message)
+              print(f"::warning::{symbol}: confirmation report missing")
+              raise SystemExit(0)
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+          gates = report.get("gate", {})
+          results = report.get("results", {})
+          lines = [
+              f"## {symbol} frozen confirmation",
+              "",
+              f"- **Status:** {report.get('status', 'UNKNOWN')}",
+              f"- **Window:** {report.get('window_utc', {}).get('start_inclusive')} to {report.get('window_utc', {}).get('end_exclusive')} (end exclusive)",
+              f"- **Frozen parameter SHA-256:** `{report.get('frozen_parameters_sha256', 'missing')}`",
+              "",
+              "| Round-trip cost | Trades | Net return | Max drawdown | Win rate | Profit factor |",
+              "|---:|---:|---:|---:|---:|---:|",
+          ]
+          for name, result in results.items():
+              lines.append(
+                  f"| {name.removeprefix('round_trip_cost_').removesuffix('pct')}% "
+                  f"| {result.get('trades')} "
+                  f"| {result.get('net_return_pct')}% "
+                  f"| {result.get('max_drawdown_pct')}% "
+                  f"| {result.get('win_rate_pct')}% "
+                  f"| {result.get('profit_factor')} |"
+              )
+          lines.extend(["", "### Eligibility gates", "", "| Gate | Result |", "|---|---|"])
+          for key, value in gates.items():
+              lines.append(f"| {key} | {'PASS' if value is True else 'FAIL' if value is False else value} |")
+          failed = [key for key, value in gates.items() if value is False and key != "production_approval"]
+          if failed:
+              lines.extend(["", f"**Candidate not eligible:** {', '.join(failed)}. CI success means the analysis completed, not that the strategy passed."])
+              print(f"::warning::{symbol} candidate failed research gates: {', '.join(failed)}")
+          else:
+              lines.extend(["", "**Research gates passed. Production approval remains separate and must be explicitly reviewed.**"])
+          if summary_path:
+              with open(summary_path, "a", encoding="utf-8") as handle:
+                  handle.write("\n".join(lines) + "\n")
+          print(f"summary_written={bool(summary_path)} failed_gates={failed}")
+          PY
+
       - name: Upload confirmation reports
         if: always()
         uses: actions/upload-artifact@v4
