@@ -11,15 +11,15 @@ on:
   workflow_dispatch:
     inputs:
       start_date:
-        description: "Inclusive UTC start date (must be 2026-10-01 or later)"
+        description: "Inclusive UTC start date (must be 2026-09-01 or later)"
         required: true
         type: string
-        default: "2026-10-01"
+        default: "2026-09-01"
       end_date:
         description: "Exclusive UTC end date; only fully closed 1H candles are eligible"
         required: true
         type: string
-        default: "2026-10-11"
+        default: "2026-10-01"
 
 permissions:
   contents: read
@@ -56,9 +56,9 @@ jobs:
           from datetime import datetime, timezone
           start = datetime.strptime(os.environ["START_DATE"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
           end = datetime.strptime(os.environ["END_DATE"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
-          boundary = datetime(2026, 10, 1, tzinfo=timezone.utc)
+          boundary = datetime(2026, 9, 1, tzinfo=timezone.utc)
           if start < boundary:
-              raise SystemExit("confirmation start must be 2026-10-01 UTC or later")
+              raise SystemExit("confirmation start must be 2026-09-01 UTC or later")
           if end <= start:
               raise SystemExit("end_date must be later than start_date")
           print(f"confirmation_window_utc=[{start.date()}, {end.date()})")
