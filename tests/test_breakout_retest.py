@@ -146,6 +146,12 @@ class BreakoutRetestTests(unittest.TestCase):
         self.assertEqual(long_count, 1)
         self.assertEqual(short_count, 1)
 
+    def test_funding_cashflow_rejects_invalid_trade_time_bounds(self):
+        events = [{"funding_time": 200, "funding_rate": 0.01, "mark_price": 100.0}]
+        for entry_ts, exit_ts in ((-1, 300), (200, 100)):
+            with self.assertRaisesRegex(ValueError, "trade timestamps"):
+                funding_cashflow(1, 1.0, entry_ts, exit_ts, events)
+
     def test_funding_cashflow_rejects_non_finite_quantity(self):
         events = [{"funding_time": 200, "funding_rate": 0.01, "mark_price": 100.0}]
         for quantity in (float("nan"), float("inf"), float("-inf")):
