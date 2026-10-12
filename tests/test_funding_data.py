@@ -75,6 +75,42 @@ class FundingDataTests(unittest.TestCase):
         self.assertIn("/daily/fundingRate/", requested_urls[1])
         rest.assert_called_once_with("BTCUSDT", start, end, base_url="https://fapi.binance.com")
 
+    def test_archive_funding_uses_official_rest_rows_when_archives_missing(self):
+        start = int(datetime(2026, 10, 2, tzinfo=timezone.utc).timestamp() * 1000)
+        end = int(datetime(2026, 10, 3, tzinfo=timezone.utc).timestamp() * 1000)
+
+        def response(status_code):
+            item = Mock()
+            item.status_code = status_code
+            item.raise_for_status.side_effect = (
+                RuntimeError("unexpected HTTP error") if status_code != 404 else None
+            )
+            return item
+
+        client = Mock()
+        client.get.side_effect = [response(404), response(404)]
+        context = Mock()
+        context.__enter__ = Mock(return_value=client)
+        context.__exit__ = Mock(return_value=False)
+        official_rows = [{
+            "funding_time": start + 8 * 60 * 60 * 1000,
+            "funding_rate": 0.0001,
+            "mark_price": 123.45,
+            "symbol": "BTCUSDT",
+            "mark_price_source": "rest_mark_price",
+        }]
+
+        with patch("research.funding_data.httpx.Client", return_value=context):
+            with patch("research.funding_data.download_funding_rates",
+                       return_value=official_rows) as rest:
+                rows = download_archive_funding("BTCUSDT", start, end)
+
+        rest.assert_called_once_with("BTCUSDT", start, end, base_url="https://fapi.binance.com")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["mark_price"], 123.45)
+        self.assertEqual(rows[0]["mark_price_source"], "rest_mark_price")
+        self.assertEqual(rows[0]["funding_rate"], 0.0001)
+
     def test_month_starts_handles_year_boundary(self):
         from research.funding_data import _month_starts
 
