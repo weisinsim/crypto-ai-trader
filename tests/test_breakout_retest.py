@@ -137,6 +137,15 @@ class BreakoutRetestTests(unittest.TestCase):
         )
         self.assertGreater(funded["max_drawdown_pct"], base["max_drawdown_pct"])
 
+    def test_funding_cashflow_negative_rate_reverses_long_short_direction(self):
+        events = [{"funding_time": 200, "funding_rate": -0.01, "mark_price": 100.0}]
+        long_pnl, long_count = funding_cashflow(1, 2.0, 100, 300, events)
+        short_pnl, short_count = funding_cashflow(-1, 2.0, 100, 300, events)
+        self.assertAlmostEqual(long_pnl, 2.0)
+        self.assertAlmostEqual(short_pnl, -2.0)
+        self.assertEqual(long_count, 1)
+        self.assertEqual(short_count, 1)
+
     def test_funding_cashflow_excludes_entry_time_and_after_exit(self):
         events = [
             {"funding_time": 100, "funding_rate": 0.01, "mark_price": 100.0},
