@@ -31,7 +31,7 @@ def test_okx_candle_download_normalizes_completed_candles(monkeypatch):
     fake = Client([{"code":"0","data":[
         ["2000","11","13","10","12","4","4","48","1"],
         ["1000","10","12","9","11","3","3","33","1"],
-    ]}])
+    ]}, {"code":"0","data":[]}])
     monkeypatch.setattr(okx_candle_data.httpx, "Client", lambda timeout: fake)
     rows = okx_candle_data.download_okx_candles("BTCUSDT", 1000, 3000, pause_seconds=0)
     assert [x["t"] for x in rows] == [1000, 2000]
