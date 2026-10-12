@@ -55,7 +55,8 @@ def ema_values(rows: list[dict], period: int) -> list[float | None]:
 def funding_cashflow(side: int, quantity: float, entry_ts: int, exit_ts: int,
                     funding_rates: list[dict] | None) -> tuple[float, int]:
     """Calculate held-position funding cashflow; exact entry-time settlements are excluded."""
-    if side not in (-1, 1) or quantity < 0 or exit_ts < entry_ts:
+    if (side not in (-1, 1) or not math.isfinite(quantity) or quantity < 0
+            or entry_ts < 0 or exit_ts < entry_ts):
         raise ValueError("invalid side, quantity, or trade timestamps")
     pnl = 0.0
     count = 0
