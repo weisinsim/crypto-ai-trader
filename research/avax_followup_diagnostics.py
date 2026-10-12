@@ -82,6 +82,10 @@ def main():
     costs = {"base": 0.0002, "stress_0_30pct_round_trip": 0.0010,
              "severe_0_46pct_round_trip": 0.0018}
     # Parameter-neighborhood diagnostics are restricted to training bars.
+    # Exclude all post-training funding events to preserve causal data boundaries.
+    training_funding = [event for event in funding if event["funding_time"] <= rows[split - 1]["t"]]
+    if not training_funding:
+        raise ValueError("no funding settlements available inside the training window")
     neighbors = []
     variants = [
         ("window_minus_12", {"window": max(24, params["window"] - 12)}),
@@ -95,7 +99,7 @@ def main():
         candidate = dict(params)
         candidate.update(changes)
         for cost_name, slippage in costs.items():
-            r = run(rows[:split], candidate, max(100, split // 3), split, slippage, funding, args.symbol)
+            r = run(rows[:split], candidate, max(100, split // 3), split, slippage, training_funding, args.symbol)
             neighbors.append({"variant": name, "parameters": candidate, "cost_scenario": cost_name,
                               "metrics": {k: v for k, v in r.items() if k != "trade_log"}})
     halves = [(split, split + (len(rows)-split)//2), (split + (len(rows)-split)//2, len(rows))]
