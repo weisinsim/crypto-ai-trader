@@ -146,6 +146,12 @@ class BreakoutRetestTests(unittest.TestCase):
         self.assertEqual(long_count, 1)
         self.assertEqual(short_count, 1)
 
+    def test_funding_cashflow_rejects_non_finite_quantity(self):
+        events = [{"funding_time": 200, "funding_rate": 0.01, "mark_price": 100.0}]
+        for quantity in (float("nan"), float("inf"), float("-inf")):
+            with self.assertRaisesRegex(ValueError, "quantity"):
+                funding_cashflow(1, quantity, 100, 300, events)
+
     def test_funding_cashflow_excludes_entry_time_and_after_exit(self):
         events = [
             {"funding_time": 100, "funding_rate": 0.01, "mark_price": 100.0},
