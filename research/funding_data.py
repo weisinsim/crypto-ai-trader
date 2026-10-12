@@ -165,11 +165,27 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                         daily_resp.raise_for_status()
                     day = day.replace(day=day.day) + __import__("datetime").timedelta(days=1)
                 if not daily_rate_rows:
-                    raise ValueError(
-                        f"missing funding archive for requested month {ym} ({rate_url}); "
-                        f"public REST mirror result: {mirror_error or 'empty response'}; "
-                        "no official daily funding archives were available"
-                    )
+                    # Final fallback: the official USD-M Futures funding history
+                    # endpoint returns both fundingRate and the settlement markPrice.
+                    # Keep the request scoped to the missing month and preserve provenance.
+                    try:
+                        rest_rows = download_funding_rates(
+                            symbol, month_start_ms, month_end_ms, base_url=BASE_URL
+                        )
+                    except Exception as exc:
+                        raise ValueError(
+                            f"funding data unavailable for {symbol} in {ym}: monthly "
+                            f"archive missing ({rate_url}), daily archives unavailable, "
+                            f"official REST fallback failed ({type(exc).__name__}: {exc}); "
+                            "refusing to synthesize records"
+                        ) from exc
+                    if not rest_rows:
+                        raise ValueError(
+                            f"official REST returned no funding records for {symbol} "
+                            f"in [{month_start_ms}, {month_end_ms}); refusing to synthesize records"
+                        )
+                    rows.extend(rest_rows)
+                    continue
                 # Build an in-memory CSV archive so the shared mark-price
                 # provenance checks below apply identically to monthly and daily data.
                 csv_buffer = io.StringIO()
