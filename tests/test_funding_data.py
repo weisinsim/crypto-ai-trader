@@ -1,6 +1,8 @@
 import unittest
+from datetime import datetime, timezone
+from unittest.mock import Mock, patch
 
-from research.funding_data import download_funding_rates, parse_funding_rows
+from research.funding_data import download_archive_funding, download_funding_rates, parse_funding_rows
 
 
 def record(ts, rate="0.0001"):
@@ -41,6 +43,43 @@ class FundingDataTests(unittest.TestCase):
             return [record(100, "0.0002")]
         with self.assertRaisesRegex(RuntimeError, "did not advance"):
             download_funding_rates("BTCUSDT", 100, 200, fetch_page=fake_fetch, limit=1, pause_seconds=0)
+
+
+    def test_archive_funding_fails_closed_when_monthly_and_daily_rates_missing(self):
+        start = int(datetime(2026, 10, 2, tzinfo=timezone.utc).timestamp() * 1000)
+        end = int(datetime(2026, 10, 3, tzinfo=timezone.utc).timestamp() * 1000)
+
+        def response(status_code):
+            item = Mock()
+            item.status_code = status_code
+            item.raise_for_status.side_effect = (
+                RuntimeError("unexpected HTTP error") if status_code != 404 else None
+            )
+            return item
+
+        client = Mock()
+        client.get.side_effect = [response(404), response(404)]
+        context = Mock()
+        context.__enter__ = Mock(return_value=client)
+        context.__exit__ = Mock(return_value=False)
+
+        with patch("research.funding_data.httpx.Client", return_value=context):
+            with self.assertRaisesRegex(ValueError, "refusing to synthesize records"):
+                download_archive_funding("BTCUSDT", start, end)
+
+        self.assertEqual(client.get.call_count, 2)
+        requested_urls = [call.args[0] for call in client.get.call_args_list]
+        self.assertIn("/monthly/fundingRate/", requested_urls[0])
+        self.assertIn("/daily/fundingRate/", requested_urls[1])
+
+    def test_month_starts_handles_year_boundary(self):
+        from research.funding_data import _month_starts
+
+        start = int(datetime(2026, 12, 15, tzinfo=timezone.utc).timestamp() * 1000)
+        end = int(datetime(2027, 2, 2, tzinfo=timezone.utc).timestamp() * 1000)
+        months = list(_month_starts(start, end))
+        self.assertEqual([month.strftime("%Y-%m") for month in months],
+                         ["2026-12", "2027-01", "2027-02"])
 
 
 if __name__ == "__main__":
