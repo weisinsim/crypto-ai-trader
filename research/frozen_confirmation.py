@@ -91,12 +91,25 @@ def validate_funding_events(funding: list[dict], symbol: str, start_ms: int, end
         source = event.get("mark_price_source", "unspecified")
         sources[source] = sources.get(source, 0) + 1
     allowed_sources = {
-        "mark_kline_open", "mark_kline_open_nearest_1s",
-        "mark_price_kline_open", "bybit_mark_kline_open", "okx_mark_price_kline_open",
+        "mark_kline_open", "mark_price_kline_open",
+        "bybit_mark_kline_open", "okx_mark_price_kline_open",
     }
     untrusted_sources = sorted(set(sources) - allowed_sources)
     if untrusted_sources:
         raise ValueError(f"unverified funding mark-price provenance: {untrusted_sources}")
+    for event in window:
+        source = str(event.get("mark_price_source", "unspecified") or "unspecified")
+        venue = str(event.get("venue", "") or "").strip().lower()
+        if source == "okx_mark_price_kline_open" and venue != "okx":
+            raise ValueError(
+                "OKX mark-price provenance requires explicit venue=okx; "
+                f"got venue={venue or 'missing'}"
+            )
+        if source == "bybit_mark_kline_open" and venue != "bybit":
+            raise ValueError(
+                "Bybit mark-price provenance requires explicit venue=bybit; "
+                f"got venue={venue or 'missing'}"
+            )
     return {"records_in_window": len(window), "mark_price_sources": sources}
 
 
