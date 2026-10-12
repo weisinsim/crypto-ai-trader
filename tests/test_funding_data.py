@@ -64,7 +64,7 @@ class FundingDataTests(unittest.TestCase):
         rest.assert_called_once_with("BTCUSDT", start, end, base_url="https://fapi.binance.com")
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["mark_price"], 123.45)
-        self.assertEqual(rows[0]["mark_price_source"], "rest_mark_price")
+        self.assertEqual(rows[0]["mark_price_source"], "binance_fapi_funding_rate_mark_price")
 
     def test_stale_duplicate_page_aborts_pagination(self):
         def fake_fetch(params):
