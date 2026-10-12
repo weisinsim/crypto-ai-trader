@@ -127,11 +127,12 @@ def test_funding_cashflow_excludes_entry_timestamp_and_after_exit():
     events = [
         {"funding_time": 100, "funding_rate": 0.01, "mark_price": 100.0},
         {"funding_time": 200, "funding_rate": 0.01, "mark_price": 100.0},
+        {"funding_time": 300, "funding_rate": 0.01, "mark_price": 100.0},
         {"funding_time": 301, "funding_rate": 0.01, "mark_price": 100.0},
     ]
     pnl, count = funding_cashflow(1, 1.0, 100, 300, events)
-    assert pnl == -1.0
-    assert count == 1
+    assert pnl == -2.0
+    assert count == 2
 
 
 def test_funding_cashflow_rejects_invalid_mark_price():
