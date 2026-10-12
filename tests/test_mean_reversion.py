@@ -149,6 +149,17 @@ def test_funding_cashflow_rejects_non_finite_quantity():
 
 
 
+
+def test_funding_cashflow_rejects_duplicate_settlement_timestamps():
+    event = {"funding_time": 200, "funding_rate": 0.01, "mark_price": 100.0}
+    try:
+        funding_cashflow(1, 1.0, 100, 300, [event, dict(event)])
+    except ValueError as exc:
+        assert "duplicate funding timestamp" in str(exc)
+    else:
+        raise AssertionError("duplicate funding settlements must be rejected")
+
+
 def test_funding_cashflow_rejects_invalid_records_outside_trade_window():
     bad_events = [
         {"funding_time": -1, "funding_rate": 0.01, "mark_price": 100.0},
