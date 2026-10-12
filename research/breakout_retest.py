@@ -175,7 +175,12 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
                     # includes intratrade adverse excursions, not only closed trades.
                     mark_pnl = qty * (float(bar["c"]) - entry) * side
                     mark_costs = qty * (entry + float(bar["c"])) * (fee_rate + slippage_rate)
-                    marked_equity = max(0.000001, equity + mark_pnl - mark_costs)
+                    # Include accrued settlement cashflows in intratrade drawdown,
+                    # not only in final realized PnL.
+                    mark_funding, _ = funding_cashflow(
+                        side, qty, int(rows[entry_idx]["t"]), int(bar["t"]), funding_rates
+                    )
+                    marked_equity = max(0.000001, equity + mark_pnl - mark_costs + mark_funding)
                     peak = max(peak, marked_equity)
                     if peak > 0:
                         max_dd = max(max_dd, (peak - marked_equity) / peak)
