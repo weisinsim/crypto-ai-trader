@@ -110,6 +110,17 @@ class BreakoutRetestTests(unittest.TestCase):
         self.assertAlmostEqual(funding_cashflow(1, 2.0, 100, 300, events)[0], -0.2)
         self.assertAlmostEqual(funding_cashflow(-1, 2.0, 100, 300, events)[0], 0.2)
 
+    def test_duplicate_funding_timestamps_rejected_by_backtest(self):
+        rows = make_rows()
+        params = {"lookback": 24, "max_wait": 6, "target_r": 2.0}
+        event = {"funding_time": rows[150]["t"], "funding_rate": 0.001,
+                 "mark_price": 100.0, "symbol": "BTCUSDT"}
+        with self.assertRaisesRegex(ValueError, "duplicate funding timestamp"):
+            run_breakout_retest(
+                rows, params, 100, len(rows),
+                funding_rates=[event, dict(event)], symbol="BTCUSDT",
+            )
+
     def test_funding_cashflow_excludes_entry_time_and_after_exit(self):
         events = [
             {"funding_time": 100, "funding_rate": 0.01, "mark_price": 100.0},
