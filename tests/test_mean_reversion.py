@@ -148,6 +148,22 @@ def test_funding_cashflow_rejects_non_finite_quantity():
 
 
 
+
+def test_funding_cashflow_rejects_invalid_records_outside_trade_window():
+    bad_events = [
+        {"funding_time": -1, "funding_rate": 0.01, "mark_price": 100.0},
+        {"funding_time": 50, "funding_rate": float("nan"), "mark_price": 100.0},
+        {"funding_time": 50, "funding_rate": 0.01, "mark_price": 0.0},
+    ]
+    for event in bad_events:
+        try:
+            funding_cashflow(1, 1.0, 100, 300, [event])
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("invalid funding record must be rejected even outside trade window")
+
+
 def test_funding_cashflow_rejects_invalid_trade_time_bounds():
     events = [{"funding_time": 200, "funding_rate": 0.01, "mark_price": 100.0}]
     for entry_ts, exit_ts in ((-1, 300), (200, 100)):
