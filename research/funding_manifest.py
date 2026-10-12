@@ -84,8 +84,11 @@ def build_manifest(
     if len(timestamps) != len(set(timestamps)):
         raise ValueError("duplicate funding timestamps")
 
-    interval_ms = expected_interval_hours * 3_600_000
     gaps = [(b - a) / 3_600_000 for a, b in zip(timestamps, timestamps[1:])]
+    # Report coverage at the requested window boundaries as well as internal gaps.
+    # These are diagnostics, not proof of missing events, because funding schedules vary.
+    leading_gap_hours = (timestamps[0] - start_ms) / 3_600_000
+    trailing_gap_hours = (end_ms - timestamps[-1]) / 3_600_000
     proxy_count = sum(count for name, count in sources.items() if "proxy" in name.lower() or "prior_close" in name.lower())
     unlabelled_count = sources.get("unspecified", 0)
     return {
@@ -109,8 +112,11 @@ def build_manifest(
             "mark_price_source_counts": dict(sorted(sources.items())),
             "proxy_or_prior_close_records": proxy_count,
             "unlabelled_source_records": unlabelled_count,
+            "first_event_offset_from_start_hours": round(leading_gap_hours, 6),
+            "last_event_offset_from_end_hours": round(trailing_gap_hours, 6),
             "max_internal_gap_hours": round(max(gaps, default=0.0), 6),
             "internal_gaps_over_expected_interval": sum(g > expected_interval_hours * 1.01 for g in gaps),
+            "boundary_gaps_over_expected_interval": int(leading_gap_hours > expected_interval_hours * 1.01) + int(trailing_gap_hours > expected_interval_hours * 1.01),
             "expected_interval_hours_reference_only": expected_interval_hours,
         },
         "assessment": {
