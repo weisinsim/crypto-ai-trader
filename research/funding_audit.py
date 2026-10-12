@@ -31,7 +31,7 @@ def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str
         if not math.isfinite(rate) or not math.isfinite(mark) or mark <= 0:
             raise ValueError(f"invalid funding record at {ts}")
         events.append((ts, str(row.get("mark_price_source", "unspecified") or "unspecified"),
-                       str(row.get("venue", "") or "").lower()))
+                       str(row.get("venue", "") or "").strip().lower()))
     timestamps = [ts for ts, _, _ in events]
     if timestamps != sorted(timestamps):
         raise ValueError("funding timestamps are not sorted")
