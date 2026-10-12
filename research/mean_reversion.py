@@ -176,8 +176,11 @@ def simulate(rows: list[dict], params: dict, start: int, end: int,
         exit_idx, exit_price, reason = end-1, float(rows[end-1]["c"]), "TIME"
         for j in range(entry_idx, end):
             bar = rows[j]
+            mark_funding, _ = funding_cashflow(
+                side, qty, int(rows[entry_idx]["t"]), int(bar["t"]), funding_rates
+            )
             marked = max(1e-6, equity + qty*(float(bar["c"])-entry)*side
-                         - qty*(entry+float(bar["c"]))*(fee+slippage))
+                         - qty*(entry+float(bar["c"]))*(fee+slippage) + mark_funding)
             peak = max(peak, marked)
             max_dd = max(max_dd, (peak-marked)/peak if peak else 0)
             stop_hit = float(bar["l"]) <= stop if side == 1 else float(bar["h"]) >= stop
