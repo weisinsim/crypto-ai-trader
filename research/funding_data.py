@@ -28,7 +28,7 @@ def parse_funding_rows(raw_rows: list[dict], symbol: str, start_ms: int, end_ms:
         if start_ms <= ts < end_ms:
             rows.append({"funding_time": ts, "funding_rate": rate,
                          "mark_price": mark_price, "symbol": symbol.upper(),
-                         "mark_price_source": "rest_mark_price"})
+                         "mark_price_source": "binance_fapi_funding_rate_mark_price"})
     rows.sort(key=lambda row: row["funding_time"])
     for left, right in zip(rows, rows[1:]):
         if left["funding_time"] == right["funding_time"]:
