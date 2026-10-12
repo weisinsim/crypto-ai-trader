@@ -42,8 +42,14 @@ def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str
     start, end = candle_times[0], candle_times[-1] + 3_600_000
     if any(ts < start or ts >= end for ts in timestamps):
         raise ValueError("funding records extend outside candle coverage")
+    # Internal gaps alone are insufficient: an exchange endpoint can return
+    # only a recent subset of the requested period while every returned event
+    # is still spaced exactly 8h apart. Audit both dataset boundaries as well.
+    leading_gap = (timestamps[0] - start) / 3_600_000
+    trailing_gap = (end - timestamps[-1]) / 3_600_000
     gaps = [(b-a)/3_600_000 for a, b in zip(timestamps, timestamps[1:])]
-    max_gap = max(gaps, default=0.0)
+    max_internal_gap = max(gaps, default=0.0)
+    max_gap = max([leading_gap, trailing_gap, *gaps], default=0.0)
     sources = Counter(source for _, source in events)
     proxy_count = sum(n for name, n in sources.items() if "proxy" in name.lower())
     approved_sources = {"mark_kline_open", "mark_kline_open_nearest_1s", "mark_kline_1m_prior_close", "mark_kline_1m_open_nearest_1s", "rest_mark_price", "bybit_mark_kline_open", "okx_mark_price_kline_open"}
@@ -61,7 +67,7 @@ def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str
     elif max_gap > max_gap_hours and unverified_count:
         status = "FAIL_GAP_AND_UNVERIFIED_SOURCE"
     elif max_gap > max_gap_hours:
-        status = "FAIL_GAP"
+        status = "FAIL_GAP_OR_BOUNDARY_COVERAGE"
     elif proxy_count:
         status = "FAIL_PROXY_MARK_PRICE"
     elif unverified_count:
@@ -76,8 +82,12 @@ def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str
         "funding_last_ts": timestamps[-1], "expected_events_if_8h_schedule": round(expected),
         "count_ratio_vs_8h_schedule": round(len(events)/expected, 4) if expected else None,
         "max_gap_hours": round(max_gap, 4),
+        "max_internal_gap_hours": round(max_internal_gap, 4),
+        "leading_gap_hours": round(leading_gap, 4),
+        "trailing_gap_hours": round(trailing_gap, 4),
         "gaps_over_8h": sum(g > 8.01 for g in gaps),
         "gaps_over_24h": sum(g > 24.01 for g in gaps),
+        "boundary_gaps_over_8h": int(leading_gap > 8.01) + int(trailing_gap > 8.01),
         "mark_price_source_counts": dict(sorted(sources.items())),
         "proxy_price_records": proxy_count,
         "unverified_price_source_records": unverified_count,
@@ -86,6 +96,7 @@ def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str
         "max_gap_gate_hours": max_gap_hours,
         "limitations": [
             "Gap checks do not prove that every funding event is present.",
+            "Leading and trailing coverage are checked against candle-window boundaries.",
             "The 8-hour schedule is a reference, not an assumption of complete coverage.",
             "Proxy prices are not exchange mark-price observations."
         ]
