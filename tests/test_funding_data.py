@@ -67,10 +67,11 @@ class FundingDataTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "refusing to synthesize records"):
                 download_archive_funding("BTCUSDT", start, end)
 
-        self.assertEqual(client.get.call_count, 2)
+        self.assertEqual(client.get.call_count, 3)
         requested_urls = [call.args[0] for call in client.get.call_args_list]
         self.assertIn("/monthly/fundingRate/", requested_urls[0])
         self.assertIn("/daily/fundingRate/", requested_urls[1])
+        self.assertIn("/fapi/v1/fundingRate", requested_urls[2])
 
     def test_month_starts_handles_year_boundary(self):
         from research.funding_data import _month_starts
