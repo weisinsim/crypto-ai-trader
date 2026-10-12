@@ -93,6 +93,7 @@ def validate_funding_events(funding: list[dict], symbol: str, start_ms: int, end
     allowed_sources = {
         "mark_kline_open", "mark_price_kline_open",
         "bybit_mark_kline_open", "okx_mark_price_kline_open",
+        "binance_fapi_funding_rate_mark_price",
     }
     untrusted_sources = sorted(set(sources) - allowed_sources)
     if untrusted_sources:
