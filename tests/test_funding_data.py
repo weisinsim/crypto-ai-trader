@@ -1,6 +1,6 @@
 import unittest
 
-from research.funding_data import download_archive_funding, download_funding_rates, parse_funding_rows
+from research.funding_data import download_archive_funding, download_funding_rates, parse_funding_rows, save_funding_csv
 
 
 def record(ts, rate="0.0001"):
@@ -65,6 +65,23 @@ class FundingDataTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["mark_price"], 123.45)
         self.assertEqual(rows[0]["mark_price_source"], "binance_fapi_funding_rate_mark_price")
+
+    def test_save_funding_csv_preserves_venue_metadata(self):
+        import csv
+        import tempfile
+        from pathlib import Path
+
+        rows = [{
+            "funding_time": 100, "funding_rate": 0.0001, "mark_price": 100.0,
+            "symbol": "BTCUSDT", "mark_price_source": "okx_mark_price_kline_open",
+            "venue": "okx",
+        }]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "funding.csv"
+            save_funding_csv(rows, path)
+            with path.open(newline="", encoding="utf-8") as handle:
+                saved = next(csv.DictReader(handle))
+        self.assertEqual(saved["venue"], "okx")
 
     def test_stale_duplicate_page_aborts_pagination(self):
         def fake_fetch(params):
