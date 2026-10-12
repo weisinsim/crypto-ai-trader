@@ -76,6 +76,25 @@ class FrozenConfirmationTests(unittest.TestCase):
         without_funding = {"net_return_pct": 1.5}
         self.assertEqual(round(with_funding["net_return_pct"] - without_funding["net_return_pct"], 8), 0.5)
 
+    def test_funding_loader_preserves_venue_for_confirmation_audit(self):
+        import csv
+        import tempfile
+        from research.run_backtest import load_funding_csv
+
+        with tempfile.NamedTemporaryFile(mode="w", newline="", encoding="utf-8", suffix=".csv") as handle:
+            writer = csv.DictWriter(handle, fieldnames=(
+                "funding_time", "funding_rate", "mark_price", "symbol", "mark_price_source", "venue"
+            ))
+            writer.writeheader()
+            writer.writerow({
+                "funding_time": 1_791_820_800_000, "funding_rate": 0.0001,
+                "mark_price": 100.0, "symbol": "BTCUSDT",
+                "mark_price_source": "okx_mark_price_kline_open", "venue": "okx"
+            })
+            handle.flush()
+            loaded = load_funding_csv(handle.name)
+        self.assertEqual(loaded[0]["venue"], "okx")
+
     def test_funding_event_validation_accepts_archive_labels_and_rejects_proxy(self):
         valid_time = 1_791_820_800_000
         source_labels = ["mark_kline_open", "okx_mark_price_kline_open"]
