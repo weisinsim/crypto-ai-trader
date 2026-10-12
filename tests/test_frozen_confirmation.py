@@ -78,12 +78,13 @@ class FrozenConfirmationTests(unittest.TestCase):
 
     def test_funding_event_validation_accepts_archive_labels_and_rejects_proxy(self):
         valid_time = 1_791_820_800_000
-        source_labels = ["mark_kline_open", "mark_kline_open_nearest_1s", "okx_mark_price_kline_open"]
+        source_labels = ["mark_kline_open", "okx_mark_price_kline_open"]
         events = [
             {"funding_time": valid_time + i * 28_800_000, "symbol": "BTCUSDT",
              "mark_price_source": source}
             for i, source in enumerate(source_labels)
         ]
+        events[1]["venue"] = "okx"
         summary = validate_funding_events(events, "BTCUSDT", valid_time, valid_time + 3 * 28_800_000)
         self.assertEqual(summary["records_in_window"], 3)
         self.assertEqual(summary["mark_price_sources"]["mark_kline_open"], 1)
@@ -96,6 +97,16 @@ class FrozenConfirmationTests(unittest.TestCase):
         proxy = {**events[0], "mark_price_source": "prior_trade_kline_close_proxy"}
         with self.assertRaisesRegex(ValueError, "unverified"):
             validate_funding_events([proxy], "BTCUSDT", valid_time, valid_time + 28_800_000)
+        nearest = {**events[0], "mark_price_source": "mark_kline_open_nearest_1s"}
+        with self.assertRaisesRegex(ValueError, "unverified"):
+            validate_funding_events([nearest], "BTCUSDT", valid_time, valid_time + 28_800_000)
+        okx_missing_venue = {**events[1]}
+        okx_missing_venue.pop("venue")
+        with self.assertRaisesRegex(ValueError, "explicit venue=okx"):
+            validate_funding_events([okx_missing_venue], "BTCUSDT", valid_time, valid_time + 28_800_000)
+        okx_conflicting_venue = {**events[1], "venue": "binance"}
+        with self.assertRaisesRegex(ValueError, "explicit venue=okx"):
+            validate_funding_events([okx_conflicting_venue], "BTCUSDT", valid_time, valid_time + 28_800_000)
         with self.assertRaisesRegex(ValueError, "symbol"):
             validate_funding_events([events[0]], "AVAXUSDT", valid_time, valid_time + 28_800_000)
         misaligned = {**events[0], "funding_time": valid_time + 1}
