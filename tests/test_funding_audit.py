@@ -99,7 +99,7 @@ def test_okx_source_without_explicit_venue_fails_closed():
 
 def test_audit_rejects_funding_event_outside_candle_coverage():
     with pytest.raises(ValueError, match="outside candle coverage"):
-        audit_funding(funding([-1]), candles(), "BTCUSDT")
+        audit_funding(funding([24 * 3_600_000]), candles(), "BTCUSDT")
 
 
 
