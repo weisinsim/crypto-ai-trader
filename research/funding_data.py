@@ -14,7 +14,7 @@ from typing import Callable
 import httpx
 
 BASE_URL = "https://fapi.binance.com"
-FIELDS = ("funding_time", "funding_rate", "mark_price", "symbol", "mark_price_source")
+FIELDS = ("funding_time", "funding_rate", "mark_price", "symbol", "mark_price_source", "venue")
 
 
 def parse_funding_rows(raw_rows: list[dict], symbol: str, start_ms: int, end_ms: int) -> list[dict]:
