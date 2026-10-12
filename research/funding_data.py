@@ -148,11 +148,39 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                         daily_resp.raise_for_status()
                     day += timedelta(days=1)
                 if not daily_rate_rows:
-                    raise ValueError(
-                        f"missing funding archive for requested month {ym} ({rate_url}); "
-                        "no official daily funding archives were available; "
-                        "funding acquisition blocked, refusing to synthesize records"
-                    )
+                    # Binance's public archive may not publish the current
+                    # month's fundingRate package until after month-end.
+                    # Try the official funding REST endpoint before failing closed.
+                    # The returned markPrice is exchange-provided settlement data;
+                    # downstream rows must retain its provenance explicitly.
+                    try:
+                        rest_rows = download_funding_rates(
+                            symbol, start_ms, end_ms, base_url=BASE_URL
+                        )
+                    except Exception as exc:
+                        raise ValueError(
+                            f"funding data unavailable for {symbol} in {ym}: "
+                            f"monthly archive missing ({rate_url}), no official daily "
+                            "funding archives available, and official REST fallback "
+                            f"failed ({type(exc).__name__}: {exc}); refusing to synthesize records"
+                        ) from exc
+                    if not rest_rows:
+                        raise ValueError(
+                            f"official REST fallback returned no funding records for "
+                            f"{symbol} in [{start_ms}, {end_ms}); refusing to synthesize records"
+                        )
+                    # Keep exchange-supplied settlement mark prices from the
+                    # official REST response. Do not route these rows through
+                    # mark-kline lookup, which could silently change provenance.
+                    for item in rest_rows:
+                        rows.append({
+                            "funding_time": item["funding_time"],
+                            "funding_rate": item["funding_rate"],
+                            "mark_price": item["mark_price"],
+                            "symbol": symbol,
+                            "mark_price_source": "rest_mark_price",
+                        })
+                    continue
                 # Build an in-memory CSV archive so the shared mark-price
                 # provenance checks below apply identically to monthly and daily data.
                 csv_buffer = io.StringIO()
