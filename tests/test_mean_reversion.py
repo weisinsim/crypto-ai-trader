@@ -58,6 +58,23 @@ def test_adverse_funding_increases_intratrade_drawdown():
 
 
 
+
+def test_mean_reversion_rejects_duplicate_funding_timestamps():
+    rows = make_rows()
+    event = {"funding_time": rows[150]["t"], "funding_rate": 0.001,
+             "mark_price": 100.0, "symbol": "BTCUSDT"}
+    try:
+        simulate(
+            rows,
+            {"window": 24, "entry_z": 1.5, "stop_atr": 2.0, "rsi_filter": 0},
+            100, len(rows), funding_rates=[event, dict(event)], symbol="BTCUSDT",
+        )
+    except ValueError as exc:
+        assert "duplicate funding timestamp" in str(exc)
+    else:
+        raise AssertionError("duplicate funding timestamp should raise ValueError")
+
+
 def test_mean_reversion_rejects_negative_funding_timestamp():
     rows = make_rows()
     event = {"funding_time": -1, "funding_rate": 0.001,
