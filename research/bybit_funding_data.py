@@ -21,11 +21,11 @@ def download_bybit_funding(symbol: str, start_ms: int, end_ms: int, *,
         raise ValueError("require 0 <= start_ms < end_ms")
     records = []
     with httpx.Client(timeout=20.0) as client:
-        cursor = start_ms
-        while cursor < end_ms:
+        page_end = end_ms - 1
+        while page_end >= start_ms:
             response = client.get(base_url.rstrip("/") + "/v5/market/funding/history", params={
                 "category": "linear", "symbol": symbol.upper(),
-                "startTime": cursor, "endTime": end_ms - 1, "limit": 200,
+                "startTime": start_ms, "endTime": page_end, "limit": 200,
             })
             response.raise_for_status()
             payload = response.json()
@@ -43,12 +43,13 @@ def download_bybit_funding(symbol: str, start_ms: int, end_ms: int, *,
                 if start_ms <= ts < end_ms:
                     parsed.append((ts, rate))
             records.extend(parsed)
-            next_cursor = max(int(item["fundingRateTimestamp"]) for item in page) + 1
-            if next_cursor <= cursor:
-                raise RuntimeError("Bybit funding pagination did not advance")
-            cursor = next_cursor
+            oldest_ts = min(int(item["fundingRateTimestamp"]) for item in page)
             if len(page) < 200:
                 break
+            next_end = oldest_ts - 1
+            if next_end >= page_end:
+                raise RuntimeError("Bybit funding pagination did not move backward")
+            page_end = next_end
             if pause_seconds:
                 time.sleep(pause_seconds)
 
@@ -56,7 +57,7 @@ def download_bybit_funding(symbol: str, start_ms: int, end_ms: int, *,
         # This records an explicit venue-specific source; it is not Binance mark data.
         result = []
         for ts, rate in sorted(set(records)):
-            response = client.get(BASE_URL.rstrip("/") + "/v5/market/mark-price-kline", params={
+            response = client.get(base_url.rstrip("/") + "/v5/market/mark-price-kline", params={
                 "category": "linear", "symbol": symbol.upper(), "interval": "1",
                 "start": ts, "end": ts + 60_000, "limit": 2,
             })
