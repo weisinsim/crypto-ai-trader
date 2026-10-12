@@ -147,8 +147,10 @@ jobs:
               lines += ["", f"- Audit status: **{data.get('status')}**",
                         f"- Completed 1H candles: {data.get('candle_bars')}",
                         f"- Funding records: {data.get('funding_records')}",
-                        f"- Max funding gap: {data.get('max_gap_hours')} hours",
-                        f"- Gaps over 8h / 24h: {data.get('gaps_over_8h')} / {data.get('gaps_over_24h')}",
+                        f"- Max funding gap including window boundaries: {data.get('max_gap_hours')} hours",
+                        f"- Leading / trailing funding gap: {data.get('leading_gap_hours')} / {data.get('trailing_gap_hours')} hours",
+                        f"- Internal gaps over 8h / 24h: {data.get('gaps_over_8h')} / {data.get('gaps_over_24h')}",
+                        f"- Funding event count ratio vs 8h reference (diagnostic only): {data.get('count_ratio_vs_8h_schedule')}",
                         f"- Mark-price source counts: `{json.dumps(data.get('mark_price_source_counts', {}), sort_keys=True)}`"]
               if data.get("status") != "PASS":
                   print(f"::warning::{symbol} historical data audit status={data.get('status')}")
