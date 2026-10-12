@@ -174,6 +174,22 @@ def test_binance_venue_is_trimmed_and_case_normalized():
     assert report["status"] == "PASS"
 
 
+def test_expected_venue_rejects_valid_but_cross_venue_funding():
+    rows = funding([0], "binance_fapi_funding_rate_mark_price")
+    rows[0]["venue"] = "binance"
+    report = audit_funding(rows, candles(), "BTCUSDT", expected_venue="okx")
+    assert report["status"] == "FAIL_UNVERIFIED_MARK_PRICE_SOURCE"
+    assert report["unverified_price_source_records"] == 1
+    assert report["expected_venue"] == "okx"
+
+
+def test_expected_venue_accepts_matching_venue():
+    rows = funding([0], "okx_mark_price_kline_open")
+    rows[0]["venue"] = "okx"
+    report = audit_funding(rows, candles(), "BTCUSDT", expected_venue="OKX")
+    assert report["status"] == "PASS"
+
+
 def test_binance_source_without_venue_fails_closed():
     rows = funding([0], "binance_fapi_funding_rate_mark_price")
     report = audit_funding(rows, candles(), "BTCUSDT")
