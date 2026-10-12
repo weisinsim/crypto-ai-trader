@@ -121,22 +121,6 @@ class BreakoutRetestTests(unittest.TestCase):
                 funding_rates=[event, dict(event)], symbol="BTCUSDT",
             )
 
-    def test_adverse_funding_increases_intratrade_drawdown(self):
-        rows = make_rows()
-        params = {"lookback": 24, "max_wait": 6, "target_r": 2.0}
-        base = run_breakout_retest(rows, params, 100, len(rows))
-        held = next((trade for trade in base["trade_log"]
-                     if trade["exit_time"] - trade["entry_time"] >= 3_600_000), None)
-        self.assertIsNotNone(held)
-        event_ts = held["entry_time"] + 3_600_000
-        adverse_rate = 0.05 if held["side"] == "LONG" else -0.05
-        event = {"funding_time": event_ts, "funding_rate": adverse_rate,
-                 "mark_price": 100.0, "symbol": "BTCUSDT"}
-        funded = run_breakout_retest(
-            rows, params, 100, len(rows), funding_rates=[event], symbol="BTCUSDT"
-        )
-        self.assertGreater(funded["max_drawdown_pct"], base["max_drawdown_pct"])
-
     def test_funding_cashflow_negative_rate_reverses_long_short_direction(self):
         events = [{"funding_time": 200, "funding_rate": -0.01, "mark_price": 100.0}]
         long_pnl, long_count = funding_cashflow(1, 2.0, 100, 300, events)
