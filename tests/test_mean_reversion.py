@@ -113,6 +113,16 @@ def test_funding_cashflow_long_pays_and_short_receives_positive_funding():
     assert long_count == short_count == 1
 
 
+
+def test_funding_cashflow_negative_rate_reverses_long_short_direction():
+    events = [{"funding_time": 200, "funding_rate": -0.01, "mark_price": 100.0}]
+    long_pnl, long_count = funding_cashflow(1, 2.0, 100, 300, events)
+    short_pnl, short_count = funding_cashflow(-1, 2.0, 100, 300, events)
+    assert long_pnl == 2.0
+    assert short_pnl == -2.0
+    assert long_count == short_count == 1
+
+
 def test_funding_cashflow_excludes_entry_timestamp_and_after_exit():
     events = [
         {"funding_time": 100, "funding_rate": 0.01, "mark_price": 100.0},
