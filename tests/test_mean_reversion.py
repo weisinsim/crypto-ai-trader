@@ -57,6 +57,23 @@ def test_adverse_funding_increases_intratrade_drawdown():
     assert funded["max_drawdown_pct"] > base["max_drawdown_pct"]
 
 
+
+def test_mean_reversion_rejects_negative_funding_timestamp():
+    rows = make_rows()
+    event = {"funding_time": -1, "funding_rate": 0.001,
+             "mark_price": 100.0, "symbol": "BTCUSDT"}
+    try:
+        simulate(
+            rows,
+            {"window": 24, "entry_z": 1.5, "stop_atr": 2.0, "rsi_filter": 0},
+            100, len(rows), funding_rates=[event], symbol="BTCUSDT",
+        )
+    except ValueError as exc:
+        assert "funding timestamps must be non-negative" in str(exc)
+    else:
+        raise AssertionError("negative funding timestamp should raise ValueError")
+
+
 def test_mean_reversion_rejects_invalid_range():
     rows = make_rows()
     try:
