@@ -150,11 +150,12 @@ class BreakoutRetestTests(unittest.TestCase):
         events = [
             {"funding_time": 100, "funding_rate": 0.01, "mark_price": 100.0},
             {"funding_time": 200, "funding_rate": 0.01, "mark_price": 100.0},
+            {"funding_time": 300, "funding_rate": 0.01, "mark_price": 100.0},
             {"funding_time": 301, "funding_rate": 0.01, "mark_price": 100.0},
         ]
         pnl, count = funding_cashflow(1, 1.0, 100, 300, events)
-        self.assertAlmostEqual(pnl, -1.0)
-        self.assertEqual(count, 1)
+        self.assertAlmostEqual(pnl, -2.0)
+        self.assertEqual(count, 2)
 
     def test_candidate_rejection_reasons_explain_weak_folds(self):
         folds = [
