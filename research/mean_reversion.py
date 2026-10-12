@@ -88,13 +88,15 @@ def funding_cashflow(side: int, quantity: float, entry_ts: int, exit_ts: int,
     count = 0
     for event in funding_rates or []:
         ts = int(event["funding_time"])
+        rate = float(event["funding_rate"])
+        mark = float(event["mark_price"])
+        if ts < 0:
+            raise ValueError("invalid funding timestamp")
+        if not math.isfinite(rate):
+            raise ValueError("invalid funding rate")
+        if not math.isfinite(mark) or mark <= 0:
+            raise ValueError("invalid mark price")
         if entry_ts < ts <= exit_ts:
-            rate = float(event["funding_rate"])
-            mark = float(event["mark_price"])
-            if not math.isfinite(rate):
-                raise ValueError("invalid funding rate")
-            if not math.isfinite(mark) or mark <= 0:
-                raise ValueError("invalid mark price")
             pnl += -side * quantity * mark * rate
             count += 1
     return pnl, count
