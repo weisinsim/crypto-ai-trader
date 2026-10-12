@@ -21,6 +21,8 @@ def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str
                   max_gap_hours: float = 24.0, expected_venue: str | None = None) -> dict:
     if not funding_rows or not candle_rows:
         raise ValueError("funding and candle datasets must both be non-empty")
+    if not math.isfinite(max_gap_hours) or max_gap_hours <= 0:
+        raise ValueError("max_gap_hours must be finite and greater than zero")
     symbol = symbol.upper()
     if expected_venue is not None:
         expected_venue = expected_venue.strip().lower()
