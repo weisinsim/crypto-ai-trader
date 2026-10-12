@@ -34,6 +34,8 @@ def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str
     events = []
     for row in funding_rows:
         ts, rate, mark = int(row["funding_time"]), float(row["funding_rate"]), float(row["mark_price"])
+        if ts < 0:
+            raise ValueError(f"negative funding timestamp: {ts}")
         if not math.isfinite(rate) or not math.isfinite(mark) or mark <= 0:
             raise ValueError(f"invalid funding record at {ts}")
         events.append((ts, str(row.get("mark_price_source", "unspecified") or "unspecified"),
