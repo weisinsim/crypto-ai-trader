@@ -86,8 +86,12 @@ def funding_cashflow(side: int, quantity: float, entry_ts: int, exit_ts: int,
         raise ValueError("invalid side, quantity, or trade timestamps")
     pnl = 0.0
     count = 0
+    seen_timestamps = set()
     for event in funding_rates or []:
         ts = int(event["funding_time"])
+        if ts in seen_timestamps:
+            raise ValueError("duplicate funding timestamp")
+        seen_timestamps.add(ts)
         rate = float(event["funding_rate"])
         mark = float(event["mark_price"])
         if ts < 0:
