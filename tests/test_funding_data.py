@@ -56,7 +56,7 @@ class FundingDataTests(unittest.TestCase):
             "funding_rate": 0.0001,
             "mark_price": 123.45,
             "symbol": "BTCUSDT",
-            "mark_price_source": "rest_mark_price",
+            "mark_price_source": "binance_fapi_funding_rate_mark_price",
         }]
         with patch("research.funding_data.httpx.Client", return_value=context):
             with patch("research.funding_data.download_funding_rates", return_value=official_rows) as rest:
