@@ -44,6 +44,7 @@ def test_okx_funding_requires_exact_mark_candle(monkeypatch):
     fake = Client([
         {"code":"0","data":[{"fundingTime":str(ts),"realizedRate":"0.0001","fundingRate":"0.0002"}]},
         {"code":"0","data":[[str(ts),"50000","50100","49900","50050","1"]]},
+        {"code":"0","data":[]},
     ])
     monkeypatch.setattr(okx_funding_data.httpx, "Client", lambda timeout: fake)
     rows = okx_funding_data.download_okx_funding("BTCUSDT", ts-1000, ts+1000, pause_seconds=0)
@@ -58,6 +59,7 @@ def test_okx_funding_fails_closed_if_exact_mark_candle_missing(monkeypatch):
     fake = Client([
         {"code":"0","data":[{"fundingTime":str(ts),"realizedRate":"0.0001","fundingRate":"0.0002"}]},
         {"code":"0","data":[[str(ts+60_000),"50000","50100","49900","50050","1"]]},
+        {"code":"0","data":[]},
     ])
     monkeypatch.setattr(okx_funding_data.httpx, "Client", lambda timeout: fake)
     with pytest.raises(ValueError, match="missing exact OKX mark-price candle"):
