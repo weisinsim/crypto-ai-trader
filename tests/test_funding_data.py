@@ -58,6 +58,7 @@ class FundingDataTests(unittest.TestCase):
             "mark_price": 123.45,
             "symbol": "BTCUSDT",
             "mark_price_source": "binance_fapi_funding_rate_mark_price",
+            "venue": "binance",
         }]
         with patch("research.funding_data.httpx.Client", return_value=context):
             with patch("research.funding_data.download_funding_rates", return_value=official_rows) as rest:
@@ -66,6 +67,7 @@ class FundingDataTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["mark_price"], 123.45)
         self.assertEqual(rows[0]["mark_price_source"], "binance_fapi_funding_rate_mark_price")
+        self.assertEqual(rows[0]["venue"], "binance")
 
     def test_save_funding_csv_preserves_venue_metadata(self):
         import csv
