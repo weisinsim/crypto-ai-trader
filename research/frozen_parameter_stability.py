@@ -73,6 +73,18 @@ def evaluate(rows: list[dict], train_fraction: float, funding_rates: list[dict] 
         raise ValueError(f"params must contain {sorted(required)}")
     results = {}
     monthly_trade_diagnostics = {}
+    # Descriptive direction sensitivity on the untouched holdout; never used to select parameters.
+    direction_sensitivity = {}
+    for direction in ("LONG", "SHORT", "BOTH"):
+        direction_params = dict(frozen_params)
+        direction_params["direction"] = direction
+        direction_sensitivity[direction] = {}
+        for cost_name, cost in COSTS.items():
+            metrics = simulate(rows, direction_params, split, len(rows),
+                               fee=cost["fee"], slippage=cost["slippage"],
+                               funding_rates=funding_rates, symbol=symbol)
+            metrics.pop("trade_log", None)
+            direction_sensitivity[direction][cost_name] = metrics
     for segment, (start, end) in ranges.items():
         results[segment] = {}
         for cost_name, cost in COSTS.items():
@@ -96,7 +108,9 @@ def evaluate(rows: list[dict], train_fraction: float, funding_rates: list[dict] 
                          if funding_rates is not None else {"records": 0, "source": None}),
         "segments": results,
         "monthly_trade_diagnostics": monthly_trade_diagnostics,
+        "direction_sensitivity_same_holdout_not_for_selection": direction_sensitivity,
         "warnings": [
+            "Direction sensitivity replays LONG, SHORT, and BOTH on the same holdout for diagnosis only; it is not independent validation and must not be used to choose a direction based on holdout performance.",
             "Monthly diagnostics are descriptive slices of the same holdout, not independent validation or a basis for retuning against the holdout.",
             "Parameters are loaded from the symbol-specific train-only mean-reversion report when --params-json is supplied.",
             "Funding cashflows are included only when --funding-csv is supplied; inspect mark_price_sources for price provenance.",
