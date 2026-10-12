@@ -51,8 +51,14 @@ def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str
     max_internal_gap = max(gaps, default=0.0)
     max_gap = max([leading_gap, trailing_gap, *gaps], default=0.0)
     sources = Counter(source for _, source in events)
-    proxy_count = sum(n for name, n in sources.items() if "proxy" in name.lower())
-    approved_sources = {"mark_kline_open", "mark_kline_open_nearest_1s", "mark_kline_1m_prior_close", "mark_kline_1m_open_nearest_1s", "binance_fapi_funding_rate_mark_price", "bybit_mark_kline_open", "okx_mark_price_kline_open"}
+    approximate_markers = ("proxy", "prior_close", "nearest_1s")
+    proxy_count = sum(
+        n for name, n in sources.items()
+        if any(marker in name.lower() for marker in approximate_markers)
+    )
+    # Only labels implemented by this repository's Binance acquisition paths
+    # are recognized. Recognition is not independent source authentication.
+    approved_sources = {"mark_kline_open", "binance_fapi_funding_rate_mark_price"}
     unverified_count = sum(n for name, n in sources.items()
                            if name not in approved_sources)
     unverified_records = [
@@ -98,7 +104,8 @@ def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str
             "Gap checks do not prove that every funding event is present.",
             "Leading and trailing coverage are checked against candle-window boundaries.",
             "The 8-hour schedule is a reference, not an assumption of complete coverage.",
-            "Proxy prices are not exchange mark-price observations."
+            "Proxy and nearest-timestamp prices are not accepted as exact settlement observations.",
+            "Recognized labels do not independently authenticate source files."
         ]
     }
 
