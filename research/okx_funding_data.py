@@ -1,0 +1,67 @@
+"""OKX V5 historical swap funding and official mark-price candle adapter."""
+from __future__ import annotations
+import time
+from math import isfinite
+import httpx
+from research.okx_candle_data import BASE_URL, INSTRUMENTS
+
+
+def download_okx_funding(symbol: str, start_ms: int, end_ms: int, *,
+                         base_url: str = BASE_URL, pause_seconds: float = 0.12) -> list[dict]:
+    """Download realized OKX funding events and require exact-time official mark-candle opens."""
+    if symbol not in INSTRUMENTS:
+        raise ValueError(f"unsupported OKX confirmation symbol: {symbol}")
+    if start_ms < 0 or end_ms <= start_ms:
+        raise ValueError("require 0 <= start_ms < end_ms")
+    inst_id = INSTRUMENTS[symbol]
+    raw = []
+    cursor = end_ms
+    with httpx.Client(timeout=20.0) as client:
+        while cursor > start_ms:
+            response = client.get(base_url.rstrip("/") + "/api/v5/public/funding-rate-history", params={
+                "instId": inst_id, "after": cursor, "limit": "400"
+            })
+            response.raise_for_status()
+            payload = response.json()
+            if payload.get("code") != "0":
+                raise ValueError(f"OKX funding API error: {payload.get('code')} {payload.get('msg')}")
+            page = payload.get("data", [])
+            if not page:
+                break
+            for item in page:
+                ts = int(item["fundingTime"])
+                rate = float(item.get("realizedRate", item["fundingRate"]))
+                if not isfinite(rate):
+                    raise ValueError(f"invalid OKX funding rate at {ts}")
+                if start_ms <= ts < end_ms:
+                    raw.append((ts, rate))
+            oldest = min(int(item["fundingTime"]) for item in page)
+            if oldest >= cursor:
+                raise RuntimeError("OKX funding pagination did not move backward")
+            cursor = oldest
+            if pause_seconds:
+                time.sleep(pause_seconds)
+        result = []
+        for ts, rate in sorted(set(raw)):
+            response = client.get(base_url.rstrip("/") + "/api/v5/market/history-mark-price-candles", params={
+                "instId": inst_id, "bar": "1m", "after": ts + 60_000, "limit": "100"
+            })
+            response.raise_for_status()
+            payload = response.json()
+            if payload.get("code") != "0":
+                raise ValueError(f"OKX mark-price history API error: {payload.get('code')} {payload.get('msg')}")
+            match = next((c for c in payload.get("data", []) if int(c[0]) == ts), None)
+            if match is None:
+                raise ValueError(f"missing exact OKX mark-price candle at funding timestamp {ts}")
+            mark = float(match[1])
+            if not isfinite(mark) or mark <= 0:
+                raise ValueError(f"invalid OKX mark price at {ts}")
+            result.append({"funding_time":ts,"funding_rate":rate,"mark_price":mark,
+                           "symbol":symbol,"mark_price_source":"okx_mark_price_kline_open",
+                           "venue":"okx","instrument_id":inst_id})
+            if pause_seconds:
+                time.sleep(pause_seconds)
+    result.sort(key=lambda x:x["funding_time"])
+    if len({x["funding_time"] for x in result}) != len(result):
+        raise ValueError("duplicate OKX funding timestamps")
+    return result
