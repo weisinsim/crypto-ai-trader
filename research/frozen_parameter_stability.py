@@ -25,6 +25,34 @@ COSTS = {
 }
 
 
+def summarize_monthly_trades(trades: list[dict]) -> dict:
+    """Summarize realized holdout trades by UTC entry month without retuning parameters."""
+    from datetime import datetime, timezone
+
+    grouped: dict[str, list[dict]] = {}
+    for trade in trades:
+        month = datetime.fromtimestamp(int(trade["entry_time"]) / 1000, timezone.utc).strftime("%Y-%m")
+        grouped.setdefault(month, []).append(trade)
+
+    result = {}
+    for month, items in sorted(grouped.items()):
+        pnls = [float(item["pnl_equity"]) for item in items]
+        wins = [pnl for pnl in pnls if pnl > 0]
+        losses = [-pnl for pnl in pnls if pnl < 0]
+        gross_loss = sum(losses)
+        result[month] = {
+            "trades": len(items),
+            "net_pnl_equity_pct": round(sum(pnls) * 100, 4),
+            "win_rate_pct": round(len(wins) / len(items) * 100, 2),
+            "profit_factor": round(sum(wins) / gross_loss, 4) if gross_loss else ("INF" if wins else None),
+            "long_trades": sum(item["side"] == "LONG" for item in items),
+            "short_trades": sum(item["side"] == "SHORT" for item in items),
+            "exit_reasons": {reason: sum(item["reason"] == reason for item in items)
+                             for reason in sorted({item["reason"] for item in items})},
+        }
+    return result
+
+
 def evaluate(rows: list[dict], train_fraction: float, funding_rates: list[dict] | None = None, symbol: str | None = None, params: dict | None = None) -> dict:
     split = int(len(rows) * train_fraction)
     if split < 200 or len(rows) - split < 100:
@@ -44,12 +72,15 @@ def evaluate(rows: list[dict], train_fraction: float, funding_rates: list[dict] 
     if not required.issubset(frozen_params):
         raise ValueError(f"params must contain {sorted(required)}")
     results = {}
+    monthly_trade_diagnostics = {}
     for segment, (start, end) in ranges.items():
         results[segment] = {}
         for cost_name, cost in COSTS.items():
             metrics = simulate(rows, frozen_params, start, end,
                                fee=cost["fee"], slippage=cost["slippage"],
                                funding_rates=funding_rates, symbol=symbol)
+            if segment == "holdout_full":
+                monthly_trade_diagnostics[cost_name] = summarize_monthly_trades(metrics["trade_log"])
             metrics.pop("trade_log", None)
             results[segment][cost_name] = metrics
     return {
@@ -64,7 +95,9 @@ def evaluate(rows: list[dict], train_fraction: float, funding_rates: list[dict] 
                                                  for source in sorted({event.get("mark_price_source", "unspecified") for event in funding_rates})}}
                          if funding_rates is not None else {"records": 0, "source": None}),
         "segments": results,
+        "monthly_trade_diagnostics": monthly_trade_diagnostics,
         "warnings": [
+            "Monthly diagnostics are descriptive slices of the same holdout, not independent validation or a basis for retuning against the holdout.",
             "Parameters are loaded from the symbol-specific train-only mean-reversion report when --params-json is supplied.",
             "Funding cashflows are included only when --funding-csv is supplied; inspect mark_price_sources for price provenance.",
             "Subperiods are slices of the same historical holdout, not independent future data.",
