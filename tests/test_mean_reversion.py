@@ -147,6 +147,18 @@ def test_funding_cashflow_rejects_non_finite_quantity():
             raise AssertionError("non-finite quantity should raise ValueError")
 
 
+
+def test_funding_cashflow_rejects_invalid_trade_time_bounds():
+    events = [{"funding_time": 200, "funding_rate": 0.01, "mark_price": 100.0}]
+    for entry_ts, exit_ts in ((-1, 300), (200, 100)):
+        try:
+            funding_cashflow(1, 1.0, entry_ts, exit_ts, events)
+        except ValueError as exc:
+            assert "trade timestamps" in str(exc)
+        else:
+            raise AssertionError("invalid trade time bounds should raise ValueError")
+
+
 def test_funding_cashflow_rejects_invalid_mark_price():
     events = [{"funding_time": 200, "funding_rate": 0.01, "mark_price": 0.0}]
     try:
