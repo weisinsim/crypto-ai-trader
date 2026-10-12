@@ -122,10 +122,10 @@ class FrozenConfirmationTests(unittest.TestCase):
         okx_missing_venue = {**events[1]}
         okx_missing_venue.pop("venue")
         with self.assertRaisesRegex(ValueError, "explicit venue=okx"):
-            validate_funding_events([okx_missing_venue], "BTCUSDT", valid_time, valid_time + 28_800_000)
+            validate_funding_events([okx_missing_venue], "BTCUSDT", events[1]["funding_time"], events[1]["funding_time"] + 28_800_000)
         okx_conflicting_venue = {**events[1], "venue": "binance"}
         with self.assertRaisesRegex(ValueError, "explicit venue=okx"):
-            validate_funding_events([okx_conflicting_venue], "BTCUSDT", valid_time, valid_time + 28_800_000)
+            validate_funding_events([okx_conflicting_venue], "BTCUSDT", events[1]["funding_time"], events[1]["funding_time"] + 28_800_000)
 
         binance_event = {
             **events[0],
