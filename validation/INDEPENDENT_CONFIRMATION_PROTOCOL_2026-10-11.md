@@ -52,3 +52,17 @@ The inspected run #160 holdout is now consumed evidence and must not be used to 
 - Prefer prospective paper trading with frozen signals and logged no-trade decisions. The recent completed history window ends at the last fully closed UTC month; a few days of newer candles alone are not enough to establish a statistically informative confirmation sample.
 - Do not expand parameter grids until a new confirmation window and its pass/fail thresholds are fixed in advance.
 
+### Addendum — funding-source gate (2026-10-12)
+
+**Status: BLOCKED pending source-level verification.** The latest CI checks validate repository code and audit tests, but do not prove that the required historical funding files can be downloaded and reconciled from the execution environment. The historical REST endpoint has been inaccessible in some CI regions, and archive availability/content must be checked directly before the independent confirmation run.
+
+Required release checks before using funding data:
+
+1. Record the exact requested symbol and UTC interval, the official URL, HTTP status, retrieval timestamp, and file checksum for every monthly/daily archive.
+2. Validate the downloaded payload is a ZIP containing a parseable CSV with the expected schema; an HTTP 200 response alone is not sufficient.
+3. Reconcile funding timestamps and rates against the official settlement records, including duplicate, missing, and unexpected settlement intervals.
+4. Join settlement mark prices by exact timestamp where available. Label any 8h mark-price-kline proxy explicitly; do not present it as the actual settlement mark price.
+5. Fail closed if an archive is missing, malformed, or incomplete. Do not synthesize funding records, silently skip unavailable dates, or treat an unsupported endpoint as a valid fallback.
+6. Save an auditable manifest and pass/fail report before running frozen BTC/AVAX confirmation.
+
+Until these checks are evidenced by a successful retrieval and reconciliation artifact, BTC/AVAX independent confirmation remains **NOT RUN / NOT APPROVED**. A green CI run does not clear this data gate.
