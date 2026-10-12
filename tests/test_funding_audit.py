@@ -102,6 +102,12 @@ def test_audit_rejects_funding_event_outside_candle_coverage():
         audit_funding(funding([-1]), candles(), "BTCUSDT")
 
 
+
+def test_audit_rejects_negative_funding_timestamp_explicitly():
+    with pytest.raises(ValueError, match="negative funding timestamp"):
+        audit_funding(funding([-1]), candles(), "BTCUSDT")
+
+
 def test_audit_rejects_non_finite_funding_rate():
     rows = funding([0])
     rows[0]["funding_rate"] = float("nan")
