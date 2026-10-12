@@ -126,6 +126,24 @@ class FrozenConfirmationTests(unittest.TestCase):
         okx_conflicting_venue = {**events[1], "venue": "binance"}
         with self.assertRaisesRegex(ValueError, "explicit venue=okx"):
             validate_funding_events([okx_conflicting_venue], "BTCUSDT", valid_time, valid_time + 28_800_000)
+
+        binance_event = {
+            **events[0],
+            "mark_price_source": "binance_fapi_funding_rate_mark_price",
+            "venue": "binance",
+        }
+        self.assertEqual(
+            validate_funding_events([binance_event], "BTCUSDT", valid_time, valid_time + 28_800_000)["records_in_window"],
+            1,
+        )
+        for bad_venue in ("", "okx"):
+            invalid_binance = {**binance_event, "venue": bad_venue}
+            with self.subTest(binance_venue=bad_venue), self.assertRaisesRegex(
+                ValueError, "explicit venue=binance"
+            ):
+                validate_funding_events(
+                    [invalid_binance], "BTCUSDT", valid_time, valid_time + 28_800_000
+                )
         with self.assertRaisesRegex(ValueError, "symbol"):
             validate_funding_events([events[0]], "AVAXUSDT", valid_time, valid_time + 28_800_000)
         misaligned = {**events[0], "funding_time": valid_time + 1}
