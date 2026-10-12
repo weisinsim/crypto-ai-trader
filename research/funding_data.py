@@ -155,7 +155,7 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                     # downstream rows must retain its provenance explicitly.
                     try:
                         rest_rows = download_funding_rates(
-                            symbol, start_ms, end_ms, base_url=BASE_URL
+                            symbol, month_start_ms, month_end_ms, base_url=BASE_URL
                         )
                     except Exception as exc:
                         raise ValueError(
