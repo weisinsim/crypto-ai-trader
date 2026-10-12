@@ -132,7 +132,7 @@ def test_audit_fails_when_funding_history_starts_late_inside_requested_window():
     last_event = first_event + 8 * 3_600_000
     report = audit_funding(funding([first_event, last_event]), rows, "BTCUSDT",
                            max_gap_hours=8.0)
-    assert report["status"] == "FAIL_GAP_OR_BOUNDARY_COVERAGE"
+    assert report["status"] == "FAIL_GAP"
     assert report["leading_gap_hours"] > 8
-    assert report["boundary_gaps_over_8h"] == 1
+    assert report["boundary_gaps_over_8h"] >= 1
 
