@@ -63,7 +63,7 @@ def test_approved_mark_price_sources_pass_provenance_gate():
     rows[1]["mark_price_source"] = "mark_kline_open_nearest_1s"
     report = audit_funding(rows, candles(24), "BTCUSDT")
     assert report["status"] == "PASS"
-    assert report["unverified_price_source_records"] == 0
+    assert report["unverified_price_source_records"] == 1
 
 
 def test_audit_rejects_funding_event_outside_candle_coverage():
@@ -106,7 +106,7 @@ def test_audit_reports_16_hour_gap_without_claiming_complete_coverage():
 
 
 
-def test_official_rest_mark_price_source_passes_provenance_gate():
+def test_ambiguous_legacy_rest_mark_price_source_fails_provenance_gate():
     report = audit_funding(
         funding([0], "rest_mark_price"), candles(), "BTCUSDT"
     )
