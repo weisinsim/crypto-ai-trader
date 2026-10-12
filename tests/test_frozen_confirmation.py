@@ -78,7 +78,7 @@ class FrozenConfirmationTests(unittest.TestCase):
 
     def test_funding_event_validation_accepts_archive_labels_and_rejects_proxy(self):
         valid_time = 1_791_820_800_000
-        source_labels = ["mark_kline_open", "mark_kline_open_nearest_1s", "rest_mark_price"]
+        source_labels = ["mark_kline_open", "mark_kline_open_nearest_1s", "okx_mark_price_kline_open"]
         events = [
             {"funding_time": valid_time + i * 28_800_000, "symbol": "BTCUSDT",
              "mark_price_source": source}
@@ -89,6 +89,10 @@ class FrozenConfirmationTests(unittest.TestCase):
         self.assertEqual(summary["mark_price_sources"]["mark_kline_open"], 1)
         with self.assertRaisesRegex(ValueError, "duplicate"):
             validate_funding_events([events[0], events[0]], "BTCUSDT", valid_time, valid_time + 28_800_000)
+        for ambiguous in ("rest_mark_price", "exchange_funding_mark_price"):
+            legacy = {**events[0], "mark_price_source": ambiguous}
+            with self.subTest(source=ambiguous), self.assertRaisesRegex(ValueError, "unverified"):
+                validate_funding_events([legacy], "BTCUSDT", valid_time, valid_time + 28_800_000)
         proxy = {**events[0], "mark_price_source": "prior_trade_kline_close_proxy"}
         with self.assertRaisesRegex(ValueError, "unverified"):
             validate_funding_events([proxy], "BTCUSDT", valid_time, valid_time + 28_800_000)
