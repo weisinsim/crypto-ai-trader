@@ -11,11 +11,19 @@ import hashlib
 import json
 import math
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 
 REQUIRED_COLUMNS = {"funding_time", "funding_rate", "mark_price", "symbol", "mark_price_source"}
+
+# Labels describe acquisition methods; they are not cryptographic proof of origin.
+# Nearest-timestamp matches are deliberately review-only, even when within 1 second.
+KNOWN_SOURCE_LABELS = {
+    "binance_fapi_funding_rate_mark_price",
+    "mark_kline_open",
+}
+APPROXIMATE_SOURCE_MARKERS = ("proxy", "prior_close", "nearest_1s")
 
 
 def build_manifest(
@@ -89,8 +97,15 @@ def build_manifest(
     # These are diagnostics, not proof of missing events, because funding schedules vary.
     leading_gap_hours = (timestamps[0] - start_ms) / 3_600_000
     trailing_gap_hours = (end_ms - timestamps[-1]) / 3_600_000
-    proxy_count = sum(count for name, count in sources.items() if "proxy" in name.lower() or "prior_close" in name.lower())
+    proxy_count = sum(
+        count for name, count in sources.items()
+        if any(marker in name.lower() for marker in APPROXIMATE_SOURCE_MARKERS)
+    )
     unlabelled_count = sources.get("unspecified", 0)
+    unknown_source_count = sum(
+        count for name, count in sources.items()
+        if name not in KNOWN_SOURCE_LABELS and name != "unspecified"
+    )
     return {
         "manifest_version": 1,
         "symbol": expected_symbol,
@@ -112,6 +127,7 @@ def build_manifest(
             "mark_price_source_counts": dict(sorted(sources.items())),
             "proxy_or_prior_close_records": proxy_count,
             "unlabelled_source_records": unlabelled_count,
+            "unknown_source_records": unknown_source_count,
             "first_event_offset_from_start_hours": round(leading_gap_hours, 6),
             "last_event_offset_from_end_hours": round(trailing_gap_hours, 6),
             "max_internal_gap_hours": round(max(gaps, default=0.0), 6),
@@ -120,7 +136,7 @@ def build_manifest(
             "expected_interval_hours_reference_only": expected_interval_hours,
         },
         "assessment": {
-            "status": "REVIEW_REQUIRED" if proxy_count or unlabelled_count else "STRUCTURAL_CHECKS_PASS",
+            "status": "REVIEW_REQUIRED" if proxy_count or unlabelled_count or unknown_source_count else "STRUCTURAL_CHECKS_PASS",
             "source_authenticity_verified": False,
             "event_completeness_verified": False,
             "notes": [
