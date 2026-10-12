@@ -45,6 +45,8 @@ def download_okx_candles(symbol: str, start_ms: int, end_ms: int, *,
             oldest = min(int(item[0]) for item in page)
             if oldest >= cursor:
                 raise RuntimeError("OKX candle pagination did not move backward")
+            if oldest <= start_ms:
+                break
             cursor = oldest
             if pause_seconds:
                 time.sleep(pause_seconds)
