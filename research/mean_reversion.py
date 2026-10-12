@@ -131,10 +131,12 @@ def simulate(rows: list[dict], params: dict, start: int, end: int,
                not math.isfinite(float(event["mark_price"])) or float(event["mark_price"]) <= 0
                for event in funding_rates):
             raise ValueError("funding data contains invalid rates or mark prices")
-        funding_rates = sorted(funding_rates, key=lambda event: int(event["funding_time"]))
-        if any(int(a["funding_time"]) == int(b["funding_time"])
-               for a, b in zip(funding_rates, funding_rates[1:])):
+        funding_timestamps = [int(event["funding_time"]) for event in funding_rates]
+        if any(ts < 0 for ts in funding_timestamps):
+            raise ValueError("funding timestamps must be non-negative")
+        if len(funding_timestamps) != len(set(funding_timestamps)):
             raise ValueError("duplicate funding timestamp")
+        funding_rates = sorted(funding_rates, key=lambda event: int(event["funding_time"]))
     mean_line, std_line, rsi_line = indicators(rows, window)
     atr = atr_series(rows)
     trend_ema = ema_series(rows, trend_filter)
