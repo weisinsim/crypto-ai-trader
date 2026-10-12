@@ -1,7 +1,6 @@
 """Bybit V5 public funding-rate and mark-price data adapter.
 
-This adapter is venue-specific. Pair its output only with Bybit linear-contract
-candles; do not mix it silently with Binance candles or funding records.
+Pair these records only with Bybit linear-contract candles; never silently mix venues.
 """
 from __future__ import annotations
 
@@ -9,7 +8,8 @@ import time
 from math import isfinite
 import httpx
 
-BASE_URL = "https://api.bybit.com"
+# Bybit documents api.bytick.com as an alternative REST hostname.
+BASE_URL = "https://api.bytick.com"
 
 
 def download_bybit_funding(symbol: str, start_ms: int, end_ms: int, *,
@@ -34,15 +34,13 @@ def download_bybit_funding(symbol: str, start_ms: int, end_ms: int, *,
             page = payload.get("result", {}).get("list", [])
             if not page:
                 break
-            parsed = []
             for item in page:
                 ts = int(item["fundingRateTimestamp"])
                 rate = float(item["fundingRate"])
                 if not isfinite(rate):
                     raise ValueError(f"invalid Bybit funding rate at {ts}")
                 if start_ms <= ts < end_ms:
-                    parsed.append((ts, rate))
-            records.extend(parsed)
+                    records.append((ts, rate))
             oldest_ts = min(int(item["fundingRateTimestamp"]) for item in page)
             if len(page) < 200:
                 break
@@ -53,8 +51,6 @@ def download_bybit_funding(symbol: str, start_ms: int, end_ms: int, *,
             if pause_seconds:
                 time.sleep(pause_seconds)
 
-        # Fetch official Bybit mark-price candles around every funding timestamp.
-        # This records an explicit venue-specific source; it is not Binance mark data.
         result = []
         for ts, rate in sorted(set(records)):
             response = client.get(base_url.rstrip("/") + "/v5/market/mark-price-kline", params={
@@ -77,6 +73,8 @@ def download_bybit_funding(symbol: str, start_ms: int, end_ms: int, *,
                 "symbol": symbol.upper(), "mark_price_source": "bybit_mark_kline_open",
                 "venue": "bybit",
             })
+            if pause_seconds:
+                time.sleep(pause_seconds)
     result.sort(key=lambda row: row["funding_time"])
     if len({row["funding_time"] for row in result}) != len(result):
         raise ValueError("duplicate Bybit funding timestamps")
