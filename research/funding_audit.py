@@ -62,7 +62,7 @@ def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str
     unverified_events = [
         (ts, source, venue) for ts, source, venue in events
         if source not in approved_sources
-        or (source == "okx_mark_price_kline_open" and venue not in {"", "okx"})
+        or (source == "okx_mark_price_kline_open" and venue != "okx")
     ]
     unverified_count = len(unverified_events)
     unverified_records = [
