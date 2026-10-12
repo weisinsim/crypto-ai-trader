@@ -67,7 +67,7 @@ def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str
     elif max_gap > max_gap_hours and unverified_count:
         status = "FAIL_GAP_AND_UNVERIFIED_SOURCE"
     elif max_gap > max_gap_hours:
-        status = "FAIL_GAP_OR_BOUNDARY_COVERAGE"
+        status = "FAIL_GAP"
     elif proxy_count:
         status = "FAIL_PROXY_MARK_PRICE"
     elif unverified_count:
