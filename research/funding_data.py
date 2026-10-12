@@ -6,7 +6,7 @@ import csv
 import io
 import time
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from math import isfinite
 from pathlib import Path
 from typing import Callable
@@ -119,25 +119,8 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
             rate_resp = client.get(rate_url)
             if rate_resp.status_code == 404:
                 # Current-month monthly archives may not be published yet.
-                # Try Binance's public data REST hostname before archive fallbacks;
-                # the primary futures host can return HTTP 451 in some CI regions.
-                month_start_ms = max(start_ms, int(month.timestamp() * 1000))
-                next_month = month.replace(
-                    year=month.year + (month.month == 12),
-                    month=1 if month.month == 12 else month.month + 1,
-                )
-                month_end_ms = min(end_ms, int(next_month.timestamp() * 1000))
-                # data-api.binance.vision does not expose the USD-M Futures
-                # fundingRate endpoint (it returns 404); do not treat it as a
-                # valid fallback. Keep the failure explicit until a supported
-                # official futures endpoint/archive is available.
-                mirror_error = "unsupported endpoint: data-api.binance.vision/fapi/v1/fundingRate (HTTP 404)"
-                mirror_rows = []
-                if mirror_rows:
-                    rows.extend(mirror_rows)
-                    continue
-                # Assemble the requested portion from official daily fundingRate
-                # archives; fail closed if neither official source is available.
+                # Use only official daily funding archives as a fallback.
+                # Never estimate or synthesize missing funding records.
                 month_start_ms = max(start_ms, int(month.timestamp() * 1000))
                 next_month = month.replace(
                     year=month.year + (month.month == 12),
@@ -163,13 +146,41 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                             daily_rate_rows.extend(csv.reader(io.TextIOWrapper(zf.open(daily_name), encoding="utf-8")))
                     elif daily_resp.status_code != 404:
                         daily_resp.raise_for_status()
-                    day = day.replace(day=day.day) + __import__("datetime").timedelta(days=1)
+                    day += timedelta(days=1)
                 if not daily_rate_rows:
-                    raise ValueError(
-                        f"missing funding archive for requested month {ym} ({rate_url}); "
-                        f"public REST mirror result: {mirror_error or 'empty response'}; "
-                        "no official daily funding archives were available"
-                    )
+                    # Binance's public archive may not publish the current
+                    # month's fundingRate package until after month-end.
+                    # Try the official funding REST endpoint before failing closed.
+                    # The returned markPrice is exchange-provided settlement data;
+                    # downstream rows must retain its provenance explicitly.
+                    try:
+                        rest_rows = download_funding_rates(
+                            symbol, month_start_ms, month_end_ms, base_url=BASE_URL
+                        )
+                    except Exception as exc:
+                        raise ValueError(
+                            f"funding data unavailable for {symbol} in {ym}: "
+                            f"monthly archive missing ({rate_url}), no official daily "
+                            "funding archives available, and official REST fallback "
+                            f"failed ({type(exc).__name__}: {exc}); refusing to synthesize records"
+                        ) from exc
+                    if not rest_rows:
+                        raise ValueError(
+                            f"official REST fallback returned no funding records for "
+                            f"{symbol} in [{start_ms}, {end_ms}); refusing to synthesize records"
+                        )
+                    # Keep exchange-supplied settlement mark prices from the
+                    # official REST response. Do not route these rows through
+                    # mark-kline lookup, which could silently change provenance.
+                    for item in rest_rows:
+                        rows.append({
+                            "funding_time": item["funding_time"],
+                            "funding_rate": item["funding_rate"],
+                            "mark_price": item["mark_price"],
+                            "symbol": symbol,
+                            "mark_price_source": "rest_mark_price",
+                        })
+                    continue
                 # Build an in-memory CSV archive so the shared mark-price
                 # provenance checks below apply identically to monthly and daily data.
                 csv_buffer = io.StringIO()
@@ -257,20 +268,25 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                     f"{symbol}/1m/{symbol}-1m-{ym}.zip"
                 )
                 mark_1m_resp = client.get(mark_1m_url)
-                mark_1m_resp.raise_for_status()
-                with zipfile.ZipFile(io.BytesIO(mark_1m_resp.content)) as zf:
-                    mark_1m_name = next((n for n in zf.namelist() if n.lower().endswith(".csv")), None)
-                    if not mark_1m_name:
-                        raise ValueError(f"1m mark-price archive has no CSV: {mark_1m_url}")
-                    mark_1m_rows = csv.reader(io.TextIOWrapper(zf.open(mark_1m_name), encoding="utf-8"))
-                    for item in mark_1m_rows:
-                        try:
-                            minute_open_ts = int(float(item[0]))
-                            mark_open, mark_close = float(item[1]), float(item[4])
-                        except (ValueError, IndexError):
-                            continue
-                        mark_1m_opens[minute_open_ts] = mark_open
-                        mark_1m_closes.append((minute_open_ts + 60_000, mark_close))
+                if mark_1m_resp.status_code == 404:
+                    # Some current-month 1m archives are not published yet.
+                    # Continue to the official daily archives below.
+                    pass
+                else:
+                    mark_1m_resp.raise_for_status()
+                    with zipfile.ZipFile(io.BytesIO(mark_1m_resp.content)) as zf:
+                        mark_1m_name = next((n for n in zf.namelist() if n.lower().endswith(".csv")), None)
+                        if not mark_1m_name:
+                            raise ValueError(f"1m mark-price archive has no CSV: {mark_1m_url}")
+                        mark_1m_rows = csv.reader(io.TextIOWrapper(zf.open(mark_1m_name), encoding="utf-8"))
+                        for item in mark_1m_rows:
+                            try:
+                                minute_open_ts = int(float(item[0]))
+                                mark_open, mark_close = float(item[1]), float(item[4])
+                            except (ValueError, IndexError):
+                                continue
+                            mark_1m_opens[minute_open_ts] = mark_open
+                            mark_1m_closes.append((minute_open_ts + 60_000, mark_close))
 
                 unresolved_dates = set()
                 for funding_ts in missing_8h_times:
@@ -302,7 +318,6 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                                 continue
                             mark_1m_opens[minute_open_ts] = mark_open
                             mark_1m_closes.append((minute_open_ts + 60_000, mark_close))
-                mark_1m_closes.sort()
                 mark_1m_closes.sort()
             for row in rate_rows:
                 try:
