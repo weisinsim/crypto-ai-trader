@@ -1,0 +1,170 @@
+name: Six-month historical data coverage audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: "Inclusive UTC start date for historical research"
+        required: true
+        type: string
+        default: "2026-04-01"
+      end_date:
+        description: "Exclusive UTC end date; must be on or before 2026-10-01"
+        required: true
+        type: string
+        default: "2026-10-01"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: "${{ matrix.symbol }} six-month data audit"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        symbol: [BTCUSDT, AVAXUSDT]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install httpx; fi
+
+      - name: Validate historical window
+        env:
+          START_DATE: ${{ inputs.start_date }}
+          END_DATE: ${{ inputs.end_date }}
+        run: |
+          python - <<'PY'
+          import os
+          from datetime import datetime, timezone
+          start = datetime.strptime(os.environ["START_DATE"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+          end = datetime.strptime(os.environ["END_DATE"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+          boundary = datetime(2026, 10, 1, tzinfo=timezone.utc)
+          if end <= start:
+              raise SystemExit("end_date must be later than start_date")
+          if end > boundary:
+              raise SystemExit("historical research end_date must be on or before 2026-10-01 UTC")
+          if (end-start).days < 150:
+              raise SystemExit("historical coverage audit requires at least 150 calendar days")
+          print(f"historical_research_window_utc=[{start.date()}, {end.date()})")
+          PY
+
+      - name: Download completed 1H historical candles
+        env:
+          SYMBOL: ${{ matrix.symbol }}
+          START_DATE: ${{ inputs.start_date }}
+          END_DATE: ${{ inputs.end_date }}
+        run: |
+          python - <<'PY'
+          import csv, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          from research.okx_candle_data import download_okx_candles
+          start = datetime.strptime(os.environ["START_DATE"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+          end = datetime.strptime(os.environ["END_DATE"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+          rows = download_okx_candles(os.environ["SYMBOL"], int(start.timestamp()*1000), int(end.timestamp()*1000))
+          output = Path(f"data/history_{os.environ['SYMBOL']}_1h.csv")
+          output.parent.mkdir(parents=True, exist_ok=True)
+          with output.open("w", newline="", encoding="utf-8") as handle:
+              writer = csv.DictWriter(handle, fieldnames=("t", "o", "h", "l", "c", "v", "q"))
+              writer.writeheader()
+              writer.writerows([{key: row[key] for key in ("t", "o", "h", "l", "c", "v", "q")} for row in rows])
+          expected = int((end-start).total_seconds()/3600)
+          actual_times = [row["t"] for row in rows]
+          gaps = sum(1 for left, right in zip(actual_times, actual_times[1:]) if right-left != 3_600_000)
+          print(f"symbol={os.environ['SYMBOL']} candles={len(rows)} expected_hours={expected} missing_or_misaligned_intervals={gaps}")
+          if not rows or rows[0]["t"] != int(start.timestamp()*1000) or rows[-1]["t"] != int(end.timestamp()*1000)-3_600_000:
+              raise SystemExit("candle data does not cover exact requested historical boundaries")
+          if len(rows) != expected or gaps:
+              raise SystemExit("historical candle series has missing or misaligned 1H intervals")
+          PY
+
+      - name: Download historical funding with exact mark-price provenance
+        env:
+          SYMBOL: ${{ matrix.symbol }}
+          START_DATE: ${{ inputs.start_date }}
+          END_DATE: ${{ inputs.end_date }}
+        run: |
+          python - <<'PY'
+          import csv, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          from research.okx_funding_data import download_okx_funding
+          from research.funding_data import save_funding_csv
+          start = datetime.strptime(os.environ["START_DATE"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+          end = datetime.strptime(os.environ["END_DATE"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+          symbol = os.environ["SYMBOL"]
+          rows = download_okx_funding(symbol, int(start.timestamp()*1000), int(end.timestamp()*1000))
+          normalized = [{key: row[key] for key in ("funding_time", "funding_rate", "mark_price", "symbol", "mark_price_source")} for row in rows]
+          save_funding_csv(normalized, f"data/history_{symbol}_funding.csv")
+          print(f"symbol={symbol} funding_records={len(rows)} source_counts={dict((source, sum(1 for row in rows if row['mark_price_source']==source)) for source in sorted({row['mark_price_source'] for row in rows}))}")
+          if not rows:
+              raise SystemExit("no historical funding records returned")
+          PY
+
+      - name: Audit historical funding provenance and coverage
+        env:
+          SYMBOL: ${{ matrix.symbol }}
+        run: |
+          python -m research.funding_audit \
+            --funding-csv "data/history_${SYMBOL}_funding.csv" \
+            --candle-csv "data/history_${SYMBOL}_1h.csv" \
+            --symbol "${SYMBOL}" \
+            --max-gap-hours 8 \
+            --output "reports/history_${SYMBOL}_funding_audit.json"
+
+      - name: Publish historical data quality summary
+        if: always()
+        env:
+          SYMBOL: ${{ matrix.symbol }}
+          START_DATE: ${{ inputs.start_date }}
+          END_DATE: ${{ inputs.end_date }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          symbol = os.environ["SYMBOL"]
+          audit = Path(f"reports/history_{symbol}_funding_audit.json")
+          summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          lines = [f"## {symbol} six-month historical data audit", "",
+                   f"- Requested UTC window: {os.environ['START_DATE']} to {os.environ['END_DATE']} (end exclusive)"]
+          if not audit.exists():
+              lines += ["", "**AUDIT REPORT MISSING** — download or audit did not complete."]
+              print(f"::warning::{symbol}: historical audit report missing")
+          else:
+              data = json.loads(audit.read_text(encoding="utf-8"))
+              lines += ["", f"- Audit status: **{data.get('status')}**",
+                        f"- Completed 1H candles: {data.get('candle_bars')}",
+                        f"- Funding records: {data.get('funding_records')}",
+                        f"- Max funding gap: {data.get('max_gap_hours')} hours",
+                        f"- Gaps over 8h / 24h: {data.get('gaps_over_8h')} / {data.get('gaps_over_24h')}",
+                        f"- Mark-price source counts: `{json.dumps(data.get('mark_price_source_counts', {}), sort_keys=True)}`"]
+              if data.get("status") != "PASS":
+                  print(f"::warning::{symbol} historical data audit status={data.get('status')}")
+          if summary:
+              with open(summary, "a", encoding="utf-8") as handle:
+                  handle.write("\n".join(lines)+"\n")
+          PY
+
+      - name: Upload historical data and audit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: six-month-history-${{ matrix.symbol }}
+          path: |
+            data/history_${{ matrix.symbol }}_1h.csv
+            data/history_${{ matrix.symbol }}_funding.csv
+            reports/history_${{ matrix.symbol }}_funding_audit.json
+          if-no-files-found: warn
+          retention-days: 14
