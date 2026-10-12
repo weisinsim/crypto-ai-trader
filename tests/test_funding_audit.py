@@ -167,6 +167,13 @@ def test_binance_source_with_explicit_binance_venue_passes():
     assert report["status"] == "PASS"
 
 
+def test_binance_venue_is_trimmed_and_case_normalized():
+    rows = funding([0], "binance_fapi_funding_rate_mark_price")
+    rows[0]["venue"] = " Binance "
+    report = audit_funding(rows, candles(), "BTCUSDT")
+    assert report["status"] == "PASS"
+
+
 def test_binance_source_without_venue_fails_closed():
     rows = funding([0], "binance_fapi_funding_rate_mark_price")
     report = audit_funding(rows, candles(), "BTCUSDT")
