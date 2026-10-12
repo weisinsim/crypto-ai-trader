@@ -146,6 +146,11 @@ class BreakoutRetestTests(unittest.TestCase):
         self.assertEqual(long_count, 1)
         self.assertEqual(short_count, 1)
 
+    def test_funding_cashflow_rejects_duplicate_settlement_timestamps(self):
+        event = {"funding_time": 200, "funding_rate": 0.01, "mark_price": 100.0}
+        with self.assertRaisesRegex(ValueError, "duplicate funding timestamp"):
+            funding_cashflow(1, 1.0, 100, 300, [event, dict(event)])
+
     def test_funding_cashflow_rejects_invalid_records_outside_trade_window(self):
         bad_events = [
             {"funding_time": -1, "funding_rate": 0.01, "mark_price": 100.0},
