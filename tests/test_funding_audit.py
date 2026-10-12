@@ -65,11 +65,29 @@ def test_nearest_timestamp_source_requires_review_even_when_within_one_second():
     assert report["status"] == "FAIL_PROXY_MARK_PRICE"
     assert report["proxy_price_records"] == 1
 
+
 def test_exact_known_source_labels_pass_provenance_gate():
     rows = funding([0, 8*3_600_000, 16*3_600_000], "mark_kline_open")
     report = audit_funding(rows, candles(24), "BTCUSDT")
     assert report["status"] == "PASS"
     assert report["unverified_price_source_records"] == 0
+
+
+def test_exact_okx_mark_price_source_is_recognized_for_okx_confirmation():
+    rows = funding([0, 8*3_600_000, 16*3_600_000], "okx_mark_price_kline_open")
+    for row in rows:
+        row["venue"] = "okx"
+    report = audit_funding(rows, candles(24), "BTCUSDT")
+    assert report["status"] == "PASS"
+    assert report["unverified_price_source_records"] == 0
+
+
+def test_okx_source_with_conflicting_venue_fails_closed():
+    rows = funding([0], "okx_mark_price_kline_open")
+    rows[0]["venue"] = "binance"
+    report = audit_funding(rows, candles(), "BTCUSDT")
+    assert report["status"] == "FAIL_UNVERIFIED_MARK_PRICE_SOURCE"
+    assert report["unverified_price_source_records"] == 1
 
 
 def test_audit_rejects_funding_event_outside_candle_coverage():
@@ -111,28 +129,20 @@ def test_audit_reports_16_hour_gap_without_claiming_complete_coverage():
     assert any("do not prove" in item for item in report["limitations"])
 
 
-
 def test_ambiguous_legacy_rest_mark_price_source_fails_provenance_gate():
-    report = audit_funding(
-        funding([0], "rest_mark_price"), candles(), "BTCUSDT"
-    )
+    report = audit_funding(funding([0], "rest_mark_price"), candles(), "BTCUSDT")
     assert report["status"] == "FAIL_UNVERIFIED_MARK_PRICE_SOURCE"
     assert report["unverified_price_source_records"] == 1
 
 
-
 def test_custom_eight_hour_gate_fails_sixteen_hour_gap():
-    report = audit_funding(
-        funding([0, 16*3_600_000]), candles(24), "BTCUSDT",
-        max_gap_hours=8.0,
-    )
+    report = audit_funding(funding([0, 16*3_600_000]), candles(24), "BTCUSDT",
+                           max_gap_hours=8.0)
     assert report["status"] == "FAIL_GAP"
     assert report["max_gap_gate_hours"] == 8.0
 
+
 def test_audit_fails_when_funding_history_starts_late_inside_requested_window():
-    # Internal events are perfectly spaced at 8h, but the first ~3 months are
-    # absent. This must fail rather than passing on internal gaps alone.
-    start = 0
     rows = candles(24 * 180)
     first_event = 24 * 90 * 3_600_000
     last_event = first_event + 8 * 3_600_000
@@ -141,4 +151,3 @@ def test_audit_fails_when_funding_history_starts_late_inside_requested_window():
     assert report["status"] == "FAIL_GAP"
     assert report["leading_gap_hours"] > 8
     assert report["boundary_gaps_over_8h"] >= 1
-
