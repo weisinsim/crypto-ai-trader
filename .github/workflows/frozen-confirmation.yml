@@ -48,8 +48,8 @@ jobs:
 
       - name: Validate date inputs and freeze boundary
         env:
-          START_DATE: ${{ inputs.start_date }}
-          END_DATE: ${{ inputs.end_date }}
+          START_DATE: ${{ inputs.start_date || '2026-10-01' }}
+          END_DATE: ${{ inputs.end_date || '2026-10-11' }}
         run: |
           python - <<'PY'
           import os
@@ -67,8 +67,8 @@ jobs:
       - name: Download closed 1H candles with indicator warm-up
         env:
           SYMBOL: ${{ matrix.symbol }}
-          START_DATE: ${{ inputs.start_date }}
-          END_DATE: ${{ inputs.end_date }}
+          START_DATE: ${{ inputs.start_date || '2026-10-01' }}
+          END_DATE: ${{ inputs.end_date || '2026-10-11' }}
         run: |
           # Fetch 300 pre-window hours for causal indicator warm-up. The runner
           # restricts eligible entries to the requested confirmation window.
@@ -95,8 +95,8 @@ jobs:
       - name: Download funding records and settlement price provenance
         env:
           SYMBOL: ${{ matrix.symbol }}
-          START_DATE: ${{ inputs.start_date }}
-          END_DATE: ${{ inputs.end_date }}
+          START_DATE: ${{ inputs.start_date || '2026-10-01' }}
+          END_DATE: ${{ inputs.end_date || '2026-10-11' }}
         run: |
           python - <<'PY'
           import os
@@ -115,8 +115,8 @@ jobs:
       - name: Prepare exact confirmation-window candles for audit
         env:
           SYMBOL: ${{ matrix.symbol }}
-          START_DATE: ${{ inputs.start_date }}
-          END_DATE: ${{ inputs.end_date }}
+          START_DATE: ${{ inputs.start_date || '2026-10-01' }}
+          END_DATE: ${{ inputs.end_date || '2026-10-11' }}
         run: |
           python - <<'PY'
           import csv, os
@@ -150,8 +150,8 @@ jobs:
       - name: Run frozen confirmation only
         env:
           SYMBOL: ${{ matrix.symbol }}
-          START_DATE: ${{ inputs.start_date }}
-          END_DATE: ${{ inputs.end_date }}
+          START_DATE: ${{ inputs.start_date || '2026-10-01' }}
+          END_DATE: ${{ inputs.end_date || '2026-10-11' }}
         run: |
           python -m research.frozen_confirmation \
             --symbol "$SYMBOL" \
@@ -165,9 +165,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: frozen-confirmation-${{ matrix.symbol }}-${{ inputs.start_date }}-${{ inputs.end_date }}
+          name: frozen-confirmation-${{ matrix.symbol }}-${{ inputs.start_date || '2026-10-01' }}-${{ inputs.end_date || '2026-10-11' }}
           path: |
-            reports/confirm_${{ matrix.symbol }}_${{ inputs.start_date }}_${{ inputs.end_date }}.json
+            reports/confirm_${{ matrix.symbol }}_${{ inputs.start_date || '2026-10-01' }}_${{ inputs.end_date || '2026-10-11' }}.json
             reports/confirm_${{ matrix.symbol }}_funding_audit.json
           if-no-files-found: warn
           retention-days: 30
