@@ -56,7 +56,7 @@ def test_trade_attribution_components_reconcile_with_group_pnl():
     side_groups = [value for key, value in result.items() if key.startswith("side:")]
     assert sum(item["trades"] for item in side_groups) == len(trades)
     assert round(sum(item["net_trade_pnl_equity_pct_additive"] for item in side_groups), 4) == 1.0
-    assert round(sum(item["price_pnl_equity_pct_additive"] for item in side_groups), 4) == 3.0
+    assert round(sum(item["price_pnl_equity_pct_additive"] for item in side_groups), 4) == 1.2
     assert round(sum(item["trading_cost_equity_pct_additive"] for item in side_groups), 4) == 0.2
 
 
