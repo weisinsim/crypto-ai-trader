@@ -18,10 +18,14 @@ def read_rows(path: str | Path) -> list[dict]:
 
 
 def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str,
-                  max_gap_hours: float = 24.0) -> dict:
+                  max_gap_hours: float = 24.0, expected_venue: str | None = None) -> dict:
     if not funding_rows or not candle_rows:
         raise ValueError("funding and candle datasets must both be non-empty")
     symbol = symbol.upper()
+    if expected_venue is not None:
+        expected_venue = expected_venue.strip().lower()
+        if not expected_venue:
+            raise ValueError("expected_venue must be non-empty when provided")
     symbols = {str(row.get("symbol", "")).upper() for row in funding_rows}
     if symbols != {symbol}:
         raise ValueError(f"symbol mismatch: expected {symbol}, got {sorted(symbols)}")
@@ -64,6 +68,7 @@ def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str
         if source not in approved_sources
         or (source == "okx_mark_price_kline_open" and venue != "okx")
         or (source == "binance_fapi_funding_rate_mark_price" and venue != "binance")
+        or (expected_venue is not None and venue != expected_venue)
     ]
     unverified_count = len(unverified_events)
     unverified_records = [
@@ -100,6 +105,7 @@ def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str
         "unverified_records": unverified_records,
         "approved_mark_price_sources": sorted(approved_sources),
         "max_gap_gate_hours": max_gap_hours,
+        "expected_venue": expected_venue,
         "limitations": [
             "Gap checks do not prove that every funding event is present.",
             "Leading and trailing coverage are checked against candle-window boundaries.",
@@ -118,9 +124,10 @@ def main() -> None:
     parser.add_argument("--symbol", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--max-gap-hours", type=float, default=24.0)
+    parser.add_argument("--expected-venue", help="require all funding rows to match this venue")
     args = parser.parse_args()
     report = audit_funding(read_rows(args.funding_csv), read_rows(args.candle_csv),
-                           args.symbol, args.max_gap_hours)
+                           args.symbol, args.max_gap_hours, args.expected_venue)
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     Path(args.output).write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(json.dumps(report, sort_keys=True))
