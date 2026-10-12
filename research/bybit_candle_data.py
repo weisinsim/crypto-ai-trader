@@ -5,7 +5,9 @@ import time
 from math import isfinite
 import httpx
 
-BASE_URL = "https://api.bybit.com"
+# Bybit documents api.bytick.com as an alternative REST hostname.
+# It can work in CI environments where api.bybit.com is geo/IP restricted.
+BASE_URL = "https://api.bytick.com"
 
 
 def download_bybit_candles(symbol: str, interval: str, start_ms: int, end_ms: int, *,
@@ -37,10 +39,12 @@ def download_bybit_candles(symbol: str, interval: str, start_ms: int, end_ms: in
                 values = [float(v) for v in item[1:6]]
                 if not all(isfinite(v) for v in values) or min(values[:4]) <= 0 or values[4] < 0:
                     raise ValueError(f"invalid Bybit candle at {ts}")
+                o, h, l, c, v = values
+                if h < max(o, c, l) or l > min(o, c, h):
+                    raise ValueError(f"inconsistent Bybit OHLC at {ts}")
                 if start_ms <= ts < end_ms:
-                    # Bybit's list is reverse chronological; schema is normalized to UTC ms and OHLCV.
-                    records.append({"t": ts, "o": values[0], "h": values[1], "l": values[2],
-                                    "c": values[3], "v": values[4], "q": 0.0, "venue": "bybit"})
+                    records.append({"t": ts, "o": o, "h": h, "l": l,
+                                    "c": c, "v": v, "q": 0.0, "venue": "bybit"})
             oldest = min(int(item[0]) for item in page)
             if len(page) < 1000:
                 break
