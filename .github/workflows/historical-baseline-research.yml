@@ -268,6 +268,27 @@ jobs:
             --funding-csv "data/${SYMBOL}_funding.csv" \
             --params-json "reports/${SYMBOL}_1h_mean_reversion.json" \
             --output "reports/${SYMBOL}_1h_frozen_stability.json"
+      - name: Print frozen direction and monthly diagnostics
+        if: success()
+        env:
+          SYMBOL: ${{ matrix.symbol }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          symbol = os.environ["SYMBOL"]
+          path = Path(f"reports/{symbol}_1h_frozen_stability.json")
+          report = json.loads(path.read_text(encoding="utf-8"))
+          print(f"=== FROZEN STABILITY DIAGNOSTICS {symbol} ===")
+          print(f"status={report.get('status')} bars={report.get('bars')} holdout_bars={report.get('holdout_bars')}")
+          for direction, costs in report.get("direction_sensitivity_same_holdout_not_for_selection", {}).items():
+              for cost_name, metrics in costs.items():
+                  print(f"direction={direction} cost={cost_name} trades={metrics.get('trades')} net_return_pct={metrics.get('net_return_pct')} max_drawdown_pct={metrics.get('max_drawdown_pct')} win_rate_pct={metrics.get('win_rate_pct')} profit_factor={metrics.get('profit_factor')}")
+          for cost_name, months in report.get("monthly_trade_diagnostics", {}).items():
+              for month, metrics in months.items():
+                  print(f"monthly cost={cost_name} month={month} trades={metrics.get('trades')} net_pnl_equity_pct={metrics.get('net_pnl_equity_pct')} win_rate_pct={metrics.get('win_rate_pct')} profit_factor={metrics.get('profit_factor')} exit_reasons={metrics.get('exit_reasons')}")
+          print("WARNING: same-holdout direction results are diagnostic only and must not be used to select a trading direction.")
+          PY
       - name: Run AVAX frozen-parameter follow-up diagnostics
         if: matrix.symbol == 'AVAXUSDT'
         env:
