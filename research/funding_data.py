@@ -23,7 +23,11 @@ def canonical_settlement_timestamp(ts: int, tolerance_ms: int = 1000) -> int:
     The mark price must still come from a candle whose OPEN timestamp exactly
     matches this normalized settlement boundary.
     """
-    if not isinstance(ts, int) or ts < 0 or not isinstance(tolerance_ms, int) or tolerance_ms < 0:
+    # bool is a subclass of int in Python, but True/False are not valid
+    # exchange timestamps or tolerances. Reject them explicitly to fail closed.
+    if (isinstance(ts, bool) or not isinstance(ts, int) or ts < 0
+            or isinstance(tolerance_ms, bool) or not isinstance(tolerance_ms, int)
+            or tolerance_ms < 0):
         raise ValueError("timestamp and tolerance must be non-negative integers")
     interval_ms = 8 * 60 * 60 * 1000
     canonical = ((ts + interval_ms // 2) // interval_ms) * interval_ms
