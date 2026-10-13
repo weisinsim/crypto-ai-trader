@@ -24,6 +24,17 @@ class FundingDataTests(unittest.TestCase):
         for tolerance in (True, False):
             with self.assertRaisesRegex(ValueError, "non-negative integers"):
                 canonical_settlement_timestamp(1783180800000, tolerance_ms=tolerance)
+    def test_parse_funding_rows_rejects_invalid_symbol_and_range(self):
+        valid = [record(100)]
+        for symbol in ("", "BTC/USDT", None):
+            with self.subTest(symbol=symbol):
+                with self.assertRaisesRegex(ValueError, "symbol"):
+                    parse_funding_rows(valid, symbol, 0, 200)
+        for start, end in ((True, 200), (0, False), (1.5, 200), (0, 200.5), (-1, 200), (200, 200)):
+            with self.subTest(start=start, end=end):
+                with self.assertRaisesRegex(ValueError, "integer timestamps"):
+                    parse_funding_rows(valid, "BTCUSDT", start, end)
+
     def test_parse_filters_range_and_sorts(self):
         rows = parse_funding_rows([record(200), record(100), record(300)], "btcusdt", 100, 300)
         self.assertEqual([r["funding_time"] for r in rows], [100, 200])
