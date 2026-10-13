@@ -64,6 +64,7 @@ def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str
     # by the confirmation. Labels identify the acquisition path, not authenticity.
     approved_sources = {
         "mark_kline_open",
+        "mark_kline_1m_open",
         "binance_fapi_funding_rate_mark_price",
         "okx_mark_price_kline_open",
     }
