@@ -25,7 +25,7 @@ def _strict_timestamp(value, field: str) -> int:
         raise ValueError(f"{field} must be an integer timestamp")
     if isinstance(value, int):
         return value
-    if isinstance(value, str) and re.fullmatch(r"-?\\d+", value.strip()):
+    if isinstance(value, str) and re.fullmatch(r"-?\d+", value.strip()):
         return int(value.strip())
     raise ValueError(f"{field} must be an integer timestamp")
 
