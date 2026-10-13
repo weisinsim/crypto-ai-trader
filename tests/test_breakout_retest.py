@@ -262,6 +262,11 @@ class BreakoutRetestTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "quantity"):
                 funding_cashflow(1, quantity, 100, 300, events)
 
+    def test_funding_cashflow_rejects_boolean_quantity(self):
+        events = [{"funding_time": 200, "funding_rate": 0.01, "mark_price": 100.0}]
+        with self.assertRaisesRegex(ValueError, "quantity"):
+            funding_cashflow(1, True, 100, 300, events)
+
     def test_funding_cashflow_excludes_entry_time_and_after_exit(self):
         events = [
             {"funding_time": 100, "funding_rate": 0.01, "mark_price": 100.0},
