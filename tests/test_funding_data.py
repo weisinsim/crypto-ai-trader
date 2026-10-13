@@ -48,8 +48,21 @@ class FundingDataTests(unittest.TestCase):
     def test_rejects_invalid_symbol_and_pause(self):
         with self.assertRaisesRegex(ValueError, "symbol"):
             download_funding_rates("BTC/USDT", 0, 100, fetch_page=lambda _: [])
-        with self.assertRaisesRegex(ValueError, "pause_seconds"):
-            download_funding_rates("BTCUSDT", 0, 100, fetch_page=lambda _: [], pause_seconds=-1)
+        for pause in (-1, float("nan"), float("inf"), True):
+            with self.subTest(pause=pause):
+                with self.assertRaisesRegex(ValueError, "pause_seconds"):
+                    download_funding_rates("BTCUSDT", 0, 100, fetch_page=lambda _: [], pause_seconds=pause)
+
+    def test_rejects_boolean_and_non_integer_range_or_limit_arguments(self):
+        fetch = lambda _: []
+        invalid_calls = [
+            (True, 100, 1000), (0, True, 1000), (0.5, 100, 1000),
+            (0, 100.5, 1000), (0, 100, True), (0, 100, 1.5),
+        ]
+        for start, end, limit in invalid_calls:
+            with self.subTest(start=start, end=end, limit=limit):
+                with self.assertRaises(ValueError):
+                    download_funding_rates("BTCUSDT", start, end, fetch_page=fetch, limit=limit)
 
     def test_archive_fallback_uses_official_rest_when_month_and_daily_archives_missing(self):
         from datetime import datetime, timezone
