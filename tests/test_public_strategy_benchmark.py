@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from research.public_strategy_benchmark import benchmark, funding_cost, load_candles, rsi, sma, signals
+from research.public_strategy_benchmark import benchmark, funding_cost, load_candles, load_funding as module_load_funding, rsi, sma, signals
 
 
 def rows(n=500):
@@ -71,6 +71,25 @@ def test_loader_rejects_short_dataset(tmp_path: Path):
     with pytest.raises(ValueError, match="250"):
         load_candles(str(path))
 
+
+
+@pytest.mark.parametrize(
+    "funding_row",
+    [
+        {"funding_time": "-1", "funding_rate": "0.001", "mark_price": "100"},
+        {"funding_time": "0", "funding_rate": "nan", "mark_price": "100"},
+        {"funding_time": "0", "funding_rate": "0.001", "mark_price": "0"},
+        {"funding_time": "not-a-time", "funding_rate": "0.001", "mark_price": "100"},
+    ],
+)
+def test_funding_loader_rejects_invalid_records(tmp_path: Path, funding_row):
+    path = tmp_path / "funding.csv"
+    with path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["funding_time", "funding_rate", "mark_price"])
+        writer.writeheader()
+        writer.writerow(funding_row)
+    with pytest.raises(ValueError):
+        module_load_funding(str(path))
 
 
 def test_funding_cost_includes_settlement_at_exit_and_excludes_entry():
