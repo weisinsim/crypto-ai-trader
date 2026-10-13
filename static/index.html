@@ -37,7 +37,7 @@ h1{font-size:22px;margin:0 0 5px}.sub{font-size:12px;color:#9aa4b2}
 </div>
 <section class="researchPanel" aria-label="模型验证状态">
 <h2>研究与验证状态 · 2026-10-13</h2>
-<div class="intro">RESEARCH ONLY · 未批准实盘。最新 intrabar 回撤修正已通过代码 CI；五币种历史研究已完成（研究门槛修复后复跑）。完整 Holdout 与成本压力结果显示，当前没有候选通过稳健盈利门槛。此面板是研究状态，不是交易建议。</div>
+<div class="intro">RESEARCH ONLY · 未批准实盘。盘中回撤估值已进行两轮修正：先纳入不利 OHLC 极值，再在止盈/止损结算前记录持仓盘中不利权益。相关新提交的 CI 结果尚未确认，不能标记为通过；五币种历史研究仍显示当前没有候选通过稳健盈利门槛。此面板是研究状态，不是交易建议。</div>
 <div class="researchScroll"><table class="researchTable"><thead><tr><th>币种</th><th>1H 基线交易数</th><th>样本外净收益</th><th>最大回撤</th><th>胜率</th><th>Profit Factor</th><th>判断</th></tr></thead><tbody>
 <tr><td>BTC</td><td>61</td><td>-9.7117%</td><td>17.4377%</td><td>36.07%</td><td>0.7778</td><td class="fail">未达标</td></tr>
 <tr><td>ETH</td><td>16</td><td>-3.2748%</td><td>4.7910%</td><td>31.25%</td><td>0.7323</td><td class="fail">未达标</td></tr>
@@ -47,7 +47,9 @@ h1{font-size:22px;margin:0 0 5px}.sub{font-size:12px;color:#9aa4b2}
 </tbody></table></div>
 <div class="intro">以上为冻结参数稳定性诊断的完整 Holdout，不代表冻结 XRP V27.2 候选模型本身的最终确认结果。AVAX 在 0.30% 成本情景下收益为 +4.0646%，但在 0.46% 成本下转为 -2.5497%；XRP 在 0.30% 成本下转为 -0.2073%。目前没有任何币种通过全部成本情景。</div>
 <div class="researchScroll"><table class="researchTable"><thead><tr><th>最新开发验证</th><th>结果</th><th>详情</th></tr></thead><tbody>
-<tr><td>Python validation（审计报告提交）</td><td>通过</td><td><a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/actions/runs/38397959384" target="_blank" rel="noopener">CI</a></td></tr>
+<tr><td>盘中回撤修正（提交 fdf0825）</td><td>已提交；CI 待确认</td><td><a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/commit/fdf08258c1931b77685c391a64fbac48f2ab9db3" target="_blank" rel="noopener">代码</a></td></tr>
+<tr><td>回撤回归测试（提交 34e8ace）</td><td>已提交；CI 待确认</td><td><a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/commit/34e8ace13f54616ff6ac67adc5492f4048f8c100" target="_blank" rel="noopener">测试</a></td></tr>
+<tr><td>此前 Python validation（审计报告提交）</td><td>历史运行通过</td><td><a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/actions/runs/38397959384" target="_blank" rel="noopener">历史 CI</a></td></tr>
 <tr><td>五币种历史研究与成本压力</td><td>完成；模型未达标</td><td><a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/actions/runs/38390207808" target="_blank" rel="noopener">Research workflow</a></td></tr>
 <tr><td>Validation audit tests</td><td>通过</td><td><a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/actions/runs/38390290797" target="_blank" rel="noopener">Validation CI</a></td></tr>
 <tr><td>研究测试套件</td><td>通过</td><td><a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/actions/runs/38390288646" target="_blank" rel="noopener">Research tests</a></td></tr>
