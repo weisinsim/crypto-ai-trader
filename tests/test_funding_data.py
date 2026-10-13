@@ -41,6 +41,16 @@ class FundingDataTests(unittest.TestCase):
         rows = download_funding_rates("BTCUSDT", 100, 301, fetch_page=fake_fetch, limit=2, pause_seconds=0)
         self.assertEqual([r["funding_time"] for r in rows], [100, 200, 300])
 
+    def test_parse_funding_rows_rejects_malformed_timestamps_without_truncation(self):
+        for ts in (True, False, 100.5, "100.5", "1e3"):
+            with self.subTest(ts=ts):
+                with self.assertRaisesRegex(ValueError, "fundingTime must be an integer timestamp"):
+                    parse_funding_rows([record(ts)], "BTCUSDT", 0, 1000)
+
+    def test_parse_funding_rows_accepts_integer_timestamp_strings(self):
+        rows = parse_funding_rows([record("100")], "BTCUSDT", 0, 1000)
+        self.assertEqual(rows[0]["funding_time"], 100)
+
     def test_rejects_non_finite_funding_rate(self):
         with self.assertRaisesRegex(ValueError, "invalid funding rate"):
             parse_funding_rows([record(100, "nan")], "BTCUSDT", 0, 200)
