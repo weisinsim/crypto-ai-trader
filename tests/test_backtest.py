@@ -190,6 +190,28 @@ class BacktestTests(unittest.TestCase):
         # though the close-only equity path is unchanged.
         self.assertGreater(stressed["max_drawdown_pct"], baseline["max_drawdown_pct"])
 
+    def test_entry_bar_adverse_wick_is_counted_for_both_trade_directions(self):
+        closes = [100 + ((i % 8) - 4) * 0.15 for i in range(240)]
+        rows = [{"t": i * 3_600_000, "o": close, "h": close + 0.12,
+                 "l": close - 0.12, "c": close, "v": 100}
+                for i, close in enumerate(closes)]
+        kwargs = dict(fast=3, slow=9, atr_period=3, stop_atr=20, target_atr=100,
+                      fee_rate=0, slippage_rate=0)
+        baseline = run_ema_cross_backtest(rows, **kwargs)
+        self.assertEqual(baseline["status"], "COMPLETED")
+        sides = {trade["side"] for trade in baseline["trade_log"]}
+        self.assertIn("LONG", sides)
+        self.assertIn("SHORT", sides)
+        for side, adverse_key, delta in (("LONG", "l", -3.0), ("SHORT", "h", 3.0)):
+            with self.subTest(side=side):
+                trade = next(t for t in baseline["trade_log"] if t["side"] == side)
+                index = next(i for i, row in enumerate(rows) if row["t"] == trade["entry_time"])
+                stressed_rows = [dict(row) for row in rows]
+                stressed_rows[index][adverse_key] += delta
+                stressed = run_ema_cross_backtest(stressed_rows, **kwargs)
+                self.assertEqual(stressed["status"], "COMPLETED")
+                self.assertGreater(stressed["max_drawdown_pct"], baseline["max_drawdown_pct"])
+
     def test_same_bar_stop_and_target_prefers_stop(self):
         rows = candles_from_closes([100 + (i % 3) for i in range(80)])
         result = run_ema_cross_backtest(rows, fast=3, slow=7, atr_period=3, stop_atr=.1,
