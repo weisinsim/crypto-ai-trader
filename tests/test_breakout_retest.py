@@ -121,6 +121,27 @@ class BreakoutRetestTests(unittest.TestCase):
         self.assertAlmostEqual(with_adverse_funding, 0.9985)
         self.assertGreater(dd_with_adverse_funding, dd_without_funding)
 
+    def test_adverse_funding_changes_full_backtest_drawdown_and_trade_pnl(self):
+        rows = make_rows(480)
+        params = {"lookback": 24, "max_wait": 6, "target_r": 2.0, "direction": "BOTH"}
+        baseline = run_breakout_retest(rows, params, 100, len(rows), symbol="BTCUSDT")
+        held = next((trade for trade in baseline["trade_log"]
+                     if trade["exit_time"] - trade["entry_time"] >= 3_600_000), None)
+        self.assertIsNotNone(held, "fixture must contain a trade open across at least one later candle")
+        side = 1 if held["side"] == "LONG" else -1
+        adverse_rate = 0.05 if side == 1 else -0.05
+        event = {"funding_time": int(held["entry_time"]) + 1,
+                 "funding_rate": adverse_rate, "mark_price": 100.0, "symbol": "BTCUSDT"}
+        funded = run_breakout_retest(rows, params, 100, len(rows),
+                                     funding_rates=[event], symbol="BTCUSDT")
+        funded_trade = next((trade for trade in funded["trade_log"]
+                             if trade["entry_time"] == held["entry_time"]
+                             and trade["side"] == held["side"]), None)
+        self.assertIsNotNone(funded_trade)
+        self.assertLess(funded_trade["funding_pnl_equity"], 0)
+        self.assertLess(funded_trade["pnl_equity"], held["pnl_equity"])
+        self.assertGreaterEqual(funded["max_drawdown_pct"], baseline["max_drawdown_pct"])
+
     def test_marked_equity_rejects_invalid_inputs(self):
         for values in ((float("nan"), 0, 0, 0), (1, 0, -0.1, 0), (1, 0, 0, float("inf"))):
             with self.assertRaisesRegex(ValueError, "marked-equity inputs"):
