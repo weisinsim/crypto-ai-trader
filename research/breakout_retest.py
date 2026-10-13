@@ -110,9 +110,13 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
     """Simulate long and short separately; entries occur at next bar open after confirmation."""
     if not (0 <= start_idx < end_idx <= len(rows)):
         raise ValueError("invalid evaluation indices")
-    if not (0 < risk_fraction <= 0.05) or max_leverage <= 0:
-        raise ValueError("invalid risk or leverage setting")
-    if any(not math.isfinite(x) or x < 0 for x in (fee_rate, slippage_rate)):
+    if (isinstance(risk_fraction, bool) or not isinstance(risk_fraction, (int, float))
+            or not math.isfinite(risk_fraction) or not (0 < risk_fraction <= 0.05)
+            or isinstance(max_leverage, bool) or not isinstance(max_leverage, (int, float))
+            or not math.isfinite(max_leverage) or max_leverage <= 0):
+        raise ValueError("risk fraction and max leverage must be finite positive numbers; risk fraction must not exceed 0.05")
+    if any(isinstance(x, bool) or not isinstance(x, (int, float))
+           or not math.isfinite(x) or x < 0 for x in (fee_rate, slippage_rate)):
         raise ValueError("fees and slippage must be finite and non-negative")
     if funding_rates is not None:
         if not symbol or any(event.get("symbol", "").upper() != symbol.upper() for event in funding_rates):
