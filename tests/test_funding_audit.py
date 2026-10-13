@@ -248,7 +248,7 @@ def test_input_file_lineage_changes_when_bytes_change(tmp_path):
     path = tmp_path / "candles.csv"
     path.write_bytes(b"t,c\n1,100\n")
     first = input_file_lineage(path)
-    path.write_bytes(b"t,c\n1,101\n")
+    path.write_bytes(b"t,c\n1,1010\n")
     second = input_file_lineage(path)
 
     assert first["sha256"] != second["sha256"]
