@@ -18,6 +18,17 @@ def read_rows(path: str | Path) -> list[dict]:
     return rows
 
 
+def input_file_lineage(path: str | Path) -> dict:
+    """Return reproducible metadata for the exact bytes used by an audit."""
+    source = Path(path)
+    payload = source.read_bytes()
+    return {
+        "path": str(source),
+        "sha256": hashlib.sha256(payload).hexdigest(),
+        "size_bytes": len(payload),
+    }
+
+
 def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str,
                   max_gap_hours: float = 24.0, expected_venue: str | None = None) -> dict:
     if not funding_rows or not candle_rows:
@@ -140,16 +151,8 @@ def main() -> None:
     # the exact inputs that were audited. Digests provide reproducibility, not
     # independent proof that a source endpoint or archive was authentic.
     report["input_lineage"] = {
-        "funding_csv": {
-            "path": str(funding_path),
-            "sha256": hashlib.sha256(funding_path.read_bytes()).hexdigest(),
-            "size_bytes": funding_path.stat().st_size,
-        },
-        "candle_csv": {
-            "path": str(candle_path),
-            "sha256": hashlib.sha256(candle_path.read_bytes()).hexdigest(),
-            "size_bytes": candle_path.stat().st_size,
-        },
+        "funding_csv": input_file_lineage(funding_path),
+        "candle_csv": input_file_lineage(candle_path),
     }
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     Path(args.output).write_text(json.dumps(report, indent=2), encoding="utf-8")
