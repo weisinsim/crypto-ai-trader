@@ -146,7 +146,23 @@ def test_audit_rejects_boolean_gap_threshold():
 def test_audit_rejects_non_finite_funding_rate():
     rows = funding([0])
     rows[0]["funding_rate"] = float("nan")
-    with pytest.raises(ValueError, match="invalid funding record"):
+    with pytest.raises(ValueError, match="funding_rate must be a finite number"):
+        audit_funding(rows, candles(), "BTCUSDT")
+
+
+@pytest.mark.parametrize("field", ["funding_rate", "mark_price"])
+def test_audit_rejects_boolean_numeric_fields(field):
+    rows = funding([0])
+    rows[0][field] = True
+    with pytest.raises(ValueError, match=f"{field} must be a finite number"):
+        audit_funding(rows, candles(), "BTCUSDT")
+
+
+@pytest.mark.parametrize("field", ["funding_rate", "mark_price"])
+def test_audit_rejects_non_numeric_fields(field):
+    rows = funding([0])
+    rows[0][field] = "not-a-number"
+    with pytest.raises(ValueError, match=f"{field} must be a finite number"):
         audit_funding(rows, candles(), "BTCUSDT")
 
 
