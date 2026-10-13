@@ -221,10 +221,12 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
                 exit_idx, exit_price, reason = end_idx - 1, rows[end_idx - 1]["c"], "TIME"
                 for m in range(entry_idx, end_idx):
                     bar = rows[m]
-                    # Track unrealized equity while the position is open so max DD
-                    # includes intratrade adverse excursions, not only closed trades.
-                    mark_pnl = qty * (float(bar["c"]) - entry) * side
-                    mark_costs = qty * (entry + float(bar["c"])) * (fee_rate + slippage_rate)
+                    # Use the adverse intrabar extreme for drawdown, not just close.
+                    # OHLC cannot reveal path ordering; this deliberately conservative
+                    # mark captures low excursions for longs and high excursions for shorts.
+                    adverse_mark = float(bar["l"]) if side == 1 else float(bar["h"])
+                    mark_pnl = qty * (adverse_mark - entry) * side
+                    mark_costs = qty * (entry + adverse_mark) * (fee_rate + slippage_rate)
                     # Include accrued settlement cashflows in intratrade drawdown,
                     # not only in final realized PnL.
                     mark_funding, _ = funding_cashflow(
