@@ -78,6 +78,15 @@ def funding_cashflow(side: int, quantity: float, entry_ts: int, exit_ts: int,
     return pnl, count
 
 
+def marked_equity_after_costs_and_funding(equity: float, mark_pnl: float,
+                                       mark_costs: float, mark_funding: float) -> float:
+    """Return conservative intratrade equity after unrealized PnL, costs, and accrued funding."""
+    values = (equity, mark_pnl, mark_costs, mark_funding)
+    if any(not math.isfinite(value) for value in values) or equity <= 0 or mark_costs < 0:
+        raise ValueError("invalid marked-equity inputs")
+    return max(0.000001, equity + mark_pnl - mark_costs + mark_funding)
+
+
 def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx: int,
                         fee_rate: float = 0.0005, slippage_rate: float = 0.0002,
                         risk_fraction: float = 0.01, max_leverage: float = 3.0,
@@ -193,7 +202,7 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
                     mark_funding, _ = funding_cashflow(
                         side, qty, int(rows[entry_idx]["t"]), int(bar["t"]), funding_rates
                     )
-                    marked_equity = max(0.000001, equity + mark_pnl - mark_costs + mark_funding)
+                    marked_equity = marked_equity_after_costs_and_funding(equity, mark_pnl, mark_costs, mark_funding)
                     peak = max(peak, marked_equity)
                     if peak > 0:
                         max_dd = max(max_dd, (peak - marked_equity) / peak)
