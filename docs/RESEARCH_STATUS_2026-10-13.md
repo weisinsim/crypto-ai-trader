@@ -43,3 +43,18 @@ Reasons:
 3. Test funding settlement inside open trades through the full simulator, including adverse funding and equity/drawdown marks—not only a helper function.
 4. Run a genuinely untouched chronological confirmation window and require minimum trade count, positive net return, PF > 1.15, and passing base/stress/severe cost gates before any promotion.
 5. Keep all live execution disabled until all gates pass.
+
+## 5. Latest frozen confirmation: 2026-10-01 to 2026-10-12
+
+Workflow [38356507947](https://github.com/weisinsim/crypto-ai-trader/actions/runs/38356507947) completed successfully as a research pipeline for BTCUSDT and AVAXUSDT. The candidate-level gates failed for both symbols; successful CI is not strategy approval.
+
+| Symbol / frozen setup | Trades | Win rate | Net return @ 0.14% cost | Net return @ 0.30% cost | Net return @ 0.46% cost | PF @ 0.14% / 0.30% / 0.46% |
+|---|---:|---:|---:|---:|---:|---:|
+| BTCUSDT breakout/retest (SHORT) | 3 | 33.33% | -0.9456% | -2.1851% | -3.4145% | 0.6072 / 0.3103 / 0.1288 |
+| AVAXUSDT mean reversion (SHORT) | 6 | 33.33% | -1.3094% | -1.9577% | -2.6024% | 0.6845 / 0.5757 / 0.4873 |
+
+Both reports are explicitly `RESEARCH_ONLY`. Neither reaches the 30-trade minimum, neither has positive net return, neither meets PF > 1.15, and neither passes the 0.30% cost gate. The short confirmation window is not a replacement for the longer baseline or an untouched out-of-sample evaluation. Funding audits passed for the sampled files, but their own limitations state that recognized source labels do not independently authenticate the source files.
+
+## 6. Latest data-audit hardening
+
+Commits [46d8cc86](https://github.com/weisinsim/crypto-ai-trader/commit/46d8cc86cdee060986446cc6f684afee101d5794), [5ed37ecb](https://github.com/weisinsim/crypto-ai-trader/commit/5ed37ecb9df0bb9b2e6c6a92cb303c61288ea2d4), and [6b104c8c](https://github.com/weisinsim/crypto-ai-trader/commit/6b104c8ce499dfa9d8ea8b6b0c1ffbe2fdb84163) tightened funding-audit timestamp parsing and added regression tests for booleans and non-integer values. The latest Python validation, research test suite, historical baseline workflow, and frozen-candidate confirmation workflows all completed successfully for commit `6b104c8c`; this indicates pipeline completion only.
