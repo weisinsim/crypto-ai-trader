@@ -185,6 +185,22 @@ def run_ema_cross_backtest(
             event = funding_events[int(bar["t"])]
             position["funding_cost"] = position.get("funding_cost", 0.0) + (
                 position["qty"] * event["mark_price"] * event["funding_rate"] * position["side"])
+        # Measure the adverse intrabar mark BEFORE resolving this candle's
+        # stop/target. Otherwise a target exit could realize a gain first and
+        # hide an adverse wick that occurred while the position was still open.
+        if position is not None:
+            side = int(position["side"])
+            adverse_price = (min(float(bar["c"]), float(bar["l"])) if side > 0
+                             else max(float(bar["c"]), float(bar["h"])))
+            unrealized_pnl = position["qty"] * side * (adverse_price - position["entry_fill"])
+            estimated_exit_fee = abs(position["qty"] * adverse_price) * fee_rate
+            accrued_funding = (position.get("funding_cost", 0.0) if funding_rates is not None else
+                               position["qty"] * position["entry_fill"] * funding_rate_per_bar
+                               * side * position["bars_held"])
+            adverse_equity = (equity + unrealized_pnl - position["entry_fee"]
+                              - estimated_exit_fee - accrued_funding)
+            max_dd = max(max_dd, (peak - adverse_equity) / peak if peak else 0.0)
+
         # A position carried into this candle is checked against this bar.
         if position is not None:
             position["bars_held"] += 1
