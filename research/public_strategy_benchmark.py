@@ -132,6 +132,13 @@ def simulate(rows: list[dict], strategy: str, start: int, end: int, round_trip_c
     entry_price = None
     i = max(start, 201)
     while i < end - 1:
+        if entry_price is not None:
+            # Conservative intrabar drawdown: assume the candle high precedes its low.
+            # This deliberately errs toward larger drawdown because OHLC does not reveal path.
+            favorable_equity = equity * max(0.000001, rows[i]["h"] / entry_price - round_trip_cost)
+            peak = max(peak, favorable_equity)
+            adverse_equity = equity * max(0.000001, rows[i]["l"] / entry_price - round_trip_cost)
+            max_dd = max(max_dd, (peak-adverse_equity)/peak)
         if entry_price is None:
             if entries[i]:
                 entry_price = rows[i+1]["o"]
@@ -155,12 +162,6 @@ def simulate(rows: list[dict], strategy: str, start: int, end: int, round_trip_c
             entry_price = None
             i += 1
             continue
-        if entry_price is not None:
-            # Conservative intrabar mark-to-market: use the candle low for a long.
-            # Keep the realized-equity peak to avoid assuming high-before-low ordering.
-            adverse_return = rows[i]["l"] / entry_price - 1 - round_trip_cost
-            adverse_equity = equity * max(0.000001, 1 + adverse_return)
-            max_dd = max(max_dd, (peak-adverse_equity)/peak)
         i += 1
     if entry_price is not None and end > start + 1:
         exit_price = rows[end-1]["c"]
