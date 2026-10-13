@@ -30,6 +30,21 @@ def _strict_timestamp(value, field: str) -> int:
     raise ValueError(f"{field} must be an integer timestamp")
 
 
+def _strict_number(value, field: str) -> float:
+    """Parse numeric audit fields while rejecting booleans masquerading as 0/1."""
+    if isinstance(value, bool):
+        raise ValueError(f"{field} must be a finite number")
+    if not isinstance(value, (int, float, str)):
+        raise ValueError(f"{field} must be a finite number")
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field} must be a finite number") from exc
+    if not math.isfinite(number):
+        raise ValueError(f"{field} must be a finite number")
+    return number
+
+
 def input_file_lineage(path: str | Path) -> dict:
     """Return reproducible metadata for the exact bytes used by an audit."""
     source = Path(path)
@@ -59,10 +74,11 @@ def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str
     events = []
     for row in funding_rows:
         ts = _strict_timestamp(row["funding_time"], "funding_time")
-        rate, mark = float(row["funding_rate"]), float(row["mark_price"])
+        rate = _strict_number(row["funding_rate"], "funding_rate")
+        mark = _strict_number(row["mark_price"], "mark_price")
         if ts < 0:
             raise ValueError(f"negative funding timestamp: {ts}")
-        if not math.isfinite(rate) or not math.isfinite(mark) or mark <= 0:
+        if mark <= 0:
             raise ValueError(f"invalid funding record at {ts}")
         events.append((ts, str(row.get("mark_price_source", "unspecified") or "unspecified"),
                        str(row.get("venue", "") or "").strip().lower()))
