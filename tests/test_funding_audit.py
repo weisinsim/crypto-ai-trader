@@ -66,6 +66,18 @@ def test_nearest_timestamp_source_requires_review_even_when_within_one_second():
     assert report["proxy_price_records"] == 1
 
 
+def test_exact_time_one_minute_mark_candle_source_passes():
+    rows = funding([0, 8*3_600_000, 16*3_600_000], "mark_kline_1m_open")
+    report = audit_funding(rows, candles(24), "BTCUSDT")
+    assert report["status"] == "PASS"
+    assert report["unverified_price_source_records"] == 0
+
+def test_nearest_one_minute_mark_candle_source_still_fails():
+    rows = funding([0, 8*3_600_000], "mark_kline_1m_open_nearest_1s")
+    report = audit_funding(rows, candles(24), "BTCUSDT")
+    assert report["status"] == "FAIL_PROXY_MARK_PRICE"
+    assert report["proxy_price_records"] == 2
+
 def test_exact_known_source_labels_pass_provenance_gate():
     rows = funding([0, 8*3_600_000, 16*3_600_000], "mark_kline_open")
     report = audit_funding(rows, candles(24), "BTCUSDT")
