@@ -122,18 +122,38 @@ class BreakoutRetestTests(unittest.TestCase):
         self.assertGreater(dd_with_adverse_funding, dd_without_funding)
 
     def test_adverse_funding_changes_full_backtest_drawdown_and_trade_pnl(self):
-        rows = make_rows(480)
-        params = {"lookback": 24, "max_wait": 6, "target_r": 2.0, "direction": "BOTH"}
-        baseline = run_breakout_retest(rows, params, 100, len(rows), symbol="BTCUSDT")
-        held = next((trade for trade in baseline["trade_log"]
-                     if trade["exit_time"] - trade["entry_time"] >= 3_600_000), None)
-        self.assertIsNotNone(held, "fixture must contain a trade open across at least one later candle")
+        # Exercise settlement accounting through the actual trade loop. Search
+        # deterministic fixture variants rather than assuming a trade survives
+        # a particular candle pattern.
+        selected = None
+        for n in (240, 480, 960, 1440):
+            rows = make_rows(n)
+            for lookback in (12, 24, 36):
+                for target_r in (2.0, 5.0, 10.0, 25.0):
+                    params = {"lookback": lookback, "max_wait": 6,
+                              "target_r": target_r, "direction": "BOTH"}
+                    baseline = run_breakout_retest(
+                        rows, params, min(100, n // 3), len(rows), symbol="BTCUSDT"
+                    )
+                    held = next((trade for trade in baseline["trade_log"]
+                                 if trade["exit_time"] > trade["entry_time"]), None)
+                    if held is not None:
+                        selected = (rows, params, baseline, held)
+                        break
+                if selected:
+                    break
+            if selected:
+                break
+        self.assertIsNotNone(selected, "deterministic fixture must produce a multi-candle trade")
+        rows, params, baseline, held = selected
         side = 1 if held["side"] == "LONG" else -1
         adverse_rate = 0.05 if side == 1 else -0.05
         event = {"funding_time": int(held["entry_time"]) + 1,
                  "funding_rate": adverse_rate, "mark_price": 100.0, "symbol": "BTCUSDT"}
-        funded = run_breakout_retest(rows, params, 100, len(rows),
-                                     funding_rates=[event], symbol="BTCUSDT")
+        funded = run_breakout_retest(
+            rows, params, min(100, len(rows) // 3), len(rows),
+            funding_rates=[event], symbol="BTCUSDT"
+        )
         funded_trade = next((trade for trade in funded["trade_log"]
                              if trade["entry_time"] == held["entry_time"]
                              and trade["side"] == held["side"]), None)
