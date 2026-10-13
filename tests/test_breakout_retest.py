@@ -105,6 +105,21 @@ class BreakoutRetestTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "fees and slippage"):
             run_breakout_retest(rows, params, 100, len(rows), fee_rate=float("nan"))
 
+    def test_funding_cashflow_rejects_malformed_timestamps_without_truncation(self):
+        for ts in (True, False, 100.5, "100.5", "1e3"):
+            with self.subTest(ts=ts):
+                with self.assertRaisesRegex(ValueError, "funding timestamp must be an integer"):
+                    funding_cashflow(1, 1.0, 0, 200, [{
+                        "funding_time": ts, "funding_rate": 0.001, "mark_price": 100.0,
+                    }])
+
+    def test_funding_cashflow_accepts_integer_timestamp_strings(self):
+        pnl, count = funding_cashflow(1, 1.0, 0, 200, [{
+            "funding_time": "100", "funding_rate": 0.001, "mark_price": 100.0,
+        }])
+        self.assertAlmostEqual(pnl, -0.1)
+        self.assertEqual(count, 1)
+
     def test_funding_changes_realized_pnl_and_intratrade_drawdown(self):
         # Construct a deterministic breakout/retest across several bars. ATR is
         # fixed so the test isolates trade lifecycle/funding semantics.
