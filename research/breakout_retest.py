@@ -221,21 +221,28 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
                 exit_idx, exit_price, reason = end_idx - 1, rows[end_idx - 1]["c"], "TIME"
                 for m in range(entry_idx, end_idx):
                     bar = rows[m]
-                    # Use the adverse intrabar extreme for drawdown, not just close.
-                    # OHLC cannot reveal path ordering; this deliberately conservative
-                    # mark captures low excursions for longs and high excursions for shorts.
+                    # Track the close mark for equity peaks and the adverse intrabar
+                    # extreme for drawdown. OHLC cannot reveal path ordering, so this is
+                    # conservative but not a tick-accurate reconstruction.
+                    close_mark = float(bar["c"])
                     adverse_mark = float(bar["l"]) if side == 1 else float(bar["h"])
-                    mark_pnl = qty * (adverse_mark - entry) * side
-                    mark_costs = qty * (entry + adverse_mark) * (fee_rate + slippage_rate)
-                    # Include accrued settlement cashflows in intratrade drawdown,
-                    # not only in final realized PnL.
+                    close_pnl = qty * (close_mark - entry) * side
+                    close_costs = qty * (entry + close_mark) * (fee_rate + slippage_rate)
+                    adverse_pnl = qty * (adverse_mark - entry) * side
+                    adverse_costs = qty * (entry + adverse_mark) * (fee_rate + slippage_rate)
+                    # Include accrued settlement cashflows in both marks.
                     mark_funding, _ = funding_cashflow(
                         side, qty, int(rows[entry_idx]["t"]), int(bar["t"]), funding_rates
                     )
-                    marked_equity = marked_equity_after_costs_and_funding(equity, mark_pnl, mark_costs, mark_funding)
-                    peak = max(peak, marked_equity)
+                    close_equity = marked_equity_after_costs_and_funding(
+                        equity, close_pnl, close_costs, mark_funding
+                    )
+                    adverse_equity = marked_equity_after_costs_and_funding(
+                        equity, adverse_pnl, adverse_costs, mark_funding
+                    )
+                    peak = max(peak, close_equity)
                     if peak > 0:
-                        max_dd = max(max_dd, (peak - marked_equity) / peak)
+                        max_dd = max(max_dd, (peak - adverse_equity) / peak)
                     stop_hit = bar["l"] <= stop if side == 1 else bar["h"] >= stop
                     target_hit = bar["h"] >= target if side == 1 else bar["l"] <= target
                     # Conservative tie-break: if both barriers touch in one candle, stop wins.
