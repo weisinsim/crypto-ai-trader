@@ -21,8 +21,14 @@ def load_candles(path: str) -> list[dict]:
     if len(rows) < 250:
         raise ValueError("need at least 250 hourly candles for warmed-up indicators")
     if any(not all(math.isfinite(r[k]) for k in ("o", "h", "l", "c", "v")) or
-           min(r["o"], r["h"], r["l"], r["c"]) <= 0 for r in rows):
+           min(r["o"], r["h"], r["l"], r["c"]) <= 0 or r["v"] < 0
+           for r in rows):
         raise ValueError("invalid candle values")
+    if any(r["h"] < max(r["o"], r["c"], r["l"]) or
+           r["l"] > min(r["o"], r["c"], r["h"]) for r in rows):
+        raise ValueError("inconsistent OHLC candle: high/low do not contain open and close")
+    if any(rows[i]["t"] < 0 for i in range(len(rows))):
+        raise ValueError("candle timestamps must be non-negative")
     if any(rows[i]["t"] >= rows[i+1]["t"] for i in range(len(rows)-1)):
         raise ValueError("candle timestamps must be unique and ascending")
     return rows
