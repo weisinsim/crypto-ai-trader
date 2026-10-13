@@ -52,6 +52,22 @@ def ema_values(rows: list[dict], period: int) -> list[float | None]:
     return out
 
 
+def _strict_funding_timestamp(value) -> int:
+    """Accept integer millisecond timestamps without truncating malformed values."""
+    import re
+    if isinstance(value, bool):
+        raise ValueError("funding timestamp must be an integer")
+    if isinstance(value, int):
+        ts = value
+    elif isinstance(value, str) and re.fullmatch(r"-?\\d+", value.strip()):
+        ts = int(value.strip())
+    else:
+        raise ValueError("funding timestamp must be an integer")
+    if ts < 0:
+        raise ValueError("invalid funding timestamp")
+    return ts
+
+
 def funding_cashflow(side: int, quantity: float, entry_ts: int, exit_ts: int,
                     funding_rates: list[dict] | None) -> tuple[float, int]:
     """Calculate held-position funding cashflow; exact entry-time settlements are excluded."""
@@ -62,14 +78,12 @@ def funding_cashflow(side: int, quantity: float, entry_ts: int, exit_ts: int,
     count = 0
     seen_timestamps = set()
     for event in funding_rates or []:
-        ts = int(event["funding_time"])
+        ts = _strict_funding_timestamp(event["funding_time"])
         if ts in seen_timestamps:
             raise ValueError("duplicate funding timestamp")
         seen_timestamps.add(ts)
         rate = float(event["funding_rate"])
         mark = float(event["mark_price"])
-        if ts < 0:
-            raise ValueError("invalid funding timestamp")
         if not math.isfinite(rate) or not math.isfinite(mark) or mark <= 0:
             raise ValueError("invalid funding rate or mark price")
         if entry_ts < ts <= exit_ts:
@@ -105,12 +119,12 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
                not math.isfinite(float(event["mark_price"])) or float(event["mark_price"]) <= 0
                for event in funding_rates):
             raise ValueError("funding data contains invalid rates or mark prices")
-        funding_timestamps = [int(event["funding_time"]) for event in funding_rates]
+        funding_timestamps = [_strict_funding_timestamp(event["funding_time"]) for event in funding_rates]
         if any(ts < 0 for ts in funding_timestamps):
             raise ValueError("funding timestamps must be non-negative")
         if len(funding_timestamps) != len(set(funding_timestamps)):
             raise ValueError("duplicate funding timestamp")
-        funding_rates = sorted(funding_rates, key=lambda event: int(event["funding_time"]))
+        funding_rates = sorted(funding_rates, key=lambda event: _strict_funding_timestamp(event["funding_time"]))
     lookback, max_wait, target_r = params["lookback"], params["max_wait"], params["target_r"]
     trend_period = params.get("trend_period", 0)
     volatility_filter = params.get("volatility_filter", 0.0)
