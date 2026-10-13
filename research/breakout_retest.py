@@ -71,9 +71,17 @@ def _strict_funding_timestamp(value) -> int:
 def funding_cashflow(side: int, quantity: float, entry_ts: int, exit_ts: int,
                     funding_rates: list[dict] | None) -> tuple[float, int]:
     """Calculate held-position funding cashflow; exact entry-time settlements are excluded."""
+    # Validate ordinary integer bounds before the non-negative timestamp parser so
+    # invalid trade windows retain a stable, domain-specific error.
+    if (isinstance(entry_ts, int) and not isinstance(entry_ts, bool) and entry_ts < 0
+            or isinstance(exit_ts, int) and not isinstance(exit_ts, bool) and exit_ts < 0
+            or isinstance(entry_ts, int) and not isinstance(entry_ts, bool)
+            and isinstance(exit_ts, int) and not isinstance(exit_ts, bool) and exit_ts < entry_ts):
+        raise ValueError("invalid side, quantity, or trade timestamps")
     entry_ts = _strict_funding_timestamp(entry_ts)
     exit_ts = _strict_funding_timestamp(exit_ts)
     if (side not in (-1, 1) or isinstance(side, bool)
+            or isinstance(quantity, bool) or not isinstance(quantity, (int, float))
             or not math.isfinite(quantity) or quantity < 0 or exit_ts < entry_ts):
         raise ValueError("invalid side, quantity, or trade timestamps")
     pnl = 0.0
