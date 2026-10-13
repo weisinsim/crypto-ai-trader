@@ -169,7 +169,7 @@ class BacktestTests(unittest.TestCase):
         rows = [{"t": i * 3_600_000, "o": close, "h": close + 0.12,
                  "l": close - 0.12, "c": close, "v": 100}
                 for i, close in enumerate(closes)]
-        kwargs = dict(fast=3, slow=9, atr_period=3, stop_atr=10, target_atr=100,
+        kwargs = dict(fast=3, slow=9, atr_period=3, stop_atr=20, target_atr=100,
                       fee_rate=0, slippage_rate=0)
         baseline = run_ema_cross_backtest(rows, **kwargs)
         self.assertGreater(baseline["trades"], 0)
@@ -179,9 +179,9 @@ class BacktestTests(unittest.TestCase):
 
         stressed_rows = [dict(row) for row in rows]
         if first_trade["side"] == "LONG":
-            stressed_rows[entry_index]["l"] = stressed_rows[entry_index]["c"] - 0.8
+            stressed_rows[entry_index]["l"] = stressed_rows[entry_index]["c"] - 4.0
         else:
-            stressed_rows[entry_index]["h"] = stressed_rows[entry_index]["c"] + 0.8
+            stressed_rows[entry_index]["h"] = stressed_rows[entry_index]["c"] + 4.0
 
         stressed = run_ema_cross_backtest(stressed_rows, **kwargs)
         self.assertEqual(stressed["status"], "COMPLETED")
