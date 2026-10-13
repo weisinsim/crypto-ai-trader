@@ -62,12 +62,16 @@ def download_funding_rates(
     """Download historical funding records in [start_ms, end_ms), failing on malformed rows."""
     if not isinstance(symbol, str) or not symbol.strip() or not symbol.strip().isalnum():
         raise ValueError("symbol must be a non-empty alphanumeric exchange symbol")
-    if start_ms < 0 or end_ms <= start_ms:
-        raise ValueError("require 0 <= start_ms < end_ms")
-    if not 1 <= limit <= 1000:
-        raise ValueError("limit must be between 1 and 1000")
-    if pause_seconds < 0:
-        raise ValueError("pause_seconds cannot be negative")
+    # Reject bool explicitly: Python treats bool as int, which can silently
+    # turn malformed range/limit inputs into valid-looking requests.
+    if (isinstance(start_ms, bool) or not isinstance(start_ms, int)
+            or isinstance(end_ms, bool) or not isinstance(end_ms, int)
+            or start_ms < 0 or end_ms <= start_ms):
+        raise ValueError("require integer timestamps with 0 <= start_ms < end_ms")
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
+        raise ValueError("limit must be an integer between 1 and 1000")
+    if isinstance(pause_seconds, bool) or not isinstance(pause_seconds, (int, float)) or not isfinite(pause_seconds) or pause_seconds < 0:
+        raise ValueError("pause_seconds must be a finite non-negative number")
 
     client = None
     if fetch_page is None:
