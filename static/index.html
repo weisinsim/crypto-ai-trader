@@ -35,7 +35,26 @@ h1{font-size:22px;margin:0 0 5px}.sub{font-size:12px;color:#9aa4b2}
 <button class="filter" data-f="SHORT">SHORT</button><button class="filter" data-f="WATCH-LONG">WATCH-LONG</button><button class="filter" data-f="WATCH-SHORT">WATCH-SHORT</button>
 <button class="filter" data-f="NO-TRADE">NO-TRADE</button>
 </div>
-<section class="researchPanel" aria-label="模型验证状态"><h2>模型验证面板 · 2026-10-11</h2><div class="intro">五币种历史研究及资金费率审计流水线成功，但 10/10 个候选组合未通过全部成本稳健性门槛。所有模型保持 RESEARCH ONLY；不构成实盘授权。</div><div class="researchScroll"><table class="researchTable"><thead><tr><th>币种</th><th>候选策略</th><th>基础收益</th><th>成本 0.30%</th><th>成本 0.46%</th><th>状态</th></tr></thead><tbody><tr><td>BTC</td><td>突破回踩 SHORT</td><td>+7.61%</td><td>+0.00%</td><td>-7.09%</td><td class="fail">未通过</td></tr><tr><td>AVAX</td><td>均值回归 SHORT</td><td>+11.12%</td><td>+4.06%</td><td>-2.55%</td><td class="fail">未通过</td></tr><tr><td>XRP</td><td>突破回踩</td><td>+1.73%</td><td>-0.17%</td><td>-2.04%</td><td class="fail">未通过</td></tr><tr><td>ETH</td><td>突破回踩</td><td>-3.12%</td><td>-6.54%</td><td>-9.84%</td><td class="fail">未通过</td></tr><tr><td>SOL</td><td>突破回踩</td><td>-3.94%</td><td>-7.29%</td><td>-10.53%</td><td class="fail">未通过</td></tr></tbody></table></div><a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/actions/runs/38159007954" target="_blank" rel="noopener">打开五币种历史研究报告 ↗</a><div class="intro">晋级需同时审查样本外收益、Profit Factor、最大回撤、交易数量、参数稳定性和独立后续窗口。CI 通过不等于策略盈利。</div></section><div id="cards" class="cards"></div><div id="historyPanel" class="historyPanel"></div>
+<section class="researchPanel" aria-label="模型验证状态">
+<h2>研究与验证状态 · 2026-10-13</h2>
+<div class="intro">RESEARCH ONLY · 未批准实盘。最新资金费率生命周期测试的三项 CI 已通过；随后增加输入文件 SHA-256 指纹的提交正在进行完整 CI 与历史回测复核。请以链接中的实时状态为准，哈希仅用于确认输入一致性，不代表来源已被独立认证。</div>
+<div class="researchScroll"><table class="researchTable"><thead><tr><th>币种</th><th>1H 基线交易数</th><th>样本外净收益</th><th>最大回撤</th><th>胜率</th><th>Profit Factor</th><th>判断</th></tr></thead><tbody>
+<tr><td>BTC</td><td>64</td><td>+1.2806%</td><td>7.4841%</td><td>43.75%</td><td>1.0372</td><td class="fail">未达标</td></tr>
+<tr><td>ETH</td><td>76</td><td>-15.2345%</td><td>18.3986%</td><td>28.95%</td><td>0.6954</td><td class="fail">未达标</td></tr>
+<tr><td>SOL</td><td>66</td><td>-8.3235%</td><td>14.1128%</td><td>31.82%</td><td>0.8065</td><td class="fail">未达标</td></tr>
+<tr><td>AVAX</td><td>69</td><td>-5.1559%</td><td>13.4518%</td><td>33.33%</td><td>0.8904</td><td class="fail">未达标</td></tr>
+<tr><td>XRP</td><td>71</td><td>-1.4910%</td><td>10.5219%</td><td>36.62%</td><td>0.9674</td><td class="fail">未达标</td></tr>
+</tbody></table></div>
+<div class="intro">以上为诊断性基线，不代表冻结候选模型的最终比较。五个币种中仅 BTC 基线收益为正，但 PF 仅略高于 1；没有任何币种因这些结果获得实盘资格。</div>
+<div class="researchScroll"><table class="researchTable"><thead><tr><th>最新开发验证</th><th>结果</th><th>详情</th></tr></thead><tbody>
+<tr><td>Funding 生命周期集成测试</td><td>通过</td><td><a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/actions/runs/38345692269" target="_blank" rel="noopener">Research CI</a></td></tr>
+<tr><td>输入文件 SHA-256 审计指纹</td><td>复核中</td><td><a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/commit/96867e18695c8399d4d9c69b3ebcf6cf6734fa18" target="_blank" rel="noopener">代码提交</a></td></tr>
+<tr><td>五币种历史基线</td><td>运行中 / 以 GitHub 状态为准</td><td><a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/actions/runs/38346006501" target="_blank" rel="noopener">Baseline CI</a></td></tr>
+<tr><td>冻结候选独立确认</td><td>运行中 / 以 GitHub 状态为准</td><td><a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/actions/runs/38346006472" target="_blank" rel="noopener">Confirmation CI</a></td></tr>
+</tbody></table></div>
+<a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/blob/main/docs/RESEARCH_STATUS_2026-10-13.md" target="_blank" rel="noopener">查看研究状态报告 ↗</a>
+<div class="intro">晋级门槛：独立样本外净收益为正、Profit Factor &gt; 1.15、足够交易样本、可接受回撤、参数稳定且通过 0.30% / 0.46% 成本压力测试。CI 通过只代表软件或流水线完成，不代表策略盈利。</div>
+</section><div id="cards" class="cards"></div><div id="historyPanel" class="historyPanel"></div>
 <div class="small">V28.2：Research-Gated Dashboard。实时行情与历史回测状态分开显示；所有候选模型仍处于研究阶段，信号不保证盈利。</div>
 </div>
 <script>
