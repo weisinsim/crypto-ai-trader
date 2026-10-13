@@ -6,6 +6,7 @@ import csv
 import hashlib
 import json
 import math
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -16,6 +17,17 @@ def read_rows(path: str | Path) -> list[dict]:
     if not rows:
         raise ValueError(f"empty CSV: {path}")
     return rows
+
+
+def _strict_timestamp(value, field: str) -> int:
+    """Parse integer millisecond timestamps without truncating floats or bools."""
+    if isinstance(value, bool):
+        raise ValueError(f"{field} must be an integer timestamp")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and re.fullmatch(r"-?\\d+", value.strip()):
+        return int(value.strip())
+    raise ValueError(f"{field} must be an integer timestamp")
 
 
 def input_file_lineage(path: str | Path) -> dict:
@@ -33,7 +45,8 @@ def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str
                   max_gap_hours: float = 24.0, expected_venue: str | None = None) -> dict:
     if not funding_rows or not candle_rows:
         raise ValueError("funding and candle datasets must both be non-empty")
-    if not math.isfinite(max_gap_hours) or max_gap_hours <= 0:
+    if (isinstance(max_gap_hours, bool) or not isinstance(max_gap_hours, (int, float))
+            or not math.isfinite(max_gap_hours) or max_gap_hours <= 0):
         raise ValueError("max_gap_hours must be finite and greater than zero")
     symbol = symbol.upper()
     if expected_venue is not None:
@@ -45,7 +58,8 @@ def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str
         raise ValueError(f"symbol mismatch: expected {symbol}, got {sorted(symbols)}")
     events = []
     for row in funding_rows:
-        ts, rate, mark = int(row["funding_time"]), float(row["funding_rate"]), float(row["mark_price"])
+        ts = _strict_timestamp(row["funding_time"], "funding_time")
+        rate, mark = float(row["funding_rate"]), float(row["mark_price"])
         if ts < 0:
             raise ValueError(f"negative funding timestamp: {ts}")
         if not math.isfinite(rate) or not math.isfinite(mark) or mark <= 0:
@@ -57,7 +71,7 @@ def audit_funding(funding_rows: list[dict], candle_rows: list[dict], symbol: str
         raise ValueError("funding timestamps are not sorted")
     if len(set(timestamps)) != len(timestamps):
         raise ValueError("duplicate funding timestamps")
-    candle_times = [int(row["t"]) for row in candle_rows]
+    candle_times = [_strict_timestamp(row["t"], "candle timestamp") for row in candle_rows]
     if candle_times != sorted(candle_times) or len(set(candle_times)) != len(candle_times):
         raise ValueError("candle timestamps are not sorted and unique")
     start, end = candle_times[0], candle_times[-1] + 3_600_000
