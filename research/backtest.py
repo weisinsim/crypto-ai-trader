@@ -258,6 +258,19 @@ def run_ema_cross_backtest(
                             "entry_fee": abs(qty * entry_fill) * fee_rate}
                 opened_this_bar = True
 
+        # A newly opened position also has intrabar exposure. Mark its
+        # adverse OHLC extreme before resolving a same-candle target/stop;
+        # otherwise a profitable target can hide the entry candle's drawdown.
+        if opened_this_bar and position is not None:
+            side = int(position["side"])
+            adverse_price = (min(float(bar["c"]), float(bar["l"])) if side > 0
+                             else max(float(bar["c"]), float(bar["h"])))
+            unrealized_pnl = position["qty"] * side * (adverse_price - position["entry_fill"])
+            estimated_exit_fee = abs(position["qty"] * adverse_price) * fee_rate
+            adverse_equity = (equity + unrealized_pnl - position["entry_fee"]
+                              - estimated_exit_fee)
+            max_dd = max(max_dd, (peak - adverse_equity) / peak if peak else 0.0)
+
         # The position was filled at this bar's open, so its stop/target may
         # already be hit within this same OHLC candle. Resolve stop first.
         if opened_this_bar and position is not None:
