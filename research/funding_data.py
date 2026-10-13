@@ -35,10 +35,21 @@ def canonical_settlement_timestamp(ts: int, tolerance_ms: int = 1000) -> int:
         raise ValueError(f"funding timestamp is off the canonical 8-hour grid: {ts}")
     return canonical
 
+def _parse_integer_timestamp(value, field: str = "fundingTime") -> int:
+    """Parse an exchange timestamp without silently truncating malformed values."""
+    if isinstance(value, bool):
+        raise ValueError(f"{field} must be an integer timestamp")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    raise ValueError(f"{field} must be an integer timestamp")
+
+
 def parse_funding_rows(raw_rows: list[dict], symbol: str, start_ms: int, end_ms: int) -> list[dict]:
     rows = []
     for raw in raw_rows:
-        ts = int(raw["fundingTime"])
+        ts = _parse_integer_timestamp(raw["fundingTime"])
         rate = float(raw["fundingRate"])
         mark_price = float(raw["markPrice"])
         if not isfinite(rate) or not isfinite(mark_price) or mark_price <= 0:
