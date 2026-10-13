@@ -162,7 +162,7 @@ class BacktestTests(unittest.TestCase):
             peak = max(peak, value)
             if peak > 0:
                 close_only_dd = max(close_only_dd, (peak - value) / peak * 100)
-        self.assertGreaterEqual(result["max_drawdown_pct"], round(close_only_dd, 4))
+        self.assertGreater(result["max_drawdown_pct"], round(close_only_dd, 4))
 
     def test_same_bar_stop_and_target_prefers_stop(self):
         rows = candles_from_closes([100 + (i % 3) for i in range(80)])
