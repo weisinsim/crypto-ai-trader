@@ -2,8 +2,8 @@
 
 ## Scope and provenance
 
-- Repository revision: `666862af876ec783302ea7f80af21d21b3f8b178`
-- Workflow: [Historical baseline research run 38379994375](https://github.com/weisinsim/crypto-ai-trader/actions/runs/38379994375)
+- Research artifact revision: `8804def89c213749a25cb05b8e4a326d4ad0c7e5` (gate correction); regression-test follow-up: `a48e7fa9e74e35aff5f12d3618557c6f4809114d`
+- Workflow: [Historical baseline research run 38390207808](https://github.com/weisinsim/crypto-ai-trader/actions/runs/38379994375)
 - Data scope: 1H closed-candle history and historical funding; the workflow's funding audit gate passed for all five symbol jobs.
 - This is research-only evidence. The tested baseline/diagnostic strategies are not the frozen XRP V27.2 production candidate and do not authorize live trading.
 - Drawdown accounting was updated to track the close-equity peak while measuring troughs against adverse intrabar OHLC marks. This is conservative bar-level estimation, not tick-accurate intrabar reconstruction.
@@ -32,3 +32,22 @@ Metrics below are from the frozen-parameter stability diagnostic's full holdout.
 - The five symbol jobs completed successfully and uploaded raw inputs plus JSON reports as artifacts in the linked workflow.
 - A successful workflow means the research jobs completed; it does **not** mean a model passed profitability or production certification gates.
 - Next step: review the full JSON artifacts, reconcile the baseline and walk-forward summaries with the stress results, and retain a research-only / no-live-trading status until all required gates pass.
+
+
+## Public strategy benchmark gate correction — 2026-10-13
+
+The public strategy archetype benchmark originally labeled a strategy as `PASS_RESEARCH_GATE` when only the final holdout was positive across the three cost scenarios. This was too permissive: a positive final slice could hide severe losses in earlier chronological splits.
+
+The benchmark now reports two distinct statuses:
+
+- `holdout_only_status`: descriptive diagnostic for the final 20% holdout under base, 0.30%, and 0.46% round-trip costs.
+- `status`: conservative research screen requiring positive net return and Profit Factor > 1 in train, validation, and holdout, under all three cost scenarios.
+
+The research workflow after the correction completed successfully: [run 38390207808](https://github.com/weisinsim/crypto-ai-trader/actions/runs/38390207808). Its artifacts contain 15 public-archetype/symbol combinations across BTC, ETH, SOL, AVAX, and XRP. All 15 fail the full research gate. Fourteen have a positive holdout-only diagnostic status; ETH SMA200 trend fails even that diagnostic under at least one cost case. None is production approved.
+
+Examples of the distinction (base-cost returns, train / validation / holdout):
+- BTC RSI mean reversion: -25.4554% / -1.5398% / +4.5853% — holdout diagnostic positive, full gate fails.
+- XRP SMA200 trend: -31.2419% / -11.4364% / +17.7798% — holdout diagnostic positive, full gate fails.
+- XRP Donchian breakout: -19.1585% / -0.2839% / +46.7646% — striking holdout result does not overcome losses in earlier splits.
+
+These public archetypes are diagnostic comparisons, not the frozen XRP V27.2 candidate. The strict gate is a conservative screening rule rather than proof of future performance; passing it would still not imply production approval. Independent confirmation, adequate sample size, walk-forward validation, tail-risk checks, parameter stability, and paper trading remain required.
