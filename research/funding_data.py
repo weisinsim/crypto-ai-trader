@@ -17,6 +17,20 @@ BASE_URL = "https://fapi.binance.com"
 FIELDS = ("funding_time", "funding_rate", "mark_price", "symbol", "mark_price_source", "venue")
 
 
+def canonical_settlement_timestamp(ts: int, tolerance_ms: int = 1000) -> int:
+    """Normalize small timestamp jitter to the canonical 8-hour UTC settlement grid.
+
+    The mark price must still come from a candle whose OPEN timestamp exactly
+    matches this normalized settlement boundary.
+    """
+    if not isinstance(ts, int) or ts < 0 or not isinstance(tolerance_ms, int) or tolerance_ms < 0:
+        raise ValueError("timestamp and tolerance must be non-negative integers")
+    interval_ms = 8 * 60 * 60 * 1000
+    canonical = ((ts + interval_ms // 2) // interval_ms) * interval_ms
+    if abs(canonical - ts) > tolerance_ms:
+        raise ValueError(f"funding timestamp is off the canonical 8-hour grid: {ts}")
+    return canonical
+
 def parse_funding_rows(raw_rows: list[dict], symbol: str, start_ms: int, end_ms: int) -> list[dict]:
     rows = []
     for raw in raw_rows:
@@ -254,7 +268,7 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
             missing_8h_times = set()
             for funding_row in rate_rows:
                 try:
-                    funding_ts = int(float(funding_row[0]))
+                    funding_ts = canonical_settlement_timestamp(int(float(funding_row[0])))
                 except (ValueError, IndexError):
                     continue
                 if not (start_ms <= funding_ts < end_ms):
@@ -322,7 +336,7 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                 mark_1m_closes.sort()
             for row in rate_rows:
                 try:
-                    ts = int(float(row[0]))
+                    ts = canonical_settlement_timestamp(int(float(row[0])))
                     rate = float(row[-1])
                 except (ValueError, IndexError):
                     continue
@@ -330,16 +344,12 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                     # Settlement records align to the open of the 8h mark-price candle.
                     mark = marks.get(ts)
                     mark_source = "mark_kline_open"
-                    if mark is None and marks:
-                        nearest_ts = min(marks, key=lambda mark_ts: abs(mark_ts - ts))
-                        if abs(nearest_ts - ts) <= 1000:
-                            mark = marks[nearest_ts]
-                            mark_source = "mark_kline_open_nearest_1s"
                     if mark is None and mark_1m_opens:
-                        nearest_1m_ts = min(mark_1m_opens, key=lambda mark_ts: abs(mark_ts - ts))
-                        if abs(nearest_1m_ts - ts) <= 1000:
-                            mark = mark_1m_opens[nearest_1m_ts]
-                            mark_source = "mark_kline_1m_open_nearest_1s"
+                        # Timestamp is normalized to the canonical settlement boundary;
+                        # require an exact mark-price candle OPEN match.
+                        mark = mark_1m_opens.get(ts)
+                        if mark is not None:
+                            mark_source = "mark_kline_1m_open"
                     if mark is None and mark_1m_closes:
                         prior = [item for item in mark_1m_closes if item[0] <= ts]
                         # Secondary fallback is historical only and limited to one minute.
