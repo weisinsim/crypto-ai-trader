@@ -3,7 +3,7 @@
 ## Scope and provenance
 
 - Research artifact revision: `8804def89c213749a25cb05b8e4a326d4ad0c7e5` (gate correction); regression-test follow-up: `a48e7fa9e74e35aff5f12d3618557c6f4809114d`
-- Workflow: [Historical baseline research run 38390207808](https://github.com/weisinsim/crypto-ai-trader/actions/runs/38379994375)
+- Workflow: [Historical baseline research run 38390207808](https://github.com/weisinsim/crypto-ai-trader/actions/runs/38390207808)
 - Data scope: 1H closed-candle history and historical funding; the workflow's funding audit gate passed for all five symbol jobs.
 - This is research-only evidence. The tested baseline/diagnostic strategies are not the frozen XRP V27.2 production candidate and do not authorize live trading.
 - Drawdown accounting was updated to track the close-equity peak while measuring troughs against adverse intrabar OHLC marks. This is conservative bar-level estimation, not tick-accurate intrabar reconstruction.
