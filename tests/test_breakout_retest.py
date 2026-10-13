@@ -105,6 +105,50 @@ class BreakoutRetestTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "fees and slippage"):
             run_breakout_retest(rows, params, 100, len(rows), fee_rate=float("nan"))
 
+    def test_funding_changes_realized_pnl_and_intratrade_drawdown(self):
+        # Construct a deterministic breakout/retest across several bars. ATR is
+        # fixed so the test isolates trade lifecycle/funding semantics.
+        from unittest.mock import patch
+
+        rows = []
+        for i in range(30):
+            close = 100.0
+            rows.append({"t": i * 3_600_000, "o": 99.9, "h": 100.35,
+                         "l": 99.65, "c": close, "v": 100.0})
+        rows[20] = {"t": 20 * 3_600_000, "o": 101.0, "h": 102.2,
+                    "l": 100.8, "c": 102.0, "v": 100.0}
+        rows[21] = {"t": 21 * 3_600_000, "o": 100.3, "h": 100.8,
+                    "l": 100.2, "c": 100.6, "v": 100.0}
+        rows[22] = {"t": 22 * 3_600_000, "o": 100.4, "h": 101.0,
+                    "l": 100.3, "c": 100.7, "v": 100.0}
+        rows[23] = {"t": 23 * 3_600_000, "o": 100.7, "h": 101.0,
+                    "l": 100.3, "c": 100.6, "v": 100.0}
+        rows[24] = {"t": 24 * 3_600_000, "o": 100.6, "h": 101.0,
+                    "l": 100.3, "c": 100.6, "v": 100.0}
+        params = {"lookback": 5, "max_wait": 3, "target_r": 3.0,
+                  "direction": "LONG", "retest_atr": 0.20}
+        funding = [{"funding_time": rows[23]["t"], "funding_rate": 0.001,
+                    "mark_price": 100.0, "symbol": "BTCUSDT"}]
+
+        with patch("research.breakout_retest.atr_values", return_value=[1.0] * len(rows)):
+            no_funding = run_breakout_retest(rows, params, 20, 25)
+            with_funding = run_breakout_retest(
+                rows, params, 20, 25, funding_rates=funding, symbol="BTCUSDT"
+            )
+
+        self.assertEqual(no_funding["trades"], 1)
+        self.assertEqual(with_funding["trades"], 1)
+        plain_trade = no_funding["trade_log"][0]
+        funded_trade = with_funding["trade_log"][0]
+        self.assertGreater(funded_trade["exit_time"], funded_trade["entry_time"])
+        self.assertEqual(funded_trade["funding_events"], 1)
+        self.assertLess(funded_trade["funding_pnl_equity"], 0)
+        self.assertAlmostEqual(
+            funded_trade["pnl_equity"] - plain_trade["pnl_equity"],
+            funded_trade["funding_pnl_equity"], places=7,
+        )
+        self.assertGreater(with_funding["max_drawdown_pct"], no_funding["max_drawdown_pct"])
+
     def test_adverse_funding_increases_intratrade_drawdown(self):
         # Deterministic held-position mark: funding is an accrued cashflow, not
         # a realized-only adjustment. Keep all other mark inputs identical.
