@@ -47,6 +47,12 @@ def _parse_integer_timestamp(value, field: str = "fundingTime") -> int:
 
 
 def parse_funding_rows(raw_rows: list[dict], symbol: str, start_ms: int, end_ms: int) -> list[dict]:
+    if not isinstance(symbol, str) or not symbol.strip() or not symbol.strip().isalnum():
+        raise ValueError("symbol must be a non-empty alphanumeric exchange symbol")
+    if (isinstance(start_ms, bool) or not isinstance(start_ms, int)
+            or isinstance(end_ms, bool) or not isinstance(end_ms, int)
+            or start_ms < 0 or end_ms <= start_ms):
+        raise ValueError("require integer timestamps with 0 <= start_ms < end_ms")
     rows = []
     for raw in raw_rows:
         ts = _parse_integer_timestamp(raw["fundingTime"])
