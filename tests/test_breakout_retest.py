@@ -1,6 +1,6 @@
 import unittest
 
-from research.breakout_retest import GRID, atr_values, candidate_rejection_reasons, funding_cashflow, profit_factor_above_one, run_breakout_retest
+from research.breakout_retest import GRID, atr_values, candidate_rejection_reasons, funding_cashflow, marked_equity_after_costs_and_funding, profit_factor_above_one, run_breakout_retest
 
 
 def make_rows(n=240):
@@ -104,6 +104,27 @@ class BreakoutRetestTests(unittest.TestCase):
         params = {"lookback": 24, "max_wait": 6, "target_r": 2.0}
         with self.assertRaisesRegex(ValueError, "fees and slippage"):
             run_breakout_retest(rows, params, 100, len(rows), fee_rate=float("nan"))
+
+    def test_adverse_funding_increases_intratrade_drawdown(self):
+        # Deterministic held-position mark: funding is an accrued cashflow, not
+        # a realized-only adjustment. Keep all other mark inputs identical.
+        peak_equity = 1.01
+        without_funding = marked_equity_after_costs_and_funding(
+            equity=1.0, mark_pnl=0.002, mark_costs=0.0005, mark_funding=0.0,
+        )
+        with_adverse_funding = marked_equity_after_costs_and_funding(
+            equity=1.0, mark_pnl=0.002, mark_costs=0.0005, mark_funding=-0.003,
+        )
+        dd_without_funding = (peak_equity - without_funding) / peak_equity
+        dd_with_adverse_funding = (peak_equity - with_adverse_funding) / peak_equity
+        self.assertAlmostEqual(without_funding, 1.0015)
+        self.assertAlmostEqual(with_adverse_funding, 0.9985)
+        self.assertGreater(dd_with_adverse_funding, dd_without_funding)
+
+    def test_marked_equity_rejects_invalid_inputs(self):
+        for values in ((float("nan"), 0, 0, 0), (1, 0, -0.1, 0), (1, 0, 0, float("inf"))):
+            with self.assertRaisesRegex(ValueError, "marked-equity inputs"):
+                marked_equity_after_costs_and_funding(*values)
 
     def test_funding_cashflow_long_pays_and_short_receives(self):
         events = [{"funding_time": 200, "funding_rate": 0.001, "mark_price": 100.0}]
