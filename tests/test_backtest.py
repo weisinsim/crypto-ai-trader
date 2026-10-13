@@ -164,6 +164,32 @@ class BacktestTests(unittest.TestCase):
                 close_only_dd = max(close_only_dd, (peak - value) / peak * 100)
         self.assertGreater(result["max_drawdown_pct"], round(close_only_dd, 4))
 
+    def test_entry_bar_adverse_wick_is_counted_before_same_bar_exit(self):
+        closes = [100 + ((i % 8) - 4) * 0.15 for i in range(180)]
+        rows = [{"t": i * 3_600_000, "o": close, "h": close + 0.12,
+                 "l": close - 0.12, "c": close, "v": 100}
+                for i, close in enumerate(closes)]
+        kwargs = dict(fast=3, slow=9, atr_period=3, stop_atr=100, target_atr=100,
+                      fee_rate=0, slippage_rate=0)
+        baseline = run_ema_cross_backtest(rows, **kwargs)
+        self.assertGreater(baseline["trades"], 0)
+        first_trade = baseline["trade_log"][0]
+        entry_index = next(i for i, row in enumerate(rows)
+                           if row["t"] == first_trade["entry_time"])
+
+        stressed_rows = [dict(row) for row in rows]
+        if first_trade["side"] == "LONG":
+            stressed_rows[entry_index]["l"] = stressed_rows[entry_index]["c"] - 0.8
+        else:
+            stressed_rows[entry_index]["h"] = stressed_rows[entry_index]["c"] + 0.8
+
+        stressed = run_ema_cross_backtest(stressed_rows, **kwargs)
+        self.assertEqual(stressed["status"], "COMPLETED")
+        # The altered wick is on the entry candle and stays inside the wide
+        # stop/target. Its adverse mark must increase reported drawdown even
+        # though the close-only equity path is unchanged.
+        self.assertGreater(stressed["max_drawdown_pct"], baseline["max_drawdown_pct"])
+
     def test_same_bar_stop_and_target_prefers_stop(self):
         rows = candles_from_closes([100 + (i % 3) for i in range(80)])
         result = run_ema_cross_backtest(rows, fast=3, slow=7, atr_period=3, stop_atr=.1,
