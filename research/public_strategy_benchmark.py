@@ -178,12 +178,20 @@ def benchmark(rows: list[dict], symbol: str, funding_events: list[dict] | None =
                 "validation": simulate(rows, strategy, train_end, valid_end, cost, funding_events),
                 "holdout": simulate(rows, strategy, valid_end, n, cost, funding_events)
             }
+        holdout_pass = all(
+            results[strategy][cost]["holdout"]["positive_net"]
+            for cost in ("base", "stress", "severe")
+        )
+        all_splits_pass = all(
+            results[strategy][cost][split]["positive_net"]
+            for cost in ("base", "stress", "severe")
+            for split in ("train", "validation", "holdout")
+        )
         results[strategy]["gate"] = {
-            "status": "PASS_RESEARCH_GATE" if all(
-                results[strategy][cost]["holdout"]["positive_net"] for cost in ("base", "stress", "severe")
-            ) else "FAIL_RESEARCH_GATE",
+            "status": "PASS_RESEARCH_GATE" if all_splits_pass else "FAIL_RESEARCH_GATE",
+            "holdout_only_status": "PASS_HOLDOUT_DIAGNOSTIC" if holdout_pass else "FAIL_HOLDOUT_DIAGNOSTIC",
             "production_approved": False,
-            "rule": "Holdout positive net return and PF>1 at base, 0.30%, and 0.46% round-trip costs; separate paper trading required."
+            "rule": "Positive net return and PF>1 in train, validation, and holdout at base, 0.30%, and 0.46% round-trip costs. This is only a conservative research screen; passing does not approve production, and independent certification plus paper trading remain required."
         }
     return {"symbol": symbol.upper(), "interval": "1h", "bars": n,
             "strategy_scope": "Public strategy archetypes adapted to 1H candles; not direct reproduction of daily backtests.",

@@ -62,3 +62,32 @@ def test_funding_cost_includes_settlement_at_exit_and_excludes_entry():
     ]
     # Entry timestamp 100 is excluded; exit timestamp 300 is included.
     assert funding_cost(events, 100, 300, 100) == pytest.approx(0.005)
+
+
+
+def test_holdout_only_profit_does_not_pass_full_research_gate(monkeypatch):
+    import research.public_strategy_benchmark as module
+
+    def fake_simulate(rows, strategy, start, end, round_trip_cost, funding_events=None):
+        # The final holdout passes every cost, while earlier periods fail.
+        if start == int(len(rows) * 0.8):
+            return {"trades": 10, "net_return_pct": 5.0, "max_drawdown_pct": 2.0,
+                    "win_rate_pct": 60.0, "profit_factor": 1.5, "positive_net": True}
+        return {"trades": 10, "net_return_pct": -2.0, "max_drawdown_pct": 5.0,
+                "win_rate_pct": 40.0, "profit_factor": 0.8, "positive_net": False}
+
+    monkeypatch.setattr(module, "simulate", fake_simulate)
+    report = module.benchmark(rows(), "XRPUSDT")
+    for strategy in module.STRATEGIES:
+        assert report["results"][strategy]["gate"]["status"] == "FAIL_RESEARCH_GATE"
+        assert report["results"][strategy]["gate"]["holdout_only_status"] == "PASS_HOLDOUT_DIAGNOSTIC"
+        assert report["results"][strategy]["gate"]["production_approved"] is False
+
+
+def test_gate_requires_all_costs_and_all_chronological_splits():
+    report = benchmark(rows(), "BTCUSDT")
+    for strategy in STRATEGIES:
+        gate = report["results"][strategy]["gate"]
+        assert gate["status"] in {"PASS_RESEARCH_GATE", "FAIL_RESEARCH_GATE"}
+        assert gate["holdout_only_status"] in {"PASS_HOLDOUT_DIAGNOSTIC", "FAIL_HOLDOUT_DIAGNOSTIC"}
+        assert gate["production_approved"] is False
