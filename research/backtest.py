@@ -196,7 +196,7 @@ def run_ema_cross_backtest(
             estimated_exit_fee = abs(position["qty"] * adverse_price) * fee_rate
             accrued_funding = (position.get("funding_cost", 0.0) if funding_rates is not None else
                                position["qty"] * position["entry_fill"] * funding_rate_per_bar
-                               * side * position["bars_held"])
+                               * side * (position["bars_held"] + 1))
             adverse_equity = (equity + unrealized_pnl - position["entry_fee"]
                               - estimated_exit_fee - accrued_funding)
             max_dd = max(max_dd, (peak - adverse_equity) / peak if peak else 0.0)
