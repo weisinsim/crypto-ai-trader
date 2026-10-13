@@ -98,10 +98,19 @@ def load_funding(path: str | None) -> list[dict]:
         return []
     with open(path, newline="", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
-    parsed = [{"t": int(r["funding_time"]), "rate": float(r["funding_rate"]),
-               "mark": float(r["mark_price"])} for r in rows]
-    if any(not math.isfinite(r["rate"]) or not math.isfinite(r["mark"]) or r["mark"] <= 0 for r in parsed):
-        raise ValueError("invalid funding rate or mark price")
+    parsed = []
+    for row in rows:
+        try:
+            timestamp = int(row["funding_time"])
+            rate = float(row["funding_rate"])
+            mark = float(row["mark_price"])
+        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("invalid funding timestamp, rate, or mark price") from exc
+        if timestamp < 0:
+            raise ValueError("funding timestamps must be non-negative")
+        if not math.isfinite(rate) or not math.isfinite(mark) or mark <= 0:
+            raise ValueError("invalid funding rate or mark price")
+        parsed.append({"t": timestamp, "rate": rate, "mark": mark})
     if any(parsed[i]["t"] >= parsed[i+1]["t"] for i in range(len(parsed)-1)):
         raise ValueError("funding timestamps must be unique and ascending")
     return parsed
