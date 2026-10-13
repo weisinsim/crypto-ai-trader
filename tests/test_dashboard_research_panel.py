@@ -11,7 +11,7 @@ class DashboardResearchPanelTests(unittest.TestCase):
         self.assertIn('aria-label="模型验证状态"', self.html)
         self.assertIn("RESEARCH_AUDIT_2026-10-13.md", self.html)
         self.assertIn("0.30% / 0.46% 成本压力测试", self.html)
-        self.assertIn("Confirmation CI", self.html)
+        self.assertIn("Validation CI", self.html)
 
     def test_all_five_assets_are_represented(self):
         table_start = self.html.index("<table class=\"researchTable\"><thead>")
