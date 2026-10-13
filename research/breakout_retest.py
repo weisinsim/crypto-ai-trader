@@ -59,7 +59,7 @@ def _strict_funding_timestamp(value) -> int:
         raise ValueError("funding timestamp must be an integer")
     if isinstance(value, int):
         ts = value
-    elif isinstance(value, str) and re.fullmatch(r"-?\\d+", value.strip()):
+    elif isinstance(value, str) and re.fullmatch(r"-?\d+", value.strip()):
         ts = int(value.strip())
     else:
         raise ValueError("funding timestamp must be an integer")
