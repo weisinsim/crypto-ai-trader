@@ -1,6 +1,8 @@
+import hashlib
+
 import pytest
 
-from research.funding_audit import audit_funding
+from research.funding_audit import audit_funding, input_file_lineage
 
 
 def candles(n=10):
@@ -227,3 +229,27 @@ def test_binance_source_with_conflicting_venue_fails_closed():
     report = audit_funding(rows, candles(), "BTCUSDT")
     assert report["status"] == "FAIL_UNVERIFIED_MARK_PRICE_SOURCE"
     assert report["unverified_price_source_records"] == 1
+
+
+
+def test_input_file_lineage_hashes_exact_file_bytes(tmp_path):
+    path = tmp_path / "funding.csv"
+    payload = b"funding_time,funding_rate\n123,0.001\n"
+    path.write_bytes(payload)
+
+    lineage = input_file_lineage(path)
+
+    assert lineage["path"] == str(path)
+    assert lineage["sha256"] == hashlib.sha256(payload).hexdigest()
+    assert lineage["size_bytes"] == len(payload)
+
+
+def test_input_file_lineage_changes_when_bytes_change(tmp_path):
+    path = tmp_path / "candles.csv"
+    path.write_bytes(b"t,c\n1,100\n")
+    first = input_file_lineage(path)
+    path.write_bytes(b"t,c\n1,101\n")
+    second = input_file_lineage(path)
+
+    assert first["sha256"] != second["sha256"]
+    assert first["size_bytes"] != second["size_bytes"]
