@@ -129,3 +129,24 @@ def test_gate_requires_all_costs_and_all_chronological_splits():
         assert gate["status"] in {"PASS_RESEARCH_GATE", "FAIL_RESEARCH_GATE"}
         assert gate["holdout_only_status"] in {"PASS_HOLDOUT_DIAGNOSTIC", "FAIL_HOLDOUT_DIAGNOSTIC"}
         assert gate["production_approved"] is False
+
+
+
+def test_simulation_drawdown_includes_adverse_intrabar_low(monkeypatch):
+    import research.public_strategy_benchmark as module
+
+    data = rows(210)
+    # Force a long entry at index 201 (filled at index 202 open) and later exit.
+    data[202].update({"o": 100.0, "h": 112.0, "l": 80.0, "c": 108.0})
+    data[203].update({"o": 108.0, "h": 112.0, "l": 105.0, "c": 110.0})
+    data[204].update({"o": 110.0, "h": 112.0, "l": 108.0, "c": 111.0})
+    enter = [False] * len(data)
+    exit_ = [False] * len(data)
+    enter[201] = True
+    exit_[203] = True
+    monkeypatch.setattr(module, "signals", lambda _rows, _strategy: (enter, exit_))
+
+    result = module.simulate(data, "sma200_trend", 201, 210, 0.0)
+    assert result["trades"] == 1
+    assert result["net_return_pct"] > 0
+    assert result["max_drawdown_pct"] >= 19.9
