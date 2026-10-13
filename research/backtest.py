@@ -258,19 +258,30 @@ def run_ema_cross_backtest(
                 trades.append(trade)
                 position = None
 
-        # Mark open positions to market so drawdown includes unrealized losses.
+        # Keep the equity curve close-marked, but measure drawdown against the
+        # adverse intrabar OHLC mark as well. OHLC cannot reveal the true path;
+        # this deliberately conservative estimate avoids understating risk
+        # when a candle closes far from its adverse extreme.
         marked_equity = equity
+        adverse_marked_equity = equity
         if position is not None:
-            mark_price = float(bar["c"])
-            unrealized_pnl = position["qty"] * position["side"] * (mark_price - position["entry_fill"])
-            estimated_exit_fee = abs(position["qty"] * mark_price) * fee_rate
-            accrued_funding = (position.get("funding_cost", 0.0) if funding_rates is not None else
-                               position["qty"] * position["entry_fill"] * funding_rate_per_bar
-                               * position["side"] * position["bars_held"])
-            marked_equity += (unrealized_pnl - position["entry_fee"]
-                              - estimated_exit_fee - accrued_funding)
+            side = int(position["side"])
+            close_price = float(bar["c"])
+            adverse_price = min(close_price, float(bar["l"])) if side > 0 else max(close_price, float(bar["h"]))
+
+            def mark_open_position(mark_price: float) -> float:
+                unrealized_pnl = position["qty"] * side * (mark_price - position["entry_fill"])
+                estimated_exit_fee = abs(position["qty"] * mark_price) * fee_rate
+                accrued_funding = (position.get("funding_cost", 0.0) if funding_rates is not None else
+                                   position["qty"] * position["entry_fill"] * funding_rate_per_bar
+                                   * side * position["bars_held"])
+                return equity + unrealized_pnl - position["entry_fee"] - estimated_exit_fee - accrued_funding
+
+            marked_equity = mark_open_position(close_price)
+            adverse_marked_equity = mark_open_position(adverse_price)
         peak = max(peak, marked_equity)
-        max_dd = max(max_dd, (peak - marked_equity) / peak if peak else 0)
+        # Use the close-equity high-water mark and intrabar adverse trough.
+        max_dd = max(max_dd, (peak - adverse_marked_equity) / peak if peak else 0)
         equity_curve.append({"t": int(bar["t"]), "equity": marked_equity})
 
     if position is not None:
