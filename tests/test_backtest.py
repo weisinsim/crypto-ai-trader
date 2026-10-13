@@ -169,7 +169,7 @@ class BacktestTests(unittest.TestCase):
         rows = [{"t": i * 3_600_000, "o": close, "h": close + 0.12,
                  "l": close - 0.12, "c": close, "v": 100}
                 for i, close in enumerate(closes)]
-        kwargs = dict(fast=3, slow=9, atr_period=3, stop_atr=100, target_atr=100,
+        kwargs = dict(fast=3, slow=9, atr_period=3, stop_atr=10, target_atr=100,
                       fee_rate=0, slippage_rate=0)
         baseline = run_ema_cross_backtest(rows, **kwargs)
         self.assertGreater(baseline["trades"], 0)
