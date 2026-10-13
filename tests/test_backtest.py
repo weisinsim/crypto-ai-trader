@@ -140,6 +140,30 @@ class BacktestTests(unittest.TestCase):
         self.assertGreater(isolated["trades"], 0)
         self.assertTrue(all(t["entry_time"] >= boundary for t in isolated["trade_log"]))
 
+    def test_intrabar_adverse_extreme_increases_drawdown_without_stop_fill(self):
+        rows = []
+        closes = [100 + ((i % 8) - 4) * 0.15 for i in range(180)]
+        for i, close in enumerate(closes):
+            # Keep adverse wicks material but within the deliberately wide stop.
+            rows.append({"t": i * 3_600_000, "o": close, "h": close + 0.12,
+                         "l": close - 0.12, "c": close, "v": 100})
+        result = run_ema_cross_backtest(
+            rows, fast=3, slow=9, atr_period=3, stop_atr=100, target_atr=100,
+            fee_rate=0, slippage_rate=0,
+        )
+        self.assertEqual(result["status"], "COMPLETED")
+        self.assertGreater(result["trades"], 0)
+        # The public curve remains close-marked. Intrabar adverse marking must
+        # make reported DD at least as large as the close-only curve DD.
+        peak = 1.0
+        close_only_dd = 0.0
+        for point in result["equity_curve"]:
+            value = point["equity"]
+            peak = max(peak, value)
+            if peak > 0:
+                close_only_dd = max(close_only_dd, (peak - value) / peak * 100)
+        self.assertGreaterEqual(result["max_drawdown_pct"], round(close_only_dd, 4))
+
     def test_same_bar_stop_and_target_prefers_stop(self):
         rows = candles_from_closes([100 + (i % 3) for i in range(80)])
         result = run_ema_cross_backtest(rows, fast=3, slow=7, atr_period=3, stop_atr=.1,
