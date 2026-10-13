@@ -86,7 +86,7 @@ def test_holdout_only_profit_does_not_pass_full_research_gate(monkeypatch):
 
 def test_gate_requires_all_costs_and_all_chronological_splits():
     report = benchmark(rows(), "BTCUSDT")
-    for strategy in STRATEGIES:
+    for strategy in report["results"]:
         gate = report["results"][strategy]["gate"]
         assert gate["status"] in {"PASS_RESEARCH_GATE", "FAIL_RESEARCH_GATE"}
         assert gate["holdout_only_status"] in {"PASS_HOLDOUT_DIAGNOSTIC", "FAIL_HOLDOUT_DIAGNOSTIC"}
