@@ -113,6 +113,15 @@ class BreakoutRetestTests(unittest.TestCase):
                         "funding_time": ts, "funding_rate": 0.001, "mark_price": 100.0,
                     }])
 
+    def test_funding_cashflow_rejects_invalid_trade_timestamps_and_boolean_side(self):
+        event = [{"funding_time": 100, "funding_rate": 0.001, "mark_price": 100.0}]
+        for entry, exit_ in ((True, 200), (0, False), (0.5, 200), (0, 200.5)):
+            with self.subTest(entry=entry, exit=exit_):
+                with self.assertRaisesRegex(ValueError, "funding timestamp must be an integer"):
+                    funding_cashflow(1, 1.0, entry, exit_, event)
+        with self.assertRaisesRegex(ValueError, "invalid side"):
+            funding_cashflow(True, 1.0, 0, 200, event)
+
     def test_funding_cashflow_accepts_integer_timestamp_strings(self):
         pnl, count = funding_cashflow(1, 1.0, 0, 200, [{
             "funding_time": "100", "funding_rate": 0.001, "mark_price": 100.0,
