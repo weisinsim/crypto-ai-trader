@@ -1,6 +1,6 @@
 import unittest
 
-from research.funding_data import download_archive_funding, download_funding_rates, parse_funding_rows, save_funding_csv
+from research.funding_data import canonical_settlement_timestamp, download_archive_funding, download_funding_rates, parse_funding_rows, save_funding_csv
 
 
 def record(ts, rate="0.0001"):
@@ -8,6 +8,17 @@ def record(ts, rate="0.0001"):
 
 
 class FundingDataTests(unittest.TestCase):
+    def test_canonicalizes_only_small_settlement_timestamp_jitter(self):
+        boundary = 1783180800000
+        self.assertEqual(canonical_settlement_timestamp(boundary + 7), boundary)
+        self.assertEqual(canonical_settlement_timestamp(boundary - 500), boundary)
+        with self.assertRaisesRegex(ValueError, "off the canonical 8-hour grid"):
+            canonical_settlement_timestamp(boundary + 1001)
+
+    def test_canonical_settlement_timestamp_rejects_invalid_values(self):
+        for ts in (-1, 1.5):
+            with self.assertRaisesRegex(ValueError, "non-negative integers"):
+                canonical_settlement_timestamp(ts)
     def test_parse_filters_range_and_sorts(self):
         rows = parse_funding_rows([record(200), record(100), record(300)], "btcusdt", 100, 300)
         self.assertEqual([r["funding_time"] for r in rows], [100, 200])
