@@ -105,6 +105,22 @@ class BreakoutRetestTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "fees and slippage"):
             run_breakout_retest(rows, params, 100, len(rows), fee_rate=float("nan"))
 
+    def test_backtest_rejects_non_finite_or_boolean_risk_and_leverage(self):
+        rows = make_rows()
+        params = {"lookback": 24, "max_wait": 6, "target_r": 2.0}
+        for kwargs in (
+            {"max_leverage": float("nan")},
+            {"max_leverage": float("inf")},
+            {"max_leverage": True},
+            {"risk_fraction": float("nan")},
+            {"risk_fraction": True},
+            {"fee_rate": True},
+            {"slippage_rate": float("inf")},
+        ):
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaisesRegex(ValueError, "risk fraction|max leverage|fees and slippage"):
+                    run_breakout_retest(rows, params, 100, len(rows), **kwargs)
+
     def test_funding_cashflow_rejects_malformed_timestamps_without_truncation(self):
         for ts in (True, False, 100.5, "100.5", "1e3"):
             with self.subTest(ts=ts):
