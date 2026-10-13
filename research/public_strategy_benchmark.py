@@ -155,10 +155,16 @@ def simulate(rows: list[dict], strategy: str, start: int, end: int, round_trip_c
             entry_price = None
             i += 1
             continue
+        if entry_price is not None:
+            # Conservative intrabar mark-to-market: use the candle low for a long.
+            # Keep the realized-equity peak to avoid assuming high-before-low ordering.
+            adverse_return = rows[i]["l"] / entry_price - 1 - round_trip_cost
+            adverse_equity = equity * max(0.000001, 1 + adverse_return)
+            max_dd = max(max_dd, (peak-adverse_equity)/peak)
         i += 1
     if entry_price is not None and end > start + 1:
         exit_price = rows[end-1]["c"]
-        funding = funding_cost(funding_events, rows[entry_i]["t"], rows[end-1]["t"] + 3_600_000, entry_price)
+        funding = funding_cost(funding_events, rows[entry_i]["t"], rows[end-1]["t"], entry_price)
         net = exit_price / entry_price - 1 - round_trip_cost - funding
         equity *= max(0.000001, 1 + net)
         trades.append(net)
