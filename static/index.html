@@ -37,22 +37,22 @@ h1{font-size:22px;margin:0 0 5px}.sub{font-size:12px;color:#9aa4b2}
 </div>
 <section class="researchPanel" aria-label="模型验证状态">
 <h2>研究与验证状态 · 2026-10-13</h2>
-<div class="intro">RESEARCH ONLY · 未批准实盘。最新资金费率生命周期测试的三项 CI 已通过；随后增加输入文件 SHA-256 指纹的提交正在进行完整 CI 与历史回测复核。请以链接中的实时状态为准，哈希仅用于确认输入一致性，不代表来源已被独立认证。</div>
+<div class="intro">RESEARCH ONLY · 未批准实盘。最新 intrabar 回撤修正已通过代码 CI；五币种历史研究已完成。完整 Holdout 与成本压力结果显示，当前没有候选通过稳健盈利门槛。此面板是研究状态，不是交易建议。</div>
 <div class="researchScroll"><table class="researchTable"><thead><tr><th>币种</th><th>1H 基线交易数</th><th>样本外净收益</th><th>最大回撤</th><th>胜率</th><th>Profit Factor</th><th>判断</th></tr></thead><tbody>
-<tr><td>BTC</td><td>64</td><td>+1.2806%</td><td>7.4841%</td><td>43.75%</td><td>1.0372</td><td class="fail">未达标</td></tr>
-<tr><td>ETH</td><td>76</td><td>-15.2345%</td><td>18.3986%</td><td>28.95%</td><td>0.6954</td><td class="fail">未达标</td></tr>
-<tr><td>SOL</td><td>66</td><td>-8.3235%</td><td>14.1128%</td><td>31.82%</td><td>0.8065</td><td class="fail">未达标</td></tr>
-<tr><td>AVAX</td><td>69</td><td>-5.1559%</td><td>13.4518%</td><td>33.33%</td><td>0.8904</td><td class="fail">未达标</td></tr>
-<tr><td>XRP</td><td>71</td><td>-1.4910%</td><td>10.5219%</td><td>36.62%</td><td>0.9674</td><td class="fail">未达标</td></tr>
+<tr><td>BTC</td><td>61</td><td>-9.7117%</td><td>17.4377%</td><td>36.07%</td><td>0.7778</td><td class="fail">未达标</td></tr>
+<tr><td>ETH</td><td>16</td><td>-3.2748%</td><td>4.7910%</td><td>31.25%</td><td>0.7323</td><td class="fail">未达标</td></tr>
+<tr><td>SOL</td><td>15</td><td>-6.4917%</td><td>9.9206%</td><td>26.67%</td><td>0.4588</td><td class="fail">未达标</td></tr>
+<tr><td>AVAX</td><td>66</td><td>+11.1195%</td><td>8.2474%</td><td>50.00%</td><td>1.2819</td><td class="fail">成本压力未通过</td></tr>
+<tr><td>XRP</td><td>10</td><td>+0.9567%</td><td>5.4313%</td><td>40.00%</td><td>1.1443</td><td class="fail">成本压力未通过</td></tr>
 </tbody></table></div>
-<div class="intro">以上为诊断性基线，不代表冻结候选模型的最终比较。五个币种中仅 BTC 基线收益为正，但 PF 仅略高于 1；没有任何币种因这些结果获得实盘资格。</div>
+<div class="intro">以上为冻结参数稳定性诊断的完整 Holdout，不代表冻结 XRP V27.2 候选模型本身的最终确认结果。AVAX 在 0.30% 成本情景下收益为 +4.0646%，但在 0.46% 成本下转为 -2.5497%；XRP 在 0.30% 成本下转为 -0.2073%。目前没有任何币种通过全部成本情景。</div>
 <div class="researchScroll"><table class="researchTable"><thead><tr><th>最新开发验证</th><th>结果</th><th>详情</th></tr></thead><tbody>
-<tr><td>Funding 生命周期集成测试</td><td>通过</td><td><a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/actions/runs/38345692269" target="_blank" rel="noopener">Research CI</a></td></tr>
-<tr><td>输入文件 SHA-256 审计指纹</td><td>复核中</td><td><a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/commit/96867e18695c8399d4d9c69b3ebcf6cf6734fa18" target="_blank" rel="noopener">代码提交</a></td></tr>
-<tr><td>五币种历史基线</td><td>运行中 / 以 GitHub 状态为准</td><td><a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/actions/runs/38346006501" target="_blank" rel="noopener">Baseline CI</a></td></tr>
-<tr><td>冻结候选独立确认</td><td>运行中 / 以 GitHub 状态为准</td><td><a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/actions/runs/38346006472" target="_blank" rel="noopener">Confirmation CI</a></td></tr>
+<tr><td>Python validation（审计报告提交）</td><td>通过</td><td><a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/actions/runs/38385062794" target="_blank" rel="noopener">CI</a></td></tr>
+<tr><td>五币种历史研究与成本压力</td><td>完成；模型未达标</td><td><a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/actions/runs/38379994375" target="_blank" rel="noopener">Research workflow</a></td></tr>
+<tr><td>冻结确认单元测试</td><td>通过</td><td><a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/actions/runs/38379994362" target="_blank" rel="noopener">Confirmation CI</a></td></tr>
+<tr><td>研究测试套件</td><td>通过</td><td><a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/actions/runs/38379994348" target="_blank" rel="noopener">Research tests</a></td></tr>
 </tbody></table></div>
-<a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/blob/main/docs/RESEARCH_STATUS_2026-10-13.md" target="_blank" rel="noopener">查看研究状态报告 ↗</a>
+<a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/blob/main/reports/RESEARCH_AUDIT_2026-10-13.md" target="_blank" rel="noopener">查看完整 Holdout 与成本审计 ↗</a>
 <div class="intro">晋级门槛：独立样本外净收益为正、Profit Factor &gt; 1.15、足够交易样本、可接受回撤、参数稳定且通过 0.30% / 0.46% 成本压力测试。CI 通过只代表软件或流水线完成，不代表策略盈利。</div>
 </section><div id="cards" class="cards"></div><div id="historyPanel" class="historyPanel"></div>
 <div class="small">V28.2：Research-Gated Dashboard。实时行情与历史回测状态分开显示；所有候选模型仍处于研究阶段，信号不保证盈利。</div>
