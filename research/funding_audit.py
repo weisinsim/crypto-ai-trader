@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import math
 from collections import Counter
@@ -131,8 +132,25 @@ def main() -> None:
     parser.add_argument("--max-gap-hours", type=float, default=24.0)
     parser.add_argument("--expected-venue", help="require all funding rows to match this venue")
     args = parser.parse_args()
-    report = audit_funding(read_rows(args.funding_csv), read_rows(args.candle_csv),
+    funding_path = Path(args.funding_csv)
+    candle_path = Path(args.candle_csv)
+    report = audit_funding(read_rows(funding_path), read_rows(candle_path),
                            args.symbol, args.max_gap_hours, args.expected_venue)
+    # Record content digests and byte lengths so downstream reports can identify
+    # the exact inputs that were audited. Digests provide reproducibility, not
+    # independent proof that a source endpoint or archive was authentic.
+    report["input_lineage"] = {
+        "funding_csv": {
+            "path": str(funding_path),
+            "sha256": hashlib.sha256(funding_path.read_bytes()).hexdigest(),
+            "size_bytes": funding_path.stat().st_size,
+        },
+        "candle_csv": {
+            "path": str(candle_path),
+            "sha256": hashlib.sha256(candle_path.read_bytes()).hexdigest(),
+            "size_bytes": candle_path.stat().st_size,
+        },
+    }
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     Path(args.output).write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(json.dumps(report, sort_keys=True))
