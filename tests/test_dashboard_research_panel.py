@@ -9,7 +9,7 @@ class DashboardResearchPanelTests(unittest.TestCase):
 
     def test_research_panel_is_present_and_linked_to_report(self):
         self.assertIn('aria-label="模型验证状态"', self.html)
-        self.assertIn("RESEARCH_STATUS_2026-10-13.md", self.html)
+        self.assertIn("RESEARCH_AUDIT_2026-10-13.md", self.html)
         self.assertIn("0.30% / 0.46% 成本压力测试", self.html)
         self.assertIn("Confirmation CI", self.html)
 
@@ -21,7 +21,8 @@ class DashboardResearchPanelTests(unittest.TestCase):
             self.assertIn(f"<td>{symbol}</td>", table)
 
     def test_candidates_are_not_misrepresented_as_approved(self):
-        self.assertIn("没有任何币种因这些结果获得实盘资格", self.html)
+        self.assertIn("目前没有任何币种通过全部成本情景", self.html)
+        self.assertIn("当前没有候选通过稳健盈利门槛", self.html)
         self.assertIn("未批准实盘", self.html)
         self.assertIn("CI 通过只代表软件或流水线完成，不代表策略盈利", self.html)
 
