@@ -43,6 +43,25 @@ def test_benchmark_uses_chronological_holdout_and_no_funding_claim():
     assert set(report["results"]) == {"rsi_mean_reversion", "sma200_trend", "donchian_breakout"}
 
 
+@pytest.mark.parametrize(
+    "bad_row",
+    [
+        {"t": 0, "o": 100, "h": 99, "l": 98, "c": 100, "v": 1},
+        {"t": 0, "o": 100, "h": 102, "l": 101, "c": 100, "v": 1},
+        {"t": 0, "o": 100, "h": 102, "l": 98, "c": 100, "v": -1},
+        {"t": -1, "o": 100, "h": 102, "l": 98, "c": 100, "v": 1},
+    ],
+)
+def test_loader_rejects_structurally_invalid_candles(tmp_path: Path, bad_row):
+    path = tmp_path / "bad.csv"
+    with path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["t", "o", "h", "l", "c", "v"])
+        writer.writeheader()
+        writer.writerows([bad_row] * 250)
+    with pytest.raises(ValueError):
+        load_candles(str(path))
+
+
 def test_loader_rejects_short_dataset(tmp_path: Path):
     path = tmp_path / "short.csv"
     with path.open("w", newline="") as handle:
