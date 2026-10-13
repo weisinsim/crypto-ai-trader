@@ -122,6 +122,27 @@ def test_audit_rejects_negative_funding_timestamp_explicitly():
         audit_funding(funding([-1]), candles(), "BTCUSDT")
 
 
+@pytest.mark.parametrize("bad_ts", [True, False, 1.5, "1.5", "1e3"])
+def test_audit_rejects_non_integer_funding_timestamps(bad_ts):
+    rows = funding([0])
+    rows[0]["funding_time"] = bad_ts
+    with pytest.raises(ValueError, match="funding_time must be an integer timestamp"):
+        audit_funding(rows, candles(), "BTCUSDT")
+
+
+@pytest.mark.parametrize("bad_ts", [True, False, 1.5, "1.5", "1e3"])
+def test_audit_rejects_non_integer_candle_timestamps(bad_ts):
+    rows = candles()
+    rows[0]["t"] = bad_ts
+    with pytest.raises(ValueError, match="candle timestamp must be an integer timestamp"):
+        audit_funding(funding([0]), rows, "BTCUSDT")
+
+
+def test_audit_rejects_boolean_gap_threshold():
+    with pytest.raises(ValueError, match="max_gap_hours must be finite and greater than zero"):
+        audit_funding(funding([0]), candles(), "BTCUSDT", max_gap_hours=True)
+
+
 def test_audit_rejects_non_finite_funding_rate():
     rows = funding([0])
     rows[0]["funding_rate"] = float("nan")
