@@ -16,9 +16,14 @@ class FundingDataTests(unittest.TestCase):
             canonical_settlement_timestamp(boundary + 1001)
 
     def test_canonical_settlement_timestamp_rejects_invalid_values(self):
-        for ts in (-1, 1.5):
+        for ts in (-1, 1.5, True, False):
             with self.assertRaisesRegex(ValueError, "non-negative integers"):
                 canonical_settlement_timestamp(ts)
+
+    def test_canonical_settlement_timestamp_rejects_boolean_tolerance(self):
+        for tolerance in (True, False):
+            with self.assertRaisesRegex(ValueError, "non-negative integers"):
+                canonical_settlement_timestamp(1783180800000, tolerance_ms=tolerance)
     def test_parse_filters_range_and_sorts(self):
         rows = parse_funding_rows([record(200), record(100), record(300)], "btcusdt", 100, 300)
         self.assertEqual([r["funding_time"] for r in rows], [100, 200])
