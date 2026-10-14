@@ -1,6 +1,6 @@
 import unittest
 
-from research.breakout_retest import GRID, atr_values, candidate_rejection_reasons, funding_cashflow, marked_equity_after_costs_and_funding, profit_factor_above_one, run_breakout_retest
+from research.breakout_retest import GRID, atr_values, build_indicator_cache, candidate_rejection_reasons, funding_cashflow, marked_equity_after_costs_and_funding, profit_factor_above_one, run_breakout_retest
 
 
 def make_rows(n=240):
@@ -77,6 +77,30 @@ class BreakoutRetestTests(unittest.TestCase):
         self.assertIsNone(atr[12])
         self.assertIsNotNone(atr[13])
         self.assertGreater(atr[13], 0)
+
+    def test_cached_indicators_preserve_backtest_results_and_support_prefixes(self):
+        rows = make_rows()
+        cache = build_indicator_cache(rows)
+        params = {"lookback": 24, "max_wait": 6, "target_r": 2.0, "trend_period": 100}
+        uncached = run_breakout_retest(rows, params, 100, len(rows))
+        cached = run_breakout_retest(rows, params, 100, len(rows), indicator_cache=cache)
+        self.assertEqual(cached, uncached)
+
+        prefix = rows[:200]
+        uncached_prefix = run_breakout_retest(prefix, params, 100, len(prefix))
+        cached_prefix = run_breakout_retest(
+            prefix, params, 100, len(prefix), indicator_cache=cache,
+        )
+        self.assertEqual(cached_prefix, uncached_prefix)
+
+    def test_indicator_cache_rejects_insufficient_coverage(self):
+        rows = make_rows()
+        cache = build_indicator_cache(rows[:150])
+        with self.assertRaisesRegex(ValueError, "does not cover"):
+            run_breakout_retest(
+                rows, {"lookback": 24, "max_wait": 6, "target_r": 2.0},
+                100, len(rows), indicator_cache=cache,
+            )
 
     def test_backtest_returns_separate_long_and_short_statistics(self):
         rows = make_rows()
