@@ -27,6 +27,26 @@ class CandleValidationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_candles([{"t": 0, "o": 10, "h": 9, "l": 8, "c": 9}])
 
+    def test_rejects_fractional_boolean_and_negative_timestamps(self):
+        valid = {"o": 100, "h": 101, "l": 99, "c": 100}
+        for timestamp in (1.5, True, -1, "1.5", "1e3"):
+            with self.subTest(timestamp=timestamp), self.assertRaisesRegex(
+                ValueError, "timestamp"
+            ):
+                validate_candles([{"t": timestamp, **valid}])
+
+    def test_accepts_integer_timestamp_string_without_truncation(self):
+        rows = validate_candles([{"t": "1000", "o": 100, "h": 101, "l": 99, "c": 100}])
+        self.assertEqual(rows[0]["t"], "1000")
+
+    def test_rejects_negative_or_non_finite_volume_metrics(self):
+        valid = {"t": 0, "o": 100, "h": 101, "l": 99, "c": 100}
+        for field, value in (("v", -1), ("q", float("nan")), ("v", float("inf"))):
+            with self.subTest(field=field, value=value), self.assertRaisesRegex(
+                ValueError, f"invalid {field}"
+            ):
+                validate_candles([{**valid, field: value}])
+
 
 class BacktestTests(unittest.TestCase):
     def test_insufficient_data_is_explicit(self):
