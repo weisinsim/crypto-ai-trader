@@ -160,6 +160,24 @@ class PaperExecutionBookTests(unittest.TestCase):
             self.assertEqual(saved["schema_version"], 3)
             self.assertIn("new-fill", saved["orders"]["legacy"]["fill_events"])
 
+    def test_schema_v2_partial_cancel_migrates_and_preserves_remainder_flag(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "legacy-v2.json"
+            legacy_order = {
+                "client_order_id": "legacy-v2", "symbol": "BTCUSDT", "side": "LONG",
+                "quantity": 2.0, "stop_loss": 90.0, "take_profit": 120.0,
+                "status": "CANCELLED", "filled_quantity": 0.5, "average_fill_price": 100.0,
+                "exit_price": None, "exit_reason": None, "fill_events": {},
+            }
+            path.write_text(json.dumps({"schema_version": 2, "orders": {"legacy-v2": legacy_order}}), encoding="utf-8")
+            book = PaperExecutionBook(path)
+            restored = book.get("legacy-v2")
+            self.assertTrue(restored["cancelled_remainder"])
+            closed = book.evaluate_protective_exit("legacy-v2", {"h": 110, "l": 85})
+            self.assertEqual(closed["status"], "CLOSED")
+            saved = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(saved["schema_version"], 3)
+            self.assertTrue(saved["orders"]["legacy-v2"]["cancelled_remainder"])
     def test_corrupt_or_unknown_schema_fails_closed(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "ledger.json"
