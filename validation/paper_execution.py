@@ -103,10 +103,8 @@ class PaperExecutionBook:
                 raise ValueError("cancelled order cannot be fully filled")
             if status == "CLOSED" and (order["exit_price"] is None or order["exit_reason"] not in {"STOP", "TAKE_PROFIT"} or filled <= 0):
                 raise ValueError("invalid closed order in paper ledger")
-            if order["cancelled_remainder"] and not (
-                order["status"] in {"CANCELLED", "CLOSED"}
-                and 0 < filled < order["quantity"]
-            ):
+            has_cancelled_remainder = 0 < filled < order["quantity"] and order["status"] in {"CANCELLED", "CLOSED"}
+            if order["cancelled_remainder"] != has_cancelled_remainder:
                 raise ValueError("invalid cancelled remainder state in paper ledger")
             restored[key] = deepcopy(order)
         self.orders = restored
