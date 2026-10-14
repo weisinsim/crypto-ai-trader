@@ -349,10 +349,6 @@ class BacktestTests(unittest.TestCase):
                 self.assertEqual(trade["reason"], "STOP")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
     def test_funding_settlement_changes_trade_pnl_and_reported_drawdown(self):
         rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(240)])
         kwargs = dict(fast=3, slow=9, atr_period=3, fee_rate=0, slippage_rate=0)
@@ -366,3 +362,7 @@ if __name__ == "__main__":
                             if t["entry_time"] == trade["entry_time"] and t["side"] == "LONG")
         self.assertLess(funded_trade["pnl_equity"], trade["pnl_equity"])
         self.assertGreater(funded["max_drawdown_pct"], baseline["max_drawdown_pct"])
+
+
+if __name__ == "__main__":
+    unittest.main()
