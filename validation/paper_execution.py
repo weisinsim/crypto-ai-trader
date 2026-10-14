@@ -9,7 +9,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 
-_SCHEMA_VERSION = 2
+_SCHEMA_VERSION = 3
 
 
 def _positive_finite(value, field):
@@ -36,7 +36,7 @@ class PaperExecutionBook:
             payload = json.loads(self.storage_path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise ValueError("paper ledger unreadable; refusing to start with empty state") from exc
-        if not isinstance(payload, dict) or payload.get("schema_version") not in (1, _SCHEMA_VERSION):
+        if not isinstance(payload, dict) or payload.get("schema_version") not in (1, 2, _SCHEMA_VERSION):
             raise ValueError("unsupported or invalid paper ledger schema")
         source_schema = payload["schema_version"]
         orders = payload.get("orders")
@@ -47,6 +47,7 @@ class PaperExecutionBook:
             "status", "filled_quantity", "average_fill_price", "exit_price", "exit_reason",
         }
         required_v2 = required | {"fill_events"}
+        required_v3 = required_v2 | {"cancelled_remainder"}
         allowed_statuses = {"OPEN", "PARTIALLY_FILLED", "FILLED", "CANCELLED", "CLOSED"}
         restored = {}
         for key, order in orders.items():
@@ -54,15 +55,30 @@ class PaperExecutionBook:
                 raise ValueError("invalid order record in paper ledger")
             if source_schema == 1 and set(order) == required:
                 order = {**order, "fill_events": {}}
-            elif set(order) != required_v2:
+            if source_schema in (1, 2) and set(order) == required_v2:
+                order = {
+                    **order,
+                    "cancelled_remainder": (
+                        order["status"] == "CANCELLED"
+                        and 0 < order["filled_quantity"] < order["quantity"]
+                    ),
+                }
+            elif source_schema in (1, 2) and set(order) != required_v2:
+                raise ValueError("invalid order record in paper ledger")
+            elif source_schema == 3 and set(order) != required_v3:
                 raise ValueError("invalid order record in paper ledger")
             if not isinstance(order["fill_events"], dict):
                 raise ValueError("invalid fill events in paper ledger")
+            if not isinstance(order["cancelled_remainder"], bool):
+                raise ValueError("invalid cancelled remainder flag in paper ledger")
+            event_quantity = 0.0
             for fill_id, event in order["fill_events"].items():
                 if not isinstance(fill_id, str) or not fill_id.strip() or not isinstance(event, dict) or set(event) != {"quantity", "price"}:
                     raise ValueError("invalid fill event record")
-                _positive_finite(event["quantity"], "fill event quantity")
+                event_quantity += _positive_finite(event["quantity"], "fill event quantity")
                 _positive_finite(event["price"], "fill event price")
+            if order["fill_events"] and abs(event_quantity - order["filled_quantity"]) > 1e-9:
+                raise ValueError("fill events do not reconcile with filled quantity")
             if order["client_order_id"] != key or order["side"] not in {"LONG", "SHORT"}:
                 raise ValueError("invalid order identity in paper ledger")
             if order["status"] not in allowed_statuses:
@@ -81,6 +97,11 @@ class PaperExecutionBook:
                     _positive_finite(order[field], field)
             if order["status"] == "CLOSED" and (order["exit_price"] is None or order["exit_reason"] not in {"STOP", "TAKE_PROFIT"}):
                 raise ValueError("invalid closed order in paper ledger")
+            if order["cancelled_remainder"] and not (
+                order["status"] in {"CANCELLED", "CLOSED"}
+                and 0 < filled < order["quantity"]
+            ):
+                raise ValueError("invalid cancelled remainder state in paper ledger")
             restored[key] = deepcopy(order)
         self.orders = restored
 
@@ -141,7 +162,7 @@ class PaperExecutionBook:
         order = {
             **payload, "status": "OPEN", "filled_quantity": 0.0,
             "average_fill_price": None, "exit_price": None, "exit_reason": None,
-            "fill_events": {},
+            "fill_events": {}, "cancelled_remainder": False,
         }
         self.orders[client_order_id] = order
         try:
@@ -190,6 +211,7 @@ class PaperExecutionBook:
             raise ValueError("only open or partially filled orders can be cancelled")
         before = deepcopy(order)
         order["status"] = "CANCELLED"
+        order["cancelled_remainder"] = 0 < order["filled_quantity"] < order["quantity"]
         try:
             self._save()
         except Exception:
@@ -200,8 +222,8 @@ class PaperExecutionBook:
     def evaluate_protective_exit(self, client_order_id, candle):
         """Exit filled quantity on stop/target touch; stop wins if both are touched."""
         order = self._get(client_order_id)
-        if order["status"] != "FILLED":
-            raise ValueError("protective exits require a fully filled paper order")
+        if order["status"] not in ("FILLED", "CANCELLED") or order["filled_quantity"] <= 0:
+            raise ValueError("protective exits require filled paper exposure")
         if any(key not in candle for key in ("h", "l")):
             raise ValueError("candle requires high (h) and low (l)")
         high = _positive_finite(candle["h"], "candle high")
