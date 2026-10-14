@@ -89,6 +89,8 @@ def run_ema_cross_backtest(
     rows = validate_candles(candles)
     funding_events = {}
     if funding_rates is not None:
+        if not rows and list(funding_rates):
+            raise ValueError("cannot apply historical funding events without candle data")
         candle_timestamps = sorted(int(row["t"]) for row in rows)
         candle_timestamp_set = set(candle_timestamps)
         previous_funding_ts = None
