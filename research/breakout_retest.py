@@ -419,7 +419,7 @@ def passes_cost_robustness(results: list[dict]) -> bool:
         return False
     for result in results:
         value = result.get("net_return_pct")
-        if (result.get("equity_floor_hit", False)
+        if (result.get("equity_floor_hit") is not False
                 or not isinstance(value, (int, float))
                 or isinstance(value, bool) or not math.isfinite(value)
                 or value <= 0
