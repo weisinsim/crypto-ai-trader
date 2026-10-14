@@ -312,9 +312,6 @@ def run_ema_cross_backtest(
                 if equity <= equity_floor:
                     equity_floor_hit = True
                     equity = equity_floor
-                if equity <= equity_floor:
-                    equity_floor_hit = True
-                    equity = equity_floor
 
         # Signal is known only after the previous bar closes; fill at current open.
         if (not equity_floor_hit and can_enter_at_open and position is None and (trade_start_ts is None or int(bar["t"]) >= trade_start_ts)
@@ -372,6 +369,9 @@ def run_ema_cross_backtest(
                 equity, trade = finalize_position(position, bar, exit_price, reason, equity)
                 trades.append(trade)
                 position = None
+                if equity <= equity_floor:
+                    equity_floor_hit = True
+                    equity = equity_floor
 
         # Keep the equity curve close-marked, but measure drawdown against the
         # adverse intrabar OHLC mark as well. OHLC cannot reveal the true path;
