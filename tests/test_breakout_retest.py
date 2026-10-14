@@ -1,6 +1,6 @@
 import unittest
 
-from research.breakout_retest import GRID, atr_values, build_indicator_cache, candidate_rejection_reasons, funding_cashflow, marked_equity_after_costs_and_funding, profit_factor_above_one, run_breakout_retest
+from research.breakout_retest import GRID, atr_values, build_indicator_cache, candidate_rejection_reasons, build_funding_prefix_index, funding_cashflow, indexed_funding_cashflow, marked_equity_after_costs_and_funding, profit_factor_above_one, run_breakout_retest
 
 
 def make_rows(n=240):
@@ -233,6 +233,31 @@ class BreakoutRetestTests(unittest.TestCase):
         for values in ((float("nan"), 0, 0, 0), (1, 0, -0.1, 0), (1, 0, 0, float("inf"))):
             with self.assertRaisesRegex(ValueError, "marked-equity inputs"):
                 marked_equity_after_costs_and_funding(*values)
+
+    def test_indexed_funding_cashflow_matches_reference_for_edges_and_both_sides(self):
+        events = [
+            {"funding_time": 300, "funding_rate": -0.002, "mark_price": 105},
+            {"funding_time": 100, "funding_rate": 0.001, "mark_price": 100},
+            {"funding_time": 200, "funding_rate": 0.003, "mark_price": 102},
+            {"funding_time": 400, "funding_rate": 0.001, "mark_price": 110},
+        ]
+        times, prefix = build_funding_prefix_index(events)
+        self.assertEqual(times, [100, 200, 300, 400])
+        for side in (-1, 1):
+            for entry_ts, exit_ts in ((0, 400), (100, 300), (200, 200), (250, 350), (400, 500)):
+                reference, count = funding_cashflow(side, 2.5, entry_ts, exit_ts, events)
+                indexed, indexed_count = indexed_funding_cashflow(
+                    side, 2.5, entry_ts, exit_ts, times, prefix,
+                )
+                self.assertAlmostEqual(indexed, reference, places=12)
+                self.assertEqual(indexed_count, count)
+
+    def test_funding_prefix_index_rejects_duplicate_and_invalid_records(self):
+        event = {"funding_time": 100, "funding_rate": 0.001, "mark_price": 100}
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            build_funding_prefix_index([event, dict(event)])
+        with self.assertRaisesRegex(ValueError, "invalid funding"):
+            build_funding_prefix_index([{"funding_time": 100, "funding_rate": float("nan"), "mark_price": 100}])
 
     def test_funding_cashflow_long_pays_and_short_receives(self):
         events = [{"funding_time": 200, "funding_rate": 0.001, "mark_price": 100.0}]
