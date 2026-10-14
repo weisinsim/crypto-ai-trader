@@ -40,6 +40,11 @@ The snapshot must include exchange health, kill-switch state, confirmed closed-c
 
 Before enabling exchange execution, separately implement and validate idempotent order handling, exchange position reconciliation, reduce-only protective exits, partial-fill recovery, precision/minimum-notional checks, rate-limit/reconnect handling, persistent kill switch, daily loss stop, and testnet/paper soak with signal/replay parity. Never put API keys in source control.
 
+
+### Paper order lifecycle
+
+`validation/paper_execution.py` provides an isolated in-memory simulator for idempotent order creation, partial/full fills, cancellation and conservative stop/target exits (stop wins when both are touched in one OHLC candle). It is for deterministic tests only: state is not persistent, no exchange is contacted, no real orders are placed, and it does not yet model fees, funding, exchange precision, network recovery or portfolio-wide exposure. Do not use this in place of a production execution adapter.
+
 ## Research status and promotion criteria
 
 A passing unit test or successful compile validates software behavior only; it is not evidence of strategy profitability. Do not promote any model to production without a reproducible, independently reviewable report that documents:
