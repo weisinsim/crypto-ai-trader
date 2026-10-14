@@ -65,7 +65,7 @@ class PaperExecutionBookTests(unittest.TestCase):
         self.book.record_fill("paper-1", 2, 100)
         first = self.book.evaluate_protective_exit("paper-1", {"h": 125, "l": 95})
         self.assertEqual(first["status"], "CLOSED")
-        with self.assertRaisesRegex(ValueError, "fully filled"):
+        with self.assertRaisesRegex(ValueError, "filled paper exposure"):
             self.book.evaluate_protective_exit("paper-1", {"h": 130, "l": 80})
         self.assertEqual(self.book.get("paper-1")["exit_price"], 120)
 
