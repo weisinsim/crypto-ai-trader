@@ -223,6 +223,8 @@ def run_ema_cross_backtest(
         raise ValueError("trend_period must be 0 (disabled) or >= 2")
     atrs = _atr(rows, atr_period)
     equity = 1.0
+    equity_floor = 1e-6
+    equity_floor_hit = False
     peak = equity
     max_dd = 0.0
     position = None
@@ -307,9 +309,15 @@ def run_ema_cross_backtest(
                 equity, trade = finalize_position(position, bar, exit_price, reason, equity)
                 trades.append(trade)
                 position = None
+                if equity <= equity_floor:
+                    equity_floor_hit = True
+                    equity = equity_floor
+                if equity <= equity_floor:
+                    equity_floor_hit = True
+                    equity = equity_floor
 
         # Signal is known only after the previous bar closes; fill at current open.
-        if (can_enter_at_open and position is None and (trade_start_ts is None or int(bar["t"]) >= trade_start_ts)
+        if (not equity_floor_hit and can_enter_at_open and position is None and (trade_start_ts is None or int(bar["t"]) >= trade_start_ts)
                 and fast_ema[i - 1] is not None and slow_ema[i - 1] is not None
                 and fast_ema[i - 2] is not None and slow_ema[i - 2] is not None and atrs[i - 1]):
             prior_diff = fast_ema[i - 2] - slow_ema[i - 2]
@@ -389,12 +397,20 @@ def run_ema_cross_backtest(
         peak = max(peak, marked_equity)
         # Use the close-equity high-water mark and intrabar adverse trough.
         max_dd = max(max_dd, (peak - adverse_marked_equity) / peak if peak else 0)
+        if equity_floor_hit:
+            marked_equity = equity_floor
+            adverse_marked_equity = equity_floor
         equity_curve.append({"t": int(bar["t"]), "equity": marked_equity})
+        if equity_floor_hit:
+            break
 
     if position is not None:
         bar = rows[-1]
         equity, trade = finalize_position(position, bar, float(bar["c"]), "END_OF_DATA", equity)
         trades.append(trade)
+        if equity <= equity_floor:
+            equity_floor_hit = True
+            equity = equity_floor
         # Include the final liquidation value in maximum drawdown.
         peak = max(peak, equity)
         max_dd = max(max_dd, (peak - equity) / peak if peak else 0.0)
@@ -410,4 +426,5 @@ def run_ema_cross_backtest(
             "win_rate_pct": round(len(wins) / len(trades) * 100, 2) if trades else None,
             "profit_factor": round(sum(wins) / gross_loss, 4) if gross_loss else (None if not wins else "INF"),
             "expectancy_pct": round(sum(t["return_pct"] for t in trades) / len(trades), 4) if trades else None,
-            "equity_final": round(equity, 8), "equity_curve": equity_curve, "trade_log": trades}
+            "equity_final": round(equity, 8), "equity_floor_hit": equity_floor_hit,
+            "equity_curve": equity_curve, "trade_log": trades}
