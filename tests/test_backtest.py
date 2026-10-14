@@ -12,6 +12,11 @@ def candles_from_closes(closes):
 
 
 class CandleValidationTests(unittest.TestCase):
+    def test_rejects_non_mapping_candle_rows(self):
+        for row in (None, [], "not-a-row", 123):
+            with self.subTest(row=row), self.assertRaisesRegex(ValueError, "must be a mapping"):
+                validate_candles([row])
+
     def test_rejects_duplicate_timestamps(self):
         with self.assertRaises(ValueError):
             validate_candles([{"t": 1, "o": 1, "h": 2, "l": .5, "c": 1},
