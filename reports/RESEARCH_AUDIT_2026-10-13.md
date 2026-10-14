@@ -51,3 +51,14 @@ Examples of the distinction (base-cost returns, train / validation / holdout):
 - XRP Donchian breakout: -19.1585% / -0.2839% / +46.7646% — striking holdout result does not overcome losses in earlier splits.
 
 These public archetypes are diagnostic comparisons, not the frozen XRP V27.2 candidate. The strict gate is a conservative screening rule rather than proof of future performance; passing it would still not imply production approval. Independent confirmation, adequate sample size, walk-forward validation, tail-risk checks, parameter stability, and paper trading remain required.
+
+
+## Reverification — 2026-10-14
+
+- Workflow: [Five-symbol historical research run 38486102719](https://github.com/weisinsim/crypto-ai-trader/actions/runs/38486102719)
+- Research code revision: `081fb7a421a6a7e789ee3a08cfa309113f67bb00`; this revision includes the adverse entry-candle wick drawdown correction. The run completed all five symbol jobs and uploaded artifacts for BTCUSDT, ETHUSDT, SOLUSDT, AVAXUSDT, and XRPUSDT.
+- The public strategy benchmark artifacts were inspected from all five symbol ZIPs. Each symbol contains three archetypes (RSI mean reversion, SMA200 trend, Donchian breakout): all 15 combinations report `FAIL_RESEARCH_GATE`.
+- Fourteen of the 15 combinations report `PASS_HOLDOUT_DIAGNOSTIC`; ETH SMA200 trend fails the holdout-only diagnostic under at least one cost scenario. Holdout-only success does not override negative train/validation performance or the full-gate failure.
+- Full-holdout frozen stability metrics were consistent with the prior summary: BTC, ETH, and SOL are negative at base costs; AVAX is positive at base and 0.30% cost but negative at 0.46%; XRP is slightly positive at base cost but negative at 0.30% and 0.46%.
+- Conclusion remains `RESEARCH_ONLY`: no public archetype passed the complete research gate. Do not enable live trading or alter the frozen XRP V27.2 parameters on the basis of these diagnostic results.
+- The benchmark-gate regression-test correction `a48e7fa9e74e35aff5f12d3618557c6f4809114d` changes test iteration over the generated strategy results; it is not itself a change to the gate's decision rule.
