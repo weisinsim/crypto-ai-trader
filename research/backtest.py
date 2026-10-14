@@ -17,6 +17,8 @@ def validate_candles(rows: Iterable[dict], interval_ms: int | None = None) -> li
     data = list(rows)
     previous = None
     for i, row in enumerate(data):
+        if not isinstance(row, dict):
+            raise ValueError(f"row {i} must be a mapping")
         missing = [key for key in REQUIRED if key not in row]
         if missing:
             raise ValueError(f"row {i} missing fields: {missing}")
