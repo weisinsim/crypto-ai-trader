@@ -126,6 +126,39 @@ def marked_equity_after_costs_and_funding(equity: float, mark_pnl: float,
         raise ValueError("invalid marked-equity inputs")
     return max(0.000001, equity + mark_pnl - mark_costs + mark_funding)
 
+def build_funding_prefix_index(funding_rates: list[dict] | None) -> tuple[list[int], list[float]]:
+    """Build a sorted prefix index whose interval semantics match funding_cashflow."""
+    events = list(funding_rates or [])
+    times = [_strict_funding_timestamp(event["funding_time"]) for event in events]
+    if len(times) != len(set(times)):
+        raise ValueError("duplicate funding timestamp")
+    for event in events:
+        rate, mark = float(event["funding_rate"]), float(event["mark_price"])
+        if not math.isfinite(rate) or not math.isfinite(mark) or mark <= 0:
+            raise ValueError("invalid funding rate or mark price")
+    events.sort(key=lambda event: _strict_funding_timestamp(event["funding_time"]))
+    times = [_strict_funding_timestamp(event["funding_time"]) for event in events]
+    prefix = [0.0]
+    for event in events:
+        prefix.append(prefix[-1] + float(event["funding_rate"]) * float(event["mark_price"]))
+    return times, prefix
+
+
+def indexed_funding_cashflow(side: int, quantity: float, entry_ts: int, exit_ts: int,
+                             funding_times: list[int], funding_prefix: list[float]) -> tuple[float, int]:
+    """Query funding settlements in (entry_ts, exit_ts] using a prefix index."""
+    if side not in (-1, 1) or isinstance(side, bool) or isinstance(quantity, bool) or not isinstance(quantity, (int, float)) or not math.isfinite(quantity) or quantity < 0:
+        raise ValueError("invalid side, quantity, or trade timestamps")
+    entry_ts = _strict_funding_timestamp(entry_ts)
+    exit_ts = _strict_funding_timestamp(exit_ts)
+    if exit_ts < entry_ts:
+        raise ValueError("invalid side, quantity, or trade timestamps")
+    if len(funding_prefix) != len(funding_times) + 1:
+        raise ValueError("funding prefix index is inconsistent")
+    left = bisect_right(funding_times, entry_ts)
+    right = bisect_right(funding_times, exit_ts)
+    return -side * quantity * (funding_prefix[right] - funding_prefix[left]), right - left
+
 
 def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx: int,
                         fee_rate: float = 0.0005, slippage_rate: float = 0.0002,
@@ -156,26 +189,8 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
         if len(funding_timestamps) != len(set(funding_timestamps)):
             raise ValueError("duplicate funding timestamp")
         funding_rates = sorted(funding_rates, key=lambda event: _strict_funding_timestamp(event["funding_time"]))
-    # Build a prefix index once per candidate. The inner bar-by-bar mark loop
-    # otherwise rescans the entire funding history for every candle, making a
-    # multi-thousand-candidate sweep needlessly quadratic in funding events.
-    funding_times = []
-    funding_prefix = [0.0]
-    if funding_rates:
-        funding_times = [_strict_funding_timestamp(event["funding_time"]) for event in funding_rates]
-        for event in funding_rates:
-            funding_prefix.append(
-                funding_prefix[-1] + float(event["funding_rate"]) * float(event["mark_price"])
-            )
-
-    def indexed_funding_cashflow(side: int, quantity: float, entry_ts: int,
-                                 exit_ts: int) -> tuple[float, int]:
-        if not funding_times:
-            return 0.0, 0
-        left = bisect_right(funding_times, entry_ts)
-        right = bisect_right(funding_times, exit_ts)
-        amount = funding_prefix[right] - funding_prefix[left]
-        return -side * quantity * amount, right - left
+    # Build a prefix index once per candidate; range queries are O(log n).
+    funding_times, funding_prefix = build_funding_prefix_index(funding_rates)
     lookback, max_wait, target_r = params["lookback"], params["max_wait"], params["target_r"]
     trend_period = params.get("trend_period", 0)
     volatility_filter = params.get("volatility_filter", 0.0)
@@ -271,7 +286,7 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
                     adverse_costs = qty * (entry + adverse_mark) * (fee_rate + slippage_rate)
                     # Include accrued settlement cashflows in both marks.
                     mark_funding, _ = indexed_funding_cashflow(
-                        side, qty, int(rows[entry_idx]["t"]), int(bar["t"])
+                        side, qty, int(rows[entry_idx]["t"]), int(bar["t"]), funding_times, funding_prefix
                     )
                     close_equity = marked_equity_after_costs_and_funding(
                         equity, close_pnl, close_costs, mark_funding
