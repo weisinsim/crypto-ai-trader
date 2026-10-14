@@ -9,7 +9,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 
 
 def _positive_finite(value, field):
@@ -36,8 +36,9 @@ class PaperExecutionBook:
             payload = json.loads(self.storage_path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise ValueError("paper ledger unreadable; refusing to start with empty state") from exc
-        if not isinstance(payload, dict) or payload.get("schema_version") != _SCHEMA_VERSION:
+        if not isinstance(payload, dict) or payload.get("schema_version") not in (1, _SCHEMA_VERSION):
             raise ValueError("unsupported or invalid paper ledger schema")
+        source_schema = payload["schema_version"]
         orders = payload.get("orders")
         if not isinstance(orders, dict):
             raise ValueError("invalid paper ledger orders")
@@ -45,11 +46,23 @@ class PaperExecutionBook:
             "client_order_id", "symbol", "side", "quantity", "stop_loss", "take_profit",
             "status", "filled_quantity", "average_fill_price", "exit_price", "exit_reason",
         }
+        required_v2 = required | {"fill_events"}
         allowed_statuses = {"OPEN", "PARTIALLY_FILLED", "FILLED", "CANCELLED", "CLOSED"}
         restored = {}
         for key, order in orders.items():
-            if not isinstance(key, str) or not isinstance(order, dict) or set(order) != required:
+            if not isinstance(key, str) or not isinstance(order, dict):
                 raise ValueError("invalid order record in paper ledger")
+            if source_schema == 1 and set(order) == required:
+                order = {**order, "fill_events": {}}
+            elif set(order) != required_v2:
+                raise ValueError("invalid order record in paper ledger")
+            if not isinstance(order["fill_events"], dict):
+                raise ValueError("invalid fill events in paper ledger")
+            for fill_id, event in order["fill_events"].items():
+                if not isinstance(fill_id, str) or not fill_id.strip() or not isinstance(event, dict) or set(event) != {"quantity", "price"}:
+                    raise ValueError("invalid fill event record")
+                _positive_finite(event["quantity"], "fill event quantity")
+                _positive_finite(event["price"], "fill event price")
             if order["client_order_id"] != key or order["side"] not in {"LONG", "SHORT"}:
                 raise ValueError("invalid order identity in paper ledger")
             if order["status"] not in allowed_statuses:
@@ -128,6 +141,7 @@ class PaperExecutionBook:
         order = {
             **payload, "status": "OPEN", "filled_quantity": 0.0,
             "average_fill_price": None, "exit_price": None, "exit_reason": None,
+            "fill_events": {},
         }
         self.orders[client_order_id] = order
         try:
@@ -137,10 +151,18 @@ class PaperExecutionBook:
             raise
         return deepcopy(order)
 
-    def record_fill(self, client_order_id, quantity, price):
+    def record_fill(self, client_order_id, quantity, price, fill_id=None):
         order = self._get(client_order_id)
         quantity = _positive_finite(quantity, "fill quantity")
         price = _positive_finite(price, "fill price")
+        if fill_id is not None:
+            if not isinstance(fill_id, str) or not fill_id.strip():
+                raise ValueError("fill_id must be a non-empty string when provided")
+            previous_event = order["fill_events"].get(fill_id)
+            if previous_event is not None:
+                if previous_event != {"quantity": quantity, "price": price}:
+                    raise ValueError("fill_id reused with different fill parameters")
+                return deepcopy(order)
         if order["status"] not in ("OPEN", "PARTIALLY_FILLED"):
             raise ValueError("order is not fillable")
         remaining = order["quantity"] - order["filled_quantity"]
@@ -153,6 +175,8 @@ class PaperExecutionBook:
         order["average_fill_price"] = (old_value + price * quantity) / total_qty
         order["filled_quantity"] = total_qty
         order["status"] = "FILLED" if abs(total_qty - order["quantity"]) <= 1e-12 else "PARTIALLY_FILLED"
+        if fill_id is not None:
+            order["fill_events"][fill_id] = {"quantity": quantity, "price": price}
         try:
             self._save()
         except Exception:
