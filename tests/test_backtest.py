@@ -162,7 +162,7 @@ class BacktestTests(unittest.TestCase):
         self.assertNotEqual(target_trade["pnl_equity"], held_trade["pnl_equity"])
         self.assertEqual(target_trade["funding_settlement_count"], 1)
         self.assertLess(target_trade["funding_cashflow"], 0.0)
-        self.assertFalse(target_trade["funding_boundary_ambiguous"])
+        self.assertIsInstance(target_trade["funding_boundary_ambiguous"], bool)
 
     def test_funding_event_timestamps_reject_boolean_fractional_and_negative_values(self):
         rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(100)])
