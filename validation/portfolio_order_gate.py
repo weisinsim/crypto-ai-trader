@@ -10,13 +10,12 @@ from validation.paper_reconciliation import reconcile_paper_positions
 def evaluate_order_gate_with_paper_portfolio(
     snapshot, limits, daily_loss_guard, utc_date, paper_orders
 ):
-    """Evaluate existing gates only when the supplied position count matches paper ledger.
+    """Evaluate existing gates only when supplied positions match the paper ledger.
 
     Counts active symbols by gross filled exposure, not net exposure, so opposing
-    long/short legs cannot make a live risk position disappear through netting.
-    This is paper-only decision logic and never submits orders.
+    long/short legs cannot make a position disappear through netting. Paper-only;
+    this function never submits an order and is not authoritative exchange state.
     """
-    reasons = []
     try:
         positions = reconcile_paper_positions(paper_orders)
     except (TypeError, ValueError) as exc:
@@ -35,6 +34,14 @@ def evaluate_order_gate_with_paper_portfolio(
             "reasons": ["INVALID_SNAPSHOT"],
             "portfolio_open_positions": expected_open_positions,
         }
+    if not isinstance(limits, Mapping):
+        return {
+            "approved": False,
+            "reasons": ["INVALID_LIMITS"],
+            "portfolio_open_positions": expected_open_positions,
+        }
+
+    reasons = []
     supplied = snapshot.get("open_positions")
     if (
         isinstance(supplied, bool)
@@ -43,14 +50,23 @@ def evaluate_order_gate_with_paper_portfolio(
     ):
         reasons.append("PAPER_PORTFOLIO_POSITION_COUNT_MISMATCH")
 
-    decision = evaluate_order_gate_with_daily_loss_guard(
-        snapshot, limits, daily_loss_guard, utc_date
-    )
-    reasons.extend(decision["reasons"])
+    try:
+        decision = evaluate_order_gate_with_daily_loss_guard(
+            snapshot, limits, daily_loss_guard, utc_date
+        )
+    except (TypeError, ValueError, KeyError, AttributeError) as exc:
+        return {
+            "approved": False,
+            "reasons": list(dict.fromkeys(reasons + ["BASE_ORDER_GATE_ERROR"])),
+            "portfolio_open_positions": expected_open_positions,
+            "gate_error": str(exc),
+        }
+
+    reasons.extend(decision.get("reasons", ["BASE_ORDER_GATE_INVALID_RESULT"]))
     return {
-        "approved": decision["approved"] and not reasons,
+        "approved": decision.get("approved") is True and not reasons,
         "reasons": list(dict.fromkeys(reasons)),
-        "daily_loss_status": decision["daily_loss_status"],
+        "daily_loss_status": decision.get("daily_loss_status"),
         "portfolio_open_positions": expected_open_positions,
         "portfolio_symbols": positions,
     }
