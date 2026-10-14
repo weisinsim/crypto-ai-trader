@@ -12,6 +12,9 @@ class DashboardResearchPanelTests(unittest.TestCase):
         self.assertIn("RESEARCH_AUDIT_2026-10-13.md", self.html)
         self.assertIn("0.30% / 0.46% 成本压力测试", self.html)
         self.assertIn("Validation CI", self.html)
+        self.assertIn("15 个策略均为 FAIL_RESEARCH_GATE", self.html)
+        self.assertIn("Holdout 单独通过仅作为诊断", self.html)
+        self.assertIn("38486102719", self.html)
 
     def test_all_five_assets_are_represented(self):
         table_start = self.html.index("<table class=\"researchTable\"><thead>")
