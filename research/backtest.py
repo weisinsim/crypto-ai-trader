@@ -172,16 +172,27 @@ def run_ema_cross_backtest(
                 raise ValueError(f"funding events normalize to duplicate candle timestamp: {funding_ts}")
             funding_events[funding_ts] = {"funding_rate": rate, "mark_price": mark_price}
             previous_funding_ts = raw_funding_ts
+    integer_params = {
+        "fast": fast, "slow": slow, "trend_period": trend_period, "atr_period": atr_period,
+    }
+    for name, value in integer_params.items():
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(f"{name} must be an integer")
     if fast < 2 or slow <= fast or atr_period < 1 or trend_period < 0:
         raise ValueError("require 2 <= fast < slow, atr_period >= 1 and trend_period >= 0")
+    if trade_start_ts is not None and (
+        isinstance(trade_start_ts, bool) or not isinstance(trade_start_ts, int) or trade_start_ts < 0
+    ):
+        raise ValueError("trade_start_ts must be a non-negative integer millisecond timestamp")
     numeric_params = {
         "stop_atr": stop_atr, "target_atr": target_atr,
         "fee_rate": fee_rate, "slippage_rate": slippage_rate,
         "funding_rate_per_bar": funding_rate_per_bar,
         "risk_fraction": risk_fraction,
     }
-    if not all(isfinite(float(value)) for value in numeric_params.values()):
-        raise ValueError("all numeric strategy parameters must be finite")
+    for name, value in numeric_params.items():
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value):
+            raise ValueError(f"{name} must be a finite number")
     if stop_atr <= 0 or target_atr <= 0:
         raise ValueError("stop_atr and target_atr must be positive")
     if fee_rate < 0 or slippage_rate < 0:
