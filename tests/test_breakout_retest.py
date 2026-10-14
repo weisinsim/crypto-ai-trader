@@ -1,7 +1,7 @@
 import math
 import unittest
 
-from research.breakout_retest import GRID, apply_realized_pnl, atr_values, build_indicator_cache, candidate_rejection_reasons, build_funding_prefix_index, funding_cashflow, indexed_funding_cashflow, marked_equity_after_costs_and_funding, profit_factor_above_one, resolve_ohlc_exit, run_breakout_retest
+from research.breakout_retest import GRID, apply_realized_pnl, atr_values, build_indicator_cache, candidate_rejection_reasons, build_funding_prefix_index, funding_cashflow, indexed_funding_cashflow, marked_equity_after_costs_and_funding, profit_factor_above_one, passes_cost_robustness, resolve_ohlc_exit, run_breakout_retest
 
 
 def make_rows(n=240):
@@ -31,6 +31,19 @@ def make_rows(n=240):
 
 
 class BreakoutRetestTests(unittest.TestCase):
+    def test_cost_gate_rejects_equity_floor_hit_at_any_tier(self):
+        good = {"net_return_pct": 2.0, "profit_factor": 1.2, "equity_floor_hit": False}
+        floor_hit = {"net_return_pct": 20.0, "profit_factor": 2.0, "equity_floor_hit": True}
+        self.assertTrue(passes_cost_robustness([good, good, good]))
+        self.assertFalse(passes_cost_robustness([good, floor_hit, good]))
+
+    def test_cost_gate_fails_closed_for_missing_or_invalid_metrics(self):
+        self.assertFalse(passes_cost_robustness([]))
+        self.assertFalse(passes_cost_robustness([{"net_return_pct": 1.0, "profit_factor": 1.1}]))
+        self.assertFalse(passes_cost_robustness([
+            {"net_return_pct": float("nan"), "profit_factor": 2.0, "equity_floor_hit": False}
+        ]))
+
     def test_ohlc_exit_stop_wins_when_both_barriers_touched(self):
         long_bar = {"o": 100.0, "h": 112.0, "l": 88.0, "c": 103.0}
         short_bar = {"o": 100.0, "h": 112.0, "l": 88.0, "c": 97.0}
