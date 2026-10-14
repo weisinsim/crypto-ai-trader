@@ -204,7 +204,7 @@ class BacktestTests(unittest.TestCase):
         sides = {trade["side"] for trade in baseline["trade_log"]}
         self.assertIn("LONG", sides)
         self.assertIn("SHORT", sides)
-        for side, adverse_key, delta in (("LONG", "l", -3.0), ("SHORT", "h", 3.0)):
+        for side, adverse_key, delta in (("LONG", "l", -100.0), ("SHORT", "h", 100.0)):
             with self.subTest(side=side):
                 trade = next(t for t in baseline["trade_log"] if t["side"] == side)
                 index = next(i for i, row in enumerate(rows) if row["t"] == trade["entry_time"])
