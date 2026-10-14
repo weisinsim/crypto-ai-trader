@@ -10,6 +10,10 @@ REQUIRED = ("t", "o", "h", "l", "c")
 
 def validate_candles(rows: Iterable[dict], interval_ms: int | None = None) -> list[dict]:
     """Validate chronological OHLCV rows and optionally require contiguous timestamps."""
+    if interval_ms is not None and (
+        isinstance(interval_ms, bool) or not isinstance(interval_ms, int) or interval_ms <= 0
+    ):
+        raise ValueError("interval_ms must be a positive integer number of milliseconds")
     data = list(rows)
     previous = None
     for i, row in enumerate(data):
