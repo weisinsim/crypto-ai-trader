@@ -169,6 +169,7 @@ def main() -> None:
     boundary = rows[split]["t"]
     holdout = None
     stress_holdout = None
+    severe_stress_holdout = None
     neighborhood_stability = None
     if selected:
         holdout_result = run_ema_cross_backtest(
@@ -190,6 +191,16 @@ def main() -> None:
             **selected["parameters"],
         )
         stress_holdout = summarize(stress_result, boundary, rows[-1]["t"])
+        # Approx. 0.46% round-trip costs: 0.10% fees + 0.36% slippage.
+        severe_result = run_ema_cross_backtest(
+            rows, trade_start_ts=boundary, fee_rate=0.0005,
+            slippage_rate=0.0018, risk_fraction=0.01,
+            funding_rates=([event for event in funding_rates
+                            if rows[0]["t"] <= event["funding_time"] <= rows[-1]["t"]]
+                           if funding_rates is not None else None),
+            **selected["parameters"],
+        )
+        severe_stress_holdout = summarize(severe_result, boundary, rows[-1]["t"])
         selected_params = selected["parameters"]
         near = []
         for item in candidates:
@@ -213,7 +224,7 @@ def main() -> None:
             "note": "Training folds only; holdout is not used for selection or neighborhood scoring."
         }
 
-    overall_cost_pass = bool(selected and passes_cost_robustness([holdout, stress_holdout]))
+    overall_cost_pass = bool(selected and passes_cost_robustness([holdout, stress_holdout, severe_stress_holdout]))
     recommendation_status = (
         "NO_ELIGIBLE_TRAINING_CANDIDATE" if not selected else
         "PRELIMINARY_RESEARCH_PASS_NOT_PRODUCTION_APPROVAL" if overall_cost_pass else
@@ -233,18 +244,22 @@ def main() -> None:
             "stress_fee_rate_per_fill": 0.0005,
             "stress_slippage_rate_per_fill": 0.0010,
             "stress_round_trip_cost_approx_pct": 0.30,
+            "severe_stress_fee_rate_per_fill": 0.0005,
+            "severe_stress_slippage_rate_per_fill": 0.0018,
+            "severe_stress_round_trip_cost_approx_pct": 0.46,
             "funding": ("Historical funding CSV applied at settlement candle timestamps."
                         if funding_rates is not None else
                         "NOT INCLUDED: historical funding must be added before any deployment decision"),
             "funding_records": len(funding_rates) if funding_rates is not None else 0
         },
-        "selection_method": "72 predeclared parameter sets including disabled/100/200-period trend EMA filter; three chronological training folds; score=median return minus 0.5x median drawdown; requires >=15 trades, >=3 trades/fold, positive median return, >=2 positive folds, worst fold >= -3.0%, positive score and >=50% positive median-return neighbors; all selection gates use training data only",
+        "selection_method": "72 predeclared parameter sets including disabled/100/200-period trend EMA filter; three chronological training folds; score=median return minus 0.5x median drawdown; requires >=15 trades, >=3 trades/fold, no equity-floor hit, positive median return, >=2 positive folds, worst fold >= -3.0%, positive score and >=50% positive median-return neighbors; all selection gates use training data only",
         "candidate_count": len(candidates), "eligible_count": len(eligible_candidates),
         "selected_parameters": selected["parameters"] if selected else None,
         "training_selection_metrics": ({k: v for k, v in selected.items() if k != "training_folds"}
                                        if selected else None),
         "holdout": holdout,
         "stress_holdout_approx_0_30pct_round_trip_cost": stress_holdout,
+        "severe_stress_holdout_approx_0_46pct_round_trip_cost": severe_stress_holdout,
         "cost_robustness_gate": {
             "status": ("NOT_EVALUATED" if not selected else
                        "PASS_PRELIMINARY_ONLY" if overall_cost_pass else "FAIL_COST_ROBUSTNESS"),
