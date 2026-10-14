@@ -81,24 +81,37 @@ def funding_cashflow(side: int, quantity: float, entry_ts: int, exit_ts: int,
     entry-bar open and no later than exit-bar open; exact intrabar order cannot
     be recovered from OHLC candles.
     """
-    if (side not in (-1, 1) or not math.isfinite(quantity) or quantity < 0
-            or entry_ts < 0 or exit_ts < entry_ts):
+    valid_ts = lambda value: isinstance(value, int) and not isinstance(value, bool) and value >= 0
+    if (side not in (-1, 1) or isinstance(side, bool)
+            or not isinstance(quantity, (int, float)) or isinstance(quantity, bool)
+            or not math.isfinite(quantity) or quantity < 0
+            or not valid_ts(entry_ts) or not valid_ts(exit_ts) or exit_ts < entry_ts):
         raise ValueError("invalid side, quantity, or trade timestamps")
     pnl = 0.0
     count = 0
     seen_timestamps = set()
+    previous_timestamp = None
     for event in funding_rates or []:
-        ts = int(event["funding_time"])
+        if not isinstance(event, dict) or "funding_time" not in event:
+            raise ValueError("invalid funding event schema")
+        ts = event["funding_time"]
+        # Do not silently truncate floats or accept bools as integer timestamps.
+        if not valid_ts(ts):
+            raise ValueError("invalid funding timestamp")
         if ts in seen_timestamps:
             raise ValueError("duplicate funding timestamp")
+        if previous_timestamp is not None and ts < previous_timestamp:
+            raise ValueError("funding timestamps must be sorted ascending")
         seen_timestamps.add(ts)
-        rate = float(event["funding_rate"])
-        mark = float(event["mark_price"])
-        if ts < 0:
-            raise ValueError("invalid funding timestamp")
-        if not math.isfinite(rate):
+        previous_timestamp = ts
+        try:
+            rate = float(event["funding_rate"])
+            mark = float(event["mark_price"])
+        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("invalid funding event schema") from exc
+        if isinstance(event["funding_rate"], bool) or not math.isfinite(rate):
             raise ValueError("invalid funding rate")
-        if not math.isfinite(mark) or mark <= 0:
+        if isinstance(event["mark_price"], bool) or not math.isfinite(mark) or mark <= 0:
             raise ValueError("invalid mark price")
         if entry_ts < ts <= exit_ts:
             pnl += -side * quantity * mark * rate
