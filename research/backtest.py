@@ -214,7 +214,7 @@ def run_ema_cross_backtest(
     if len(rows) < slow + 2:
         return {"status": "INSUFFICIENT_DATA", "bars": len(rows), "trades": 0,
                 "net_return_pct": 0.0, "max_drawdown_pct": 0.0, "win_rate_pct": None,
-                "profit_factor": None, "expectancy_pct": None, "trade_log": []}
+                "profit_factor": None, "expectancy_pct": None, "equity_floor_hit": False, "trade_log": []}
 
     closes = [float(r["c"]) for r in rows]
     fast_ema, slow_ema = _ema(closes, fast), _ema(closes, slow)
