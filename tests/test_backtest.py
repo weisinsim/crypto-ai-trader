@@ -126,6 +126,14 @@ class BacktestTests(unittest.TestCase):
                     run_ema_cross_backtest(rows, fast=3, slow=7, atr_period=3,
                                            **{name: value})
 
+    def test_fee_and_slippage_rates_must_be_valid_fractions(self):
+        rows = candles_from_closes([100 + (i % 5) for i in range(80)])
+        for name, value in (("fee_rate", 1.0), ("fee_rate", -0.01),
+                            ("slippage_rate", 1.0), ("slippage_rate", -0.01)):
+            with self.subTest(name=name, value=value), self.assertRaisesRegex(ValueError, name):
+                run_ema_cross_backtest(rows, fast=3, slow=7, atr_period=3,
+                                       **{name: value})
+
     def test_historical_funding_is_applied_at_settlement_timestamp(self):
         rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(160)])
         base = run_ema_cross_backtest(rows, fast=3, slow=9, atr_period=3,
