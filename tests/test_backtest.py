@@ -160,6 +160,9 @@ class BacktestTests(unittest.TestCase):
         target_trade = next(t for t in with_cost["trade_log"]
                             if t["entry_time"] == held_trade["entry_time"])
         self.assertNotEqual(target_trade["pnl_equity"], held_trade["pnl_equity"])
+        self.assertEqual(target_trade["funding_settlement_count"], 1)
+        self.assertLess(target_trade["funding_cashflow"], 0.0)
+        self.assertFalse(target_trade["funding_boundary_ambiguous"])
 
     def test_funding_event_timestamps_reject_boolean_fractional_and_negative_values(self):
         rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(100)])
@@ -199,10 +202,13 @@ class BacktestTests(unittest.TestCase):
                 funded = run_ema_cross_backtest(rows, **kwargs, funding_rates=[event])
                 funded_trade = next(t for t in funded["trade_log"]
                                     if t["entry_time"] == trade["entry_time"] and t["side"] == side)
+                self.assertEqual(funded_trade["funding_settlement_count"], 1)
                 if side == "LONG":
                     self.assertLess(funded_trade["pnl_equity"], trade["pnl_equity"])
+                    self.assertLess(funded_trade["funding_cashflow"], 0.0)
                 else:
                     self.assertGreater(funded_trade["pnl_equity"], trade["pnl_equity"])
+                    self.assertGreater(funded_trade["funding_cashflow"], 0.0)
 
     def test_duplicate_historical_funding_timestamps_rejected(self):
         rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(100)])
