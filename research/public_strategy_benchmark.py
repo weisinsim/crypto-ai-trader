@@ -31,6 +31,9 @@ def load_candles(path: str) -> list[dict]:
         raise ValueError("candle timestamps must be non-negative")
     if any(rows[i]["t"] >= rows[i+1]["t"] for i in range(len(rows)-1)):
         raise ValueError("candle timestamps must be unique and ascending")
+    if any(rows[i+1]["t"] - rows[i]["t"] != 3_600_000
+           for i in range(len(rows)-1)):
+        raise ValueError("hourly candle timestamps must be contiguous with no missing bars")
     return rows
 
 
