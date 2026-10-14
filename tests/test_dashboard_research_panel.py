@@ -23,6 +23,10 @@ class DashboardResearchPanelTests(unittest.TestCase):
         for symbol in ("BTC", "ETH", "SOL", "AVAX", "XRP"):
             self.assertIn(f"<td>{symbol}</td>", table)
 
+    def test_waiting_signals_keep_directional_watch_badges(self):
+        self.assertIn('x.signal==="LONG"?"WATCH-LONG":"WATCH-SHORT"', self.html)
+        self.assertEqual(self.html.count('x.signal==="LONG"?"WATCH-LONG":"WATCH-SHORT"'), 2)
+
     def test_candidates_are_not_misrepresented_as_approved(self):
         self.assertIn("目前没有任何币种通过全部成本情景", self.html)
         self.assertIn("当前没有候选通过稳健盈利门槛", self.html)
