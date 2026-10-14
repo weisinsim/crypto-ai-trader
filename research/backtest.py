@@ -16,8 +16,28 @@ def validate_candles(rows: Iterable[dict], interval_ms: int | None = None) -> li
         missing = [key for key in REQUIRED if key not in row]
         if missing:
             raise ValueError(f"row {i} missing fields: {missing}")
-        ts = int(row["t"])
+        raw_ts = row["t"]
+        if isinstance(raw_ts, bool):
+            raise ValueError(f"row {i} timestamp must be an integer millisecond value")
+        if isinstance(raw_ts, int):
+            ts = raw_ts
+        elif isinstance(raw_ts, float) and isfinite(raw_ts) and raw_ts.is_integer():
+            ts = int(raw_ts)
+        elif isinstance(raw_ts, str) and raw_ts.strip().isdigit():
+            ts = int(raw_ts.strip())
+        else:
+            raise ValueError(f"row {i} timestamp must be an integer millisecond value")
+        if ts < 0:
+            raise ValueError(f"row {i} timestamp cannot be negative")
         vals = {key: float(row[key]) for key in ("o", "h", "l", "c")}
+        for field in ("v", "q"):
+            if field in row:
+                try:
+                    metric = float(row[field])
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(f"row {i} has invalid {field}") from exc
+                if not isfinite(metric) or metric < 0:
+                    raise ValueError(f"row {i} has invalid {field}")
         if not all(isfinite(v) and v > 0 for v in vals.values()):
             raise ValueError(f"row {i} contains invalid OHLC values")
         if vals["h"] < max(vals["o"], vals["c"], vals["l"]):
