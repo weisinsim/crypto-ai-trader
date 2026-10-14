@@ -111,7 +111,7 @@ class PaperExecutionBookTests(unittest.TestCase):
 
     def test_protective_exit_requires_fully_filled_order(self):
         self.place_long()
-        with self.assertRaisesRegex(ValueError, "fully filled"):
+        with self.assertRaisesRegex(ValueError, "filled paper exposure"):
             self.book.evaluate_protective_exit("paper-1", {"h": 130, "l": 80})
 
     def test_persisted_state_survives_restart_and_preserves_idempotency(self):
