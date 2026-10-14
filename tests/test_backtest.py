@@ -370,5 +370,31 @@ class BacktestTests(unittest.TestCase):
         self.assertGreater(funded["max_drawdown_pct"], baseline["max_drawdown_pct"])
 
 
+    def test_funding_boundary_is_flagged_for_gap_stop_at_settlement_open(self):
+        rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(240)])
+        kwargs = dict(fast=3, slow=9, atr_period=3, fee_rate=0, slippage_rate=0)
+        baseline = run_ema_cross_backtest(rows, **kwargs)
+        trade = next(t for t in baseline["trade_log"]
+                     if t["bars_held"] > 0 and t["reason"] == "STOP")
+        index = next(i for i, row in enumerate(rows) if row["t"] == trade["exit_time"])
+        stressed_rows = [dict(row) for row in rows]
+        bar = stressed_rows[index]
+        if trade["side"] == "LONG":
+            bar["o"] = trade["stop"] - 1.0
+            bar["l"] = min(bar["l"], bar["o"])
+            bar["h"] = max(bar["h"], bar["o"], bar["c"])
+        else:
+            bar["o"] = trade["stop"] + 1.0
+            bar["h"] = max(bar["h"], bar["o"])
+            bar["l"] = min(bar["l"], bar["o"], bar["c"])
+        event = {"funding_time": bar["t"], "funding_rate": 0.001, "mark_price": 100.0}
+        result = run_ema_cross_backtest(stressed_rows, **kwargs, funding_rates=[event])
+        affected = next(t for t in result["trade_log"]
+                        if t["entry_time"] == trade["entry_time"] and t["exit_time"] == trade["exit_time"])
+        self.assertEqual(affected["reason"], "STOP")
+        self.assertEqual(affected["funding_settlement_count"], 1)
+        self.assertTrue(affected["funding_boundary_ambiguous"])
+
+
 if __name__ == "__main__":
     unittest.main()
