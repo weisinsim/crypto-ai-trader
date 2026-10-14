@@ -60,3 +60,16 @@ Both reports are explicitly `RESEARCH_ONLY`. Neither reaches the 30-trade minimu
 Commits [46d8cc86](https://github.com/weisinsim/crypto-ai-trader/commit/46d8cc86cdee060986446cc6f684afee101d5794), [5ed37ecb](https://github.com/weisinsim/crypto-ai-trader/commit/5ed37ecb9df0bb9b2e6c6a92cb303c61288ea2d4), and [6b104c8c](https://github.com/weisinsim/crypto-ai-trader/commit/6b104c8ce499dfa9d8ea8b6b0c1ffbe2fdb84163) tightened funding-audit timestamp parsing and added regression tests for booleans and non-integer values. The latest Python validation, research test suite, historical baseline workflow, and frozen-candidate confirmation workflows all completed successfully for commit `6b104c8c`; this indicates pipeline completion only.
 
 Commits [50cdc7de](https://github.com/weisinsim/crypto-ai-trader/commit/50cdc7deb0bf0e77a98ae46ca1a0801e0d4208cc), [69679595](https://github.com/weisinsim/crypto-ai-trader/commit/69679595dd68a299530a8fb4b8cc97c33eda439c), and [3649484c](https://github.com/weisinsim/crypto-ai-trader/commit/3649484cdb40f3412342e2a6e3273b0f8bfa2944) extend this protection to the funding downloader/parser: malformed timestamp values are rejected instead of being truncated, and symbol/range arguments are validated at the parser boundary. Regression tests cover boolean and floating timestamps, scientific-notation strings, invalid symbols, and invalid ranges. Python validation, research tests, validation-audit tests, and the frozen-confirmation workflow all passed on `3649484c`. The historical baseline run triggered by the earlier parser commit is still running; do not treat its results as final until that run completes.
+
+
+## EMA research-engine risk gate update — 2026-10-14
+
+Commits `896d1f0`, `76fefda`, `c5882f2`, `bbfe454`, `5e0b9fe`, `9d10af5`, `2cd6d8b`, `e10d33e`, and `b3570cd` harden the EMA research path:
+
+- EMA backtests explicitly report `equity_floor_hit`; reaching the configured equity floor halts new entries and stops the simulation after the closing event. Same-candle exits are covered by the floor guard.
+- Adaptive training candidates are rejected if any training fold lacks an explicit clean floor status or reports a floor hit.
+- The EMA recommendation gate requires the untouched holdout to be positive with PF > 1 at base cost, approximately 0.30% round-trip cost, and approximately 0.46% severe round-trip cost. Missing or malformed gate metrics fail closed.
+- Training-selected parameters and recommended parameters remain distinct. Even a preliminary research pass is explicitly not production approval.
+- Research test suite, validation audit tests, and Python validation passed on commit `b3570cd`.
+
+This is a risk-control and validation-code improvement only; it is not a new strategy-performance result. It does not resolve the separate independent funding-data provenance/confirmation limitation described above. The overall project remains `RESEARCH_ONLY`, with live execution disabled.
