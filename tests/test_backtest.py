@@ -351,3 +351,18 @@ class BacktestTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+    def test_funding_settlement_changes_trade_pnl_and_reported_drawdown(self):
+        rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(240)])
+        kwargs = dict(fast=3, slow=9, atr_period=3, fee_rate=0, slippage_rate=0)
+        baseline = run_ema_cross_backtest(rows, **kwargs)
+        trade = next(t for t in baseline["trade_log"]
+                     if t["side"] == "LONG" and t["exit_time"] > t["entry_time"])
+        event = {"funding_time": trade["exit_time"], "funding_rate": 0.05,
+                 "mark_price": 100.0}
+        funded = run_ema_cross_backtest(rows, **kwargs, funding_rates=[event])
+        funded_trade = next(t for t in funded["trade_log"]
+                            if t["entry_time"] == trade["entry_time"] and t["side"] == "LONG")
+        self.assertLess(funded_trade["pnl_equity"], trade["pnl_equity"])
+        self.assertGreater(funded["max_drawdown_pct"], baseline["max_drawdown_pct"])
