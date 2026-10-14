@@ -37,8 +37,10 @@ def reconcile_paper_positions(orders):
         status = order.get("status")
         if not isinstance(symbol, str) or not symbol.strip():
             raise ValueError("invalid order symbol")
-        if side not in {"LONG", "SHORT"} or status not in _ALLOWED_STATUSES:
-            raise ValueError("invalid order side or status")
+        if not isinstance(side, str) or side not in {"LONG", "SHORT"}:
+            raise ValueError("invalid order side")
+        if not isinstance(status, str) or status not in _ALLOWED_STATUSES:
+            raise ValueError("invalid order status")
 
         quantity = _finite_number(order.get("quantity"), "quantity", positive=True)
         filled = _finite_number(order.get("filled_quantity"), "filled_quantity")
