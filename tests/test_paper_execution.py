@@ -69,6 +69,27 @@ class PaperExecutionBookTests(unittest.TestCase):
             self.book.evaluate_protective_exit("paper-1", {"h": 130, "l": 80})
         self.assertEqual(self.book.get("paper-1")["exit_price"], 120)
 
+    def test_partial_fill_cancel_keeps_protective_exit_on_filled_exposure(self):
+        self.place_long()
+        self.book.record_fill("paper-1", 0.5, 100, fill_id="partial-fill")
+        cancelled = self.book.cancel("paper-1")
+        self.assertEqual(cancelled["status"], "CANCELLED")
+        self.assertTrue(cancelled["cancelled_remainder"])
+        self.assertEqual(cancelled["filled_quantity"], 0.5)
+
+        closed = self.book.evaluate_protective_exit("paper-1", {"h": 105, "l": 85})
+        self.assertEqual(closed["status"], "CLOSED")
+        self.assertTrue(closed["cancelled_remainder"])
+        self.assertEqual(closed["filled_quantity"], 0.5)
+        self.assertEqual(closed["exit_reason"], "STOP")
+        with self.assertRaisesRegex(ValueError, "filled paper exposure"):
+            self.book.evaluate_protective_exit("paper-1", {"h": 125, "l": 95})
+
+    def test_cancelled_unfilled_order_has_no_protective_exit(self):
+        self.place_long()
+        self.book.cancel("paper-1")
+        with self.assertRaisesRegex(ValueError, "filled paper exposure"):
+            self.book.evaluate_protective_exit("paper-1", {"h": 125, "l": 85})
     def test_short_take_profit_and_no_exit(self):
         self.book.place_order("paper-short", "ETHUSDT", "SHORT", 1, 120, 80)
         self.book.record_fill("paper-short", 1, 100)
@@ -122,7 +143,7 @@ class PaperExecutionBookTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "different fill parameters"):
                 restarted.record_fill("fill-restart", 0.5, 101, fill_id="exchange-fill-1")
 
-    def test_schema_v1_ledger_migrates_to_v2_on_next_save(self):
+    def test_schema_v1_ledger_migrates_to_v3_on_next_save(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "legacy.json"
             legacy_order = {
@@ -136,7 +157,7 @@ class PaperExecutionBookTests(unittest.TestCase):
             self.assertEqual(book.get("legacy")["fill_events"], {})
             book.record_fill("legacy", 1, 100, fill_id="new-fill")
             saved = json.loads(path.read_text(encoding="utf-8"))
-            self.assertEqual(saved["schema_version"], 2)
+            self.assertEqual(saved["schema_version"], 3)
             self.assertIn("new-fill", saved["orders"]["legacy"]["fill_events"])
 
     def test_corrupt_or_unknown_schema_fails_closed(self):
