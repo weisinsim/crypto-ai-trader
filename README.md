@@ -45,6 +45,10 @@ Before enabling exchange execution, separately implement and validate idempotent
 
 `validation/paper_execution.py` provides an isolated simulator for idempotent order creation, partial/full fills, cancellation and conservative stop/target exits (stop wins when both are touched in one OHLC candle). By default it is in-memory; pass `storage_path="data/paper-ledger.json"` to enable versioned JSON persistence with atomic file replacement, restart recovery, and fail-closed handling of unreadable/unknown-schema ledgers. Mutations are rolled back in memory if persistence fails. Persistence is intended for a single-process paper test only; it is not a distributed lock, exchange reconciliation mechanism, or production trading ledger. No exchange is contacted and no real orders are placed. Fees, funding, exchange precision, network recovery and portfolio-wide exposure are not modeled. Do not use this in place of a production execution adapter.
 
+### Daily loss guard (paper/research only)
+
+`validation/daily_loss_guard.py` tracks realized-PnL events against an explicit UTC date and a configured positive loss limit. At or below the loss threshold it locks new entries for that UTC day; the lock remains in place even if later PnL recovers, and duplicate event IDs are idempotent. Optional JSON persistence supports restart recovery and fails closed on unreadable or unsupported ledgers. The caller must supply authoritative realized PnL (including fees/funding if desired); this module does not connect to exchanges, calculate unrealized PnL, coordinate multiple processes, or independently block any order route. Integrate it as one input to a fail-closed entry gate; do not treat it as production risk infrastructure.
+
 ## Research status and promotion criteria
 
 A passing unit test or successful compile validates software behavior only; it is not evidence of strategy profitability. Do not promote any model to production without a reproducible, independently reviewable report that documents:
