@@ -106,6 +106,25 @@ class BacktestTests(unittest.TestCase):
                             if t["entry_time"] == held_trade["entry_time"])
         self.assertNotEqual(target_trade["pnl_equity"], held_trade["pnl_equity"])
 
+    def test_funding_event_timestamps_reject_boolean_fractional_and_negative_values(self):
+        rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(100)])
+        for timestamp in (True, 1.5, -1, "1.5", "1e3"):
+            event = {"funding_time": timestamp, "funding_rate": 0.001, "mark_price": 100.0}
+            with self.subTest(timestamp=timestamp), self.assertRaisesRegex(ValueError, "timestamp"):
+                run_ema_cross_backtest(rows, fast=3, slow=9, atr_period=3, funding_rates=[event])
+
+    def test_funding_event_schema_errors_are_clear(self):
+        rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(100)])
+        bad_events = (
+            [1, 2, 3],
+            {"funding_time": rows[50]["t"], "funding_rate": 0.001},
+            {"funding_time": rows[50]["t"], "funding_rate": True, "mark_price": 100.0},
+            {"funding_time": rows[50]["t"], "funding_rate": 0.001, "mark_price": False},
+        )
+        for event in bad_events:
+            with self.subTest(event=event), self.assertRaises(ValueError):
+                run_ema_cross_backtest(rows, fast=3, slow=9, atr_period=3, funding_rates=[event])
+
     def test_funding_events_with_empty_candles_fail_clearly(self):
         event = {"funding_time": 0, "funding_rate": 0.001, "mark_price": 100.0}
         with self.assertRaisesRegex(ValueError, "without candle data"):
