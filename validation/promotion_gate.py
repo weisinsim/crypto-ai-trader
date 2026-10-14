@@ -59,7 +59,7 @@ def evaluate_live_order_gate(snapshot, limits):
         value = limits[key]
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
             reasons.append(f"INVALID_LIMIT_{key.upper()}")
-    if reasons:
+    if any(reason.startswith(("INVALID_", "INVALID_LIMIT_")) for reason in reasons):
         return {"approved": False, "reasons": reasons}
 
     if any(limits[k] < 0 for k in numeric_limits):
