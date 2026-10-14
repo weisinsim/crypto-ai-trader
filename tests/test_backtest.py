@@ -91,6 +91,25 @@ class BacktestTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "without candle data"):
             run_ema_cross_backtest([], fast=3, slow=9, funding_rates=[event])
 
+    def test_positive_funding_rate_costs_longs_and_credits_shorts(self):
+        rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(240)])
+        kwargs = dict(fast=3, slow=9, atr_period=3, fee_rate=0, slippage_rate=0)
+        baseline = run_ema_cross_backtest(rows, **kwargs)
+        for side in ("LONG", "SHORT"):
+            with self.subTest(side=side):
+                trade = next((t for t in baseline["trade_log"]
+                              if t["side"] == side and t["exit_time"] > t["entry_time"]), None)
+                self.assertIsNotNone(trade, f"fixture must produce a held {side} trade")
+                event = {"funding_time": trade["exit_time"], "funding_rate": 0.01,
+                         "mark_price": 100.0}
+                funded = run_ema_cross_backtest(rows, **kwargs, funding_rates=[event])
+                funded_trade = next(t for t in funded["trade_log"]
+                                    if t["entry_time"] == trade["entry_time"] and t["side"] == side)
+                if side == "LONG":
+                    self.assertLess(funded_trade["pnl_equity"], trade["pnl_equity"])
+                else:
+                    self.assertGreater(funded_trade["pnl_equity"], trade["pnl_equity"])
+
     def test_duplicate_historical_funding_timestamps_rejected(self):
         rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(100)])
         event = {"funding_time": rows[50]["t"], "funding_rate": 0.001, "mark_price": 100.0}
