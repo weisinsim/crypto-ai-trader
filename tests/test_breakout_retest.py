@@ -252,6 +252,33 @@ class BreakoutRetestTests(unittest.TestCase):
                 self.assertAlmostEqual(indexed, reference, places=12)
                 self.assertEqual(indexed_count, count)
 
+    def test_indexed_funding_cashflow_matches_reference_across_many_windows(self):
+        # Deterministic generated funding tape: mixed signs, varying mark prices,
+        # deliberately reverse-ordered input, and many inclusive/exclusive boundaries.
+        events = [
+            {
+                "funding_time": i * 80_000,
+                "funding_rate": ((i % 7) - 3) * 0.00017,
+                "mark_price": 80.0 + ((i * 13) % 41) * 1.25,
+            }
+            for i in range(1, 41)
+        ]
+        events.reverse()
+        times, prefix = build_funding_prefix_index(events)
+        for side in (-1, 1):
+            for entry_idx in range(0, 40, 3):
+                entry_ts = entry_idx * 80_000
+                for exit_idx in range(entry_idx, 41, 5):
+                    exit_ts = exit_idx * 80_000
+                    expected, expected_count = funding_cashflow(
+                        side, 1.75, entry_ts, exit_ts, events,
+                    )
+                    actual, actual_count = indexed_funding_cashflow(
+                        side, 1.75, entry_ts, exit_ts, times, prefix,
+                    )
+                    self.assertAlmostEqual(actual, expected, places=10)
+                    self.assertEqual(actual_count, expected_count)
+
     def test_indexed_funding_cashflow_fails_closed_on_corrupt_index(self):
         with self.assertRaisesRegex(ValueError, "inconsistent"):
             indexed_funding_cashflow(1, 1.0, 0, 200, [100], [0.0])
