@@ -428,6 +428,15 @@ def passes_cost_robustness(results: list[dict]) -> bool:
     return True
 
 
+def research_recommendation_status(selected: dict | None, results: list[dict] | None) -> str:
+    """Never expose selected training parameters as a recommendation unless all cost gates pass."""
+    if not selected:
+        return "NO_ELIGIBLE_TRAINING_CANDIDATE"
+    if not passes_cost_robustness(results or []):
+        return "REJECTED_COST_ROBUSTNESS"
+    return "PRELIMINARY_RESEARCH_PASS_NOT_PRODUCTION_APPROVAL"
+
+
 def candidate_rejection_reasons(folds: list[dict], score: float) -> list[str]:
     """Explain training-fold rejection without relaxing any acceptance thresholds."""
     if not folds:
@@ -564,10 +573,8 @@ def main():
             "not_production_approval": True,
         }
     overall_cost_pass = bool(selected and passes_cost_robustness((holdout, stress, severe)))
-    recommendation_status = (
-        "NO_ELIGIBLE_TRAINING_CANDIDATE" if not selected else
-        "PRELIMINARY_RESEARCH_PASS_NOT_PRODUCTION_APPROVAL" if overall_cost_pass else
-        "REJECTED_COST_ROBUSTNESS"
+    recommendation_status = research_recommendation_status(
+        selected, (holdout, stress, severe) if selected else None
     )
     report = {
         "status": "RESEARCH_ONLY", "symbol": args.symbol.upper(), "interval": args.interval,
