@@ -52,6 +52,21 @@ def ema_values(rows: list[dict], period: int) -> list[float | None]:
             out[i] = value
     return out
 
+def build_indicator_cache(rows: list[dict]) -> dict:
+    """Precompute causal indicators once for a multi-parameter research sweep."""
+    atr = atr_values(rows)
+    atr_median: list[float | None] = [None] * len(rows)
+    for i in range(48, len(rows)):
+        prior_atr = [v for v in atr[i - 48:i] if v is not None and v > 0]
+        if prior_atr:
+            atr_median[i] = median(prior_atr)
+    return {
+        "length": len(rows),
+        "atr": atr,
+        "atr_median": atr_median,
+        "ema": {period: ema_values(rows, period) for period in (100, 200)},
+    }
+
 
 def _strict_funding_timestamp(value) -> int:
     """Accept integer millisecond timestamps without truncating malformed values."""
@@ -115,7 +130,8 @@ def marked_equity_after_costs_and_funding(equity: float, mark_pnl: float,
 def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx: int,
                         fee_rate: float = 0.0005, slippage_rate: float = 0.0002,
                         risk_fraction: float = 0.01, max_leverage: float = 3.0,
-                        funding_rates: list[dict] | None = None, symbol: str | None = None) -> dict:
+                        funding_rates: list[dict] | None = None, symbol: str | None = None,
+                        indicator_cache: dict | None = None) -> dict:
     """Simulate long and short separately; entries occur at next bar open after confirmation."""
     if not (0 <= start_idx < end_idx <= len(rows)):
         raise ValueError("invalid evaluation indices")
@@ -175,13 +191,15 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
             or retest_atr not in (0.20, 0.30, 0.40)
             or body_confirm_atr not in (0.0, 0.15)):
         raise ValueError("invalid strategy parameters")
-    atr = atr_values(rows)
-    trend_ema = ema_values(rows, trend_period)
-    atr_median = [None] * len(rows)
-    for z in range(48, len(rows)):
-        prior_atr = [v for v in atr[z - 48:z] if v is not None and v > 0]
-        if prior_atr:
-            atr_median[z] = median(prior_atr)
+    if indicator_cache is None:
+        indicator_cache = build_indicator_cache(rows)
+    cache_length = indicator_cache.get("length")
+    if not isinstance(cache_length, int) or cache_length < len(rows):
+        raise ValueError("indicator cache does not cover the supplied candle rows")
+    atr = indicator_cache["atr"][:len(rows)]
+    atr_median = indicator_cache["atr_median"][:len(rows)]
+    trend_ema = ([None] * len(rows) if trend_period == 0
+                 else indicator_cache["ema"][trend_period][:len(rows)])
     trades = []
     equity = 1.0
     peak = 1.0
@@ -394,8 +412,13 @@ def main():
     windows = [(eval_start + n * width, train_end if n == 2 else eval_start + (n + 1) * width)
                for n in range(3)]
     candidates = []
+    # ATR/EMA/ATR-median are causal and independent of candidate parameters.
+    # Compute them once, then reuse prefix slices across all 5,184 candidates.
+    indicator_cache = build_indicator_cache(rows)
     for params in GRID:
-        folds = [run_breakout_retest(rows[:b], params, a, b, funding_rates=historical_funding, symbol=args.symbol) for a, b in windows]
+        folds = [run_breakout_retest(rows[:b], params, a, b, funding_rates=historical_funding,
+                                     symbol=args.symbol, indicator_cache=indicator_cache)
+                 for a, b in windows]
         fold_returns = [f["net_return_pct"] for f in folds]
         fold_dd = [f["max_drawdown_pct"] for f in folds]
         trade_count = sum(f["trades"] for f in folds)
