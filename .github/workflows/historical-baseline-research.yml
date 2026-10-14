@@ -1,11 +1,10 @@
 name: Historical baseline research
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "research/**"
-      - ".github/workflows/historical-baseline-research.yml"
+  # Multi-asset historical sweeps are expensive; keep code-push checks fast.
+  # Run the full research manually or on a weekly schedule.
+  schedule:
+    - cron: "0 2 * * 1"
   workflow_dispatch:
     inputs:
       days:
@@ -20,6 +19,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: historical-baseline-research-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   baseline:
