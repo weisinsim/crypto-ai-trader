@@ -1,7 +1,7 @@
 import math
 import unittest
 
-from research.breakout_retest import GRID, apply_realized_pnl, atr_values, build_indicator_cache, candidate_rejection_reasons, build_funding_prefix_index, funding_cashflow, indexed_funding_cashflow, marked_equity_after_costs_and_funding, profit_factor_above_one, passes_cost_robustness, resolve_ohlc_exit, run_breakout_retest
+from research.breakout_retest import GRID, apply_realized_pnl, atr_values, build_indicator_cache, candidate_rejection_reasons, build_funding_prefix_index, funding_cashflow, indexed_funding_cashflow, marked_equity_after_costs_and_funding, profit_factor_above_one, passes_cost_robustness, research_recommendation_status, resolve_ohlc_exit, run_breakout_retest
 
 
 def make_rows(n=240):
@@ -36,6 +36,23 @@ class BreakoutRetestTests(unittest.TestCase):
         floor_hit = {"net_return_pct": 20.0, "profit_factor": 2.0, "equity_floor_hit": True}
         self.assertTrue(passes_cost_robustness([good, good, good]))
         self.assertFalse(passes_cost_robustness([good, floor_hit, good]))
+
+    def test_recommendation_requires_training_candidate_and_all_cost_gates(self):
+        selected = {"parameters": {"direction": "LONG"}}
+        good = {"net_return_pct": 2.0, "profit_factor": 1.2, "equity_floor_hit": False}
+        floor_hit = {"net_return_pct": 3.0, "profit_factor": 1.5, "equity_floor_hit": True}
+        self.assertEqual(
+            research_recommendation_status(None, [good, good, good]),
+            "NO_ELIGIBLE_TRAINING_CANDIDATE",
+        )
+        self.assertEqual(
+            research_recommendation_status(selected, [good, floor_hit, good]),
+            "REJECTED_COST_ROBUSTNESS",
+        )
+        self.assertEqual(
+            research_recommendation_status(selected, [good, good, good]),
+            "PRELIMINARY_RESEARCH_PASS_NOT_PRODUCTION_APPROVAL",
+        )
 
     def test_cost_gate_fails_closed_for_missing_or_invalid_metrics(self):
         self.assertFalse(passes_cost_robustness([]))
