@@ -52,6 +52,34 @@ class PaperReconciliationTests(unittest.TestCase):
                 }
             })
 
+    def test_fully_filled_order_cannot_be_marked_cancelled(self):
+        with self.assertRaisesRegex(ValueError, "cancelled order cannot be fully filled"):
+            reconcile_paper_positions({
+                "bad": {
+                    "symbol": "BTCUSDT", "side": "LONG", "status": "CANCELLED",
+                    "quantity": 1, "filled_quantity": 1,
+                }
+            })
+
+    def test_closed_order_requires_valid_exit_metadata(self):
+        with self.assertRaisesRegex(ValueError, "invalid exit_price"):
+            reconcile_paper_positions({
+                "bad": {
+                    "symbol": "BTCUSDT", "side": "LONG", "status": "CLOSED",
+                    "quantity": 1, "filled_quantity": 1,
+                    "exit_price": None, "exit_reason": "STOP",
+                }
+            })
+
+    def test_boolean_quantity_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "invalid quantity"):
+            reconcile_paper_positions({
+                "bad": {
+                    "symbol": "BTCUSDT", "side": "LONG", "status": "OPEN",
+                    "quantity": True, "filled_quantity": 0,
+                }
+            })
+
 
 if __name__ == "__main__":
     unittest.main()
