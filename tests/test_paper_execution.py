@@ -60,6 +60,15 @@ class PaperExecutionBookTests(unittest.TestCase):
         self.assertEqual(closed["exit_reason"], "STOP")
         self.assertEqual(closed["exit_price"], 90)
 
+    def test_closed_order_rejects_duplicate_protective_exit(self):
+        self.place_long()
+        self.book.record_fill("paper-1", 2, 100)
+        first = self.book.evaluate_protective_exit("paper-1", {"h": 125, "l": 95})
+        self.assertEqual(first["status"], "CLOSED")
+        with self.assertRaisesRegex(ValueError, "fully filled"):
+            self.book.evaluate_protective_exit("paper-1", {"h": 130, "l": 80})
+        self.assertEqual(self.book.get("paper-1")["exit_price"], 120)
+
     def test_short_take_profit_and_no_exit(self):
         self.book.place_order("paper-short", "ETHUSDT", "SHORT", 1, 120, 80)
         self.book.record_fill("paper-short", 1, 100)
