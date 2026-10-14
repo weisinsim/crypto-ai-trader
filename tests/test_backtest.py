@@ -76,6 +76,26 @@ class BacktestTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             run_ema_cross_backtest(rows, fast=10, slow=5)
 
+    def test_rejects_boolean_or_non_integer_period_parameters(self):
+        rows = candles_from_closes([100 + ((i % 7) - 3) for i in range(100)])
+        for name, value in (("fast", True), ("slow", 10.5),
+                            ("atr_period", "14"), ("trend_period", False)):
+            with self.subTest(name=name, value=value), self.assertRaisesRegex(ValueError, name):
+                run_ema_cross_backtest(rows, **{name: value})
+
+    def test_rejects_boolean_or_non_numeric_cost_parameters(self):
+        rows = candles_from_closes([100 + ((i % 7) - 3) for i in range(100)])
+        for name, value in (("fee_rate", True), ("slippage_rate", "0.001"),
+                            ("stop_atr", None), ("risk_fraction", False)):
+            with self.subTest(name=name, value=value), self.assertRaisesRegex(ValueError, name):
+                run_ema_cross_backtest(rows, **{name: value})
+
+    def test_trade_start_timestamp_must_be_non_negative_integer(self):
+        rows = candles_from_closes([100 + ((i % 7) - 3) for i in range(100)])
+        for value in (True, -1, 1.5, "3600000"):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "trade_start_ts"):
+                run_ema_cross_backtest(rows, trade_start_ts=value)
+
     def test_trend_filter_period_must_be_zero_or_at_least_two(self):
         rows = candles_from_closes([100 + ((i % 9) - 4) for i in range(120)])
         with self.assertRaisesRegex(ValueError, "trend_period"):
