@@ -188,6 +188,19 @@ class PaperExecutionBookTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "schema"):
                 PaperExecutionBook(path)
 
+    def test_inconsistent_persisted_order_state_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "inconsistent.json"
+            order = {
+                "client_order_id": "bad", "symbol": "BTCUSDT", "side": "LONG",
+                "quantity": 2.0, "stop_loss": 90.0, "take_profit": 120.0,
+                "status": "FILLED", "filled_quantity": 0.5, "average_fill_price": 100.0,
+                "exit_price": None, "exit_reason": None, "fill_events": {},
+                "cancelled_remainder": False,
+            }
+            path.write_text(json.dumps({"schema_version": 3, "orders": {"bad": order}}), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "fully filled order quantity"):
+                PaperExecutionBook(path)
     def test_save_failure_rolls_back_in_memory_mutation(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "missing-parent" / "ledger.json"
