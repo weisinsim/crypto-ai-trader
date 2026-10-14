@@ -205,8 +205,10 @@ def run_ema_cross_backtest(
             raise ValueError(f"{name} must be a finite number")
     if stop_atr <= 0 or target_atr <= 0:
         raise ValueError("stop_atr and target_atr must be positive")
-    if fee_rate < 0 or slippage_rate < 0:
-        raise ValueError("fee and slippage rates cannot be negative")
+    if fee_rate < 0 or fee_rate >= 1:
+        raise ValueError("fee_rate must be in [0, 1)")
+    if slippage_rate < 0 or slippage_rate >= 1:
+        raise ValueError("slippage_rate must be in [0, 1)")
     if not 0 < risk_fraction <= 1:
         raise ValueError("risk_fraction must be in (0, 1]")
     if len(rows) < slow + 2:
