@@ -58,6 +58,12 @@ class CandleValidationTests(unittest.TestCase):
             ):
                 validate_candles([{**valid, field: value}])
 
+    def test_rejects_boolean_ohlcv_values(self):
+        valid = {"t": 0, "o": 100, "h": 101, "l": 99, "c": 100, "v": 10}
+        for field in ("o", "h", "l", "c", "v", "q"):
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, "invalid"):
+                validate_candles([{**valid, field: True}])
+
 
 class BacktestTests(unittest.TestCase):
     def test_insufficient_data_is_explicit(self):
