@@ -28,12 +28,31 @@ def summarize(result: dict, start_ts: int, end_ts: int) -> dict:
     gross_loss = -sum(t["pnl_equity"] for t in trades if t["pnl_equity"] < 0)
     return {
         "trades": len(trades),
+        "equity_floor_hit": result.get("equity_floor_hit"),
         "net_return_pct": round((result["equity_final"] - 1.0) * 100, 4),
         "max_drawdown_pct": max_drawdown_pct(curve),
         "win_rate_pct": round(wins / len(trades) * 100, 2) if trades else None,
         "profit_factor": round(gross_profit / gross_loss, 4) if gross_loss else (None if not gross_profit else "INF"),
         "expectancy_equity_pct": round(mean(t["pnl_equity"] for t in trades) * 100, 4) if trades else None,
     }
+
+
+def passes_cost_robustness(results: list[dict] | None) -> bool:
+    """Fail closed unless every holdout cost tier is profitable and clears the equity floor."""
+    if not results:
+        return False
+    for result in results:
+        value = result.get("net_return_pct")
+        pf = result.get("profit_factor")
+        if (result.get("equity_floor_hit") is not False
+                or isinstance(value, bool) or not isinstance(value, (int, float))
+                or not __import__("math").isfinite(value) or value <= 0
+                or not (pf == "INF" or (
+                    isinstance(pf, (int, float)) and not isinstance(pf, bool)
+                    and __import__("math").isfinite(pf) and pf > 1
+                ))):
+            return False
+    return True
 
 
 def evaluate_window(rows: list[dict], start: int, end: int, params: dict,
@@ -103,6 +122,7 @@ def main() -> None:
         worst_fold_return = min(x["net_return_pct"] for x in folds)
         eligible = (
             total_trades >= 15 and all(x["trades"] >= 3 for x in folds)
+            and all(x["equity_floor_hit"] is False for x in folds)
             and median_return > 0 and positive_folds >= 2 and worst_fold_return >= -3.0
         )
         candidates.append({
@@ -192,8 +212,16 @@ def main() -> None:
             "note": "Training folds only; holdout is not used for selection or neighborhood scoring."
         }
 
+    overall_cost_pass = bool(selected and passes_cost_robustness([holdout, stress_holdout]))
+    recommendation_status = (
+        "NO_ELIGIBLE_TRAINING_CANDIDATE" if not selected else
+        "PRELIMINARY_RESEARCH_PASS_NOT_PRODUCTION_APPROVAL" if overall_cost_pass else
+        "REJECTED_COST_ROBUSTNESS"
+    )
     report = {
         "status": "RESEARCH_ONLY",
+        "recommendation_status": recommendation_status,
+        "recommended_parameters": selected["parameters"] if overall_cost_pass else None,
         "symbol": args.symbol.upper(), "interval": args.interval,
         "bars": len(rows), "first_ts": rows[0]["t"], "last_ts": rows[-1]["t"],
         "split": {"train_fraction": args.train_fraction, "train_bars": split,
@@ -216,6 +244,11 @@ def main() -> None:
                                        if selected else None),
         "holdout": holdout,
         "stress_holdout_approx_0_30pct_round_trip_cost": stress_holdout,
+        "cost_robustness_gate": {
+            "status": ("NOT_EVALUATED" if not selected else
+                       "PASS_PRELIMINARY_ONLY" if overall_cost_pass else "FAIL_COST_ROBUSTNESS"),
+            "not_production_approval": True,
+        },
         "training_neighborhood_stability": neighborhood_stability,
         "all_candidates": sorted(candidates, key=lambda x: x["selection_score"], reverse=True),
         "warnings": [
@@ -234,6 +267,7 @@ def main() -> None:
     output.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"status={report['status']} symbol={args.symbol.upper()} candidates={len(candidates)} "
           f"eligible={len(eligible_candidates)} selected={bool(selected)} "
+          f"recommendation_status={recommendation_status} "
           f"stress_holdout={stress_holdout} output={output}")
 
 
