@@ -135,8 +135,12 @@ def resolve_ohlc_exit(side: int, bar: dict, stop: float, target: float) -> tuple
     if any(not math.isfinite(value) for value in values):
         raise ValueError("OHLC exit values must be finite")
     open_price, high, low, close, stop, target = values
+    if any(value <= 0 for value in values):
+        raise ValueError("OHLC prices and barriers must be positive")
     if low > high or not (low <= open_price <= high and low <= close <= high):
         raise ValueError("invalid OHLC price ordering")
+    if (side == 1 and stop >= target) or (side == -1 and stop <= target):
+        raise ValueError("stop and target are inconsistent with trade direction")
     stop_hit = low <= stop if side == 1 else high >= stop
     target_hit = high >= target if side == 1 else low <= target
     if stop_hit:
