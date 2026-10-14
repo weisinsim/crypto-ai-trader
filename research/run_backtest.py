@@ -35,6 +35,8 @@ def load_funding_csv(path: str) -> list[dict]:
     symbols = {row["symbol"] for row in rows}
     if not rows or "" in symbols or len(symbols) != 1:
         raise ValueError("funding CSV must contain rows for exactly one non-empty symbol")
+    if any(row["funding_time"] < 0 for row in rows):
+        raise ValueError("funding CSV contains negative settlement timestamps")
     if any(not math.isfinite(row["funding_rate"]) or
            not math.isfinite(row["mark_price"]) or row["mark_price"] <= 0 for row in rows):
         raise ValueError("funding CSV contains non-finite rates or invalid mark prices")
