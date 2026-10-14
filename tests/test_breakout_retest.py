@@ -55,6 +55,15 @@ class BreakoutRetestTests(unittest.TestCase):
             resolve_ohlc_exit(-1, {"o": 100.0, "h": 105.0, "l": 95.0, "c": 99.0}, 110.0, 90.0),
         )
 
+    def test_ohlc_exit_rejects_nonpositive_prices_and_inverted_barriers(self):
+        valid_bar = {"o": 100.0, "h": 105.0, "l": 95.0, "c": 99.0}
+        with self.assertRaisesRegex(ValueError, "must be positive"):
+            resolve_ohlc_exit(1, {**valid_bar, "l": 0.0}, 90.0, 110.0)
+        with self.assertRaisesRegex(ValueError, "inconsistent"):
+            resolve_ohlc_exit(1, valid_bar, 110.0, 90.0)
+        with self.assertRaisesRegex(ValueError, "inconsistent"):
+            resolve_ohlc_exit(-1, valid_bar, 90.0, 110.0)
+
     def test_ohlc_exit_rejects_invalid_bar_data(self):
         with self.assertRaisesRegex(ValueError, "ordering"):
             resolve_ohlc_exit(1, {"o": 100.0, "h": 90.0, "l": 95.0, "c": 99.0}, 90.0, 110.0)
