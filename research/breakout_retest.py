@@ -563,8 +563,16 @@ def main():
             "severe_0_46pct_round_trip": compact[2],
             "not_production_approval": True,
         }
+    overall_cost_pass = bool(selected and passes_cost_robustness((holdout, stress, severe)))
+    recommendation_status = (
+        "NO_ELIGIBLE_TRAINING_CANDIDATE" if not selected else
+        "PRELIMINARY_RESEARCH_PASS_NOT_PRODUCTION_APPROVAL" if overall_cost_pass else
+        "REJECTED_COST_ROBUSTNESS"
+    )
     report = {
         "status": "RESEARCH_ONLY", "symbol": args.symbol.upper(), "interval": args.interval,
+        "recommendation_status": recommendation_status,
+        "recommended_parameters": selected["parameters"] if overall_cost_pass else None,
         "bars": len(rows), "first_ts": rows[0]["t"], "last_ts": rows[-1]["t"],
         "split": {"train_fraction": args.train_fraction, "train_bars": split, "holdout_bars": len(rows)-split},
         "strategy": "confirmed breakout, retest within 0.30 ATR, directional 1H candle close confirmation, next-bar-open entry; optional causal EMA trend filter (0/100/200); stop wins same-bar stop/target tie; max drawdown includes intratrade close-marked equity",
@@ -584,7 +592,7 @@ def main():
                                                  for source in sorted({event.get("mark_price_source", "unspecified") for event in historical_funding})}}
                          if historical_funding is not None else {"records": 0, "source": None}),
         "cost_robustness_gate": ({"status": "NOT_EVALUATED"} if not selected else
-            {"status": "PASS_PRELIMINARY_ONLY" if passes_cost_robustness((holdout, stress, severe)) else "FAIL_COST_ROBUSTNESS",
+            {"status": "PASS_PRELIMINARY_ONLY" if overall_cost_pass else "FAIL_COST_ROBUSTNESS",
              "not_production_approval": True}),
         "warnings": ["Research only; funding is included only when historical funding CSV is supplied.",
                      "Funding settlement timestamps are strictly after entry-bar open through exit-bar open.",
@@ -598,6 +606,8 @@ def main():
     print(f"direction_summary={report['direction_summary']}")
     print(f"direction_holdout_diagnostics={report['direction_holdout_diagnostics']}")
     print(f"selected_parameters={report['selected_parameters']}")
+    print(f"recommendation_status={report['recommendation_status']}")
+    print(f"recommended_parameters={report['recommended_parameters']}")
     print(f"holdout={report['holdout']}")
     print(f"stress_holdout={report['stress_holdout_0_30pct_round_trip']}")
     print(f"severe_holdout={report['severe_holdout_0_46pct_round_trip']}")
