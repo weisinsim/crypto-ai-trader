@@ -41,3 +41,21 @@ def test_funding_cashflow_rejects_invalid_trade_inputs(side, quantity, entry_ts,
 def test_funding_cashflow_rejects_invalid_settlement_price():
     with pytest.raises(ValueError, match="invalid mark price"):
         funding_cashflow(1, 1.0, 100, 300, [event(200, 0.01, 0)])
+
+
+
+@pytest.mark.parametrize("timestamp", [True, 100.5, -1, "100", None])
+def test_funding_cashflow_rejects_non_integer_or_invalid_event_timestamps(timestamp):
+    with pytest.raises(ValueError, match="invalid funding timestamp"):
+        funding_cashflow(1, 1.0, 0, 300, [event(timestamp, 0.01)])
+
+
+def test_funding_cashflow_rejects_unsorted_events_instead_of_reordering_them():
+    with pytest.raises(ValueError, match="sorted ascending"):
+        funding_cashflow(1, 1.0, 0, 300, [event(200, 0.01), event(100, 0.02)])
+
+
+@pytest.mark.parametrize("entry_ts,exit_ts", [(True, 300), (100.5, 300), (0, False)])
+def test_funding_cashflow_rejects_non_integer_trade_timestamps(entry_ts, exit_ts):
+    with pytest.raises(ValueError, match="invalid side"):
+        funding_cashflow(1, 1.0, entry_ts, exit_ts, [])
