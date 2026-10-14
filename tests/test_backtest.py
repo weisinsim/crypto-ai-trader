@@ -66,6 +66,16 @@ class CandleValidationTests(unittest.TestCase):
 
 
 class BacktestTests(unittest.TestCase):
+    def test_equity_floor_failure_stops_ema_backtest_and_is_reported(self):
+        rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(240)])
+        result = run_ema_cross_backtest(
+            rows, fast=3, slow=9, atr_period=3, fee_rate=0.99,
+            slippage_rate=0, risk_fraction=0.01,
+        )
+        self.assertTrue(result["equity_floor_hit"])
+        self.assertAlmostEqual(result["equity_final"], 1e-6)
+        self.assertLess(len(result["trade_log"]), len(rows))
+
     def test_insufficient_data_is_explicit(self):
         result = run_ema_cross_backtest(candles_from_closes([100, 101, 102]), fast=2, slow=4)
         self.assertEqual(result["status"], "INSUFFICIENT_DATA")
