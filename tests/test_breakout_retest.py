@@ -252,6 +252,16 @@ class BreakoutRetestTests(unittest.TestCase):
                 self.assertAlmostEqual(indexed, reference, places=12)
                 self.assertEqual(indexed_count, count)
 
+    def test_indexed_funding_cashflow_fails_closed_on_corrupt_index(self):
+        with self.assertRaisesRegex(ValueError, "inconsistent"):
+            indexed_funding_cashflow(1, 1.0, 0, 200, [100], [0.0])
+        with self.assertRaisesRegex(ValueError, "unsorted"):
+            indexed_funding_cashflow(1, 1.0, 0, 200, [200, 100], [0.0, 1.0, 2.0])
+        with self.assertRaisesRegex(ValueError, "unsorted"):
+            indexed_funding_cashflow(1, 1.0, 0, 200, [100], [1.0, 2.0])
+        with self.assertRaisesRegex(ValueError, "unsorted"):
+            indexed_funding_cashflow(1, 1.0, 0, 200, [100], [0.0, float("inf")])
+
     def test_funding_prefix_index_rejects_duplicate_and_invalid_records(self):
         event = {"funding_time": 100, "funding_rate": 0.001, "mark_price": 100}
         with self.assertRaisesRegex(ValueError, "duplicate"):
