@@ -122,6 +122,23 @@ class PaperExecutionBookTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "different fill parameters"):
                 restarted.record_fill("fill-restart", 0.5, 101, fill_id="exchange-fill-1")
 
+    def test_schema_v1_ledger_migrates_to_v2_on_next_save(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "legacy.json"
+            legacy_order = {
+                "client_order_id": "legacy", "symbol": "BTCUSDT", "side": "LONG",
+                "quantity": 1.0, "stop_loss": 90.0, "take_profit": 120.0,
+                "status": "OPEN", "filled_quantity": 0.0, "average_fill_price": None,
+                "exit_price": None, "exit_reason": None,
+            }
+            path.write_text(json.dumps({"schema_version": 1, "orders": {"legacy": legacy_order}}), encoding="utf-8")
+            book = PaperExecutionBook(path)
+            self.assertEqual(book.get("legacy")["fill_events"], {})
+            book.record_fill("legacy", 1, 100, fill_id="new-fill")
+            saved = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(saved["schema_version"], 2)
+            self.assertIn("new-fill", saved["orders"]["legacy"]["fill_events"])
+
     def test_corrupt_or_unknown_schema_fails_closed(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "ledger.json"
