@@ -1,4 +1,7 @@
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 from validation.paper_execution import PaperExecutionBook
 
@@ -69,6 +72,47 @@ class PaperExecutionBookTests(unittest.TestCase):
         self.place_long()
         with self.assertRaisesRegex(ValueError, "fully filled"):
             self.book.evaluate_protective_exit("paper-1", {"h": 130, "l": 80})
+
+    def test_persisted_state_survives_restart_and_preserves_idempotency(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "paper-ledger.json"
+            book = PaperExecutionBook(path)
+            book.place_order("persisted", "BTCUSDT", "LONG", 2, 90, 120)
+            book.record_fill("persisted", 1, 100)
+            restarted = PaperExecutionBook(path)
+            self.assertEqual(restarted.get("persisted")["status"], "PARTIALLY_FILLED")
+            self.assertEqual(restarted.get("persisted")["filled_quantity"], 1)
+            self.assertEqual(restarted.place_order("persisted", "BTCUSDT", "LONG", 2, 90, 120)["status"], "PARTIALLY_FILLED")
+            restarted.record_fill("persisted", 1, 110)
+            restarted.evaluate_protective_exit("persisted", {"h": 125, "l": 95})
+            final = PaperExecutionBook(path).get("persisted")
+            self.assertEqual(final["status"], "CLOSED")
+            self.assertEqual(final["exit_reason"], "TAKE_PROFIT")
+
+    def test_corrupt_or_unknown_schema_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ledger.json"
+            path.write_text("{not-json", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "unreadable"):
+                PaperExecutionBook(path)
+            path.write_text(json.dumps({"schema_version": 999, "orders": {}}), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "schema"):
+                PaperExecutionBook(path)
+
+    def test_save_failure_rolls_back_in_memory_mutation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "missing-parent" / "ledger.json"
+            book = PaperExecutionBook(path)
+            book.place_order("rollback", "BTCUSDT", "LONG", 1, 90, 120)
+            # Turn the parent path into a regular file so atomic persistence fails.
+            path.parent.parent.mkdir(parents=True, exist_ok=True)
+            path.parent.parent.joinpath("blocker").write_text("x", encoding="utf-8")
+            blocked_path = path.parent.parent / "blocker" / "ledger.json"
+            blocked = PaperExecutionBook(blocked_path)
+            blocked.orders = dict(book.orders)
+            with self.assertRaises(OSError):
+                blocked.record_fill("rollback", 1, 100)
+            self.assertEqual(blocked.get("rollback")["status"], "OPEN")
 
 
 if __name__ == "__main__":
