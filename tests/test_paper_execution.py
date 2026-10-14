@@ -33,6 +33,17 @@ class PaperExecutionBookTests(unittest.TestCase):
         self.assertEqual(final["status"], "FILLED")
         self.assertAlmostEqual(final["average_fill_price"], 107.5)
 
+    def test_fill_event_is_idempotent_and_conflicts_are_rejected(self):
+        self.place_long()
+        first = self.book.record_fill("paper-1", 0.5, 100, fill_id="fill-001")
+        repeated = self.book.record_fill("paper-1", 0.5, 100, fill_id="fill-001")
+        self.assertEqual(first, repeated)
+        self.assertEqual(repeated["filled_quantity"], 0.5)
+        with self.assertRaisesRegex(ValueError, "different fill parameters"):
+            self.book.record_fill("paper-1", 0.4, 100, fill_id="fill-001")
+        with self.assertRaisesRegex(ValueError, "fill_id"):
+            self.book.record_fill("paper-1", 0.1, 100, fill_id="")
+
     def test_overfill_and_fill_after_cancel_are_rejected(self):
         self.place_long()
         with self.assertRaisesRegex(ValueError, "exceeds remaining"):
@@ -88,6 +99,19 @@ class PaperExecutionBookTests(unittest.TestCase):
             final = PaperExecutionBook(path).get("persisted")
             self.assertEqual(final["status"], "CLOSED")
             self.assertEqual(final["exit_reason"], "TAKE_PROFIT")
+
+    def test_fill_event_idempotency_survives_restart(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ledger.json"
+            book = PaperExecutionBook(path)
+            book.place_order("fill-restart", "BTCUSDT", "LONG", 2, 90, 120)
+            book.record_fill("fill-restart", 1, 100, fill_id="exchange-fill-1")
+            restarted = PaperExecutionBook(path)
+            duplicate = restarted.record_fill("fill-restart", 1, 100, fill_id="exchange-fill-1")
+            self.assertEqual(duplicate["filled_quantity"], 1)
+            self.assertEqual(duplicate["status"], "PARTIALLY_FILLED")
+            with self.assertRaisesRegex(ValueError, "different fill parameters"):
+                restarted.record_fill("fill-restart", 0.5, 101, fill_id="exchange-fill-1")
 
     def test_corrupt_or_unknown_schema_fails_closed(self):
         with tempfile.TemporaryDirectory() as tmp:
