@@ -64,3 +64,8 @@ A passing unit test or successful compile validates software behavior only; it i
 - coin-specific and long/short results, where supported.
 
 A model's FROZEN status means its parameters are preserved; it does not imply that profitability has been proven. Confirmed execution signals require an explicit validation record.
+
+
+### Paper portfolio consistency gate
+
+`validation/portfolio_order_gate.py` composes the pre-trade gate and persistent daily-loss guard with paper-ledger reconciliation. It rejects malformed ledger state and rejects a snapshot when its supplied open-position count disagrees with active symbols derived from gross filled exposure. Opposing long/short legs on one symbol still count as an active symbol even if net quantity is zero. This guards against stale paper snapshots; it is not authoritative exchange reconciliation and must not be used to authorize live orders.
