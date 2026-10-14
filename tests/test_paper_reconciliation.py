@@ -80,6 +80,18 @@ class PaperReconciliationTests(unittest.TestCase):
                 }
             })
 
+    def test_unhashable_side_and_status_fail_with_value_error(self):
+        base = {
+            "symbol": "BTCUSDT", "side": "LONG", "status": "OPEN",
+            "quantity": 1, "filled_quantity": 0,
+        }
+        bad_side = {**base, "side": ["LONG"]}
+        bad_status = {**base, "status": {"OPEN": True}}
+        with self.assertRaisesRegex(ValueError, "invalid order side"):
+            reconcile_paper_positions({"bad-side": bad_side})
+        with self.assertRaisesRegex(ValueError, "invalid order status"):
+            reconcile_paper_positions({"bad-status": bad_status})
+
 
 if __name__ == "__main__":
     unittest.main()
