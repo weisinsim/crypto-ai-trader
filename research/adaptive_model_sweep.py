@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 from statistics import mean, median
 
@@ -46,10 +47,10 @@ def passes_cost_robustness(results: list[dict] | None) -> bool:
         pf = result.get("profit_factor")
         if (result.get("equity_floor_hit") is not False
                 or isinstance(value, bool) or not isinstance(value, (int, float))
-                or not __import__("math").isfinite(value) or value <= 0
+                or not math.isfinite(value) or value <= 0
                 or not (pf == "INF" or (
                     isinstance(pf, (int, float)) and not isinstance(pf, bool)
-                    and __import__("math").isfinite(pf) and pf > 1
+                    and math.isfinite(pf) and pf > 1
                 ))):
             return False
     return True
