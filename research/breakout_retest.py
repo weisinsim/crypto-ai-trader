@@ -432,10 +432,20 @@ def candidate_rejection_reasons(folds: list[dict], score: float) -> list[str]:
     """Explain training-fold rejection without relaxing any acceptance thresholds."""
     if not folds:
         return ["missing_folds"]
-    returns = [float(f["net_return_pct"]) for f in folds]
-    trades = [int(f["trades"]) for f in folds]
     reasons = []
-    if any(f.get("equity_floor_hit", False) for f in folds):
+    if any(not isinstance(f, dict)
+           or isinstance(f.get("net_return_pct"), bool)
+           or not isinstance(f.get("net_return_pct"), (int, float))
+           or not math.isfinite(f["net_return_pct"])
+           or isinstance(f.get("trades"), bool)
+           or not isinstance(f.get("trades"), int)
+           or f["trades"] < 0
+           or not isinstance(f.get("equity_floor_hit"), bool)
+           for f in folds):
+        return ["invalid_fold_metrics"]
+    returns = [float(f["net_return_pct"]) for f in folds]
+    trades = [f["trades"] for f in folds]
+    if any(f["equity_floor_hit"] for f in folds):
         reasons.append("equity_floor_hit")
     if sum(trades) < 12:
         reasons.append("total_trades_below_12")
