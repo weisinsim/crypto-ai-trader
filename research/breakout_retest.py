@@ -118,6 +118,17 @@ def funding_cashflow(side: int, quantity: float, entry_ts: int, exit_ts: int,
     return pnl, count
 
 
+def apply_realized_pnl(equity: float, pnl: float, floor: float = 0.000001) -> tuple[float, bool]:
+    """Apply realized PnL and flag when the account hits its equity floor."""
+    if any(isinstance(value, bool) or not isinstance(value, (int, float))
+           or not math.isfinite(value) for value in (equity, pnl, floor)):
+        raise ValueError("equity, PnL, and floor must be finite numbers")
+    if equity <= 0 or floor <= 0 or equity < floor:
+        raise ValueError("equity and floor must be positive and equity must be at least floor")
+    raw_equity = equity + pnl
+    return max(floor, raw_equity), raw_equity <= floor
+
+
 def marked_equity_after_costs_and_funding(equity: float, mark_pnl: float,
                                        mark_costs: float, mark_funding: float) -> float:
     """Return conservative intratrade equity after unrealized PnL, costs, and accrued funding."""
@@ -250,8 +261,9 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
     equity = 1.0
     peak = 1.0
     max_dd = 0.0
+    equity_floor_hit = False
     i = max(start_idx, lookback + 15)
-    while i < end_idx - 1:
+    while i < end_idx - 1 and not equity_floor_hit:
         # Search a close-confirmed range break using only bars before the signal bar.
         signal = None
         for j in range(i, min(end_idx - 1, i + 1)):
@@ -344,7 +356,7 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
                 )
                 pnl = gross - costs + funding_pnl
                 before = equity
-                equity = max(0.000001, equity + pnl)
+                equity, equity_floor_hit = apply_realized_pnl(equity, pnl)
                 trades.append({
                     "side": "LONG" if side == 1 else "SHORT",
                     "breakout_time": rows[breakout_idx]["t"],
@@ -385,6 +397,7 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
     return {
         "trades": len(trades), "net_return_pct": round((equity - 1) * 100, 4),
         "max_drawdown_pct": round(max_dd * 100, 4),
+        "equity_floor_hit": equity_floor_hit,
         "win_rate_pct": round(sum(t["pnl_equity"] > 0 for t in trades) / len(trades) * 100, 2) if trades else None,
         "profit_factor": (round(sum(t["pnl_equity"] for t in trades if t["pnl_equity"] > 0) /
                                  -sum(t["pnl_equity"] for t in trades if t["pnl_equity"] < 0), 4)
