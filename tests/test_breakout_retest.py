@@ -454,18 +454,36 @@ class BreakoutRetestTests(unittest.TestCase):
 
     def test_candidate_rejected_if_any_fold_hits_equity_floor(self):
         folds = [
-            {"trades": 5, "net_return_pct": 2.0},
-            {"trades": 5, "net_return_pct": 1.0},
+            {"trades": 5, "net_return_pct": 2.0, "equity_floor_hit": False},
+            {"trades": 5, "net_return_pct": 1.0, "equity_floor_hit": False},
             {"trades": 5, "net_return_pct": -1.0, "equity_floor_hit": True},
         ]
         reasons = candidate_rejection_reasons(folds, score=1.0)
         self.assertIn("equity_floor_hit", reasons)
 
+    def test_candidate_rejects_missing_or_malformed_fold_metrics(self):
+        self.assertEqual(
+            candidate_rejection_reasons([{"trades": 5, "net_return_pct": 2.0}], 1.0),
+            ["invalid_fold_metrics"],
+        )
+        self.assertEqual(
+            candidate_rejection_reasons([
+                {"trades": True, "net_return_pct": 2.0, "equity_floor_hit": False}
+            ], 1.0),
+            ["invalid_fold_metrics"],
+        )
+        self.assertEqual(
+            candidate_rejection_reasons([
+                {"trades": 5, "net_return_pct": float("nan"), "equity_floor_hit": False}
+            ], 1.0),
+            ["invalid_fold_metrics"],
+        )
+
     def test_candidate_rejection_reasons_explain_weak_folds(self):
         folds = [
-            {"trades": 5, "net_return_pct": 2.0},
-            {"trades": 4, "net_return_pct": 1.0},
-            {"trades": 4, "net_return_pct": -4.0},
+            {"trades": 5, "net_return_pct": 2.0, "equity_floor_hit": False},
+            {"trades": 4, "net_return_pct": 1.0, "equity_floor_hit": False},
+            {"trades": 4, "net_return_pct": -4.0, "equity_floor_hit": False},
         ]
         reasons = candidate_rejection_reasons(folds, -0.5)
         self.assertIn("worst_fold_below_minus_3pct", reasons)
