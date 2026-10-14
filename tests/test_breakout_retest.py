@@ -253,6 +253,19 @@ class BreakoutRetestTests(unittest.TestCase):
         )
         self.assertGreater(with_funding["max_drawdown_pct"], no_funding["max_drawdown_pct"])
 
+        # Ledger identity: realized PnL must reconcile to gross PnL, trading
+        # costs, and funding, and reported drawdown must remain finite.
+        for result in (no_funding, with_funding):
+            trade = result["trade_log"][0]
+            self.assertAlmostEqual(
+                trade["pnl_equity"],
+                trade["gross_pnl_equity"] - trade["trading_cost_equity"]
+                + trade["funding_pnl_equity"],
+                places=7,
+            )
+            self.assertTrue(math.isfinite(result["max_drawdown_pct"]))
+            self.assertGreaterEqual(result["max_drawdown_pct"], 0.0)
+
     def test_adverse_funding_increases_intratrade_drawdown(self):
         # Deterministic held-position mark: funding is an accrued cashflow, not
         # a realized-only adjustment. Keep all other mark inputs identical.
