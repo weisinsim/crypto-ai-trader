@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+from bisect import bisect_right
 from pathlib import Path
 from statistics import median
 
@@ -139,6 +140,26 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
         if len(funding_timestamps) != len(set(funding_timestamps)):
             raise ValueError("duplicate funding timestamp")
         funding_rates = sorted(funding_rates, key=lambda event: _strict_funding_timestamp(event["funding_time"]))
+    # Build a prefix index once per candidate. The inner bar-by-bar mark loop
+    # otherwise rescans the entire funding history for every candle, making a
+    # multi-thousand-candidate sweep needlessly quadratic in funding events.
+    funding_times = []
+    funding_prefix = [0.0]
+    if funding_rates:
+        funding_times = [_strict_funding_timestamp(event["funding_time"]) for event in funding_rates]
+        for event in funding_rates:
+            funding_prefix.append(
+                funding_prefix[-1] + float(event["funding_rate"]) * float(event["mark_price"])
+            )
+
+    def indexed_funding_cashflow(side: int, quantity: float, entry_ts: int,
+                                 exit_ts: int) -> tuple[float, int]:
+        if not funding_times:
+            return 0.0, 0
+        left = bisect_right(funding_times, entry_ts)
+        right = bisect_right(funding_times, exit_ts)
+        amount = funding_prefix[right] - funding_prefix[left]
+        return -side * quantity * amount, right - left
     lookback, max_wait, target_r = params["lookback"], params["max_wait"], params["target_r"]
     trend_period = params.get("trend_period", 0)
     volatility_filter = params.get("volatility_filter", 0.0)
@@ -231,8 +252,8 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
                     adverse_pnl = qty * (adverse_mark - entry) * side
                     adverse_costs = qty * (entry + adverse_mark) * (fee_rate + slippage_rate)
                     # Include accrued settlement cashflows in both marks.
-                    mark_funding, _ = funding_cashflow(
-                        side, qty, int(rows[entry_idx]["t"]), int(bar["t"]), funding_rates
+                    mark_funding, _ = indexed_funding_cashflow(
+                        side, qty, int(rows[entry_idx]["t"]), int(bar["t"])
                     )
                     close_equity = marked_equity_after_costs_and_funding(
                         equity, close_pnl, close_costs, mark_funding
@@ -261,8 +282,8 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
                 exit_ts = int(rows[exit_idx]["t"])
                 # Exclude settlement exactly at entry-bar open; OHLC data cannot
                 # resolve whether the position existed before that settlement.
-                funding_pnl, funding_events = funding_cashflow(
-                    side, qty, entry_ts, exit_ts, funding_rates
+                funding_pnl, funding_events = indexed_funding_cashflow(
+                    side, qty, entry_ts, exit_ts
                 )
                 pnl = gross - costs + funding_pnl
                 before = equity
