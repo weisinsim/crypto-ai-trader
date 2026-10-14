@@ -35,9 +35,19 @@ def validate_candles(rows: Iterable[dict], interval_ms: int | None = None) -> li
             raise ValueError(f"row {i} timestamp must be an integer millisecond value")
         if ts < 0:
             raise ValueError(f"row {i} timestamp cannot be negative")
-        vals = {key: float(row[key]) for key in ("o", "h", "l", "c")}
+        vals = {}
+        for field in ("o", "h", "l", "c"):
+            raw_value = row[field]
+            if isinstance(raw_value, bool):
+                raise ValueError(f"row {i} has invalid OHLC values")
+            try:
+                vals[field] = float(raw_value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"row {i} has invalid OHLC values") from exc
         for field in ("v", "q"):
             if field in row:
+                if isinstance(row[field], bool):
+                    raise ValueError(f"row {i} has invalid {field}")
                 try:
                     metric = float(row[field])
                 except (TypeError, ValueError) as exc:
