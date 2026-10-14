@@ -1,5 +1,5 @@
 import unittest
-from validation.promotion_gate import classify_candidate
+from validation.promotion_gate import classify_candidate, evaluate_live_order_gate
 
 class PromotionGateTests(unittest.TestCase):
     def test_insufficient_holdout_trades_fails(self):
@@ -19,6 +19,73 @@ class PromotionGateTests(unittest.TestCase):
 
     def test_positive_values_are_only_preliminary_pass(self):
         self.assertEqual(classify_candidate(5, 6, 50, 1.5), 'PASS_PRELIMINARY_SCREEN_ONLY')
+
+
+    def valid_order_inputs(self):
+        snapshot = {
+            "exchange_healthy": True, "kill_switch_active": False, "candle_closed": True,
+            "model_status": "PRODUCTION", "signal": "LONG", "data_age_sec": 2.0,
+            "analysis_age_sec": 3.0, "spread_bps": 4.0, "risk_fraction": 0.005,
+            "daily_loss_fraction": 0.01, "open_positions": 0, "requested_notional": 100.0,
+        }
+        limits = {
+            "max_data_age_sec": 10.0, "max_analysis_age_sec": 10.0, "max_spread_bps": 8.0,
+            "max_risk_fraction": 0.01, "max_daily_loss_fraction": 0.05,
+            "max_open_positions": 3, "max_notional": 500.0,
+        }
+        return snapshot, limits
+
+    def test_valid_pretrade_snapshot_is_approved_not_submitted(self):
+        snapshot, limits = self.valid_order_inputs()
+        result = evaluate_live_order_gate(snapshot, limits)
+        self.assertEqual(result, {"approved": True, "reasons": []})
+
+    def test_research_model_is_never_live_approved(self):
+        snapshot, limits = self.valid_order_inputs()
+        snapshot["model_status"] = "RESEARCH"
+        result = evaluate_live_order_gate(snapshot, limits)
+        self.assertFalse(result["approved"])
+        self.assertIn("MODEL_NOT_PRODUCTION_APPROVED", result["reasons"])
+
+    def test_stale_feed_and_open_kill_switch_fail_closed(self):
+        snapshot, limits = self.valid_order_inputs()
+        snapshot["data_age_sec"] = 999
+        snapshot["kill_switch_active"] = True
+        result = evaluate_live_order_gate(snapshot, limits)
+        self.assertFalse(result["approved"])
+        self.assertIn("STALE_MARKET_DATA", result["reasons"])
+        self.assertIn("KILL_SWITCH_ACTIVE", result["reasons"])
+
+    def test_missing_and_non_finite_inputs_fail_closed(self):
+        snapshot, limits = self.valid_order_inputs()
+        del snapshot["spread_bps"]
+        result = evaluate_live_order_gate(snapshot, limits)
+        self.assertFalse(result["approved"])
+        self.assertIn("MISSING_SPREAD_BPS", result["reasons"])
+        snapshot, limits = self.valid_order_inputs()
+        snapshot["requested_notional"] = float("nan")
+        result = evaluate_live_order_gate(snapshot, limits)
+        self.assertFalse(result["approved"])
+        self.assertIn("INVALID_REQUESTED_NOTIONAL", result["reasons"])
+
+    def test_risk_loss_spread_position_and_notional_limits(self):
+        snapshot, limits = self.valid_order_inputs()
+        snapshot.update({"risk_fraction": 0.02, "daily_loss_fraction": 0.05,
+                         "spread_bps": 12, "open_positions": 3, "requested_notional": 600})
+        result = evaluate_live_order_gate(snapshot, limits)
+        self.assertFalse(result["approved"])
+        for reason in ("RISK_LIMIT_EXCEEDED", "DAILY_LOSS_LIMIT_REACHED",
+                       "SPREAD_LIMIT_EXCEEDED", "OPEN_POSITION_LIMIT_REACHED",
+                       "NOTIONAL_LIMIT_EXCEEDED"):
+            self.assertIn(reason, result["reasons"])
+
+    def test_forming_candle_and_no_trade_signal_are_rejected(self):
+        snapshot, limits = self.valid_order_inputs()
+        snapshot.update({"candle_closed": False, "signal": "NO-TRADE"})
+        result = evaluate_live_order_gate(snapshot, limits)
+        self.assertFalse(result["approved"])
+        self.assertIn("CANDLE_NOT_CLOSED", result["reasons"])
+        self.assertIn("NO_ACTIONABLE_SIGNAL", result["reasons"])
 
 if __name__ == '__main__':
     unittest.main()
