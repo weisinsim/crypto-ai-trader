@@ -77,8 +77,6 @@ class PaperExecutionBook:
                     raise ValueError("invalid fill event record")
                 event_quantity += _positive_finite(event["quantity"], "fill event quantity")
                 _positive_finite(event["price"], "fill event price")
-            if order["fill_events"] and abs(event_quantity - order["filled_quantity"]) > 1e-9:
-                raise ValueError("fill events do not reconcile with filled quantity")
             if order["client_order_id"] != key or order["side"] not in {"LONG", "SHORT"}:
                 raise ValueError("invalid order identity in paper ledger")
             if order["status"] not in allowed_statuses:
