@@ -92,7 +92,16 @@ class PaperExecutionBook:
             for field in ("exit_price",):
                 if order[field] is not None:
                     _positive_finite(order[field], field)
-            if order["status"] == "CLOSED" and (order["exit_price"] is None or order["exit_reason"] not in {"STOP", "TAKE_PROFIT"}):
+            status = order["status"]
+            if status == "OPEN" and filled != 0:
+                raise ValueError("OPEN order cannot have filled quantity")
+            if status == "PARTIALLY_FILLED" and not (0 < filled < order["quantity"]):
+                raise ValueError("invalid partially filled order quantity")
+            if status == "FILLED" and abs(filled - order["quantity"]) > 1e-12:
+                raise ValueError("invalid fully filled order quantity")
+            if status == "CANCELLED" and filled >= order["quantity"] - 1e-12:
+                raise ValueError("cancelled order cannot be fully filled")
+            if status == "CLOSED" and (order["exit_price"] is None or order["exit_reason"] not in {"STOP", "TAKE_PROFIT"} or filled <= 0):
                 raise ValueError("invalid closed order in paper ledger")
             if order["cancelled_remainder"] and not (
                 order["status"] in {"CANCELLED", "CLOSED"}
