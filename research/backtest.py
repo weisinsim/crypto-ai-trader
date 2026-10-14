@@ -238,12 +238,26 @@ def run_ema_cross_backtest(
                         pos["qty"] * pos["entry_fill"] * funding_rate_per_bar * side * pos["bars_held"])
         pnl = gross_pnl - pos["entry_fee"] - exit_fee - funding_cost
         new_equity = current_equity + pnl
+        funding_cost_total = (pos.get("funding_cost", 0.0) if funding_rates is not None else
+                              pos["qty"] * pos["entry_fill"] * funding_rate_per_bar * side * pos["bars_held"])
+        funding_cashflow = -funding_cost_total
+        settlement_timestamps = pos.get("funding_settlement_timestamps", [])
+        gap_stop_at_open = reason == "STOP" and (
+            (side == 1 and float(bar["o"]) < pos["stop"]) or
+            (side == -1 and float(bar["o"]) > pos["stop"])
+        )
+        funding_boundary_ambiguous = bool(
+            funding_rates is not None and gap_stop_at_open and int(bar["t"]) in settlement_timestamps
+        )
         trade = {
             "side": "LONG" if side == 1 else "SHORT",
             "entry_time": pos["entry_time"], "exit_time": int(bar["t"]),
             "entry": round(pos["entry_fill"], 8), "exit": round(exit_fill, 8),
             "reason": reason, "bars_held": pos["bars_held"],
             "stop": round(pos["stop"], 8), "target": round(pos["target"], 8),
+            "funding_cashflow": round(funding_cashflow, 8),
+            "funding_settlement_count": len(settlement_timestamps),
+            "funding_boundary_ambiguous": funding_boundary_ambiguous,
             "return_pct": round((new_equity / pos["equity_before"] - 1) * 100, 6),
             "pnl_equity": round(pnl, 8),
         }
@@ -261,6 +275,7 @@ def run_ema_cross_backtest(
             event = funding_events[int(bar["t"])]
             position["funding_cost"] = position.get("funding_cost", 0.0) + (
                 position["qty"] * event["mark_price"] * event["funding_rate"] * position["side"])
+            position.setdefault("funding_settlement_timestamps", []).append(int(bar["t"]))
         # Measure the adverse intrabar mark BEFORE resolving this candle's
         # stop/target. Otherwise a target exit could realize a gain first and
         # hide an adverse wick that occurred while the position was still open.
@@ -334,7 +349,8 @@ def run_ema_cross_backtest(
                             "target": open_price + side * risk * target_atr,
                             "entry_time": int(bar["t"]), "bars_held": 0,
                             "equity_before": equity, "qty": qty,
-                            "entry_fee": abs(qty * entry_fill) * fee_rate}
+                            "entry_fee": abs(qty * entry_fill) * fee_rate,
+                            "funding_cost": 0.0, "funding_settlement_timestamps": []}
                 opened_this_bar = True
 
         # A newly opened position also has intrabar exposure. Mark its
