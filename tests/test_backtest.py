@@ -17,6 +17,12 @@ class CandleValidationTests(unittest.TestCase):
             validate_candles([{"t": 1, "o": 1, "h": 2, "l": .5, "c": 1},
                                {"t": 1, "o": 1, "h": 2, "l": .5, "c": 1}])
 
+    def test_interval_ms_must_be_positive_integer(self):
+        rows = [{"t": 0, "o": 1, "h": 2, "l": .5, "c": 1}]
+        for interval in (0, -1, True, 1.5, "3600000"):
+            with self.subTest(interval=interval), self.assertRaisesRegex(ValueError, "interval_ms"):
+                validate_candles(rows, interval_ms=interval)
+
     def test_rejects_gaps_when_interval_required(self):
         rows = [{"t": 0, "o": 1, "h": 2, "l": .5, "c": 1},
                 {"t": 7_200_000, "o": 1, "h": 2, "l": .5, "c": 1}]
