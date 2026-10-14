@@ -20,6 +20,11 @@ class PromotionGateTests(unittest.TestCase):
     def test_positive_values_are_only_preliminary_pass(self):
         self.assertEqual(classify_candidate(5, 6, 50, 1.5), 'PASS_PRELIMINARY_SCREEN_ONLY')
 
+    def test_boolean_metrics_are_not_accepted(self):
+        self.assertEqual(classify_candidate(True, 6, 50, 1.5), 'FAIL_MISSING_OR_INVALID_NET_R')
+        self.assertEqual(classify_candidate(5, 6, True, 1.5), 'FAIL_INSUFFICIENT_HOLDOUT_TRADES')
+        self.assertEqual(classify_candidate(5, 6, 50, True), 'FAIL_HOLDOUT_PROFIT_FACTOR')
+
 
     def valid_order_inputs(self):
         snapshot = {
@@ -39,6 +44,22 @@ class PromotionGateTests(unittest.TestCase):
         snapshot, limits = self.valid_order_inputs()
         result = evaluate_live_order_gate(snapshot, limits)
         self.assertEqual(result, {"approved": True, "reasons": []})
+
+    def test_non_mapping_inputs_fail_closed(self):
+        self.assertEqual(evaluate_live_order_gate(None, {}), {
+            "approved": False, "reasons": ["INVALID_SNAPSHOT_TYPE"]
+        })
+        self.assertEqual(evaluate_live_order_gate({}, None), {
+            "approved": False, "reasons": ["INVALID_LIMITS_TYPE"]
+        })
+
+    def test_negative_market_metrics_and_daily_loss_are_rejected(self):
+        snapshot, limits = self.valid_order_inputs()
+        snapshot.update({"spread_bps": -1, "daily_loss_fraction": -0.01})
+        result = evaluate_live_order_gate(snapshot, limits)
+        self.assertFalse(result["approved"])
+        self.assertIn("INVALID_NEGATIVE_MARKET_METRIC", result["reasons"])
+        self.assertIn("INVALID_DAILY_LOSS_FRACTION", result["reasons"])
 
     def test_research_model_is_never_live_approved(self):
         snapshot, limits = self.valid_order_inputs()
