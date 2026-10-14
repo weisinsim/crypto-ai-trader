@@ -71,11 +71,10 @@ class PaperExecutionBook:
                 raise ValueError("invalid fill events in paper ledger")
             if not isinstance(order["cancelled_remainder"], bool):
                 raise ValueError("invalid cancelled remainder flag in paper ledger")
-            event_quantity = 0.0
             for fill_id, event in order["fill_events"].items():
                 if not isinstance(fill_id, str) or not fill_id.strip() or not isinstance(event, dict) or set(event) != {"quantity", "price"}:
                     raise ValueError("invalid fill event record")
-                event_quantity += _positive_finite(event["quantity"], "fill event quantity")
+                _positive_finite(event["quantity"], "fill event quantity")
                 _positive_finite(event["price"], "fill event price")
             if order["client_order_id"] != key or order["side"] not in {"LONG", "SHORT"}:
                 raise ValueError("invalid order identity in paper ledger")
