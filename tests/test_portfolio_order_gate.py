@@ -60,6 +60,20 @@ class PortfolioOrderGateTests(unittest.TestCase):
         self.assertFalse(result["approved"])
         self.assertEqual(result["reasons"], ["PAPER_PORTFOLIO_INVALID"])
 
+    def test_non_mapping_limits_fail_closed(self):
+        result = evaluate_order_gate_with_paper_portfolio(
+            self.snapshot, None, self.guard, "2026-10-14", self.orders
+        )
+        self.assertFalse(result["approved"])
+        self.assertEqual(result["reasons"], ["INVALID_LIMITS"])
+
+    def test_missing_snapshot_fields_fail_closed_without_exception(self):
+        result = evaluate_order_gate_with_paper_portfolio(
+            {"open_positions": 1}, self.limits, self.guard, "2026-10-14", self.orders
+        )
+        self.assertFalse(result["approved"])
+        self.assertIn("MISSING_EXCHANGE_HEALTHY", result["reasons"])
+
     def test_opposing_legs_still_count_as_one_active_symbol(self):
         self.orders["short-1"] = {
             "symbol": "BTCUSDT", "side": "SHORT", "status": "FILLED",
