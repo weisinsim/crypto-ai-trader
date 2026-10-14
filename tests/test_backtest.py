@@ -86,6 +86,11 @@ class BacktestTests(unittest.TestCase):
                             if t["entry_time"] == held_trade["entry_time"])
         self.assertNotEqual(target_trade["pnl_equity"], held_trade["pnl_equity"])
 
+    def test_funding_events_with_empty_candles_fail_clearly(self):
+        event = {"funding_time": 0, "funding_rate": 0.001, "mark_price": 100.0}
+        with self.assertRaisesRegex(ValueError, "without candle data"):
+            run_ema_cross_backtest([], fast=3, slow=9, funding_rates=[event])
+
     def test_duplicate_historical_funding_timestamps_rejected(self):
         rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(100)])
         event = {"funding_time": rows[50]["t"], "funding_rate": 0.001, "mark_price": 100.0}
