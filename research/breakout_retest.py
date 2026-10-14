@@ -413,6 +413,21 @@ def profit_factor_above_one(value) -> bool:
     return isinstance(value, (int, float)) and math.isfinite(value) and value > 1
 
 
+def passes_cost_robustness(results: list[dict]) -> bool:
+    """Require every cost tier to be profitable, PF>1, and free of equity-floor failure."""
+    if not results:
+        return False
+    for result in results:
+        value = result.get("net_return_pct")
+        if (result.get("equity_floor_hit", False)
+                or not isinstance(value, (int, float))
+                or isinstance(value, bool) or not math.isfinite(value)
+                or value <= 0
+                or not profit_factor_above_one(result.get("profit_factor"))):
+            return False
+    return True
+
+
 def candidate_rejection_reasons(folds: list[dict], score: float) -> list[str]:
     """Explain training-fold rejection without relaxing any acceptance thresholds."""
     if not folds:
@@ -528,12 +543,7 @@ def main():
             run_breakout_retest(rows, params, split, len(rows), fee_rate=0.0005, slippage_rate=0.0018, funding_rates=historical_funding, symbol=args.symbol),
         ]
         compact = [{k: value for k, value in result.items() if k != "trade_log"} for result in results]
-        passed = all(
-            isinstance(item.get("net_return_pct"), (int, float)) and math.isfinite(item["net_return_pct"])
-            and item["net_return_pct"] > 0
-            and profit_factor_above_one(item.get("profit_factor"))
-            for item in compact
-        )
+        passed = passes_cost_robustness(compact)
         direction_holdout[direction] = {
             "status": "PASS_PRELIMINARY_ONLY" if passed else "FAIL_COST_ROBUSTNESS",
             "parameters": params,
@@ -564,11 +574,7 @@ def main():
                                                  for source in sorted({event.get("mark_price_source", "unspecified") for event in historical_funding})}}
                          if historical_funding is not None else {"records": 0, "source": None}),
         "cost_robustness_gate": ({"status": "NOT_EVALUATED"} if not selected else
-            {"status": "PASS_PRELIMINARY_ONLY" if all(
-                isinstance(item.get("net_return_pct"), (int, float)) and math.isfinite(item["net_return_pct"])
-                and item["net_return_pct"] > 0
-                and profit_factor_above_one(item.get("profit_factor"))
-                for item in (holdout, stress, severe)) else "FAIL_COST_ROBUSTNESS",
+            {"status": "PASS_PRELIMINARY_ONLY" if passes_cost_robustness((holdout, stress, severe)) else "FAIL_COST_ROBUSTNESS",
              "not_production_approval": True}),
         "warnings": ["Research only; funding is included only when historical funding CSV is supplied.",
                      "Funding settlement timestamps are strictly after entry-bar open through exit-bar open.",
