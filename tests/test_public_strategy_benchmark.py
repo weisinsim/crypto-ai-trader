@@ -75,7 +75,8 @@ def test_loader_rejects_short_dataset(tmp_path: Path):
 def test_loader_rejects_missing_hourly_candles(tmp_path: Path):
     path = tmp_path / "gap.csv"
     data = rows(250)
-    data[125]["t"] += 3_600_000
+    for row in data[125:]:
+        row["t"] += 3_600_000
     with path.open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=["t", "o", "h", "l", "c", "v"])
         writer.writeheader()
