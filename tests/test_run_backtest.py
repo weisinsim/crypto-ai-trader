@@ -3,10 +3,26 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from research.run_backtest import load_csv, load_funding_csv, max_drawdown_pct
+from research.run_backtest import (build_walk_forward_windows, load_csv, load_funding_csv,
+                                   max_drawdown_pct)
 
 
 class RunnerInputTests(unittest.TestCase):
+    def test_walk_forward_windows_cover_evaluation_range_without_gaps(self):
+        windows = build_walk_forward_windows(n=103, start_eval=40, folds=3, min_bars=10)
+        self.assertEqual(windows[0][0], 40)
+        self.assertEqual(windows[-1][1], 103)
+        self.assertTrue(all(left[1] == right[0] for left, right in zip(windows, windows[1:])))
+        self.assertEqual(sum(end - start for start, end in windows), 63)
+
+    def test_walk_forward_windows_reject_too_short_folds(self):
+        with self.assertRaisesRegex(ValueError, "insufficient bars per walk-forward fold"):
+            build_walk_forward_windows(n=100, start_eval=80, folds=4, min_bars=6)
+
+    def test_walk_forward_windows_reject_single_fold(self):
+        with self.assertRaisesRegex(ValueError, "folds must be >= 2"):
+            build_walk_forward_windows(n=100, start_eval=60, folds=1, min_bars=5)
+
     def test_max_drawdown_uses_only_supplied_window_points(self):
         earlier_history = [{"t": 0, "equity": 1.0}, {"t": 1, "equity": 0.5}]
         later_window = [{"t": 2, "equity": 1.0}, {"t": 3, "equity": 0.9}]
