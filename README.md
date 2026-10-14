@@ -22,6 +22,24 @@ python -m research.run_backtest --csv data/BTCUSDT_1h.csv --symbol BTCUSDT --int
 
 The runner rejects missing or irregular candle timestamps. Reports are marked `RESEARCH_ONLY`; the EMA baseline is a software/data-pipeline smoke test, not an optimized or approved trading model. The current funding input is a constant assumption, not historical realized funding.
 
+
+## Live-trading safety gate (pre-trade only)
+
+The current live order gate is deliberately fail-closed and is not an exchange execution adapter. It approves or rejects a proposed order snapshot; it never sends orders or manages an exchange account. Use it only after collecting authoritative, fresh inputs from the exchange and portfolio/risk service:
+
+```python
+from validation.promotion_gate import evaluate_live_order_gate
+
+decision = evaluate_live_order_gate(snapshot, limits)
+if not decision["approved"]:
+    # Do not submit; record decision["reasons"] and remain flat.
+    pass
+```
+
+The snapshot must include exchange health, kill-switch state, confirmed closed-candle status, model status, actionable direction, market/analysis age, spread, risk fraction, daily loss, open-position count and requested notional. Limits must be explicitly configured by the operator. Missing, non-finite or out-of-limit values fail closed. Only a model explicitly marked `PRODUCTION` can pass this gate; current research models are not thereby promoted. A passing decision is **not** evidence of profitability or permission to connect order submission automatically.
+
+Before enabling exchange execution, separately implement and validate idempotent order handling, exchange position reconciliation, reduce-only protective exits, partial-fill recovery, precision/minimum-notional checks, rate-limit/reconnect handling, persistent kill switch, daily loss stop, and testnet/paper soak with signal/replay parity. Never put API keys in source control.
+
 ## Research status and promotion criteria
 
 A passing unit test or successful compile validates software behavior only; it is not evidence of strategy profitability. Do not promote any model to production without a reproducible, independently reviewable report that documents:
