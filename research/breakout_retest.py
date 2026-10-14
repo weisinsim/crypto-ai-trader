@@ -316,7 +316,7 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
                 # Exclude settlement exactly at entry-bar open; OHLC data cannot
                 # resolve whether the position existed before that settlement.
                 funding_pnl, funding_events = indexed_funding_cashflow(
-                    side, qty, entry_ts, exit_ts
+                    side, qty, entry_ts, exit_ts, funding_times, funding_prefix
                 )
                 pnl = gross - costs + funding_pnl
                 before = equity
