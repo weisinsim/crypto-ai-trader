@@ -1,7 +1,7 @@
 import math
 import unittest
 
-from research.breakout_retest import GRID, atr_values, build_indicator_cache, candidate_rejection_reasons, build_funding_prefix_index, funding_cashflow, indexed_funding_cashflow, marked_equity_after_costs_and_funding, profit_factor_above_one, resolve_ohlc_exit, run_breakout_retest
+from research.breakout_retest import GRID, apply_realized_pnl, atr_values, build_indicator_cache, candidate_rejection_reasons, build_funding_prefix_index, funding_cashflow, indexed_funding_cashflow, marked_equity_after_costs_and_funding, profit_factor_above_one, resolve_ohlc_exit, run_breakout_retest
 
 
 def make_rows(n=240):
@@ -287,6 +287,22 @@ class BreakoutRetestTests(unittest.TestCase):
         self.assertAlmostEqual(without_funding, 1.0015)
         self.assertAlmostEqual(with_adverse_funding, 0.9985)
         self.assertGreater(dd_with_adverse_funding, dd_without_funding)
+
+    def test_realized_pnl_equity_floor_flags_account_failure(self):
+        equity, floor_hit = apply_realized_pnl(1.0, -0.4)
+        self.assertAlmostEqual(equity, 0.6)
+        self.assertFalse(floor_hit)
+
+        equity, floor_hit = apply_realized_pnl(1.0, -1.2)
+        self.assertEqual(equity, 0.000001)
+        self.assertTrue(floor_hit)
+
+    def test_realized_pnl_equity_floor_rejects_invalid_inputs(self):
+        for values in ((0.0, -0.1), (1.0, float("nan")), (1.0, 0.0, 0.0),
+                       (True, -0.1), (1.0, True)):
+            with self.subTest(values=values):
+                with self.assertRaises(ValueError):
+                    apply_realized_pnl(*values)
 
     def test_marked_equity_rejects_invalid_inputs(self):
         for values in ((float("nan"), 0, 0, 0), (1, 0, -0.1, 0), (1, 0, 0, float("inf"))):
