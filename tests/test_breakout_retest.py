@@ -1,6 +1,6 @@
 import unittest
 
-from research.breakout_retest import GRID, atr_values, build_indicator_cache, candidate_rejection_reasons, build_funding_prefix_index, funding_cashflow, indexed_funding_cashflow, marked_equity_after_costs_and_funding, profit_factor_above_one, run_breakout_retest
+from research.breakout_retest import GRID, atr_values, build_indicator_cache, candidate_rejection_reasons, build_funding_prefix_index, funding_cashflow, indexed_funding_cashflow, marked_equity_after_costs_and_funding, profit_factor_above_one, resolve_ohlc_exit, run_breakout_retest
 
 
 def make_rows(n=240):
@@ -30,6 +30,37 @@ def make_rows(n=240):
 
 
 class BreakoutRetestTests(unittest.TestCase):
+    def test_ohlc_exit_stop_wins_when_both_barriers_touched(self):
+        long_bar = {"o": 100.0, "h": 112.0, "l": 88.0, "c": 103.0}
+        short_bar = {"o": 100.0, "h": 112.0, "l": 88.0, "c": 97.0}
+        self.assertEqual(resolve_ohlc_exit(1, long_bar, 90.0, 110.0), (90.0, "STOP"))
+        self.assertEqual(resolve_ohlc_exit(-1, short_bar, 110.0, 90.0), (110.0, "STOP"))
+
+    def test_ohlc_exit_accounts_for_gaps_through_stop(self):
+        self.assertEqual(
+            resolve_ohlc_exit(1, {"o": 85.0, "h": 95.0, "l": 80.0, "c": 90.0}, 90.0, 110.0),
+            (85.0, "STOP"),
+        )
+        self.assertEqual(
+            resolve_ohlc_exit(-1, {"o": 115.0, "h": 120.0, "l": 105.0, "c": 110.0}, 110.0, 90.0),
+            (115.0, "STOP"),
+        )
+
+    def test_ohlc_exit_returns_target_or_no_exit(self):
+        self.assertEqual(
+            resolve_ohlc_exit(1, {"o": 100.0, "h": 111.0, "l": 95.0, "c": 108.0}, 90.0, 110.0),
+            (110.0, "TARGET"),
+        )
+        self.assertIsNone(
+            resolve_ohlc_exit(-1, {"o": 100.0, "h": 105.0, "l": 95.0, "c": 99.0}, 110.0, 90.0),
+        )
+
+    def test_ohlc_exit_rejects_invalid_bar_data(self):
+        with self.assertRaisesRegex(ValueError, "ordering"):
+            resolve_ohlc_exit(1, {"o": 100.0, "h": 90.0, "l": 95.0, "c": 99.0}, 90.0, 110.0)
+        with self.assertRaisesRegex(ValueError, "side"):
+            resolve_ohlc_exit(0, {"o": 100.0, "h": 105.0, "l": 95.0, "c": 99.0}, 90.0, 110.0)
+
     def test_direction_summary_reports_best_candidate_per_direction(self):
         from research.breakout_retest import candidate_rejection_reasons
         candidates = [
