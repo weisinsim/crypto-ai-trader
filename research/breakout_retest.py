@@ -351,12 +351,16 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
                     "entry_time": rows[entry_idx]["t"], "exit_time": rows[exit_idx]["t"],
                     "entry": round(entry, 8), "stop": round(stop, 8), "target": round(target, 8),
                     "exit": round(exit_price, 8), "reason": reason,
-                    "pnl_equity": round(equity - before, 8),
+                    # Report the realized trade PnL independently from the equity
+                    # floor used to prevent subsequent sizing with non-positive equity.
+                    "equity_before": round(before, 8),
+                    "equity_after": round(equity, 8),
+                    "pnl_equity": round(pnl, 8),
                     "gross_pnl_equity": round(gross, 8),
                     "trading_cost_equity": round(costs, 8),
                     "funding_pnl_equity": round(funding_pnl, 8),
                     "funding_events": funding_events,
-                    "return_pct": round((equity / before - 1) * 100, 5),
+                    "return_pct": round(pnl / before * 100, 5),
                 })
                 peak = max(peak, equity)
                 if peak > 0:
