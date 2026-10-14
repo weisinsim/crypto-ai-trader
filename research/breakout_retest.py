@@ -155,6 +155,12 @@ def indexed_funding_cashflow(side: int, quantity: float, entry_ts: int, exit_ts:
         raise ValueError("invalid side, quantity, or trade timestamps")
     if len(funding_prefix) != len(funding_times) + 1:
         raise ValueError("funding prefix index is inconsistent")
+    if (any(isinstance(ts, bool) or not isinstance(ts, int) or ts < 0 for ts in funding_times)
+            or any(right <= left for left, right in zip(funding_times, funding_times[1:]))
+            or any(isinstance(value, bool) or not isinstance(value, (int, float))
+                   or not math.isfinite(value) for value in funding_prefix)
+            or not funding_prefix or funding_prefix[0] != 0.0):
+        raise ValueError("funding prefix index contains invalid or unsorted values")
     left = bisect_right(funding_times, entry_ts)
     right = bisect_right(funding_times, exit_ts)
     return -side * quantity * (funding_prefix[right] - funding_prefix[left]), right - left
