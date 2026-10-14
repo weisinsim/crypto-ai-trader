@@ -165,19 +165,15 @@ def run_ema_cross_backtest(
                 raise ValueError("funding events require finite rates and positive finite mark prices")
             if previous_funding_ts == raw_funding_ts:
                 raise ValueError(f"duplicate funding timestamp: {raw_funding_ts}")
-            # Exchange funding timestamps can differ from candle-open timestamps
-            # by a few milliseconds. Normalize only tiny clock/serialization offsets;
-            # never map a materially off-grid event to an hourly candle.
-            if raw_funding_ts in candle_timestamp_set:
-                funding_ts = raw_funding_ts
-            else:
-                nearest_ts = min(candle_timestamps, key=lambda ts: abs(ts - raw_funding_ts))
-                if abs(nearest_ts - raw_funding_ts) > 1000:
-                    raise ValueError(
-                        f"funding timestamp {raw_funding_ts} is {abs(nearest_ts - raw_funding_ts)}ms "
-                        "from the nearest candle open (>1000ms); use event-aware execution data"
-                    )
-                funding_ts = nearest_ts
+            # Never snap a funding event to a nearby candle. Even a small
+            # timestamp offset makes settlement eligibility ambiguous in OHLC data.
+            # Use exact event-aware execution data or reject this backtest input.
+            if raw_funding_ts not in candle_timestamp_set:
+                raise ValueError(
+                    f"funding timestamp {raw_funding_ts} does not exactly match a candle open; "
+                    "approximate timestamp normalization is disabled"
+                )
+            funding_ts = raw_funding_ts
             if funding_ts in funding_events:
                 raise ValueError(f"funding events normalize to duplicate candle timestamp: {funding_ts}")
             funding_events[funding_ts] = {"funding_rate": rate, "mark_price": mark_price}
