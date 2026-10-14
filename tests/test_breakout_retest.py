@@ -264,6 +264,11 @@ class BreakoutRetestTests(unittest.TestCase):
                 + trade["funding_pnl_equity"],
                 places=7,
             )
+            self.assertAlmostEqual(
+                trade["equity_after"],
+                max(0.000001, trade["equity_before"] + trade["pnl_equity"]),
+                places=7,
+            )
             self.assertTrue(math.isfinite(result["max_drawdown_pct"]))
             self.assertGreaterEqual(result["max_drawdown_pct"], 0.0)
 
