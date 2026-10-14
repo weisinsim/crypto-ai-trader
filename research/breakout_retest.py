@@ -420,6 +420,8 @@ def candidate_rejection_reasons(folds: list[dict], score: float) -> list[str]:
     returns = [float(f["net_return_pct"]) for f in folds]
     trades = [int(f["trades"]) for f in folds]
     reasons = []
+    if any(f.get("equity_floor_hit", False) for f in folds):
+        reasons.append("equity_floor_hit")
     if sum(trades) < 12:
         reasons.append("total_trades_below_12")
     if any(n < 2 for n in trades):
