@@ -439,6 +439,15 @@ class BreakoutRetestTests(unittest.TestCase):
         self.assertAlmostEqual(pnl, -2.0)
         self.assertEqual(count, 2)
 
+    def test_candidate_rejected_if_any_fold_hits_equity_floor(self):
+        folds = [
+            {"trades": 5, "net_return_pct": 2.0},
+            {"trades": 5, "net_return_pct": 1.0},
+            {"trades": 5, "net_return_pct": -1.0, "equity_floor_hit": True},
+        ]
+        reasons = candidate_rejection_reasons(folds, score=1.0)
+        self.assertIn("equity_floor_hit", reasons)
+
     def test_candidate_rejection_reasons_explain_weak_folds(self):
         folds = [
             {"trades": 5, "net_return_pct": 2.0},
