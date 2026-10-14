@@ -49,6 +49,8 @@ Before enabling exchange execution, separately implement and validate idempotent
 
 `validation/daily_loss_guard.py` tracks realized-PnL events against an explicit UTC date and a configured positive loss limit. At or below the loss threshold it locks new entries for that UTC day; the lock remains in place even if later PnL recovers, and duplicate event IDs are idempotent. Optional JSON persistence supports restart recovery and fails closed on unreadable or unsupported ledgers. The caller must supply authoritative realized PnL (including fees/funding if desired); this module does not connect to exchanges, calculate unrealized PnL, coordinate multiple processes, or independently block any order route. Integrate it as one input to a fail-closed entry gate; do not treat it as production risk infrastructure.
 
+`validation/guarded_order_gate.py` composes the existing pre-trade decision helper with the daily-loss lock and adds `PERSISTENT_DAILY_LOSS_LOCKED` when the day is locked. This is testable decision logic only, not a guarantee that every caller uses it and not an order-submission mechanism. Any future execution adapter must enforce one centralized, fail-closed gate and reconcile actual exchange state before any production use.
+
 ## Research status and promotion criteria
 
 A passing unit test or successful compile validates software behavior only; it is not evidence of strategy profitability. Do not promote any model to production without a reproducible, independently reviewable report that documents:
