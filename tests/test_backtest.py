@@ -211,16 +211,15 @@ class BacktestTests(unittest.TestCase):
             run_ema_cross_backtest(rows, fast=3, slow=9, atr_period=3,
                                    funding_rates=[event, event])
 
-    def test_funding_timestamp_with_small_millisecond_offset_is_normalized(self):
+    def test_funding_timestamp_with_small_millisecond_offset_is_rejected(self):
         rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(100)])
         event_ts = rows[50]["t"] + 13
-        result = run_ema_cross_backtest(
-            rows, fast=3, slow=9, atr_period=3, fee_rate=0, slippage_rate=0,
-            funding_rates=[{"funding_time": event_ts, "funding_rate": 0.001,
-                            "mark_price": 100.0}],
-        )
-        self.assertEqual(result["status"], "COMPLETED")
-
+        with self.assertRaisesRegex(ValueError, "does not exactly match a candle open"):
+            run_ema_cross_backtest(
+                rows, fast=3, slow=9, atr_period=3, fee_rate=0, slippage_rate=0,
+                funding_rates=[{"funding_time": event_ts, "funding_rate": 0.001,
+                                "mark_price": 100.0}],
+            )
     def test_funding_timestamp_far_from_candle_open_is_rejected(self):
         rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(100)])
         event_ts = rows[50]["t"] + 1001
