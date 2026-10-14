@@ -115,10 +115,36 @@ def run_ema_cross_backtest(
         candle_timestamps = sorted(int(row["t"]) for row in rows)
         candle_timestamp_set = set(candle_timestamps)
         previous_funding_ts = None
-        for event in sorted(list(funding_rates), key=lambda item: int(item["funding_time"])):
-            raw_funding_ts = int(event["funding_time"])
-            rate = float(event["funding_rate"])
-            mark_price = float(event["mark_price"])
+        parsed_events = []
+        for index, event in enumerate(funding_rates):
+            if not isinstance(event, dict):
+                raise ValueError(f"funding event {index} must be a mapping")
+            if "funding_time" not in event or "funding_rate" not in event or "mark_price" not in event:
+                raise ValueError(
+                    f"funding event {index} requires funding_time, funding_rate, and mark_price"
+                )
+            raw_ts = event["funding_time"]
+            if isinstance(raw_ts, bool):
+                raise ValueError(f"funding event {index} timestamp must be an integer millisecond value")
+            if isinstance(raw_ts, int):
+                raw_funding_ts = raw_ts
+            elif isinstance(raw_ts, float) and isfinite(raw_ts) and raw_ts.is_integer():
+                raw_funding_ts = int(raw_ts)
+            elif isinstance(raw_ts, str) and raw_ts.strip().isdigit():
+                raw_funding_ts = int(raw_ts.strip())
+            else:
+                raise ValueError(f"funding event {index} timestamp must be an integer millisecond value")
+            if raw_funding_ts < 0:
+                raise ValueError(f"funding event {index} timestamp cannot be negative")
+            try:
+                rate = float(event["funding_rate"])
+                mark_price = float(event["mark_price"])
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"funding event {index} has invalid numeric fields") from exc
+            if isinstance(event["funding_rate"], bool) or isinstance(event["mark_price"], bool):
+                raise ValueError(f"funding event {index} has invalid numeric fields")
+            parsed_events.append((raw_funding_ts, rate, mark_price))
+        for raw_funding_ts, rate, mark_price in sorted(parsed_events, key=lambda item: item[0]):
             if not isfinite(rate) or not isfinite(mark_price) or mark_price <= 0:
                 raise ValueError("funding events require finite rates and positive finite mark prices")
             if previous_funding_ts == raw_funding_ts:
