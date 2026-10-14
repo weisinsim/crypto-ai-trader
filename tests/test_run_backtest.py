@@ -75,6 +75,13 @@ class RunnerInputTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "exactly one"):
             load_funding_csv(path)
 
+    def test_load_funding_csv_rejects_negative_timestamp(self):
+        path = self._write_funding_csv([
+            {"funding_time": -1, "funding_rate": "0.001", "mark_price": "100", "symbol": "BTCUSDT"},
+        ])
+        with self.assertRaisesRegex(ValueError, "negative settlement timestamps"):
+            load_funding_csv(path)
+
     def test_load_funding_csv_rejects_non_finite_rate(self):
         path = self._write_funding_csv([
             {"funding_time": 100, "funding_rate": "nan", "mark_price": "100", "symbol": "BTCUSDT"},
