@@ -36,6 +36,19 @@ class RunnerInputTests(unittest.TestCase):
     def test_max_drawdown_empty_curve_is_zero(self):
         self.assertEqual(max_drawdown_pct([]), 0.0)
 
+    def test_max_drawdown_rejects_non_positive_or_non_finite_starting_equity(self):
+        for initial in (0, -1, float("nan"), float("inf")):
+            with self.subTest(initial=initial):
+                with self.assertRaisesRegex(ValueError, "initial_equity must be finite and positive"):
+                    max_drawdown_pct([], initial_equity=initial)
+
+    def test_max_drawdown_rejects_non_finite_curve_equity(self):
+        for value in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "non-finite values"):
+                    max_drawdown_pct([{"t": 1, "equity": value}])
+
+
     def _write_csv(self, timestamps):
         handle = tempfile.NamedTemporaryFile(mode="w", newline="", encoding="utf-8", delete=False)
         writer = csv.DictWriter(handle, fieldnames=("t", "o", "h", "l", "c", "v", "q"))
