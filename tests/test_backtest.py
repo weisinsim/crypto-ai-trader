@@ -70,7 +70,7 @@ class BacktestTests(unittest.TestCase):
         rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(240)])
         result = run_ema_cross_backtest(
             rows, fast=3, slow=9, atr_period=3, fee_rate=0.99,
-            slippage_rate=0, risk_fraction=0.01,
+            slippage_rate=0, risk_fraction=1.0,
         )
         self.assertTrue(result["equity_floor_hit"])
         self.assertAlmostEqual(result["equity_final"], 1e-6)
