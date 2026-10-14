@@ -40,7 +40,8 @@ class PaperReconciliationTests(unittest.TestCase):
         book.evaluate_protective_exit("closed", {"h": 110, "l": 75})
         result = reconcile_paper_positions(book.orders)
         self.assertEqual(result["BTCUSDT"]["net_quantity"], 0.0)
-        self.assertNotIn("ETHUSDT", result)
+        self.assertEqual(result["ETHUSDT"]["net_quantity"], 0.0)
+        self.assertEqual(result["ETHUSDT"]["open_quantity"], 0.0)
 
     def test_malformed_ledger_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "inconsistent filled order"):
