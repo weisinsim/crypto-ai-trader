@@ -126,6 +126,27 @@ def marked_equity_after_costs_and_funding(equity: float, mark_pnl: float,
         raise ValueError("invalid marked-equity inputs")
     return max(0.000001, equity + mark_pnl - mark_costs + mark_funding)
 
+
+def resolve_ohlc_exit(side: int, bar: dict, stop: float, target: float) -> tuple[float, str] | None:
+    """Resolve stop/target touches conservatively from OHLC; stop wins ambiguous bars."""
+    if side not in (-1, 1) or isinstance(side, bool):
+        raise ValueError("side must be -1 or 1")
+    values = [float(bar[key]) for key in ("o", "h", "l", "c")] + [float(stop), float(target)]
+    if any(not math.isfinite(value) for value in values):
+        raise ValueError("OHLC exit values must be finite")
+    open_price, high, low, close, stop, target = values
+    if low > high or not (low <= open_price <= high and low <= close <= high):
+        raise ValueError("invalid OHLC price ordering")
+    stop_hit = low <= stop if side == 1 else high >= stop
+    target_hit = high >= target if side == 1 else low <= target
+    if stop_hit:
+        # If the market gaps through the stop at the open, use the worse open price.
+        exit_price = min(stop, open_price) if side == 1 else max(stop, open_price)
+        return exit_price, "STOP"
+    if target_hit:
+        return target, "TARGET"
+    return None
+
 def build_funding_prefix_index(funding_rates: list[dict] | None) -> tuple[list[int], list[float]]:
     """Build a sorted prefix index whose interval semantics match funding_cashflow."""
     events = list(funding_rates or [])
@@ -303,17 +324,10 @@ def run_breakout_retest(rows: list[dict], params: dict, start_idx: int, end_idx:
                     peak = max(peak, close_equity)
                     if peak > 0:
                         max_dd = max(max_dd, (peak - adverse_equity) / peak)
-                    stop_hit = bar["l"] <= stop if side == 1 else bar["h"] >= stop
-                    target_hit = bar["h"] >= target if side == 1 else bar["l"] <= target
-                    # Conservative tie-break: if both barriers touch in one candle, stop wins.
-                    if stop_hit:
+                    resolved_exit = resolve_ohlc_exit(side, bar, stop, target)
+                    if resolved_exit is not None:
+                        exit_price, reason = resolved_exit
                         exit_idx = m
-                        exit_price = (min(stop, float(bar["o"])) if side == 1
-                                      else max(stop, float(bar["o"])))
-                        reason = "STOP"
-                        break
-                    if target_hit:
-                        exit_idx, exit_price, reason = m, target, "TARGET"
                         break
                 gross = qty * (exit_price - entry) * side
                 costs = qty * (entry + exit_price) * (fee_rate + slippage_rate)
