@@ -105,6 +105,48 @@ def run_cost_stress_scenarios(
         )
         scenarios[name] = _metrics(result, fee, slippage)
 
+    base_metrics = scenarios["base"]
+    comparisons = {}
+    for name in ("stress", "severe_stress"):
+        stressed = scenarios[name]
+        comparisons[name] = {
+            "net_return_change_vs_base_pct_points": (
+                round(stressed["net_return_pct"] - base_metrics["net_return_pct"], 4)
+                if isinstance(stressed.get("net_return_pct"), (int, float))
+                and isinstance(base_metrics.get("net_return_pct"), (int, float))
+                and math.isfinite(stressed["net_return_pct"])
+                and math.isfinite(base_metrics["net_return_pct"]) else None
+            ),
+            "max_drawdown_change_vs_base_pct_points": (
+                round(stressed["max_drawdown_pct"] - base_metrics["max_drawdown_pct"], 4)
+                if isinstance(stressed.get("max_drawdown_pct"), (int, float))
+                and isinstance(base_metrics.get("max_drawdown_pct"), (int, float))
+                and math.isfinite(stressed["max_drawdown_pct"])
+                and math.isfinite(base_metrics["max_drawdown_pct"]) else None
+            ),
+            "profit_factor_change_vs_base": (
+                round(stressed["profit_factor"] - base_metrics["profit_factor"], 4)
+                if isinstance(stressed.get("profit_factor"), (int, float))
+                and isinstance(base_metrics.get("profit_factor"), (int, float))
+                and math.isfinite(stressed["profit_factor"])
+                and math.isfinite(base_metrics["profit_factor"]) else None
+            ),
+        }
+    # This is a conservative diagnostic, not an approval gate: the EMA baseline
+    # runner is a research tool and does not establish live execution parity.
+    comparisons["diagnostic_gate"] = {
+        "criteria": "all three reruns completed, no equity floor hit, net return > 0, PF > 1.15",
+        "pass": all(
+            item.get("status") == "COMPLETED"
+            and item.get("equity_floor_hit") is False
+            and isinstance(item.get("net_return_pct"), (int, float))
+            and math.isfinite(item["net_return_pct"]) and item["net_return_pct"] > 0
+            and isinstance(item.get("profit_factor"), (int, float))
+            and math.isfinite(item["profit_factor"]) and item["profit_factor"] > 1.15
+            for item in scenarios.values()
+        ),
+        "production_approval": False,
+    }
     return {
         "status": "FULL_BACKTEST_RERUNS",
         "evaluation_window": {
@@ -113,6 +155,7 @@ def run_cost_stress_scenarios(
             "last_candle_ts": rows[-1].get("t"),
             "bars": len(rows),
         },
+        "comparisons_vs_base": comparisons,
         "scenario_assumptions": {
             "stress_multiplier": stress,
             "severe_stress_multiplier": severe,
