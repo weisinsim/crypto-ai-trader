@@ -161,6 +161,42 @@ class WalkForwardCostStressSummaryTests(unittest.TestCase):
         self.assertFalse(gate["pass"])
         self.assertEqual(gate["folds_passing_all_three_cost_scenarios"], 0)
 
+    def test_candidate_gate_rejects_passing_flag_with_failed_scenario_metrics(self):
+        contradictory = {
+            "robustness_screen": {"pass": True},
+            "scenarios": {
+                "base": {"status": "COMPLETED", "net_return_pct": 1.0,
+                         "max_drawdown_pct": 3.0, "profit_factor": 1.3},
+                "stress": {"status": "COMPLETED", "net_return_pct": -0.1,
+                           "max_drawdown_pct": 4.0, "profit_factor": 1.2},
+                "severe_stress": {"status": "COMPLETED", "net_return_pct": 0.2,
+                                  "max_drawdown_pct": 5.0, "profit_factor": 1.16},
+            },
+        }
+        summary = summarize_walk_forward_cost_stress([
+            {"fold": 1, "trades": 40, "cost_stress": contradictory},
+        ])
+        gate = summary["walk_forward_candidate_gate"]
+        self.assertFalse(gate["pass"])
+        self.assertEqual(gate["folds_passing_all_three_cost_scenarios"], 0)
+
+    def test_candidate_gate_rejects_equity_floor_hit_even_if_flagged_passing(self):
+        floor_hit = {
+            "robustness_screen": {"pass": True},
+            "scenarios": {
+                name: {"status": "COMPLETED", "net_return_pct": 1.0,
+                       "max_drawdown_pct": 3.0, "profit_factor": 1.3}
+                for name in ("base", "stress", "severe_stress")
+            },
+        }
+        floor_hit["scenarios"]["severe_stress"]["equity_floor_hit"] = True
+        summary = summarize_walk_forward_cost_stress([
+            {"fold": 1, "trades": 40, "cost_stress": floor_hit},
+        ])
+        gate = summary["walk_forward_candidate_gate"]
+        self.assertFalse(gate["pass"])
+        self.assertEqual(gate["folds_passing_all_three_cost_scenarios"], 0)
+
     def test_candidate_gate_fails_when_any_fold_fails_cost_stress(self):
         good = {"robustness_screen": {"pass": True}, "scenarios": {}}
         bad = {"robustness_screen": {"pass": False}, "scenarios": {}}
