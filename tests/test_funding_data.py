@@ -35,6 +35,16 @@ class FundingDataTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "integer timestamps"):
                     parse_funding_rows(valid, "BTCUSDT", start, end)
 
+    def test_parse_rejects_response_symbol_mismatch(self):
+        mismatched = {**record(100), "symbol": "ETHUSDT"}
+        with self.assertRaisesRegex(ValueError, "funding response symbol mismatch"):
+            parse_funding_rows([mismatched], "BTCUSDT", 0, 200)
+
+    def test_parse_accepts_matching_response_symbol_case_insensitively(self):
+        matching = {**record(100), "symbol": "btcusdt"}
+        rows = parse_funding_rows([matching], "BTCUSDT", 0, 200)
+        self.assertEqual(rows[0]["symbol"], "BTCUSDT")
+
     def test_parse_filters_range_and_sorts(self):
         rows = parse_funding_rows([record(200), record(100), record(300)], "btcusdt", 100, 300)
         self.assertEqual([r["funding_time"] for r in rows], [100, 200])
