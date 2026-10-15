@@ -81,6 +81,22 @@ jobs:
               errors.append("file size mismatch")
           if manifest.get("source_authenticity_verified") is not False:
               errors.append("manifest must not claim source authenticity is verified")
+          evidence = manifest.get("request_evidence", {})
+          requests = evidence.get("requests", [])
+          if evidence.get("request_count") != len(requests):
+              errors.append("request evidence count mismatch")
+          if not requests:
+              errors.append("request evidence is empty")
+          for index, request in enumerate(requests):
+              if request.get("status_code") not in range(100, 600):
+                  errors.append(f"request {index} has invalid HTTP status")
+              if request.get("payload_bytes", -1) < 0:
+                  errors.append(f"request {index} has invalid payload size")
+              digest = request.get("payload_sha256", "")
+              if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+                  errors.append(f"request {index} has invalid SHA-256")
+              if not request.get("source") or not request.get("url", "").startswith("https://"):
+                  errors.append(f"request {index} is missing source or HTTPS URL")
           if errors:
               raise SystemExit("Candle manifest verification failed: " + "; ".join(errors))
           print(json.dumps({
@@ -89,6 +105,8 @@ jobs:
               "bars": len(rows),
               "sha256": manifest["file"]["sha256"],
               "source_authenticity_verified": False,
+              "request_count": evidence["request_count"],
+              "request_sources": sorted({request["source"] for request in requests}),
           }, indent=2))
           PY
       - name: Download historical funding rates
