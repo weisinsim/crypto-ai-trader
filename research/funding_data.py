@@ -127,9 +127,12 @@ def download_funding_rates(
     records.sort(key=lambda row: row["funding_time"])
     by_time = {}
     for record in records:
-        if record["funding_time"] in by_time and by_time[record["funding_time"]] != record:
-            raise ValueError(f"conflicting funding record at {record['funding_time']}")
-        by_time[record["funding_time"]] = record
+        timestamp = record["funding_time"]
+        if timestamp in by_time:
+            if by_time[timestamp] != record:
+                raise ValueError(f"conflicting duplicate funding record at {timestamp}")
+            raise ValueError(f"duplicate funding record at {timestamp}")
+        by_time[timestamp] = record
     return list(by_time.values())
 
 
