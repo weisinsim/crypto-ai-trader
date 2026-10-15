@@ -61,6 +61,32 @@ class HistoricalDataAuditTests(unittest.TestCase):
         self.assertFalse(result["pass_basic_integrity"])
         self.assertEqual(result["invalid_ohlc_rows"], 1)
 
+    def test_negative_volume_fails_integrity_when_volume_column_exists(self):
+        tmp = tempfile.NamedTemporaryFile(mode="w", newline="", suffix=".csv", delete=False, encoding="utf-8")
+        with tmp:
+            writer = csv.DictWriter(tmp, fieldnames=["timestamp", "open", "high", "low", "close", "volume"])
+            writer.writeheader()
+            writer.writerow({"timestamp": "2025-01-01T00:59:59.999Z", "open": "100", "high": "102",
+                             "low": "99", "close": "101", "volume": "-1"})
+        path = Path(tmp.name)
+        self.addCleanup(lambda: path.unlink(missing_ok=True))
+        result = audit(path, "1h")
+        self.assertFalse(result["pass_basic_integrity"])
+        self.assertEqual(result["invalid_volume_rows"], 1)
+
+    def test_non_finite_quote_volume_fails_integrity(self):
+        tmp = tempfile.NamedTemporaryFile(mode="w", newline="", suffix=".csv", delete=False, encoding="utf-8")
+        with tmp:
+            writer = csv.DictWriter(tmp, fieldnames=["timestamp", "open", "high", "low", "close", "quote_volume"])
+            writer.writeheader()
+            writer.writerow({"timestamp": "2025-01-01T00:59:59.999Z", "open": "100", "high": "102",
+                             "low": "99", "close": "101", "quote_volume": "nan"})
+        path = Path(tmp.name)
+        self.addCleanup(lambda: path.unlink(missing_ok=True))
+        result = audit(path, "1h")
+        self.assertFalse(result["pass_basic_integrity"])
+        self.assertEqual(result["invalid_volume_rows"], 1)
+
     def test_unsupported_interval_is_rejected(self):
         row = {"timestamp": "2025-01-01T00:59:59.999Z", "open": "100", "high": "102", "low": "99", "close": "101"}
         with self.assertRaises(ValueError):
