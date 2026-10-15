@@ -156,6 +156,19 @@ jobs:
                   f"net_return_pct={fold['net_return_pct']} max_drawdown_pct={fold['max_drawdown_pct']} "
                   f"win_rate_pct={fold['win_rate_pct']} profit_factor={fold['profit_factor']}"
               )
+          stress = report["walk_forward_cost_stress_summary"]
+          print("=== WALK-FORWARD COST ROBUSTNESS SUMMARY (RESEARCH ONLY) ===")
+          print(f"fold_count={stress['fold_count']} passing_all_cost_scenarios={stress['folds_passing_all_three_cost_scenarios']} missing_stress={stress['folds_with_missing_cost_stress']}")
+          for scenario, metrics in stress["scenario_summary"].items():
+              print(
+                  f"scenario={scenario} completed={metrics['folds_completed']}/{metrics['folds_reported']} "
+                  f"positive_folds={metrics['folds_positive_return']} "
+                  f"pf_above_1_15_folds={metrics['folds_pf_above_1_15']} "
+                  f"worst_return_pct={metrics['worst_net_return_pct']} "
+                  f"worst_drawdown_pct={metrics['worst_max_drawdown_pct']} "
+                  f"lowest_numeric_pf={metrics['lowest_numeric_profit_factor']}"
+              )
+          print(f"production_approval={stress['production_approval']}")
           if report["funding_data"]["records"] == 0:
               print("WARN: historical funding unavailable; baseline excludes realized funding cashflows.")
           else:
