@@ -22,6 +22,15 @@ python -m research.run_backtest --csv data/BTCUSDT_1h.csv --symbol BTCUSDT --int
 
 The runner rejects missing or irregular candle timestamps. Reports are marked `RESEARCH_ONLY`; the EMA baseline is a software/data-pipeline smoke test, not an optimized or approved trading model. The current funding input is a constant assumption, not historical realized funding.
 
+Download Binance USD-M historical funding events for a UTC range (end date exclusive) and pass the resulting CSV to the backtest:
+
+```bash
+python -m research.binance_funding_data --symbol BTCUSDT --start 2025-01-01 --end 2026-01-01 --output data/BTCUSDT_funding.csv
+python -m research.run_backtest --csv data/BTCUSDT_1h.csv --symbol BTCUSDT --interval 1h --funding-csv data/BTCUSDT_funding.csv --output reports/BTCUSDT_1h_funding.json
+```
+
+The downloader retains Binance's reported `markPrice` field and labels its source. Its output is `DOWNLOADED_NOT_RECONCILED`: successful retrieval does not prove complete historical coverage, contract/account eligibility, or agreement with realized account cashflows. Review `validation/FUNDING_SETTLEMENT_RECONCILIATION.md` before interpreting funding PnL. Do not use synthetic fixtures as market data.
+
 
 ## Live-trading safety gate (pre-trade only)
 
