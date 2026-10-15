@@ -93,5 +93,15 @@ class PaperReconciliationTests(unittest.TestCase):
             reconcile_paper_positions({"bad-status": bad_status})
 
 
+    def test_oversized_integer_exposure_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "invalid quantity"):
+            reconcile_paper_positions({
+                "huge": {
+                    "symbol": "BTCUSDT", "side": "LONG", "status": "OPEN",
+                    "quantity": 10 ** 1000, "filled_quantity": 0,
+                }
+            })
+
+
 if __name__ == "__main__":
     unittest.main()
