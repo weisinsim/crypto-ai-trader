@@ -42,6 +42,15 @@ class RunBacktestCostStressTests(unittest.TestCase):
             self.assertEqual(report["status"], "RESEARCH_ONLY")
             self.assertIn("scenarios", report["cost_stress"])
             self.assertEqual(len(report["walk_forward"]), 4)
+            summary = report["walk_forward_cost_stress_summary"]
+            self.assertEqual(summary["fold_count"], 4)
+            self.assertEqual(summary["folds_passing_all_three_cost_scenarios"], sum(
+                fold["cost_stress"]["robustness_screen"]["pass"]
+                for fold in report["walk_forward"]
+            ))
+            self.assertEqual(summary["folds_with_missing_cost_stress"], 0)
+            self.assertIn("worst_net_return_pct", summary["scenario_summary"]["stress"])
+            self.assertFalse(summary["production_approval"])
             for fold in report["walk_forward"]:
                 self.assertIn("cost_stress", fold)
                 self.assertEqual(
