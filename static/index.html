@@ -64,7 +64,7 @@ h1{font-size:22px;margin:0 0 5px}.sub{font-size:12px;color:#9aa4b2}
 <tr><td>资金费率边界歧义标记</td><td>CI 通过</td><td><a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/commit/58117188d45ac506709ab475dd07529aa119e1fc" target="_blank" rel="noopener">边界标记修复</a> · <a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/actions/runs/38765029277" target="_blank" rel="noopener">Audit tests</a></td></tr>
 <tr><td>历史 Holdout 策略结论</td><td class="fail">未批准实盘</td><td>已知策略成本压力与独立样本门槛仍未全部通过；软件 CI 成功不代表策略盈利。</td></tr>
 </tbody></table></div>
-<div class="intro">下一项：固定同一组数据与参数，分别运行 exclude/include 两种情景，输出净收益、PF、最大回撤、资金费率现金流、结算次数和边界标记数；再检查两种假设是否改变候选晋级结论。冻结策略参数不放宽。</div>
+<div class="intro">已将 exclude/include 两种入场边界假设纳入回测 JSON 报告：分别输出净收益、PF、最大回撤、胜率、资金费率现金流、结算次数和边界标记数，并记录 include−exclude 的收益与回撤差。新增报告回归测试正在 CI 验证。没有提供历史资金费率文件时，两种情景通常不会产生差异；这不代表真实资金费率影响为零。冻结策略参数不放宽。</div>
 </section><div id="cards" class="cards"></div><div id="historyPanel" class="historyPanel"></div>
 <div class="small">V28.2：Research-Gated Dashboard。实时行情与历史回测状态分开显示；所有候选模型仍处于研究阶段，信号不保证盈利。</div>
 </div>
