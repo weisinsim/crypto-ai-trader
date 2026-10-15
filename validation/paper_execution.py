@@ -26,6 +26,20 @@ def _positive_finite(value, field):
     return converted
 
 
+def _nonnegative_finite(value, field):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{field} must be finite and non-negative")
+    try:
+        if not isfinite(value) or value < 0:
+            raise ValueError(f"{field} must be finite and non-negative")
+        converted = float(value)
+    except (OverflowError, ValueError) as exc:
+        raise ValueError(f"{field} must be finite and non-negative") from exc
+    if not isfinite(converted):
+        raise ValueError(f"{field} must be finite and non-negative")
+    return converted
+
+
 class PaperExecutionBook:
     """Paper ledger with optional atomic JSON persistence and conservative OHLC exits.
 
@@ -90,8 +104,8 @@ class PaperExecutionBook:
                 raise ValueError("invalid order status in paper ledger")
             for field in ("quantity", "stop_loss", "take_profit"):
                 _positive_finite(order[field], field)
-            filled = order["filled_quantity"]
-            if isinstance(filled, bool) or not isinstance(filled, (int, float)) or not isfinite(filled) or filled < 0 or filled > order["quantity"] + 1e-12:
+            filled = _nonnegative_finite(order["filled_quantity"], "filled quantity")
+            if filled > order["quantity"] + 1e-12:
                 raise ValueError("invalid filled quantity in paper ledger")
             if filled > 0:
                 _positive_finite(order["average_fill_price"], "average_fill_price")
@@ -204,8 +218,17 @@ class PaperExecutionBook:
         before = deepcopy(order)
         previous_qty = order["filled_quantity"]
         total_qty = previous_qty + quantity
+        if not isfinite(total_qty) or total_qty <= 0:
+            raise ValueError("cumulative fill quantity must remain finite and positive")
         old_value = (order["average_fill_price"] or 0.0) * previous_qty
-        order["average_fill_price"] = (old_value + price * quantity) / total_qty
+        new_value = price * quantity
+        combined_value = old_value + new_value
+        if not isfinite(old_value) or not isfinite(new_value) or not isfinite(combined_value):
+            raise ValueError("cumulative fill value must remain finite")
+        average_fill_price = combined_value / total_qty
+        if not isfinite(average_fill_price) or average_fill_price <= 0:
+            raise ValueError("average fill price must remain finite and positive")
+        order["average_fill_price"] = average_fill_price
         order["filled_quantity"] = total_qty
         order["status"] = "FILLED" if abs(total_qty - order["quantity"]) <= 1e-12 else "PARTIALLY_FILLED"
         if fill_id is not None:
