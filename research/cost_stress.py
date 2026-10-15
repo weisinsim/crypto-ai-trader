@@ -134,7 +134,7 @@ def run_cost_stress_scenarios(
         }
     # This is a conservative diagnostic, not an approval gate: the EMA baseline
     # runner is a research tool and does not establish live execution parity.
-    comparisons["diagnostic_gate"] = {
+    robustness_screen = {
         "criteria": "all three reruns completed, no equity floor hit, net return > 0, PF > 1.15",
         "pass": all(
             item.get("status") == "COMPLETED"
@@ -156,6 +156,7 @@ def run_cost_stress_scenarios(
             "bars": len(rows),
         },
         "comparisons_vs_base": comparisons,
+        "robustness_screen": robustness_screen,
         "scenario_assumptions": {
             "stress_multiplier": stress,
             "severe_stress_multiplier": severe,
