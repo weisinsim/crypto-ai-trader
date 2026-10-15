@@ -79,14 +79,20 @@ def build_walk_forward_windows(n: int, start_eval: int, folds: int, min_bars: in
 
 def max_drawdown_pct(points: list[dict], initial_equity: float = 1.0) -> float:
     """Compute peak-to-trough drawdown, including the evaluation's starting equity."""
-    peak = float(initial_equity)
+    try:
+        peak = float(initial_equity)
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise ValueError("initial_equity must be finite and positive") from exc
     if not math.isfinite(peak) or peak <= 0:
         raise ValueError("initial_equity must be finite and positive")
     max_dd = 0.0
-    if peak > 0:
-        max_dd = max(max_dd, (peak - float(initial_equity)) / peak)
     for point in points:
-        value = float(point["equity"])
+        if not isinstance(point, dict) or "equity" not in point:
+            raise ValueError("equity curve points must contain equity")
+        try:
+            value = float(point["equity"])
+        except (OverflowError, TypeError, ValueError) as exc:
+            raise ValueError("equity curve contains invalid values") from exc
         if not math.isfinite(value):
             raise ValueError("equity curve contains non-finite values")
         peak = max(peak, value)
