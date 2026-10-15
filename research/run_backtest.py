@@ -136,15 +136,34 @@ def summarize_walk_forward_cost_stress(walk_results: list[dict]) -> dict:
             "worst_max_drawdown_pct": round(max(valid_drawdowns), 4) if valid_drawdowns else None,
             "lowest_numeric_profit_factor": round(min(numeric_pf), 4) if numeric_pf else None,
         }
+    def _fold_stress_is_complete_and_valid(fold: dict) -> bool:
+        stress = fold.get("cost_stress")
+        if not isinstance(stress, dict):
+            return False
+        scenarios = stress.get("scenarios")
+        if not isinstance(scenarios, dict) or any(name not in scenarios for name in scenario_names):
+            return False
+        for name in scenario_names:
+            row = scenarios.get(name)
+            if not isinstance(row, dict) or row.get("status") != "COMPLETED":
+                return False
+            for metric in ("net_return_pct", "max_drawdown_pct", "profit_factor"):
+                value = row.get(metric)
+                if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                    return False
+            if row["max_drawdown_pct"] < 0 or row["max_drawdown_pct"] > 100:
+                return False
+            if row["profit_factor"] < 0:
+                return False
+        return stress.get("robustness_screen", {}).get("pass") is True
+
     missing_stress = sum(
         not isinstance(fold.get("cost_stress"), dict)
         or not isinstance(fold.get("cost_stress", {}).get("scenarios"), dict)
+        or any(name not in fold.get("cost_stress", {}).get("scenarios", {}) for name in scenario_names)
         for fold in walk_results
     )
-    passing_stress = sum(
-        fold.get("cost_stress", {}).get("robustness_screen", {}).get("pass") is True
-        for fold in walk_results
-    )
+    passing_stress = sum(_fold_stress_is_complete_and_valid(fold) for fold in walk_results)
     minimum_trades_per_fold = 30
     under_sampled_folds = [
         fold.get("fold") for fold in walk_results
