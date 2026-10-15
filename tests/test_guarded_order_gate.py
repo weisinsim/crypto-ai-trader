@@ -9,6 +9,7 @@ class GuardedOrderGateTests(unittest.TestCase):
         self.snapshot = {
             "exchange_healthy": True,
             "kill_switch_active": False,
+            "live_execution_enabled": True,
             "candle_closed": True,
             "model_status": "PRODUCTION",
             "signal": "LONG",
