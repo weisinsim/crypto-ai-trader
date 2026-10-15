@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from research.run_backtest import main, summarize_walk_forward_cost_stress
+from research.run_backtest import main, max_drawdown_pct, summarize_walk_forward_cost_stress
 
 
 class RunBacktestCostStressTests(unittest.TestCase):
@@ -82,6 +82,24 @@ class RunBacktestCostStressTests(unittest.TestCase):
                 )
                 self.assertEqual(fold["cost_stress"]["evaluation_window"]["start_ts"], fold["start_ts"])
                 self.assertFalse(fold["cost_stress"]["robustness_screen"]["production_approval"])
+
+
+class DrawdownMetricValidationTests(unittest.TestCase):
+    def test_oversized_or_invalid_equity_values_fail_closed(self):
+        for initial in (10 ** 1000, None, float("inf")):
+            with self.subTest(initial=initial), self.assertRaisesRegex(ValueError, "initial_equity"):
+                max_drawdown_pct([], initial_equity=initial)
+        for points in (
+            [{"equity": 10 ** 1000}],
+            [{"equity": float("nan")}],
+            [None],
+            [{}],
+        ):
+            with self.subTest(points=points), self.assertRaises(ValueError):
+                max_drawdown_pct(points)
+
+    def test_drawdown_includes_starting_equity(self):
+        self.assertEqual(max_drawdown_pct([{"equity": 0.8}, {"equity": 1.2}, {"equity": 0.9}]), 20.0)
 
 
 class WalkForwardCostStressSummaryTests(unittest.TestCase):
