@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -11,6 +12,24 @@ from statistics import mean
 from research.backtest import run_ema_cross_backtest, validate_candles
 from research.funding_sensitivity import summarize_funding_scenarios
 from research.cost_stress import run_cost_stress_scenarios
+
+
+def source_file_manifest(path: str | None) -> dict:
+    """Fingerprint the exact input bytes without claiming that the source is authentic."""
+    if path is None:
+        return {"provided": False, "sha256": None, "size_bytes": None}
+    digest = hashlib.sha256()
+    size_bytes = 0
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+            size_bytes += len(chunk)
+    return {
+        "provided": True,
+        "sha256": digest.hexdigest(),
+        "size_bytes": size_bytes,
+        "source_authenticity_verified": False,
+    }
 
 
 def load_csv(path: str, interval_ms: int) -> list[dict]:
@@ -374,6 +393,14 @@ def main() -> None:
         "interval_note": "CSV timestamps were validated for exact interval continuity; verify source and range before interpreting metrics.",
         "bars": len(rows), "first_ts": rows[0]["t"], "last_ts": rows[-1]["t"],
         "parameters": {key: value for key, value in common.items() if key != "funding_rates"},
+        "data_lineage": {
+            "candles": source_file_manifest(args.csv),
+            "funding": source_file_manifest(args.funding_csv),
+            "timestamp_alignment": "exact candle-open timestamp required for funding settlements",
+            "event_completeness_verified": False,
+            "source_authenticity_verified": False,
+            "note": "SHA-256 fingerprints identify the exact local input bytes; they do not authenticate the venue or prove complete coverage.",
+        },
         "funding_data": ({"source": args.funding_csv, "records": len(historical_funding),
                           "first_ts": historical_funding[0]["funding_time"],
                           "last_ts": historical_funding[-1]["funding_time"],
