@@ -11,11 +11,17 @@ _EXIT_REASONS = {"STOP", "TAKE_PROFIT"}
 
 
 def _finite_number(value, field, *, positive=False):
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"invalid {field}")
-    if value < 0 or (positive and value <= 0):
+    try:
+        if not isfinite(value) or value < 0 or (positive and value <= 0):
+            raise ValueError(f"invalid {field}")
+        converted = float(value)
+    except (OverflowError, ValueError) as exc:
+        raise ValueError(f"invalid {field}") from exc
+    if not isfinite(converted):
         raise ValueError(f"invalid {field}")
-    return float(value)
+    return converted
 
 
 def reconcile_paper_positions(orders):
