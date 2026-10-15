@@ -107,11 +107,13 @@ class FundingHistoryAuditTests(unittest.TestCase):
         for kwargs in (
             {"max_gap_hours": 0},
             {"max_gap_hours": float("inf")},
+            {"max_gap_hours": True},
             {"max_abs_rate": 0},
             {"max_abs_rate": float("nan")},
+            {"max_abs_rate": True},
         ):
             with self.subTest(kwargs=kwargs):
-                with self.assertRaisesRegex(ValueError, "must be finite and > 0"):
+                with self.assertRaisesRegex(ValueError, "must be a finite number > 0"):
                     audit(path, **kwargs)
 
     def test_rejects_invalid_requested_window_arguments(self):
