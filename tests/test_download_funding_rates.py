@@ -37,6 +37,13 @@ class FundingDownloaderTests(unittest.TestCase):
                 "BTCUSDT", 1735689600000, 1735776000000,
             )
 
+    def test_archive_parser_rejects_ambiguous_decimal_fields(self):
+        with self.assertRaisesRegex(RuntimeError, "Expected exactly one plausible decimal funding rate"):
+            parse_archive_row(
+                ["1735689600000", "0.0001", "0.0002", "BTCUSDT"],
+                "BTCUSDT", 1735689600000, 1735776000000,
+            )
+
     @patch("validation.download_funding_rates.get_json")
     def test_download_paginates_when_api_limit_is_reached(self, get_json):
         start = 1_735_689_600_000
