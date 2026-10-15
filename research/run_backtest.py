@@ -136,22 +136,50 @@ def summarize_walk_forward_cost_stress(walk_results: list[dict]) -> dict:
             "worst_max_drawdown_pct": round(max(valid_drawdowns), 4) if valid_drawdowns else None,
             "lowest_numeric_profit_factor": round(min(numeric_pf), 4) if numeric_pf else None,
         }
+    missing_stress = sum(
+        not isinstance(fold.get("cost_stress"), dict)
+        or not isinstance(fold.get("cost_stress", {}).get("scenarios"), dict)
+        for fold in walk_results
+    )
+    passing_stress = sum(
+        fold.get("cost_stress", {}).get("robustness_screen", {}).get("pass") is True
+        for fold in walk_results
+    )
+    minimum_trades_per_fold = 30
+    under_sampled_folds = [
+        fold.get("fold") for fold in walk_results
+        if not isinstance(fold.get("trades"), int)
+        or fold.get("trades", 0) < minimum_trades_per_fold
+    ]
+    all_folds_stress_pass = bool(walk_results) and passing_stress == len(walk_results)
+    walk_forward_gate_pass = (
+        bool(walk_results)
+        and missing_stress == 0
+        and all_folds_stress_pass
+        and not under_sampled_folds
+    )
     return {
         "status": "RESEARCH_ONLY",
         "fold_count": len(walk_results),
-        "folds_passing_all_three_cost_scenarios": sum(
-            fold.get("cost_stress", {}).get("robustness_screen", {}).get("pass") is True
-            for fold in walk_results
-        ),
-        "folds_with_missing_cost_stress": sum(
-            not isinstance(fold.get("cost_stress"), dict)
-            or not isinstance(fold.get("cost_stress", {}).get("scenarios"), dict)
-            for fold in walk_results
-        ),
+        "folds_passing_all_three_cost_scenarios": passing_stress,
+        "folds_with_missing_cost_stress": missing_stress,
         "scenario_summary": per_scenario,
+        "walk_forward_candidate_gate": {
+            "pass": walk_forward_gate_pass,
+            "criteria": (
+                "every fold has complete cost-stress data, passes base/stress/severe "
+                "robustness screens, and has at least 30 trades"
+            ),
+            "minimum_trades_per_fold": minimum_trades_per_fold,
+            "under_sampled_folds": under_sampled_folds,
+            "all_folds_stress_pass": all_folds_stress_pass,
+            "missing_cost_stress_folds": missing_stress,
+            "promotion": False,
+        },
         "interpretation": (
             "Worst-fold diagnostics; numeric PF summaries exclude non-numeric values such as INF. "
-            "Missing or failed folds are not treated as passing."
+            "Missing or failed folds are not treated as passing. This candidate gate is a research "
+            "screen only and is not production approval."
         ),
         "production_approval": False,
     }
