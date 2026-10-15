@@ -10,6 +10,7 @@ from statistics import mean
 
 from research.backtest import run_ema_cross_backtest, validate_candles
 from research.funding_sensitivity import summarize_funding_scenarios
+from research.cost_stress import run_cost_stress_scenarios
 
 
 def load_csv(path: str, interval_ms: int) -> list[dict]:
@@ -107,6 +108,10 @@ def main() -> None:
     parser.add_argument("--fee-rate", type=float, default=0.0005)
     parser.add_argument("--funding-csv", help="optional historical funding CSV with funding_time,funding_rate,mark_price,symbol")
     parser.add_argument("--slippage-rate", type=float, default=0.0002)
+    parser.add_argument("--stress-multiplier", type=float, default=1.5,
+                        help="fee/slippage multiplier for stress scenario (assumption, not exchange-calibrated)")
+    parser.add_argument("--severe-stress-multiplier", type=float, default=2.0,
+                        help="fee/slippage multiplier for severe stress scenario (assumption, not exchange-calibrated)")
     parser.add_argument("--funding-rate-per-bar", type=float, default=0.0)
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
@@ -148,6 +153,14 @@ def main() -> None:
     holdout = rows[split:]
     boundary_ts = holdout[0]["t"]
     holdout_result = run_ema_cross_backtest(rows, trade_start_ts=boundary_ts, **common)
+    cost_stress = run_cost_stress_scenarios(
+        rows, base_fee_rate=args.fee_rate, base_slippage_rate=args.slippage_rate,
+        stress_multiplier=args.stress_multiplier,
+        severe_stress_multiplier=args.severe_stress_multiplier,
+        backtest_kwargs={key: value for key, value in common.items()
+                         if key not in ("fee_rate", "slippage_rate")},
+        trade_start_ts=boundary_ts,
+    )
     holdout_trades = [t for t in holdout_result["trade_log"] if boundary_ts <= t["entry_time"] <= rows[-1]["t"]]
     holdout_curve = [p for p in holdout_result["equity_curve"] if boundary_ts <= p["t"] <= rows[-1]["t"]]
     # Convert fixed-notional trade PnL to the starting-equity basis used by the runner.
@@ -239,6 +252,7 @@ def main() -> None:
             }),
         },
         "walk_forward": walk_results,
+        "cost_stress": cost_stress,
         "warnings": [
             "This runner evaluates a fixed EMA baseline; it does not optimize or certify a profitable model.",
             "Net return is calculated from final account equity relative to the 1.0 starting equity; trade PnL sums are not used as a substitute for compounded portfolio return.",
