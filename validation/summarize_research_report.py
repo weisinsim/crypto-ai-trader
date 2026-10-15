@@ -67,7 +67,8 @@ def render(manifest):
                   if isinstance(r.get("holdout_min_trade_count_across_exit_variants"), int)
                   and not isinstance(r.get("holdout_min_trade_count_across_exit_variants"), bool)]
         max_counts = [r.get("holdout_max_trade_count_across_exit_variants") for r in rows
-                      if isinstance(r.get("holdout_max_trade_count_across_exit_variants"), int)]
+                      if isinstance(r.get("holdout_max_trade_count_across_exit_variants"), int)
+                      and not isinstance(r.get("holdout_max_trade_count_across_exit_variants"), bool)]
         count_text = f"{min(counts)}–{max(max_counts)}" if counts and max_counts else "—"
         lines.append(f"| {symbol} | {statuses} | {count_text} |")
     lines.extend([
