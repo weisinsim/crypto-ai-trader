@@ -125,6 +125,42 @@ class WalkForwardCostStressSummaryTests(unittest.TestCase):
         self.assertEqual(gate["under_sampled_folds"], [2])
         self.assertFalse(gate["promotion"])
 
+    def test_candidate_gate_rejects_missing_scenario_even_if_flagged_passing(self):
+        good = {
+            "robustness_screen": {"pass": True},
+            "scenarios": {
+                "base": {"status": "COMPLETED", "net_return_pct": 1.0,
+                         "max_drawdown_pct": 3.0, "profit_factor": 1.3},
+                "stress": {"status": "COMPLETED", "net_return_pct": 0.5,
+                           "max_drawdown_pct": 4.0, "profit_factor": 1.2},
+            },
+        }
+        summary = summarize_walk_forward_cost_stress([
+            {"fold": 1, "trades": 40, "cost_stress": good},
+        ])
+        gate = summary["walk_forward_candidate_gate"]
+        self.assertFalse(gate["pass"])
+        self.assertEqual(gate["folds_passing_all_three_cost_scenarios"], 0)
+        self.assertEqual(gate["folds_with_missing_cost_stress"], 1)
+
+    def test_candidate_gate_rejects_non_finite_metrics(self):
+        import math
+        invalid = {
+            "robustness_screen": {"pass": True},
+            "scenarios": {
+                name: {"status": "COMPLETED", "net_return_pct": 1.0,
+                       "max_drawdown_pct": 3.0, "profit_factor": 1.3}
+                for name in ("base", "stress", "severe_stress")
+            },
+        }
+        invalid["scenarios"]["stress"]["net_return_pct"] = math.nan
+        summary = summarize_walk_forward_cost_stress([
+            {"fold": 1, "trades": 40, "cost_stress": invalid},
+        ])
+        gate = summary["walk_forward_candidate_gate"]
+        self.assertFalse(gate["pass"])
+        self.assertEqual(gate["folds_passing_all_three_cost_scenarios"], 0)
+
     def test_candidate_gate_fails_when_any_fold_fails_cost_stress(self):
         good = {"robustness_screen": {"pass": True}, "scenarios": {}}
         bad = {"robustness_screen": {"pass": False}, "scenarios": {}}
