@@ -20,7 +20,7 @@ def parse_timestamp(value):
     return int(dt.timestamp() * 1000)
 
 
-def audit(path, max_gap_hours=24.0, max_abs_rate=0.05):
+def audit(path, max_gap_hours=24.0, max_abs_rate=0.05, start_ms=None, end_ms=None):
     rows = []
     with open(path, newline="", encoding="utf-8-sig") as stream:
         for line_number, row in enumerate(csv.DictReader(stream), start=2):
@@ -46,8 +46,17 @@ def audit(path, max_gap_hours=24.0, max_abs_rate=0.05):
     gaps = [(b - a) / 1000 for a, b in zip(timestamps, timestamps[1:]) if b > a]
     threshold_seconds = max_gap_hours * 3600
     large_gaps = [gap for gap in gaps if gap > threshold_seconds]
+    leading_gap_hours = ((timestamps[0] - start_ms) / 3_600_000
+                         if start_ms is not None else None)
+    trailing_gap_hours = ((end_ms - timestamps[-1]) / 3_600_000
+                          if end_ms is not None else None)
+    boundary_gaps_valid = (
+        (leading_gap_hours is None or 0 <= leading_gap_hours <= max_gap_hours)
+        and (trailing_gap_hours is None or 0 <= trailing_gap_hours <= max_gap_hours)
+    )
     ordered = timestamps == sorted(timestamps)
-    passed = duplicates == 0 and non_increasing == 0 and ordered and not large_gaps
+    passed = (duplicates == 0 and non_increasing == 0 and ordered
+              and not large_gaps and boundary_gaps_valid)
     return {
         "file": str(path), "rows": len(rows),
         "first_timestamp_ms": timestamps[0], "last_timestamp_ms": timestamps[-1],
@@ -56,6 +65,9 @@ def audit(path, max_gap_hours=24.0, max_abs_rate=0.05):
         "gaps_over_threshold": len(large_gaps),
         "largest_gap_examples_hours": sorted((round(g / 3600, 4) for g in large_gaps), reverse=True)[:10],
         "configured_max_gap_hours": max_gap_hours,
+        "requested_start_ms": start_ms, "requested_end_ms_exclusive": end_ms,
+        "leading_gap_hours": round(leading_gap_hours, 4) if leading_gap_hours is not None else None,
+        "trailing_gap_hours": round(trailing_gap_hours, 4) if trailing_gap_hours is not None else None,
         "maximum_absolute_funding_rate": max((abs(row["rate"]) for row in rows), default=0.0),
         "configured_max_absolute_rate": max_abs_rate,
         "pass_basic_integrity": passed,
@@ -66,6 +78,8 @@ def audit(path, max_gap_hours=24.0, max_abs_rate=0.05):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("files", nargs="+", help="Funding CSV files")
+    parser.add_argument("--start", help="Optional requested UTC start timestamp (ISO-8601)")
+    parser.add_argument("--end", help="Optional exclusive requested UTC end timestamp (ISO-8601)")
     parser.add_argument("--max-gap-hours", type=float, default=24.0)
     parser.add_argument("--max-abs-rate", type=float, default=0.05,
                         help="Reject absolute funding rates above this decimal fraction (default 0.05 = 5%%)")
@@ -74,11 +88,22 @@ def main():
         parser.error("--max-gap-hours must be finite and > 0")
     if not math.isfinite(args.max_abs_rate) or args.max_abs_rate <= 0:
         parser.error("--max-abs-rate must be finite and > 0")
+    def to_ms(value):
+        if value is None:
+            return None
+        dt = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        if dt.tzinfo is None or dt.utcoffset() is None:
+            parser.error("start/end timestamps must include a timezone")
+        return int(dt.timestamp() * 1000)
+
+    start_ms, end_ms = to_ms(args.start), to_ms(args.end)
+    if start_ms is not None and end_ms is not None and end_ms <= start_ms:
+        parser.error("--end must be later than --start")
     reports = []
     for filename in args.files:
         path = Path(filename)
         try:
-            reports.append(audit(path, args.max_gap_hours, args.max_abs_rate))
+            reports.append(audit(path, args.max_gap_hours, args.max_abs_rate, start_ms, end_ms))
         except (OSError, ValueError) as exc:
             reports.append({"file": str(path), "pass_basic_integrity": False, "error": str(exc)})
     print(json.dumps({"all_basic_integrity_pass": bool(reports) and all(x.get("pass_basic_integrity", False) for x in reports),
