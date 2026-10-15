@@ -108,5 +108,19 @@ class PromotionGateTests(unittest.TestCase):
         self.assertIn("CANDLE_NOT_CLOSED", result["reasons"])
         self.assertIn("NO_ACTIONABLE_SIGNAL", result["reasons"])
 
+
+    def test_oversized_integer_metrics_fail_closed_without_crash(self):
+        huge = 10 ** 1000
+        self.assertEqual(
+            classify_candidate(huge, 6, 50, 1.5),
+            "FAIL_MISSING_OR_INVALID_NET_R",
+        )
+        snapshot, limits = self.valid_order_inputs()
+        snapshot["requested_notional"] = huge
+        result = evaluate_live_order_gate(snapshot, limits)
+        self.assertFalse(result["approved"])
+        self.assertIn("INVALID_REQUESTED_NOTIONAL", result["reasons"])
+
+
 if __name__ == '__main__':
     unittest.main()
