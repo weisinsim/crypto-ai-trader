@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from research.run_backtest import main
+from research.run_backtest import main, summarize_walk_forward_cost_stress
 
 
 class RunBacktestCostStressTests(unittest.TestCase):
@@ -59,6 +59,52 @@ class RunBacktestCostStressTests(unittest.TestCase):
                 )
                 self.assertEqual(fold["cost_stress"]["evaluation_window"]["start_ts"], fold["start_ts"])
                 self.assertFalse(fold["cost_stress"]["robustness_screen"]["production_approval"])
+
+
+class WalkForwardCostStressSummaryTests(unittest.TestCase):
+    def test_missing_or_failed_fold_is_not_counted_as_passing(self):
+        folds = [
+            {
+                "cost_stress": {
+                    "robustness_screen": {"pass": True},
+                    "scenarios": {
+                        "base": {"status": "COMPLETED", "net_return_pct": 2.0,
+                                 "max_drawdown_pct": 3.0, "profit_factor": 1.4},
+                        "stress": {"status": "COMPLETED", "net_return_pct": 1.0,
+                                   "max_drawdown_pct": 4.0, "profit_factor": 1.2},
+                        "severe_stress": {"status": "COMPLETED", "net_return_pct": 0.2,
+                                          "max_drawdown_pct": 5.0, "profit_factor": 1.16},
+                    },
+                },
+            },
+            {"cost_stress": {"robustness_screen": {"pass": False}, "scenarios": {}}},
+            {},
+        ]
+        summary = summarize_walk_forward_cost_stress(folds)
+        self.assertEqual(summary["fold_count"], 3)
+        self.assertEqual(summary["folds_passing_all_three_cost_scenarios"], 1)
+        self.assertEqual(summary["folds_with_missing_cost_stress"], 1)
+        self.assertEqual(summary["scenario_summary"]["base"]["folds_completed"], 1)
+        self.assertFalse(summary["production_approval"])
+
+    def test_infinite_pf_is_excluded_from_numeric_minimum(self):
+        folds = [
+            {"cost_stress": {"scenarios": {
+                "base": {"status": "COMPLETED", "net_return_pct": 1.0,
+                         "max_drawdown_pct": 2.0, "profit_factor": "INF"},
+                "stress": {}, "severe_stress": {},
+            }}},
+            {"cost_stress": {"scenarios": {
+                "base": {"status": "COMPLETED", "net_return_pct": -1.0,
+                         "max_drawdown_pct": 6.0, "profit_factor": 1.25},
+                "stress": {}, "severe_stress": {},
+            }}},
+        ]
+        summary = summarize_walk_forward_cost_stress(folds)
+        base = summary["scenario_summary"]["base"]
+        self.assertEqual(base["lowest_numeric_profit_factor"], 1.25)
+        self.assertEqual(base["worst_net_return_pct"], -1.0)
+        self.assertEqual(base["worst_max_drawdown_pct"], 6.0)
 
 
 if __name__ == "__main__":
