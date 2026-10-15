@@ -111,8 +111,9 @@ def summarize_walk_forward_cost_stress(walk_results: list[dict]) -> dict:
     per_scenario = {}
     for name in scenario_names:
         rows = [
-            fold.get("cost_stress", {}).get("scenarios", {}).get(name, {})
-            if isinstance(fold, dict) else {}
+            fold["cost_stress"].get("scenarios", {}).get(name, {})
+            if isinstance(fold, dict) and isinstance(fold.get("cost_stress"), dict)
+            else {}
             for fold in walk_results
         ]
         valid_returns = [
