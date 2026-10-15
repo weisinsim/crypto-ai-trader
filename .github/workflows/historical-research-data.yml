@@ -69,7 +69,7 @@ jobs:
           python validation/audit_funding_history.py \
             data/funding/BTCUSDT_funding.csv data/funding/ETHUSDT_funding.csv \
             data/funding/SOLUSDT_funding.csv data/funding/AVAXUSDT_funding.csv \
-            data/funding/XRPUSDT_funding.csv --max-gap-hours 24 \
+            data/funding/XRPUSDT_funding.csv --max-gap-hours 8 \
             > research-results/funding-integrity.json
           cat research-results/funding-integrity.json
           python -c 'import json; r=json.load(open("research-results/funding-integrity.json")); assert r.get("all_basic_integrity_pass"), "Funding integrity gate failed"'
