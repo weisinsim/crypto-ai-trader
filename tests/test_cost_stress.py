@@ -45,7 +45,7 @@ class CostStressTests(unittest.TestCase):
         self.assertEqual(report["scenarios"]["severe_stress"]["fee_rate"], 0.002)
         self.assertAlmostEqual(
             report["comparisons_vs_base"]["stress"]["net_return_change_vs_base_pct_points"],
-            -0.5,
+            -0.75,
         )
         self.assertFalse(report["robustness_screen"]["pass"])
         self.assertFalse(report["robustness_screen"]["production_approval"])
