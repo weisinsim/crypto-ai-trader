@@ -73,6 +73,9 @@ def audit(path, interval):
     invalid_ohlc = 0
     invalid_volume = 0
     volume_fields = ("volume", "quote_volume", "v", "q")
+    # Volume is required for volume-aware strategies; silently accepting a file
+    # with no volume column would make a price-only dataset look research-ready.
+    missing_volume_column = not any(field in (rows[0] if rows else {}) for field in volume_fields)
     for r in rows:
         try:
             aliases = (("open", "o"), ("high", "h"), ("low", "l"), ("close", "c"))
@@ -101,9 +104,11 @@ def audit(path, interval):
             "missing_candles_approx": sum(g["missing_approx"] for g in gaps),
             "invalid_ohlc_rows": invalid_ohlc, "invalid_volume_rows": invalid_volume,
             "volume_fields_checked": list(volume_fields),
+            "missing_volume_column": missing_volume_column,
             "gaps_sample": gaps[:10], "timestamp_errors": timestamp_errors,
             "pass_basic_integrity": bool(rows) and duplicates == 0 and non_increasing == 0
-                and invalid_ohlc == 0 and invalid_volume == 0 and not cadence_anomalies}
+                and invalid_ohlc == 0 and invalid_volume == 0 and not missing_volume_column
+                and not cadence_anomalies}
 
 
 def main():
