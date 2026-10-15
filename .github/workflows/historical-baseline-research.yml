@@ -53,6 +53,44 @@ jobs:
             --symbol "$SYMBOL" --interval 1h \
             --start "$START" --end "$END" \
             --output "data/${SYMBOL}_1h.csv"
+      - name: Verify candle manifest matches downloaded CSV
+        env:
+          SYMBOL: ${{ matrix.symbol }}
+        run: |
+          python - <<'PY'
+          import csv, hashlib, json, os
+          from pathlib import Path
+          symbol = os.environ["SYMBOL"]
+          csv_path = Path(f"data/{symbol}_1h.csv")
+          manifest_path = csv_path.with_suffix(csv_path.suffix + ".manifest.json")
+          if not csv_path.is_file() or not manifest_path.is_file():
+              raise SystemExit("Candle CSV or its manifest is missing.")
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          payload = csv_path.read_bytes()
+          rows = list(csv.DictReader(payload.decode("utf-8").splitlines()))
+          errors = []
+          if manifest.get("symbol") != symbol:
+              errors.append("symbol mismatch")
+          if manifest.get("interval") != "1h":
+              errors.append("interval mismatch")
+          if manifest.get("bars") != len(rows):
+              errors.append("bar count mismatch")
+          if manifest.get("file", {}).get("sha256") != hashlib.sha256(payload).hexdigest():
+              errors.append("SHA-256 mismatch")
+          if manifest.get("file", {}).get("size_bytes") != len(payload):
+              errors.append("file size mismatch")
+          if manifest.get("source_authenticity_verified") is not False:
+              errors.append("manifest must not claim source authenticity is verified")
+          if errors:
+              raise SystemExit("Candle manifest verification failed: " + "; ".join(errors))
+          print(json.dumps({
+              "status": "PASS",
+              "symbol": symbol,
+              "bars": len(rows),
+              "sha256": manifest["file"]["sha256"],
+              "source_authenticity_verified": False,
+          }, indent=2))
+          PY
       - name: Download historical funding rates
         continue-on-error: true
         env:
@@ -342,6 +380,7 @@ jobs:
           name: research-${{ matrix.symbol }}-1h
           path: |
             data/${{ matrix.symbol }}_1h.csv
+            data/${{ matrix.symbol }}_1h.csv.manifest.json
             data/${{ matrix.symbol }}_funding.csv
             reports/${{ matrix.symbol }}_1h_baseline.json
             reports/${{ matrix.symbol }}_1h_adaptive.json
