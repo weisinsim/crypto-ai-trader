@@ -370,6 +370,20 @@ class BacktestTests(unittest.TestCase):
         self.assertGreater(funded["max_drawdown_pct"], baseline["max_drawdown_pct"])
 
 
+    def test_funding_boundary_is_flagged_when_entry_matches_settlement_timestamp(self):
+        rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(240)])
+        kwargs = dict(fast=3, slow=9, atr_period=3, fee_rate=0, slippage_rate=0)
+        baseline = run_ema_cross_backtest(rows, **kwargs)
+        trade = next(t for t in baseline["trade_log"] if t["bars_held"] > 0)
+        event = {"funding_time": trade["entry_time"], "funding_rate": 0.001,
+                 "mark_price": 100.0}
+        result = run_ema_cross_backtest(rows, **kwargs, funding_rates=[event])
+        affected = next(t for t in result["trade_log"]
+                        if t["entry_time"] == trade["entry_time"])
+        self.assertEqual(affected["funding_settlement_count"], 0)
+        self.assertTrue(affected["funding_boundary_ambiguous"])
+        self.assertGreaterEqual(result["funding_boundary_ambiguous_trades"], 1)
+
     def test_funding_boundary_is_flagged_for_gap_stop_at_settlement_open(self):
         rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(240)])
         kwargs = dict(fast=3, slow=9, atr_period=3, fee_rate=0, slippage_rate=0)
