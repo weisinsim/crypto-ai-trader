@@ -246,8 +246,17 @@ def run_ema_cross_backtest(
             (side == 1 and float(bar["o"]) < pos["stop"]) or
             (side == -1 and float(bar["o"]) > pos["stop"])
         )
+        # Ambiguity also exists when a position opens on the exact funding
+        # timestamp: OHLC candle timestamps alone cannot prove whether the
+        # entry was before or after the exchange settlement instant.
+        funding_entry_boundary_ambiguous = bool(
+            funding_rates is not None and int(pos["entry_time"]) in funding_events
+        )
         funding_boundary_ambiguous = bool(
-            funding_rates is not None and gap_stop_at_open and int(bar["t"]) in settlement_timestamps
+            funding_rates is not None and (
+                funding_entry_boundary_ambiguous or
+                (gap_stop_at_open and int(bar["t"]) in settlement_timestamps)
+            )
         )
         trade = {
             "side": "LONG" if side == 1 else "SHORT",
