@@ -246,11 +246,16 @@ def main() -> None:
     if args.fast < 2 or args.slow <= args.fast:
         raise ValueError("require 2 <= fast < slow")
     import math
-    if not all(math.isfinite(x) for x in
-               (args.fee_rate, args.slippage_rate, args.funding_rate_per_bar, args.train_fraction)):
-        raise ValueError("rates and train-fraction must be finite")
+    numeric_assumptions = (
+        args.fee_rate, args.slippage_rate, args.funding_rate_per_bar,
+        args.train_fraction, args.stress_multiplier, args.severe_stress_multiplier,
+    )
+    if not all(math.isfinite(x) for x in numeric_assumptions):
+        raise ValueError("rates, stress multipliers and train-fraction must be finite")
     if args.fee_rate < 0 or args.slippage_rate < 0:
         raise ValueError("fee-rate and slippage-rate cannot be negative")
+    if args.stress_multiplier < 1 or args.severe_stress_multiplier < args.stress_multiplier:
+        raise ValueError("stress multipliers must satisfy 1 <= stress <= severe-stress")
     if len(rows) < args.slow * 3:
         raise ValueError("not enough bars for warm-up, holdout and walk-forward")
 
