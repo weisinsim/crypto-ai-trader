@@ -85,7 +85,6 @@ class CostStressTests(unittest.TestCase):
             })
         # Disable the mock for this integration-level regression.
         self.patch.stop()
-        self.addCleanup(self.patch.start)
         common = {"fast": 3, "slow": 8, "atr_period": 3,
                   "fee_rate": 0.0005, "slippage_rate": 0.0002}
         expected = run_ema_cross_backtest(candles, **common)
