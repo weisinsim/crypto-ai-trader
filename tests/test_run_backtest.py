@@ -64,6 +64,16 @@ class RunBacktestCostStressTests(unittest.TestCase):
             report = json.loads(output_path.read_text(encoding="utf-8"))
             self.assertEqual(report["status"], "RESEARCH_ONLY")
             self.assertIn("scenarios", report["cost_stress"])
+            boundary = report["funding_boundary_policy_sensitivity"]
+            self.assertEqual(boundary["status"], "SUMMARY_ONLY_NOT_A_BACKTEST")
+            self.assertEqual(boundary["scenario_count"], 2)
+            policies = {row["scenario"]: row for row in boundary["scenarios"]}
+            self.assertEqual(set(policies), {"exclude", "include"})
+            self.assertEqual(policies["exclude"]["trades"], policies["include"]["trades"])
+            self.assertEqual(
+                boundary["comparison"]["net_return_delta_include_minus_exclude_pct"], 0.0
+            )
+            self.assertIn("not establish actual exchange", boundary["comparison"]["interpretation"])
             self.assertEqual(len(report["walk_forward"]), 4)
             summary = report["walk_forward_cost_stress_summary"]
             self.assertEqual(summary["fold_count"], 4)
