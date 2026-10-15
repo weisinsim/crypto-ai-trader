@@ -73,8 +73,12 @@ def reconcile_paper_positions(orders):
         key = symbol.strip().upper()
         bucket = positions.setdefault(key, {"net_quantity": 0.0, "open_quantity": 0.0, "legs": []})
         if open_quantity:
-            bucket["net_quantity"] += signed_quantity
-            bucket["open_quantity"] += open_quantity
+            net_quantity = bucket["net_quantity"] + signed_quantity
+            gross_quantity = bucket["open_quantity"] + open_quantity
+            if not isfinite(net_quantity) or not isfinite(gross_quantity):
+                raise ValueError("aggregated exposure must remain finite")
+            bucket["net_quantity"] = net_quantity
+            bucket["open_quantity"] = gross_quantity
             bucket["legs"].append({
                 "client_order_id": order_id,
                 "side": side,
