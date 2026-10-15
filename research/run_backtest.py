@@ -145,6 +145,8 @@ def summarize_walk_forward_cost_stress(walk_results: list[dict]) -> dict:
             "lowest_numeric_profit_factor": round(min(numeric_pf), 4) if numeric_pf else None,
         }
     def _fold_stress_is_complete_and_valid(fold: dict) -> bool:
+        if not isinstance(fold, dict):
+            return False
         stress = fold.get("cost_stress")
         if not isinstance(stress, dict):
             return False
@@ -170,7 +172,8 @@ def summarize_walk_forward_cost_stress(walk_results: list[dict]) -> dict:
         return isinstance(screen, dict) and screen.get("pass") is True
 
     missing_stress = sum(
-        not isinstance(fold.get("cost_stress"), dict)
+        not isinstance(fold, dict)
+        or not isinstance(fold.get("cost_stress"), dict)
         or not isinstance(fold.get("cost_stress", {}).get("scenarios"), dict)
         or any(name not in fold.get("cost_stress", {}).get("scenarios", {}) for name in scenario_names)
         for fold in walk_results
