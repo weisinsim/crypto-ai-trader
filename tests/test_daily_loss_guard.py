@@ -70,5 +70,17 @@ class DailyLossGuardTests(unittest.TestCase):
             guard.record_realized_pnl("nan", float("nan"), "2026-10-14")
 
 
+    def test_oversized_values_and_overflowing_pnl_total_are_rejected(self):
+        guard = DailyLossGuard(100)
+        with self.assertRaisesRegex(ValueError, "finite"):
+            DailyLossGuard(10 ** 1000)
+        with self.assertRaisesRegex(ValueError, "finite"):
+            guard.record_realized_pnl("huge", 10 ** 1000, "2026-10-14")
+        guard.record_realized_pnl("large-1", 1e308, "2026-10-14")
+        with self.assertRaisesRegex(ValueError, "total must remain finite"):
+            guard.record_realized_pnl("large-2", 1e308, "2026-10-14")
+        self.assertEqual(guard.status("2026-10-14")["realized_pnl"], 1e308)
+
+
 if __name__ == "__main__":
     unittest.main()
