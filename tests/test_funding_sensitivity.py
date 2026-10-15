@@ -66,6 +66,11 @@ class FundingSensitivityTests(unittest.TestCase):
             with self.subTest(trade=trade), self.assertRaises(ValueError):
                 summarize_funding_scenarios({"base": result([trade])})
 
+    def test_invalid_equity_floor_flag_rejected(self):
+        for value in (0, 1, "false", []):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "equity_floor_hit"):
+                summarize_funding_scenarios({"base": result([], trades=0, equity_floor_hit=value)})
+
     def test_no_trades_has_no_fabricated_ambiguity_percentage(self):
         report = summarize_funding_scenarios({"base": result([], trades=0, profit_factor=None)})
         summary = report["scenarios"][0]
