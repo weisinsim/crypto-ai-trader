@@ -49,6 +49,14 @@ class FundingSensitivityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "funding_cashflow"):
             summarize_funding_scenarios({"base": result([{"funding_cashflow": float("nan")}])})
 
+    def test_oversized_integer_and_cumulative_cashflow_overflow_rejected(self):
+        with self.assertRaisesRegex(ValueError, "finite number"):
+            summarize_funding_scenarios({"base": result([{"funding_cashflow": 10 ** 1000}])})
+        with self.assertRaisesRegex(ValueError, "cumulative funding cashflow"):
+            summarize_funding_scenarios({"base": result([
+                {"funding_cashflow": 1e308}, {"funding_cashflow": 1e308},
+            ])})
+
     def test_invalid_settlement_count_and_ambiguity_rejected(self):
         for trade in (
             {"funding_settlement_count": -1},
