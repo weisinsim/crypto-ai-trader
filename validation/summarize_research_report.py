@@ -7,7 +7,8 @@ from pathlib import Path
 
 
 def fmt(value, digits=2):
-    if value is None:
+    # Booleans are integers in Python, but are never valid research metrics.
+    if value is None or isinstance(value, bool):
         return "—"
     if isinstance(value, str):
         return value
