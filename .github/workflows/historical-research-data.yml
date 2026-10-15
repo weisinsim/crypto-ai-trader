@@ -70,6 +70,8 @@ jobs:
             data/funding/BTCUSDT_funding.csv data/funding/ETHUSDT_funding.csv \
             data/funding/SOLUSDT_funding.csv data/funding/AVAXUSDT_funding.csv \
             data/funding/XRPUSDT_funding.csv --max-gap-hours 8 \
+            --start "${{ inputs.start_date }}T00:00:00Z" \
+            --end "${{ inputs.end_date }}T00:00:00Z" \
             > research-results/funding-integrity.json
           cat research-results/funding-integrity.json
           python -c 'import json; r=json.load(open("research-results/funding-integrity.json")); assert r.get("all_basic_integrity_pass"), "Funding integrity gate failed"'
