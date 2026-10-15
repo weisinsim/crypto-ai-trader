@@ -95,6 +95,16 @@ def max_drawdown_pct(points: list[dict], initial_equity: float = 1.0) -> float:
     return round(max_dd * 100, 4)
 
 
+def _finite_metric(value) -> bool:
+    """Accept finite numeric metrics, excluding bools and unrepresentable huge integers."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(value)
+    except (OverflowError, ValueError):
+        return False
+
+
 def summarize_walk_forward_cost_stress(walk_results: list[dict]) -> dict:
     """Aggregate fold-level cost robustness without hiding failed or missing folds."""
     scenario_names = ("base", "stress", "severe_stress")
@@ -106,30 +116,27 @@ def summarize_walk_forward_cost_stress(walk_results: list[dict]) -> dict:
         ]
         valid_returns = [
             row["net_return_pct"] for row in rows
-            if isinstance(row.get("net_return_pct"), (int, float))
-            and math.isfinite(row["net_return_pct"])
+            if _finite_metric(row.get("net_return_pct"))
         ]
         valid_drawdowns = [
             row["max_drawdown_pct"] for row in rows
-            if isinstance(row.get("max_drawdown_pct"), (int, float))
-            and math.isfinite(row["max_drawdown_pct"])
+            if _finite_metric(row.get("max_drawdown_pct"))
         ]
         numeric_pf = [
             row["profit_factor"] for row in rows
-            if isinstance(row.get("profit_factor"), (int, float))
-            and math.isfinite(row["profit_factor"])
+            if _finite_metric(row.get("profit_factor"))
         ]
         per_scenario[name] = {
             "folds_reported": len(rows),
             "folds_completed": sum(row.get("status") == "COMPLETED" for row in rows),
             "folds_positive_return": sum(
-                isinstance(row.get("net_return_pct"), (int, float))
-                and math.isfinite(row["net_return_pct"]) and row["net_return_pct"] > 0
+                _finite_metric(row.get("net_return_pct"))
+                and row["net_return_pct"] > 0
                 for row in rows
             ),
             "folds_pf_above_1_15": sum(
-                isinstance(row.get("profit_factor"), (int, float))
-                and math.isfinite(row["profit_factor"]) and row["profit_factor"] > 1.15
+                _finite_metric(row.get("profit_factor"))
+                and row["profit_factor"] > 1.15
                 for row in rows
             ),
             "worst_net_return_pct": round(min(valid_returns), 4) if valid_returns else None,
@@ -149,7 +156,7 @@ def summarize_walk_forward_cost_stress(walk_results: list[dict]) -> dict:
                 return False
             for metric in ("net_return_pct", "max_drawdown_pct", "profit_factor"):
                 value = row.get(metric)
-                if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                if not _finite_metric(value):
                     return False
             if row["max_drawdown_pct"] < 0 or row["max_drawdown_pct"] > 100:
                 return False
@@ -171,7 +178,8 @@ def summarize_walk_forward_cost_stress(walk_results: list[dict]) -> dict:
     minimum_trades_per_fold = 30
     under_sampled_folds = [
         fold.get("fold") for fold in walk_results
-        if not isinstance(fold.get("trades"), int)
+        if isinstance(fold.get("trades"), bool)
+        or not isinstance(fold.get("trades"), int)
         or fold.get("trades", 0) < minimum_trades_per_fold
     ]
     all_folds_stress_pass = bool(walk_results) and passing_stress == len(walk_results)
