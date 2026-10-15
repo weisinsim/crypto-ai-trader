@@ -70,6 +70,23 @@ class DailyLossGuardTests(unittest.TestCase):
             guard.record_realized_pnl("nan", float("nan"), "2026-10-14")
 
 
+    def test_loaded_ledger_rejects_overflowing_event_sum(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ledger.json"
+            payload = {
+                "schema_version": 1,
+                "days": {
+                    "2026-10-14": {
+                        "realized_pnl": 0.0,
+                        "locked": False,
+                        "events": {"large-1": 1e308, "large-2": 1e308},
+                    }
+                },
+            }
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "event total must remain finite"):
+                DailyLossGuard(100, path)
+
     def test_oversized_values_and_overflowing_pnl_total_are_rejected(self):
         guard = DailyLossGuard(100)
         with self.assertRaisesRegex(ValueError, "finite"):
