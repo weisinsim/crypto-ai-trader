@@ -34,10 +34,10 @@ The downloader retains Binance's reported `markPrice` field and labels its sourc
 Before running a funding-aware backtest, run the standalone timestamp audit to inspect misaligned events without forcing them onto candle timestamps:
 
 ```bash
-python -m research.audit_funding_data --candles data/BTCUSDT_1h.csv --funding-csv data/BTCUSDT_funding.csv --symbol BTCUSDT --interval 1h --output reports/BTCUSDT_funding_audit.json
+python -m research.audit_funding_data --candles data/BTCUSDT_1h.csv --funding-csv data/BTCUSDT_funding.csv --symbol BTCUSDT --interval 1h --max-gap-hours 12 --output reports/BTCUSDT_funding_audit.json
 ```
 
-The audit reports out-of-range and nonmatching timestamps and exits with a report status of `REVIEW_REQUIRED` when it detects alignment issues. It does not alter timestamps or assert complete event coverage.
+The audit reports out-of-range and nonmatching timestamps and exits with a report status of `REVIEW_REQUIRED` when it detects alignment issues. The optional `--max-gap-hours 12` flags event intervals longer than the operator-selected threshold for review; funding cadence can change, so this is a review trigger, not proof of missing events. It does not alter timestamps or assert complete event coverage.
 
 The backtest report's `funding_data` section includes timestamp diagnostics: number of events in the candle range, exact candle-open timestamp matches, non-matching event timestamps, observed event-interval range, and source/venue labels. These are diagnostic counts only. Exact timestamp matches do not prove that every funding event is present, that reported mark prices are independently authenticated, or that a position qualified for settlement. The report therefore keeps `event_completeness_verified` false; reconcile source coverage and account cashflows independently before treating funding PnL as authoritative.
 
