@@ -146,6 +146,38 @@ class ResearchReportTests(unittest.TestCase):
         report = render(manifest)
         self.assertIn("2/3 | FAIL_CROSS_COST_ROBUSTNESS", report)
 
+    def test_preliminary_screen_rejects_boolean_numeric_metrics(self):
+        manifest = {
+            "min_trades_threshold": 2,
+            "cost_sensitivity_bps": [5],
+            "reports": [{
+                "symbol": "BTCUSDT", "cost_bps": 5, "status": "RESEARCH_ONLY",
+                "development_metrics_by_exit": {"target_3.0R": {
+                    "single_position": {"net_R": True}}},
+                "holdout_metrics_by_exit": {"target_3.0R": {
+                    "single_position": {"trades": True, "net_R": 3, "profit_factor": 1.4}}},
+            }],
+        }
+        report = render(manifest)
+        self.assertIn("FAIL_INSUFFICIENT_HOLDOUT_TRADES", report)
+        self.assertNotIn("PASS_ALL_COSTS_PRELIMINARY_ONLY", report)
+
+    def test_preliminary_screen_rejects_boolean_profit_factor_and_net_r(self):
+        manifest = {
+            "min_trades_threshold": 2,
+            "cost_sensitivity_bps": [5],
+            "reports": [{
+                "symbol": "BTCUSDT", "cost_bps": 5, "status": "RESEARCH_ONLY",
+                "development_metrics_by_exit": {"target_3.0R": {
+                    "single_position": {"net_R": True}}},
+                "holdout_metrics_by_exit": {"target_3.0R": {
+                    "single_position": {"trades": 4, "net_R": 3, "profit_factor": True}}},
+            }],
+        }
+        report = render(manifest)
+        self.assertIn("FAIL_MISSING_OR_INVALID_NET_R", report)
+        self.assertNotIn("PASS_ALL_COSTS_PRELIMINARY_ONLY", report)
+
     def test_flags_opposite_development_and_holdout_signs(self):
         manifest = {"reports": [
             {"symbol": "BTCUSDT", "cost_bps": 10, "status": "RESEARCH_ONLY",
