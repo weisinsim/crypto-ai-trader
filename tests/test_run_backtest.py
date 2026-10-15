@@ -85,6 +85,16 @@ class RunBacktestCostStressTests(unittest.TestCase):
 
 
 class WalkForwardCostStressSummaryTests(unittest.TestCase):
+    def test_malformed_fold_record_is_rejected_without_crashing(self):
+        summary = summarize_walk_forward_cost_stress([
+            None,
+            {"fold": 2, "trades": 40, "cost_stress": {}},
+        ])
+        gate = summary["walk_forward_candidate_gate"]
+        self.assertFalse(gate["pass"])
+        self.assertEqual(gate["under_sampled_folds"], [None, 2])
+        self.assertEqual(summary["folds_passing_all_three_cost_scenarios"], 0)
+
     def test_missing_or_failed_fold_is_not_counted_as_passing(self):
         folds = [
             {
