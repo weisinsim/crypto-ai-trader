@@ -141,7 +141,7 @@ class WalkForwardCostStressSummaryTests(unittest.TestCase):
         gate = summary["walk_forward_candidate_gate"]
         self.assertFalse(gate["pass"])
         self.assertEqual(summary["folds_passing_all_three_cost_scenarios"], 0)
-        self.assertEqual(gate["folds_with_missing_cost_stress"], 1)
+        self.assertEqual(summary["folds_with_missing_cost_stress"], 1)
 
     def test_candidate_gate_rejects_non_finite_metrics(self):
         import math
