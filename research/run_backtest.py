@@ -311,6 +311,52 @@ def main() -> None:
     holdout = rows[split:]
     boundary_ts = holdout[0]["t"]
     holdout_result = run_ema_cross_backtest(rows, trade_start_ts=boundary_ts, **common)
+    # Boundary sensitivity reruns the exact same candles and frozen assumptions;
+    # only the ambiguous entry-time settlement policy changes.
+    boundary_scenarios = {}
+    for policy in ("exclude", "include"):
+        policy_result = run_ema_cross_backtest(
+            rows, trade_start_ts=boundary_ts,
+            **{**common, "funding_entry_boundary_policy": policy},
+        )
+        policy_trades = [
+            t for t in policy_result["trade_log"]
+            if boundary_ts <= t["entry_time"] <= rows[-1]["t"]
+        ]
+        policy_curve = [
+            p for p in policy_result["equity_curve"]
+            if boundary_ts <= p["t"] <= rows[-1]["t"]
+        ]
+        policy_wins = sum(t["pnl_equity"] > 0 for t in policy_trades)
+        policy_profit = sum(t["pnl_equity"] for t in policy_trades if t["pnl_equity"] > 0)
+        policy_loss = -sum(t["pnl_equity"] for t in policy_trades if t["pnl_equity"] < 0)
+        boundary_scenarios[policy] = {
+            "status": policy_result["status"],
+            "trades": len(policy_trades),
+            "net_return_pct": round((policy_result["equity_final"] - 1.0) * 100, 4),
+            "max_drawdown_pct": max_drawdown_pct(policy_curve),
+            "profit_factor": round(policy_profit / policy_loss, 4) if policy_loss else (None if not policy_profit else "INF"),
+            "win_rate_pct": round(policy_wins / len(policy_trades) * 100, 2) if policy_trades else None,
+            "equity_floor_hit": policy_result.get("equity_floor_hit", False),
+            "trade_log": policy_trades,
+        }
+    boundary_sensitivity = summarize_funding_scenarios(boundary_scenarios)
+    boundary_sensitivity["comparison"] = {
+        "net_return_delta_include_minus_exclude_pct": (
+            round(boundary_scenarios["include"]["net_return_pct"] -
+                  boundary_scenarios["exclude"]["net_return_pct"], 4)
+            if boundary_scenarios["include"]["net_return_pct"] is not None and
+               boundary_scenarios["exclude"]["net_return_pct"] is not None else None
+        ),
+        "max_drawdown_delta_include_minus_exclude_pct": (
+            round(boundary_scenarios["include"]["max_drawdown_pct"] -
+                  boundary_scenarios["exclude"]["max_drawdown_pct"], 4)
+            if boundary_scenarios["include"]["max_drawdown_pct"] is not None and
+               boundary_scenarios["exclude"]["max_drawdown_pct"] is not None else None
+        ),
+        "profit_factor_comparison": "see scenario rows; INF/null are not coerced to numeric",
+        "interpretation": "Sensitivity only; neither policy establishes actual exchange settlement eligibility.",
+    }
     cost_stress = run_cost_stress_scenarios(
         rows, base_fee_rate=args.fee_rate, base_slippage_rate=args.slippage_rate,
         stress_multiplier=args.stress_multiplier,
@@ -408,6 +454,7 @@ def main() -> None:
                          if historical_funding else {"source": None, "records": 0}),
         "split": {"train_fraction": args.train_fraction, "boundary_ts": boundary_ts,
                   "warmup_bars": split, "holdout_bars": len(holdout)},
+        "funding_boundary_policy_sensitivity": boundary_sensitivity,
         "holdout": {
             "bars": len(holdout), "trades": len(holdout_trades),
             "net_return_pct": round((holdout_result["equity_final"] - 1.0) * 100, 4),
