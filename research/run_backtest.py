@@ -95,6 +95,68 @@ def max_drawdown_pct(points: list[dict], initial_equity: float = 1.0) -> float:
     return round(max_dd * 100, 4)
 
 
+def summarize_walk_forward_cost_stress(walk_results: list[dict]) -> dict:
+    """Aggregate fold-level cost robustness without hiding failed or missing folds."""
+    scenario_names = ("base", "stress", "severe_stress")
+    per_scenario = {}
+    for name in scenario_names:
+        rows = [
+            fold.get("cost_stress", {}).get("scenarios", {}).get(name, {})
+            for fold in walk_results
+        ]
+        valid_returns = [
+            row["net_return_pct"] for row in rows
+            if isinstance(row.get("net_return_pct"), (int, float))
+            and math.isfinite(row["net_return_pct"])
+        ]
+        valid_drawdowns = [
+            row["max_drawdown_pct"] for row in rows
+            if isinstance(row.get("max_drawdown_pct"), (int, float))
+            and math.isfinite(row["max_drawdown_pct"])
+        ]
+        numeric_pf = [
+            row["profit_factor"] for row in rows
+            if isinstance(row.get("profit_factor"), (int, float))
+            and math.isfinite(row["profit_factor"])
+        ]
+        per_scenario[name] = {
+            "folds_reported": len(rows),
+            "folds_completed": sum(row.get("status") == "COMPLETED" for row in rows),
+            "folds_positive_return": sum(
+                isinstance(row.get("net_return_pct"), (int, float))
+                and math.isfinite(row["net_return_pct"]) and row["net_return_pct"] > 0
+                for row in rows
+            ),
+            "folds_pf_above_1_15": sum(
+                isinstance(row.get("profit_factor"), (int, float))
+                and math.isfinite(row["profit_factor"]) and row["profit_factor"] > 1.15
+                for row in rows
+            ),
+            "worst_net_return_pct": round(min(valid_returns), 4) if valid_returns else None,
+            "worst_max_drawdown_pct": round(max(valid_drawdowns), 4) if valid_drawdowns else None,
+            "lowest_numeric_profit_factor": round(min(numeric_pf), 4) if numeric_pf else None,
+        }
+    return {
+        "status": "RESEARCH_ONLY",
+        "fold_count": len(walk_results),
+        "folds_passing_all_three_cost_scenarios": sum(
+            fold.get("cost_stress", {}).get("robustness_screen", {}).get("pass") is True
+            for fold in walk_results
+        ),
+        "folds_with_missing_cost_stress": sum(
+            not isinstance(fold.get("cost_stress"), dict)
+            or not isinstance(fold.get("cost_stress", {}).get("scenarios"), dict)
+            for fold in walk_results
+        ),
+        "scenario_summary": per_scenario,
+        "interpretation": (
+            "Worst-fold diagnostics; numeric PF summaries exclude non-numeric values such as INF. "
+            "Missing or failed folds are not treated as passing."
+        ),
+        "production_approval": False,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--csv", required=True, help="closed-candle CSV from research.binance_data")
@@ -264,6 +326,7 @@ def main() -> None:
             }),
         },
         "walk_forward": walk_results,
+        "walk_forward_cost_stress_summary": summarize_walk_forward_cost_stress(walk_results),
         "cost_stress": cost_stress,
         "warnings": [
             "This runner evaluates a fixed EMA baseline; it does not optimize or certify a profitable model.",
