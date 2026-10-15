@@ -384,6 +384,33 @@ class BacktestTests(unittest.TestCase):
         self.assertTrue(affected["funding_boundary_ambiguous"])
         self.assertGreaterEqual(result["funding_boundary_ambiguous_trades"], 1)
 
+    def test_entry_funding_boundary_policy_compares_exclude_and_include(self):
+        rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(240)])
+        kwargs = dict(fast=3, slow=9, atr_period=3, fee_rate=0, slippage_rate=0)
+        baseline = run_ema_cross_backtest(rows, **kwargs)
+        trade = next(t for t in baseline["trade_log"] if t["bars_held"] > 0)
+        event = {"funding_time": trade["entry_time"], "funding_rate": 0.01,
+                 "mark_price": 100.0}
+        excluded = run_ema_cross_backtest(rows, **kwargs, funding_rates=[event],
+                                          funding_entry_boundary_policy="exclude")
+        included = run_ema_cross_backtest(rows, **kwargs, funding_rates=[event],
+                                          funding_entry_boundary_policy="include")
+        excluded_trade = next(t for t in excluded["trade_log"]
+                              if t["entry_time"] == trade["entry_time"])
+        included_trade = next(t for t in included["trade_log"]
+                              if t["entry_time"] == trade["entry_time"])
+        self.assertEqual(excluded_trade["funding_settlement_count"], 0)
+        self.assertEqual(included_trade["funding_settlement_count"], 1)
+        self.assertNotEqual(excluded_trade["pnl_equity"], included_trade["pnl_equity"])
+        self.assertTrue(excluded_trade["funding_boundary_ambiguous"])
+        self.assertTrue(included_trade["funding_boundary_ambiguous"])
+
+    def test_invalid_funding_entry_boundary_policy_rejected(self):
+        rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(100)])
+        with self.assertRaisesRegex(ValueError, "funding_entry_boundary_policy"):
+            run_ema_cross_backtest(rows, fast=3, slow=9, atr_period=3,
+                                   funding_entry_boundary_policy="guess")
+
     def test_funding_boundary_is_flagged_for_gap_stop_at_settlement_open(self):
         rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(240)])
         kwargs = dict(fast=3, slow=9, atr_period=3, fee_rate=0, slippage_rate=0)
