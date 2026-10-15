@@ -107,5 +107,35 @@ class WalkForwardCostStressSummaryTests(unittest.TestCase):
         self.assertEqual(base["worst_max_drawdown_pct"], 6.0)
 
 
+    def test_candidate_gate_requires_all_folds_and_minimum_trade_count(self):
+        passing_stress = {
+            "robustness_screen": {"pass": True},
+            "scenarios": {
+                name: {"status": "COMPLETED", "net_return_pct": 1.0,
+                       "max_drawdown_pct": 3.0, "profit_factor": 1.3}
+                for name in ("base", "stress", "severe_stress")
+            },
+        }
+        summary = summarize_walk_forward_cost_stress([
+            {"fold": 1, "trades": 35, "cost_stress": passing_stress},
+            {"fold": 2, "trades": 12, "cost_stress": passing_stress},
+        ])
+        gate = summary["walk_forward_candidate_gate"]
+        self.assertFalse(gate["pass"])
+        self.assertEqual(gate["under_sampled_folds"], [2])
+        self.assertFalse(gate["promotion"])
+
+    def test_candidate_gate_fails_when_any_fold_fails_cost_stress(self):
+        good = {"robustness_screen": {"pass": True}, "scenarios": {}}
+        bad = {"robustness_screen": {"pass": False}, "scenarios": {}}
+        summary = summarize_walk_forward_cost_stress([
+            {"fold": 1, "trades": 40, "cost_stress": good},
+            {"fold": 2, "trades": 45, "cost_stress": bad},
+        ])
+        gate = summary["walk_forward_candidate_gate"]
+        self.assertFalse(gate["pass"])
+        self.assertFalse(gate["all_folds_stress_pass"])
+
+
 if __name__ == "__main__":
     unittest.main()
