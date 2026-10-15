@@ -206,6 +206,15 @@ class ResearchReportTests(unittest.TestCase):
         self.assertIn("GENERALIZATION_FAILURE: dev gain / holdout loss", report)
 
 
+    def test_boolean_max_trade_count_is_not_used_in_holdout_range(self):
+        manifest = {"reports": [{
+            "symbol": "BTCUSDT", "cost_bps": 5, "status": "RESEARCH_ONLY",
+            "holdout_min_trade_count_across_exit_variants": 10,
+            "holdout_max_trade_count_across_exit_variants": True,
+        }]}
+        report = render(manifest)
+        self.assertIn("| BTCUSDT | 5 bps: RESEARCH_ONLY | — |", report)
+
     def test_boolean_trade_counts_are_not_used_in_holdout_range(self):
         manifest = {"reports": [{
             "symbol": "BTCUSDT", "cost_bps": 5, "status": "RESEARCH_ONLY",
