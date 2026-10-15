@@ -9,7 +9,10 @@ from pathlib import Path
 from research.run_backtest import load_csv, load_funding_csv
 
 
-def audit_funding_against_candles(\n    candle_rows: list[dict], funding_rows: list[dict], symbol: str,\n    max_gap_hours: float | None = None,\n) -> dict:
+def audit_funding_against_candles(
+    candle_rows: list[dict], funding_rows: list[dict], symbol: str,
+    max_gap_hours: float | None = None,
+) -> dict:
     if not candle_rows:
         raise ValueError("candle data is empty")
     symbol = symbol.strip().upper()
@@ -21,7 +24,10 @@ def audit_funding_against_candles(\n    candle_rows: list[dict], funding_rows: l
     if symbols != {symbol}:
         raise ValueError(f"funding symbols {sorted(symbols)} do not match requested symbol {symbol}")
 
-    if max_gap_hours is not None and (not isinstance(max_gap_hours, (int, float)) or max_gap_hours <= 0):\n        raise ValueError("max_gap_hours must be positive when provided")\n\n    candle_ts = {int(row["t"]) for row in candle_rows}
+    if max_gap_hours is not None and (not isinstance(max_gap_hours, (int, float)) or max_gap_hours <= 0):
+        raise ValueError("max_gap_hours must be positive when provided")
+
+    candle_ts = {int(row["t"]) for row in candle_rows}
     start_ts, end_ts = min(candle_ts), max(candle_ts)
     in_range = [row for row in funding_rows if start_ts <= int(row["funding_time"]) <= end_ts]
     out_of_range = len(funding_rows) - len(in_range)
@@ -49,7 +55,8 @@ def audit_funding_against_candles(\n    candle_rows: list[dict], funding_rows: l
                 "min": min(deltas) if deltas else None,
                 "max": max(deltas) if deltas else None,
                 "distinct_count": len(interval_counts),
-                "counts": {str(k): v for k, v in sorted(interval_counts.items())},\n                "intervals_over_threshold_ms": large_gaps,
+                "counts": {str(k): v for k, v in sorted(interval_counts.items())},
+                "intervals_over_threshold_ms": large_gaps,
             },
         },
         "event_completeness_verified": False,
@@ -69,7 +76,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--funding-csv", required=True, help="Historical funding CSV")
     parser.add_argument("--symbol", required=True)
     parser.add_argument("--interval", default="1h", choices=("1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d"))
-    parser.add_argument("--output", required=True)\n    parser.add_argument("--max-gap-hours", type=float, default=None,\n                        help="Optional review threshold for unusually long funding-event gaps; does not prove missing events")
+    parser.add_argument("--output", required=True)
+    parser.add_argument("--max-gap-hours", type=float, default=None,
+                        help="Optional review threshold for unusually long funding-event gaps; does not prove missing events")
     args = parser.parse_args(argv)
     interval_ms = {
         "1m": 60_000, "5m": 300_000, "15m": 900_000, "30m": 1_800_000,
