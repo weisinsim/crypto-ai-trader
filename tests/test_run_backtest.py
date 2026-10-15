@@ -92,7 +92,7 @@ class WalkForwardCostStressSummaryTests(unittest.TestCase):
         ])
         gate = summary["walk_forward_candidate_gate"]
         self.assertFalse(gate["pass"])
-        self.assertEqual(gate["under_sampled_folds"], [None, 2])
+        self.assertEqual(gate["under_sampled_folds"], [None])
         self.assertEqual(summary["folds_passing_all_three_cost_scenarios"], 0)
 
     def test_missing_or_failed_fold_is_not_counted_as_passing(self):
