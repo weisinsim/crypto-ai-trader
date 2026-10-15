@@ -79,7 +79,9 @@ class DailyLossGuard:
                 if not isinstance(event_id, str) or not event_id.strip():
                     raise ValueError("invalid daily-loss event id")
                 event_total += _finite_number(event_pnl, "event pnl")
-            if abs(event_total - pnl) > 1e-8:
+                if not isfinite(event_total):
+                    raise ValueError("daily-loss ledger event total must remain finite")
+            if not isfinite(event_total) or abs(event_total - pnl) > 1e-8:
                 raise ValueError("daily-loss ledger total does not match event records")
             expected_locked = pnl <= -self.daily_loss_limit
             if record["locked"] != expected_locked and record["locked"] is False:
