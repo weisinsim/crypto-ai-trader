@@ -17,9 +17,26 @@ def parse_ts(v):
     return int(dt.timestamp() * 1000)
 
 
-def _valid_timestamp(value):
+def _parse_candle_timestamp(row):
+    # Archive-normalized research CSVs use integer epoch milliseconds in "t";
+    # legacy replay CSVs use timezone-aware ISO timestamps in "timestamp".
+    value = row.get("timestamp")
+    if value not in (None, ""):
+        return parse_ts(value)
+    value = row.get("t")
+    if value in (None, ""):
+        raise ValueError("missing timestamp/t field")
+    if isinstance(value, bool):
+        raise ValueError("invalid epoch-millisecond timestamp")
+    text = str(value).strip()
+    if not text.isdigit():
+        raise ValueError(f"invalid epoch-millisecond timestamp: {text!r}")
+    return int(text)
+
+
+def _valid_timestamp(row):
     try:
-        parse_ts(value)
+        _parse_candle_timestamp(row)
         return True
     except (ValueError, TypeError, AttributeError):
         return False
@@ -31,10 +48,10 @@ def audit(path, interval):
     with open(path, newline="", encoding="utf-8-sig") as f:
         rows = list(csv.DictReader(f))
     try:
-        ts = [parse_ts(r["timestamp"]) for r in rows]
+        ts = [_parse_candle_timestamp(r) for r in rows]
         timestamp_errors = 0
     except (ValueError, TypeError, KeyError):
-        timestamp_errors = sum(1 for r in rows if not _valid_timestamp(r.get("timestamp")))
+        timestamp_errors = sum(1 for r in rows if not _valid_timestamp(r))
         ts = []
     if timestamp_errors:
         return {"file": str(path), "rows": len(rows), "timestamp_errors": timestamp_errors,
@@ -58,7 +75,11 @@ def audit(path, interval):
     volume_fields = ("volume", "quote_volume", "v", "q")
     for r in rows:
         try:
-            o, h, low, close = (float(r[k]) for k in ("open", "high", "low", "close"))
+            aliases = (("open", "o"), ("high", "h"), ("low", "l"), ("close", "c"))
+            o, h, low, close = (
+                float(next(r[key] for key in names if key in r and r[key] not in (None, "")))
+                for names in aliases
+            )
             valid = all(math.isfinite(v) and v > 0 for v in (o, h, low, close))
             valid = valid and low <= min(o, close) and h >= max(o, close) and low <= h
         except (ValueError, TypeError, KeyError):
