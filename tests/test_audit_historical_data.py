@@ -87,6 +87,22 @@ class HistoricalDataAuditTests(unittest.TestCase):
         self.assertFalse(result["pass_basic_integrity"])
         self.assertEqual(result["invalid_volume_rows"], 1)
 
+    def test_normalized_archive_schema_with_epoch_ms_and_short_ohlc_names_passes(self):
+        tmp = tempfile.NamedTemporaryFile(mode="w", newline="", suffix=".csv", delete=False, encoding="utf-8")
+        with tmp:
+            writer = csv.DictWriter(tmp, fieldnames=["t", "o", "h", "l", "c", "v", "q"])
+            writer.writeheader()
+            writer.writerow({"t": 1_735_689_600_000, "o": "100", "h": "102", "l": "99",
+                             "c": "101", "v": "5", "q": "505"})
+            writer.writerow({"t": 1_735_693_200_000, "o": "101", "h": "103", "l": "100",
+                             "c": "102", "v": "6", "q": "612"})
+        path = Path(tmp.name)
+        self.addCleanup(lambda: path.unlink(missing_ok=True))
+        result = audit(path, "1h")
+        self.assertTrue(result["pass_basic_integrity"])
+        self.assertEqual(result["rows"], 2)
+        self.assertEqual(result["gap_count"], 0)
+
     def test_unsupported_interval_is_rejected(self):
         row = {"timestamp": "2025-01-01T00:59:59.999Z", "open": "100", "high": "102", "low": "99", "close": "101"}
         with self.assertRaises(ValueError):
