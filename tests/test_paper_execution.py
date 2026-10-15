@@ -217,6 +217,30 @@ class PaperExecutionBookTests(unittest.TestCase):
             self.assertEqual(blocked.get("rollback")["status"], "OPEN")
 
 
+    def test_fill_value_overflow_is_rejected_without_mutating_order(self):
+        book = PaperExecutionBook()
+        book.place_order("large-fill", "BTCUSDT", "LONG", 1e308, 1e307, 1.1e308)
+        with self.assertRaisesRegex(ValueError, "cumulative fill value must remain finite"):
+            book.record_fill("large-fill", 1e308, 1e308)
+        current = book.get("large-fill")
+        self.assertEqual(current["status"], "OPEN")
+        self.assertEqual(current["filled_quantity"], 0.0)
+        self.assertIsNone(current["average_fill_price"])
+
+    def test_persisted_oversized_filled_quantity_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "oversized.json"
+            order = {
+                "client_order_id": "huge", "symbol": "BTCUSDT", "side": "LONG",
+                "quantity": 2.0, "stop_loss": 90.0, "take_profit": 120.0,
+                "status": "OPEN", "filled_quantity": 10 ** 1000, "average_fill_price": None,
+                "exit_price": None, "exit_reason": None, "fill_events": {},
+                "cancelled_remainder": False,
+            }
+            path.write_text(json.dumps({"schema_version": 3, "orders": {"huge": order}}), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "filled quantity must be finite and non-negative"):
+                PaperExecutionBook(path)
+
     def test_oversized_integer_order_values_are_rejected(self):
         book = PaperExecutionBook()
         with self.assertRaisesRegex(ValueError, "quantity must be finite and positive"):
