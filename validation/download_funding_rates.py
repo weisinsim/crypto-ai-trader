@@ -71,10 +71,14 @@ def parse_archive_row(item, symbol, start_ms, end_ms):
             continue
         if math.isfinite(candidate) and abs(candidate) <= 0.05:
             numeric.append(candidate)
-    if len(numeric) != 1:
+    if not numeric:
         raise RuntimeError(
-            f"Expected exactly one plausible decimal funding rate in archive row "
-            f"for {symbol}, found {len(numeric)}: {item!r}"
+            f"No plausible decimal funding rate found in archive row for {symbol}: {item!r}"
+        )
+    if len(numeric) > 1:
+        raise RuntimeError(
+            f"Ambiguous archive row for {symbol}: expected one plausible decimal "
+            f"funding rate, found {len(numeric)}: {item!r}"
         )
     # Fail closed on ambiguous rows instead of silently selecting a potentially
     # unrelated small numeric field as the funding rate.
