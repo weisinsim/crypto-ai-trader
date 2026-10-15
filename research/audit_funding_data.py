@@ -37,8 +37,13 @@ def audit_funding_against_candles(
         for left, right in zip(funding_rows, funding_rows[1:])
     ]
     interval_counts = Counter(deltas)
+    max_gap_ms = max_gap_hours * 3_600_000 if max_gap_hours is not None else None
+    large_gaps = [delta for delta in deltas if max_gap_ms is not None and delta > max_gap_ms]
+    needs_review = bool(out_of_range or matched != len(in_range) or large_gaps)
     return {
-        "status": "REVIEW_REQUIRED" if out_of_range or matched != len(in_range) else "TIMESTAMP_ALIGNMENT_PASS_NOT_RECONCILED",
+        "status": "REVIEW_REQUIRED" if needs_review else "TIMESTAMP_ALIGNMENT_PASS_NOT_RECONCILED",
+        "gap_threshold_hours": max_gap_hours,
+        "intervals_exceeding_gap_threshold": len(large_gaps),
         "symbol": symbol,
         "candle_range": {"start_ts": start_ts, "end_ts": end_ts, "count": len(candle_rows)},
         "funding": {
