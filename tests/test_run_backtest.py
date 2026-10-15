@@ -223,6 +223,24 @@ class WalkForwardCostStressSummaryTests(unittest.TestCase):
         ])
         self.assertFalse(summary["walk_forward_candidate_gate"]["pass"])
 
+    def test_candidate_gate_rejects_malformed_equity_floor_flag(self):
+        invalid = {
+            "robustness_screen": {"pass": True},
+            "scenarios": {
+                name: {"status": "COMPLETED", "net_return_pct": 1.0,
+                       "max_drawdown_pct": 3.0, "profit_factor": 1.3,
+                       "equity_floor_hit": False}
+                for name in ("base", "stress", "severe_stress")
+            },
+        }
+        invalid["scenarios"]["stress"]["equity_floor_hit"] = "false"
+        summary = summarize_walk_forward_cost_stress([
+            {"fold": 1, "trades": 40, "cost_stress": invalid},
+        ])
+        gate = summary["walk_forward_candidate_gate"]
+        self.assertFalse(gate["pass"])
+        self.assertEqual(gate["folds_passing_all_three_cost_scenarios"], 0)
+
     def test_candidate_gate_fails_when_any_fold_fails_cost_stress(self):
         good = {"robustness_screen": {"pass": True}, "scenarios": {}}
         bad = {"robustness_screen": {"pass": False}, "scenarios": {}}
