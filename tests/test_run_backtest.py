@@ -253,5 +253,55 @@ class WalkForwardCostStressSummaryTests(unittest.TestCase):
         self.assertFalse(gate["all_folds_stress_pass"])
 
 
+    def test_candidate_gate_rejects_boolean_trade_count(self):
+        passing_stress = {
+            "robustness_screen": {"pass": True},
+            "scenarios": {
+                name: {"status": "COMPLETED", "net_return_pct": 1.0,
+                       "max_drawdown_pct": 3.0, "profit_factor": 1.3}
+                for name in ("base", "stress", "severe_stress")
+            },
+        }
+        summary = summarize_walk_forward_cost_stress([
+            {"fold": 1, "trades": True, "cost_stress": passing_stress},
+        ])
+        gate = summary["walk_forward_candidate_gate"]
+        self.assertFalse(gate["pass"])
+        self.assertEqual(gate["under_sampled_folds"], [1])
+
+    def test_candidate_gate_rejects_boolean_stress_metric(self):
+        invalid = {
+            "robustness_screen": {"pass": True},
+            "scenarios": {
+                name: {"status": "COMPLETED", "net_return_pct": 1.0,
+                       "max_drawdown_pct": 3.0, "profit_factor": 1.3}
+                for name in ("base", "stress", "severe_stress")
+            },
+        }
+        invalid["scenarios"]["stress"]["profit_factor"] = True
+        summary = summarize_walk_forward_cost_stress([
+            {"fold": 1, "trades": 40, "cost_stress": invalid},
+        ])
+        self.assertFalse(summary["walk_forward_candidate_gate"]["pass"])
+        self.assertEqual(summary["folds_passing_all_three_cost_scenarios"], 0)
+
+    def test_oversized_integer_stress_metric_is_rejected_without_crash(self):
+        invalid = {
+            "robustness_screen": {"pass": True},
+            "scenarios": {
+                name: {"status": "COMPLETED", "net_return_pct": 1.0,
+                       "max_drawdown_pct": 3.0, "profit_factor": 1.3}
+                for name in ("base", "stress", "severe_stress")
+            },
+        }
+        invalid["scenarios"]["stress"]["net_return_pct"] = 10 ** 1000
+        summary = summarize_walk_forward_cost_stress([
+            {"fold": 1, "trades": 40, "cost_stress": invalid},
+        ])
+        self.assertFalse(summary["walk_forward_candidate_gate"]["pass"])
+        self.assertEqual(summary["folds_passing_all_three_cost_scenarios"], 0)
+
+
+
 if __name__ == "__main__":
     unittest.main()
