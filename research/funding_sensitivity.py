@@ -74,6 +74,9 @@ def summarize_funding_scenarios(scenarios: Mapping[str, Mapping[str, object]]) -
         pf = result.get("profit_factor")
         if pf != "INF" and pf is not None:
             pf = _finite_number(pf, f"{name}.profit_factor")
+        equity_floor_hit = result.get("equity_floor_hit")
+        if equity_floor_hit is not None and not isinstance(equity_floor_hit, bool):
+            raise ValueError(f"scenario {name!r} equity_floor_hit must be boolean or null")
         summaries.append({
             "scenario": name,
             "status": status,
@@ -86,7 +89,7 @@ def summarize_funding_scenarios(scenarios: Mapping[str, Mapping[str, object]]) -
             "funding_settlement_count_total": settlement_total,
             "ambiguous_boundary_trades": ambiguous_trades,
             "ambiguous_boundary_trade_pct": round(ambiguous_trades / trades * 100, 4) if trades else None,
-            "equity_floor_hit": result.get("equity_floor_hit"),
+            "equity_floor_hit": equity_floor_hit,
         })
     return {
         "status": "SUMMARY_ONLY_NOT_A_BACKTEST",
