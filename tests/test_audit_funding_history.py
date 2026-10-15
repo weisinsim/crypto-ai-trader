@@ -100,6 +100,25 @@ class FundingHistoryAuditTests(unittest.TestCase):
         self.assertFalse(result["pass_basic_integrity"])
         self.assertEqual(result["trailing_gap_hours"], 16.0)
 
+    def test_rejects_invalid_audit_thresholds(self):
+        path = self.write_csv([("2025-01-01T00:00:00Z", "0.0001")])
+        for kwargs in (
+            {"max_gap_hours": 0},
+            {"max_gap_hours": float("inf")},
+            {"max_abs_rate": 0},
+            {"max_abs_rate": float("nan")},
+        ):
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaisesRegex(ValueError, "must be finite and > 0"):
+                    audit(path, **kwargs)
+
+    def test_rejects_invalid_requested_window_arguments(self):
+        path = self.write_csv([("2025-01-01T00:00:00Z", "0.0001")])
+        with self.assertRaisesRegex(ValueError, "end_ms must be later"):
+            audit(path, start_ms=2000, end_ms=1000)
+        with self.assertRaisesRegex(ValueError, "start_ms must be an integer"):
+            audit(path, start_ms=True)
+
     def test_empty_file_fails_closed(self):
         path = self.write_csv([])
         self.assertFalse(audit(path)["pass_basic_integrity"])
