@@ -6,7 +6,31 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from research.run_backtest import main, max_drawdown_pct, summarize_walk_forward_cost_stress
+from research.run_backtest import main, max_drawdown_pct, summarize_funding_data_quality, summarize_walk_forward_cost_stress
+
+
+class FundingDataQualitySummaryTests(unittest.TestCase):
+    def test_reports_timestamp_alignment_without_claiming_completeness(self):
+        candles = [{"t": 100}, {"t": 200}, {"t": 300}, {"t": 400}]
+        funding = [
+            {"funding_time": 100, "mark_price_source": "reported", "venue": "binance_usdm"},
+            {"funding_time": 250, "mark_price_source": "proxy", "venue": "binance_usdm"},
+            {"funding_time": 400, "mark_price_source": "reported", "venue": "binance_usdm"},
+        ]
+        summary = summarize_funding_data_quality(funding, candles)
+        self.assertEqual(summary["records_in_candle_range"], 3)
+        self.assertEqual(summary["exact_candle_open_matches"], 2)
+        self.assertEqual(summary["non_candle_open_events"], 1)
+        self.assertEqual(summary["source_labels"], ["proxy", "reported"])
+        self.assertFalse(summary["event_completeness_verified"])
+        self.assertIn("do not prove event completeness", summary["interpretation"])
+
+    def test_missing_funding_is_explicitly_unverified(self):
+        summary = summarize_funding_data_quality(None, [{"t": 100}])
+        self.assertFalse(summary["provided"])
+        self.assertEqual(summary["records_in_candle_range"], 0)
+        self.assertFalse(summary["event_completeness_verified"])
+
 
 
 class RunBacktestCostStressTests(unittest.TestCase):
