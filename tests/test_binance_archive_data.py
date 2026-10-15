@@ -42,6 +42,8 @@ class BinanceArchiveDataTests(unittest.TestCase):
             manifest = build_output_manifest(
                 path, symbol="btcusdt", interval="1h",
                 start_ms=0, end_ms=3_600_000, bars=1,
+                request_log=[{"source": "binance_vision_monthly_archive", "status_code": 200,
+                              "payload_bytes": 123, "payload_sha256": "abc"}],
             )
         self.assertEqual(manifest["status"], "STRUCTURAL_COVERAGE_COMPLETE")
         self.assertEqual(manifest["symbol"], "BTCUSDT")
@@ -49,6 +51,9 @@ class BinanceArchiveDataTests(unittest.TestCase):
         self.assertEqual(manifest["file"]["size_bytes"], len(payload))
         self.assertFalse(manifest["source_authenticity_verified"])
         self.assertEqual(manifest["requested_range_ms"]["end_exclusive"], 3_600_000)
+        self.assertEqual(manifest["request_evidence"]["request_count"], 1)
+        self.assertEqual(manifest["request_evidence"]["requests"][0]["status_code"], 200)
+        self.assertIn("do not independently prove upstream authenticity", manifest["request_evidence"]["note"])
 
     def test_rejects_non_finite_candle_prices(self):
         with self.assertRaisesRegex(ValueError, "non-finite"):
