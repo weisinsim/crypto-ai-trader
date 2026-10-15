@@ -93,6 +93,20 @@ class PaperReconciliationTests(unittest.TestCase):
             reconcile_paper_positions({"bad-status": bad_status})
 
 
+    def test_aggregate_exposure_overflow_is_rejected(self):
+        orders = {
+            "large-1": {
+                "symbol": "BTCUSDT", "side": "LONG", "status": "FILLED",
+                "quantity": 1e308, "filled_quantity": 1e308,
+            },
+            "large-2": {
+                "symbol": "BTCUSDT", "side": "LONG", "status": "FILLED",
+                "quantity": 1e308, "filled_quantity": 1e308,
+            },
+        }
+        with self.assertRaisesRegex(ValueError, "aggregated exposure must remain finite"):
+            reconcile_paper_positions(orders)
+
     def test_oversized_integer_exposure_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "invalid quantity"):
             reconcile_paper_positions({
