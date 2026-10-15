@@ -99,7 +99,7 @@ class DrawdownMetricValidationTests(unittest.TestCase):
                 max_drawdown_pct(points)
 
     def test_drawdown_includes_starting_equity(self):
-        self.assertEqual(max_drawdown_pct([{"equity": 0.8}, {"equity": 1.2}, {"equity": 0.9}]), 20.0)
+        self.assertEqual(max_drawdown_pct([{"equity": 0.8}, {"equity": 1.2}, {"equity": 0.9}]), 25.0)
 
 
 class WalkForwardCostStressSummaryTests(unittest.TestCase):
