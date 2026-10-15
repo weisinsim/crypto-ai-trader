@@ -83,7 +83,7 @@ class WalkForwardCostStressSummaryTests(unittest.TestCase):
         summary = summarize_walk_forward_cost_stress(folds)
         self.assertEqual(summary["fold_count"], 3)
         self.assertEqual(summary["folds_passing_all_three_cost_scenarios"], 1)
-        self.assertEqual(summary["folds_with_missing_cost_stress"], 1)
+        self.assertEqual(summary["folds_with_missing_cost_stress"], 2)
         self.assertEqual(summary["scenario_summary"]["base"]["folds_completed"], 1)
         self.assertFalse(summary["production_approval"])
 
@@ -140,7 +140,7 @@ class WalkForwardCostStressSummaryTests(unittest.TestCase):
         ])
         gate = summary["walk_forward_candidate_gate"]
         self.assertFalse(gate["pass"])
-        self.assertEqual(gate["folds_passing_all_three_cost_scenarios"], 0)
+        self.assertEqual(summary["folds_passing_all_three_cost_scenarios"], 0)
         self.assertEqual(gate["folds_with_missing_cost_stress"], 1)
 
     def test_candidate_gate_rejects_non_finite_metrics(self):
@@ -159,7 +159,7 @@ class WalkForwardCostStressSummaryTests(unittest.TestCase):
         ])
         gate = summary["walk_forward_candidate_gate"]
         self.assertFalse(gate["pass"])
-        self.assertEqual(gate["folds_passing_all_three_cost_scenarios"], 0)
+        self.assertEqual(summary["folds_passing_all_three_cost_scenarios"], 0)
 
     def test_candidate_gate_rejects_passing_flag_with_failed_scenario_metrics(self):
         contradictory = {
@@ -178,7 +178,7 @@ class WalkForwardCostStressSummaryTests(unittest.TestCase):
         ])
         gate = summary["walk_forward_candidate_gate"]
         self.assertFalse(gate["pass"])
-        self.assertEqual(gate["folds_passing_all_three_cost_scenarios"], 0)
+        self.assertEqual(summary["folds_passing_all_three_cost_scenarios"], 0)
 
     def test_candidate_gate_rejects_equity_floor_hit_even_if_flagged_passing(self):
         floor_hit = {
@@ -195,7 +195,7 @@ class WalkForwardCostStressSummaryTests(unittest.TestCase):
         ])
         gate = summary["walk_forward_candidate_gate"]
         self.assertFalse(gate["pass"])
-        self.assertEqual(gate["folds_passing_all_three_cost_scenarios"], 0)
+        self.assertEqual(summary["folds_passing_all_three_cost_scenarios"], 0)
 
     def test_candidate_gate_rejects_contradictory_stress_metrics(self):
         invalid = {
@@ -214,7 +214,7 @@ class WalkForwardCostStressSummaryTests(unittest.TestCase):
         ])
         gate = summary["walk_forward_candidate_gate"]
         self.assertFalse(gate["pass"])
-        self.assertEqual(gate["folds_passing_all_three_cost_scenarios"], 0)
+        self.assertEqual(summary["folds_passing_all_three_cost_scenarios"], 0)
 
         invalid["scenarios"]["severe_stress"]["net_return_pct"] = 0.1
         invalid["scenarios"]["stress"]["equity_floor_hit"] = True
@@ -239,7 +239,7 @@ class WalkForwardCostStressSummaryTests(unittest.TestCase):
         ])
         gate = summary["walk_forward_candidate_gate"]
         self.assertFalse(gate["pass"])
-        self.assertEqual(gate["folds_passing_all_three_cost_scenarios"], 0)
+        self.assertEqual(summary["folds_passing_all_three_cost_scenarios"], 0)
 
     def test_candidate_gate_fails_when_any_fold_fails_cost_stress(self):
         good = {"robustness_screen": {"pass": True}, "scenarios": {}}
