@@ -144,7 +144,7 @@ def render(manifest):
                 if not dev or not hold:
                     continue
                 dev_net, hold_net = dev.get("net_R"), hold.get("net_R")
-                if not isinstance(dev_net, (int, float)) or not isinstance(hold_net, (int, float)):
+                if not _finite_number(dev_net) or not _finite_number(hold_net):
                     diagnostic = "METRICS_MISSING"
                 elif dev_net < 0 <= hold_net:
                     diagnostic = "REGIME_INSTABILITY: dev loss / holdout gain"
