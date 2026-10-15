@@ -7,7 +7,7 @@ import zipfile
 import unittest
 from pathlib import Path
 
-from research.binance_archive_data import _read_zip, build_output_manifest, download_archive
+from research.binance_archive_data import _read_zip, _validated_candle, build_output_manifest, download_archive
 
 
 def make_zip(rows):
@@ -49,6 +49,23 @@ class BinanceArchiveDataTests(unittest.TestCase):
         self.assertEqual(manifest["file"]["size_bytes"], len(payload))
         self.assertFalse(manifest["source_authenticity_verified"])
         self.assertEqual(manifest["requested_range_ms"]["end_exclusive"], 3_600_000)
+
+    def test_rejects_non_finite_candle_prices(self):
+        with self.assertRaisesRegex(ValueError, "non-finite"):
+            _validated_candle([0, "10", "12", "9", "nan", "5", 3599999, "55"], 0)
+
+    def test_rejects_inconsistent_high_low(self):
+        with self.assertRaisesRegex(ValueError, "high price inconsistent"):
+            _validated_candle([0, "10", "10", "9", "11", "5", 3599999, "55"], 0)
+
+    def test_rejects_negative_volume(self):
+        with self.assertRaisesRegex(ValueError, "negative volume"):
+            _validated_candle([0, "10", "12", "9", "11", "-1", 3599999, "55"], 0)
+
+    def test_accepts_valid_ohlcv(self):
+        candle = _validated_candle([0, "10", "12", "9", "11", "5", 3599999, "55"], 0)
+        self.assertEqual(candle, {"t": 0, "o": 10.0, "h": 12.0, "l": 9.0,
+                                  "c": 11.0, "v": 5.0, "q": 55.0})
 
     def test_rejects_invalid_interval(self):
         with self.assertRaisesRegex(ValueError, "unsupported interval"):
