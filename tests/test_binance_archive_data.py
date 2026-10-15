@@ -7,7 +7,7 @@ import zipfile
 import unittest
 from pathlib import Path
 
-from research.binance_archive_data import _read_zip, _validated_candle, build_output_manifest, download_archive
+from research.binance_archive_data import _read_zip, _validated_candle, _deduplicate_candles, build_output_manifest, download_archive
 
 
 def make_zip(rows):
@@ -66,6 +66,19 @@ class BinanceArchiveDataTests(unittest.TestCase):
         candle = _validated_candle([0, "10", "12", "9", "11", "5", 3599999, "55"], 0)
         self.assertEqual(candle, {"t": 0, "o": 10.0, "h": 12.0, "l": 9.0,
                                   "c": 11.0, "v": 5.0, "q": 55.0})
+
+    def test_rejects_duplicate_candle_timestamp(self):
+        candle = {"t": 0, "o": 10.0, "h": 12.0, "l": 9.0,
+                  "c": 11.0, "v": 5.0, "q": 55.0}
+        with self.assertRaisesRegex(ValueError, "duplicate candle timestamp"):
+            _deduplicate_candles([candle, dict(candle)])
+
+    def test_rejects_conflicting_duplicate_candle_timestamp(self):
+        first = {"t": 0, "o": 10.0, "h": 12.0, "l": 9.0,
+                 "c": 11.0, "v": 5.0, "q": 55.0}
+        conflicting = {**first, "c": 10.5}
+        with self.assertRaisesRegex(ValueError, "conflicting duplicate"):
+            _deduplicate_candles([first, conflicting])
 
     def test_rejects_invalid_interval(self):
         with self.assertRaisesRegex(ValueError, "unsupported interval"):
