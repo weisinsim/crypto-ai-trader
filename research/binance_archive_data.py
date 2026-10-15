@@ -56,6 +56,20 @@ def _read_zip(payload: bytes, start_ms: int, end_ms: int, interval_ms: int) -> l
     return rows
 
 
+def _deduplicate_candles(rows: list[dict]) -> dict[int, dict]:
+    """Reject duplicate timestamps instead of silently choosing one candle."""
+    by_timestamp: dict[int, dict] = {}
+    for row in rows:
+        ts = row["t"]
+        if ts in by_timestamp:
+            prior = by_timestamp[ts]
+            if prior != row:
+                raise ValueError(f"conflicting duplicate candle timestamp: {ts}")
+            raise ValueError(f"duplicate candle timestamp: {ts}")
+        by_timestamp[ts] = row
+    return by_timestamp
+
+
 def download_archive(symbol: str, interval: str, start_ms: int, end_ms: int) -> list[dict]:
     if interval not in INTERVAL_MS:
         raise ValueError(f"unsupported interval: {interval}")
@@ -93,7 +107,7 @@ def download_archive(symbol: str, interval: str, start_ms: int, end_ms: int) -> 
             month = month_end
 
     rows.sort(key=lambda row: row["t"])
-    deduped = {row["t"]: row for row in rows}
+    deduped = _deduplicate_candles(rows)
     rows = list(deduped.values())
     expected = list(range(start_ms, end_ms, step))
     present = {row["t"] for row in rows}
