@@ -217,5 +217,11 @@ class PaperExecutionBookTests(unittest.TestCase):
             self.assertEqual(blocked.get("rollback")["status"], "OPEN")
 
 
+    def test_oversized_integer_order_values_are_rejected(self):
+        book = PaperExecutionBook()
+        with self.assertRaisesRegex(ValueError, "quantity must be finite and positive"):
+            book.place_order("huge", "BTCUSDT", "LONG", 10 ** 1000, 90, 120)
+
+
 if __name__ == "__main__":
     unittest.main()
