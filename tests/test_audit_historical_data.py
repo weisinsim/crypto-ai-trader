@@ -7,12 +7,17 @@ from validation.audit_historical_data import audit
 
 
 class HistoricalDataAuditTests(unittest.TestCase):
-    def write_csv(self, rows):
+    def write_csv(self, rows, include_volume=True):
         tmp = tempfile.NamedTemporaryFile(mode="w", newline="", suffix=".csv", delete=False, encoding="utf-8")
         with tmp:
-            writer = csv.DictWriter(tmp, fieldnames=["timestamp", "open", "high", "low", "close"])
+            fields = ["timestamp", "open", "high", "low", "close"]
+            if include_volume:
+                fields.append("volume")
+            writer = csv.DictWriter(tmp, fieldnames=fields)
             writer.writeheader()
-            writer.writerows(rows)
+            writer.writerows(
+                ({**row, **({"volume": row.get("volume", "5")} if include_volume else {})} for row in rows)
+            )
         self.addCleanup(lambda: Path(tmp.name).unlink(missing_ok=True))
         return Path(tmp.name)
 
@@ -102,6 +107,16 @@ class HistoricalDataAuditTests(unittest.TestCase):
         self.assertTrue(result["pass_basic_integrity"])
         self.assertEqual(result["rows"], 2)
         self.assertEqual(result["gap_count"], 0)
+
+
+    def test_missing_volume_column_fails_integrity(self):
+        rows = [
+            {"timestamp": "2025-01-01T00:59:59.999Z", "open": "100", "high": "102", "low": "99", "close": "101"},
+            {"timestamp": "2025-01-01T01:59:59.999Z", "open": "101", "high": "103", "low": "100", "close": "102"},
+        ]
+        result = audit(self.write_csv(rows, include_volume=False), "1h")
+        self.assertFalse(result["pass_basic_integrity"])
+        self.assertTrue(result["missing_volume_column"])
 
     def test_unsupported_interval_is_rejected(self):
         row = {"timestamp": "2025-01-01T00:59:59.999Z", "open": "100", "high": "102", "low": "99", "close": "101"}
