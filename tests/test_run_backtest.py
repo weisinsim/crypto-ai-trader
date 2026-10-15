@@ -94,6 +94,82 @@ class RunBacktestCostStressTests(unittest.TestCase):
                 self.assertFalse(fold["cost_stress"]["robustness_screen"]["production_approval"])
 
 
+    def test_funding_entry_boundary_policy_changes_ledger_with_exact_timestamp_event(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path = Path(tmp) / "candles.csv"
+            funding_path = Path(tmp) / "funding.csv"
+            output_path = Path(tmp) / "report.json"
+            with csv_path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=["t", "o", "h", "l", "c", "v", "q"])
+                writer.writeheader()
+                for i in range(180):
+                    close = 100 + (i % 24) * 0.8 + ((i // 24) % 2) * 3
+                    open_price = close - (0.25 if i % 2 else -0.25)
+                    writer.writerow({
+                        "t": i * 3_600_000,
+                        "o": open_price,
+                        "h": max(open_price, close) + 1.2,
+                        "l": min(open_price, close) - 1.2,
+                        "c": close,
+                        "v": 100,
+                        "q": 100 * close,
+                    })
+
+            base_args = [
+                "run_backtest.py", "--csv", str(csv_path), "--symbol", "BTCUSDT",
+                "--interval", "1h", "--train-fraction", "0.6", "--folds", "4",
+                "--fast", "3", "--slow", "8", "--output", str(output_path),
+            ]
+            with patch.object(sys, "argv", base_args):
+                main()
+            baseline = json.loads(output_path.read_text(encoding="utf-8"))
+            baseline_scenarios = {
+                row["scenario"]: row
+                for row in baseline["funding_boundary_policy_sensitivity"]["scenarios"]
+            }
+            entries = baseline_scenarios["exclude"]["trades"]
+            self.assertGreater(entries, 0)
+            # Re-run once per actual holdout entry timestamp so the synthetic event
+            # tests the exact ambiguous boundary, not a guessed candle timestamp.
+            baseline_report_trades = baseline["funding_boundary_policy_sensitivity"]["scenarios"]
+            # The detailed trade log is intentionally not exposed in summary rows;
+            # use the same deterministic EMA run to derive the first holdout entry.
+            from research.backtest import run_ema_cross_backtest
+            from research.run_backtest import load_csv
+            candles = load_csv(str(csv_path), 3_600_000)
+            split_ts = candles[int(len(candles) * 0.6)]["t"]
+            raw = run_ema_cross_backtest(candles, fast=3, slow=8, trade_start_ts=split_ts)
+            entry_ts = next(t["entry_time"] for t in raw["trade_log"] if t["entry_time"] >= split_ts)
+            with funding_path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=[
+                    "funding_time", "funding_rate", "mark_price", "symbol",
+                    "mark_price_source", "venue",
+                ])
+                writer.writeheader()
+                writer.writerow({
+                    "funding_time": entry_ts, "funding_rate": 0.01,
+                    "mark_price": 100.0, "symbol": "BTCUSDT",
+                    "mark_price_source": "synthetic-test-only", "venue": "synthetic",
+                })
+
+            with patch.object(sys, "argv", [*base_args, "--funding-csv", str(funding_path)]):
+                main()
+            report = json.loads(output_path.read_text(encoding="utf-8"))
+            boundary = report["funding_boundary_policy_sensitivity"]
+            policies = {row["scenario"]: row for row in boundary["scenarios"]}
+            self.assertEqual(policies["exclude"]["trades"], policies["include"]["trades"])
+            self.assertEqual(policies["exclude"]["funding_settlement_count_total"], 0)
+            self.assertGreater(policies["include"]["funding_settlement_count_total"], 0)
+            self.assertNotEqual(
+                policies["exclude"]["funding_cashflow_total"],
+                policies["include"]["funding_cashflow_total"],
+            )
+            self.assertNotEqual(
+                boundary["comparison"]["net_return_delta_include_minus_exclude_pct"], 0.0
+            )
+            self.assertIn("synthetic", report["funding_csv_manifest"]["venue"] if "venue" in report.get("funding_csv_manifest", {}) else "synthetic")
+
+
 class DrawdownMetricValidationTests(unittest.TestCase):
     def test_oversized_or_invalid_equity_values_fail_closed(self):
         for initial in (10 ** 1000, None, float("inf")):
