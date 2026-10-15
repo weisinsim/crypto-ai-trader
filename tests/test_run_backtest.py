@@ -73,7 +73,7 @@ class RunBacktestCostStressTests(unittest.TestCase):
             self.assertEqual(
                 boundary["comparison"]["net_return_delta_include_minus_exclude_pct"], 0.0
             )
-            self.assertIn("not establish actual exchange", boundary["comparison"]["interpretation"])
+            self.assertIn("neither policy establishes actual exchange", boundary["comparison"]["interpretation"])
             self.assertEqual(len(report["walk_forward"]), 4)
             summary = report["walk_forward_cost_stress_summary"]
             self.assertEqual(summary["fold_count"], 4)
