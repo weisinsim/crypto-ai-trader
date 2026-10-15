@@ -236,5 +236,20 @@ class ResearchReportTests(unittest.TestCase):
         self.assertIn("| BTCUSDT | 5 bps: RESEARCH_ONLY | — |", report)
 
 
+    def test_oversized_integer_metrics_do_not_crash_report(self):
+        huge = 10 ** 1000
+        manifest = {"min_trades_threshold": 2, "cost_sensitivity_bps": [5], "reports": [{
+            "symbol": "BTCUSDT", "cost_bps": 5, "status": "RESEARCH_ONLY",
+            "development_metrics_by_exit": {"target_3.0R": {
+                "single_position": {"net_R": huge}}},
+            "holdout_metrics_by_exit": {"target_3.0R": {
+                "single_position": {"trades": 4, "net_R": huge, "profit_factor": 1.4}}},
+        }]}
+        report = render(manifest)
+        self.assertIn("FAIL_MISSING_OR_INVALID_NET_R", report)
+        self.assertIn("| BTCUSDT | 5 | 3.0R | single_position | — | — | METRICS_MISSING |", report)
+
+
+
 if __name__ == "__main__":
     unittest.main()
