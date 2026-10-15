@@ -43,6 +43,12 @@ class CostStressTests(unittest.TestCase):
         self.assertTrue(all(call[1]["funding_rates"] == funding for call in self.calls))
         self.assertEqual(report["scenarios"]["base"]["funding_settlement_count_total"], 2)
         self.assertEqual(report["scenarios"]["severe_stress"]["fee_rate"], 0.002)
+        self.assertAlmostEqual(
+            report["comparisons_vs_base"]["stress"]["net_return_change_vs_base_pct_points"],
+            -0.75,
+        )
+        self.assertFalse(report["robustness_screen"]["pass"])
+        self.assertFalse(report["robustness_screen"]["production_approval"])
 
     def test_rejects_invalid_multipliers(self):
         for stress, severe in ((0.9, 2), (float("nan"), 2), (1.5, 1.4), (True, 2)):
@@ -102,6 +108,9 @@ class CostStressTests(unittest.TestCase):
         self.assertEqual(base["trades"], expected["trades"])
         self.assertEqual(report["scenarios"]["stress"]["fee_rate"], 0.00075)
         self.assertEqual(report["scenarios"]["severe_stress"]["slippage_rate"], 0.0004)
+        self.assertIn("stress", report["comparisons_vs_base"])
+        self.assertIn("severe_stress", report["comparisons_vs_base"])
+        self.assertIn("pass", report["robustness_screen"])
 
 
 if __name__ == "__main__":
