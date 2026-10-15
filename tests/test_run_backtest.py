@@ -10,6 +10,29 @@ from research.run_backtest import main, summarize_walk_forward_cost_stress
 
 
 class RunBacktestCostStressTests(unittest.TestCase):
+    def test_invalid_cost_stress_multipliers_are_rejected(self):
+        rows = [
+            {"t": i * 3_600_000, "o": 100.0, "h": 102.0, "l": 98.0,
+             "c": 100.0, "v": 1.0, "q": 100.0}
+            for i in range(180)
+        ]
+        cases = [
+            (["--stress-multiplier", "nan"], "must be finite"),
+            (["--stress-multiplier", "1.5", "--severe-stress-multiplier", "1.2"],
+             "1 <= stress <= severe-stress"),
+            (["--stress-multiplier", "0.9"], "1 <= stress <= severe-stress"),
+        ]
+        for extra_args, message in cases:
+            argv = [
+                "run_backtest.py", "--csv", "unused.csv", "--symbol", "BTCUSDT",
+                "--interval", "1h", "--fast", "3", "--slow", "8",
+                "--output", "unused-report.json", *extra_args,
+            ]
+            with self.subTest(extra_args=extra_args), patch.object(sys, "argv", argv), \
+                    patch("research.run_backtest.load_csv", return_value=rows):
+                with self.assertRaisesRegex(ValueError, message):
+                    main()
+
     def test_cost_stress_is_reported_for_holdout_and_each_walk_forward_fold(self):
         with tempfile.TemporaryDirectory() as tmp:
             csv_path = Path(tmp) / "candles.csv"
