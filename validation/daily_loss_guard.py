@@ -12,9 +12,17 @@ _SCHEMA_VERSION = 1
 
 
 def _finite_number(value, field):
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{field} must be finite")
-    return float(value)
+    try:
+        if not isfinite(value):
+            raise ValueError(f"{field} must be finite")
+        converted = float(value)
+    except (OverflowError, ValueError) as exc:
+        raise ValueError(f"{field} must be finite") from exc
+    if not isfinite(converted):
+        raise ValueError(f"{field} must be finite")
+    return converted
 
 
 def _utc_date(value):
@@ -128,9 +136,12 @@ class DailyLossGuard:
                 raise ValueError("event_id reused with different pnl")
             return self.status(day)
 
+        new_total = before["realized_pnl"] + pnl
+        if not isfinite(new_total):
+            raise ValueError("realized PnL total must remain finite")
         updated = {
-            "realized_pnl": before["realized_pnl"] + pnl,
-            "locked": before["locked"] or (before["realized_pnl"] + pnl <= -self.daily_loss_limit),
+            "realized_pnl": new_total,
+            "locked": before["locked"] or (new_total <= -self.daily_loss_limit),
             "events": {**before["events"], event_id: pnl},
         }
         self.days[day] = updated
