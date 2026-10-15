@@ -54,13 +54,13 @@ class BatchAuditTests(unittest.TestCase):
         step = 3_600_000 if interval == "1h" else 14_400_000
         origin = 1_735_689_599_999
         with tempfile.NamedTemporaryFile(mode="w", newline="", suffix=".csv", delete=False, encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=["timestamp", "open", "high", "low", "close"])
+            writer = csv.DictWriter(f, fieldnames=["timestamp", "open", "high", "low", "close", "volume"])
             writer.writeheader()
             for i in range(3):
                 ms = origin + i * step
                 from datetime import datetime, timezone
                 stamp = datetime.fromtimestamp(ms / 1000, tz=timezone.utc).isoformat().replace("+00:00", "Z")
-                writer.writerow({"timestamp": stamp, "open": 100, "high": 102, "low": 99, "close": 101})
+                writer.writerow({"timestamp": stamp, "open": 100, "high": 102, "low": 99, "close": 101, "volume": 5})
         path = Path(f.name)
         self.addCleanup(lambda: path.unlink(missing_ok=True))
         return path
