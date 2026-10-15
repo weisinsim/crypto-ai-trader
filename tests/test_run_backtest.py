@@ -95,6 +95,16 @@ class WalkForwardCostStressSummaryTests(unittest.TestCase):
         self.assertEqual(gate["under_sampled_folds"], [None])
         self.assertEqual(summary["folds_passing_all_three_cost_scenarios"], 0)
 
+    def test_malformed_scenarios_and_rows_fail_closed_without_crashing(self):
+        summary = summarize_walk_forward_cost_stress([
+            {"fold": 1, "trades": 40, "cost_stress": {"scenarios": None}},
+            {"fold": 2, "trades": 40, "cost_stress": {"scenarios": {"base": None}}},
+        ])
+        self.assertFalse(summary["walk_forward_candidate_gate"]["pass"])
+        self.assertEqual(summary["folds_passing_all_three_cost_scenarios"], 0)
+        self.assertEqual(summary["folds_with_missing_cost_stress"], 2)
+        self.assertEqual(summary["scenario_summary"]["base"]["folds_completed"], 0)
+
     def test_missing_or_failed_fold_is_not_counted_as_passing(self):
         folds = [
             {
