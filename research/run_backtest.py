@@ -248,6 +248,55 @@ def summarize_walk_forward_cost_stress(walk_results: list[dict]) -> dict:
     }
 
 
+
+def _summarize_fold_funding_boundary(
+    *, rows: list[dict], end_index: int, start_ts: int, common: dict,
+    symbol_end_ts: int, fold_number: int,
+) -> dict:
+    """Rerun one walk-forward fold under both entry-timestamp funding policies."""
+    scenarios = {}
+    fold_rows = rows[:end_index]
+    for policy in ("exclude", "include"):
+        result = run_ema_cross_backtest(
+            fold_rows, trade_start_ts=start_ts,
+            **{**common, "funding_entry_boundary_policy": policy},
+        )
+        trades = [
+            trade for trade in result["trade_log"]
+            if start_ts <= trade["entry_time"] <= symbol_end_ts
+        ]
+        curve = [
+            point for point in result["equity_curve"]
+            if start_ts <= point["t"] <= symbol_end_ts
+        ]
+        profits = sum(t["pnl_equity"] for t in trades if t["pnl_equity"] > 0)
+        losses = -sum(t["pnl_equity"] for t in trades if t["pnl_equity"] < 0)
+        scenarios[policy] = {
+            "status": result["status"],
+            "trades": len(trades),
+            "net_return_pct": round((result["equity_final"] - 1.0) * 100, 4),
+            "max_drawdown_pct": max_drawdown_pct(curve),
+            "profit_factor": round(profits / losses, 4) if losses else (None if not profits else "INF"),
+            "equity_floor_hit": result.get("equity_floor_hit", False),
+            "trade_log": trades,
+        }
+    summary = summarize_funding_scenarios(scenarios)
+    summary["comparison"] = {
+        "fold": fold_number,
+        "net_return_delta_include_minus_exclude_pct": round(
+            scenarios["include"]["net_return_pct"] - scenarios["exclude"]["net_return_pct"], 4
+        ),
+        "max_drawdown_delta_include_minus_exclude_pct": round(
+            scenarios["include"]["max_drawdown_pct"] - scenarios["exclude"]["max_drawdown_pct"], 4
+        ),
+        "interpretation": (
+            "Walk-forward fold sensitivity only; neither policy establishes actual exchange "
+            "settlement eligibility. OHLC does not prove intrabar event ordering."
+        ),
+    }
+    return summary
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--csv", required=True, help="closed-candle CSV from research.binance_data")
@@ -414,22 +463,10 @@ def main() -> None:
             "profit_factor": round(sum(t["pnl_equity"] for t in fold_trades if t["pnl_equity"] > 0) / -sum(t["pnl_equity"] for t in fold_trades if t["pnl_equity"] < 0), 4) if any(t["pnl_equity"] < 0 for t in fold_trades) else (None if not any(t["pnl_equity"] > 0 for t in fold_trades) else "INF"),
             "trade_log": fold_trades,
             "cost_stress": fold_cost_stress,
-            "funding_sensitivity": summarize_funding_scenarios({
-                f"fold_{fold + 1}": {
-                    "status": fold_result["status"],
-                    "trades": len(fold_trades),
-                    "net_return_pct": round((fold_result["equity_final"] - 1.0) * 100, 4),
-                    "max_drawdown_pct": max_drawdown_pct(fold_curve),
-                    "profit_factor": (
-                        round(sum(t["pnl_equity"] for t in fold_trades if t["pnl_equity"] > 0)
-                              / -sum(t["pnl_equity"] for t in fold_trades if t["pnl_equity"] < 0), 4)
-                        if any(t["pnl_equity"] < 0 for t in fold_trades)
-                        else (None if not any(t["pnl_equity"] > 0 for t in fold_trades) else "INF")
-                    ),
-                    "equity_floor_hit": fold_result.get("equity_floor_hit", False),
-                    "trade_log": fold_trades,
-                }
-            }),
+            "funding_boundary_policy_sensitivity": _summarize_fold_funding_boundary(
+                rows=rows, end_index=b, start_ts=start_ts, common=fold_common,
+                symbol_end_ts=rows[b - 1]["t"], fold_number=fold + 1,
+            ),
         })
 
     report = {
