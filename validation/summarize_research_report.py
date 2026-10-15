@@ -24,17 +24,22 @@ def target_metrics(report, target, mode, period="holdout"):
     return metrics if isinstance(metrics, dict) else {}
 
 
+def _finite_number(value):
+    """Accept finite numeric metrics but never booleans (bool subclasses int)."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
 def screening_status(dev, hold, min_trades):
     trades = hold.get('trades')
-    if not isinstance(trades, int) or trades < min_trades:
+    if isinstance(trades, bool) or not isinstance(trades, int) or trades < min_trades:
         return 'FAIL_INSUFFICIENT_HOLDOUT_TRADES'
     dev_net, hold_net = dev.get('net_R'), hold.get('net_R')
-    if any(not isinstance(v, (int, float)) or not math.isfinite(v) for v in (dev_net, hold_net)):
+    if not _finite_number(dev_net) or not _finite_number(hold_net):
         return 'FAIL_MISSING_OR_INVALID_NET_R'
     if dev_net <= 0 or hold_net <= 0:
         return 'FAIL_NONPOSITIVE_DEVELOPMENT_OR_HOLDOUT'
     pf = hold.get('profit_factor')
-    if not isinstance(pf, (int, float)) or not math.isfinite(pf) or pf <= 1:
+    if not _finite_number(pf) or pf <= 1:
         return 'FAIL_HOLDOUT_PROFIT_FACTOR'
     return 'PASS_PRELIMINARY_SCREEN_ONLY'
 
