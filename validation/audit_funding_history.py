@@ -68,10 +68,12 @@ def audit(path, max_gap_hours=24.0, max_abs_rate=0.05, start_ms=None, end_ms=Non
     )
     # The requested range is [start_ms, end_ms): a funding event exactly at
     # end_ms belongs to the next window and must not silently pass this audit.
-    events_within_requested_window = (
-        (start_ms is None or all(ts >= start_ms for ts in timestamps))
-        and (end_ms is None or all(ts < end_ms for ts in timestamps))
-    )
+    outside_window_timestamps = [
+        ts for ts in timestamps
+        if (start_ms is not None and ts < start_ms)
+        or (end_ms is not None and ts >= end_ms)
+    ]
+    events_within_requested_window = not outside_window_timestamps
     ordered = timestamps == sorted(timestamps)
     passed = (duplicates == 0 and non_increasing == 0 and ordered
               and not large_gaps and boundary_gaps_valid
@@ -85,6 +87,8 @@ def audit(path, max_gap_hours=24.0, max_abs_rate=0.05, start_ms=None, end_ms=Non
         "largest_gap_examples_hours": sorted((round(g / 3600, 4) for g in large_gaps), reverse=True)[:10],
         "configured_max_gap_hours": max_gap_hours,
         "requested_start_ms": start_ms, "requested_end_ms_exclusive": end_ms,
+        "events_outside_requested_window": len(outside_window_timestamps),
+        "outside_window_timestamp_examples_ms": outside_window_timestamps[:10],
         "leading_gap_hours": round(leading_gap_hours, 4) if leading_gap_hours is not None else None,
         "trailing_gap_hours": round(trailing_gap_hours, 4) if trailing_gap_hours is not None else None,
         "maximum_absolute_funding_rate": max((abs(row["rate"]) for row in rows), default=0.0),
