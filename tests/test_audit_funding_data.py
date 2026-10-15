@@ -38,6 +38,19 @@ class FundingAuditTests(unittest.TestCase):
         self.assertFalse(report["source_authenticity_verified"])
         self.assertFalse(report["account_cashflows_reconciled"])
 
+    def test_optional_gap_threshold_flags_large_intervals_for_review(self):
+        rows = [dict(self.funding[0]), dict(self.funding[-1])]
+        rows[0]["funding_time"] = 100
+        rows[1]["funding_time"] = 400
+        report = audit_funding_against_candles(self.candles, rows, "BTCUSDT", max_gap_hours=0.00005)
+        self.assertEqual(report["status"], "REVIEW_REQUIRED")
+        self.assertEqual(report["intervals_exceeding_gap_threshold"], 1)
+        self.assertFalse(report["event_completeness_verified"])
+
+    def test_gap_threshold_must_be_positive(self):
+        with self.assertRaisesRegex(ValueError, "must be positive"):
+            audit_funding_against_candles(self.candles, self.funding, "BTCUSDT", max_gap_hours=0)
+
     def test_symbol_mismatch_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "do not match"):
             audit_funding_against_candles(self.candles, self.funding, "ETHUSDT")
