@@ -110,12 +110,12 @@ def summarize_walk_forward_cost_stress(walk_results: list[dict]) -> dict:
     scenario_names = ("base", "stress", "severe_stress")
     per_scenario = {}
     for name in scenario_names:
-        rows = [
-            fold["cost_stress"].get("scenarios", {}).get(name, {})
-            if isinstance(fold, dict) and isinstance(fold.get("cost_stress"), dict)
-            else {}
-            for fold in walk_results
-        ]
+        rows = []
+        for fold in walk_results:
+            stress = fold.get("cost_stress") if isinstance(fold, dict) else None
+            scenarios = stress.get("scenarios") if isinstance(stress, dict) else None
+            row = scenarios.get(name, {}) if isinstance(scenarios, dict) else {}
+            rows.append(row if isinstance(row, dict) else {})
         valid_returns = [
             row["net_return_pct"] for row in rows
             if _finite_metric(row.get("net_return_pct"))
