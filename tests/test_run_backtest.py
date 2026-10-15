@@ -92,6 +92,19 @@ class RunBacktestCostStressTests(unittest.TestCase):
                 )
                 self.assertEqual(fold["cost_stress"]["evaluation_window"]["start_ts"], fold["start_ts"])
                 self.assertFalse(fold["cost_stress"]["robustness_screen"]["production_approval"])
+                fold_funding = fold["funding_boundary_policy_sensitivity"]
+                self.assertEqual(fold_funding["status"], "SUMMARY_ONLY_NOT_A_BACKTEST")
+                self.assertEqual(fold_funding["scenario_count"], 2)
+                fold_policies = {row["scenario"]: row for row in fold_funding["scenarios"]}
+                self.assertEqual(set(fold_policies), {"exclude", "include"})
+                self.assertEqual(
+                    fold_policies["exclude"]["trades"],
+                    fold_policies["include"]["trades"],
+                )
+                self.assertIn(
+                    "neither policy establishes actual exchange",
+                    fold_funding["comparison"]["interpretation"],
+                )
 
 
     def test_funding_entry_boundary_policy_changes_ledger_with_exact_timestamp_event(self):
