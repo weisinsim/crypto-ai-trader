@@ -394,6 +394,11 @@ class BacktestTests(unittest.TestCase):
         self.assertEqual(affected["reason"], "STOP")
         self.assertEqual(affected["funding_settlement_count"], 1)
         self.assertTrue(affected["funding_boundary_ambiguous"])
+        self.assertGreaterEqual(result["funding_boundary_ambiguous_trades"], 1)
+        self.assertEqual(
+            result["funding_boundary_ambiguous_trades"],
+            sum(1 for item in result["trade_log"] if item["funding_boundary_ambiguous"]),
+        )
 
 
 if __name__ == "__main__":
