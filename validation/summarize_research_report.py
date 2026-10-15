@@ -64,7 +64,8 @@ def render(manifest):
         rows = [r for r in reports if r.get("symbol") == symbol]
         statuses = ", ".join(f"{r.get('cost_bps', '—')} bps: {r.get('status', 'UNKNOWN')}" for r in rows)
         counts = [r.get("holdout_min_trade_count_across_exit_variants") for r in rows
-                  if isinstance(r.get("holdout_min_trade_count_across_exit_variants"), int)]
+                  if isinstance(r.get("holdout_min_trade_count_across_exit_variants"), int)
+                  and not isinstance(r.get("holdout_min_trade_count_across_exit_variants"), bool)]
         max_counts = [r.get("holdout_max_trade_count_across_exit_variants") for r in rows
                       if isinstance(r.get("holdout_max_trade_count_across_exit_variants"), int)]
         count_text = f"{min(counts)}–{max(max_counts)}" if counts and max_counts else "—"
