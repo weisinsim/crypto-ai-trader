@@ -439,4 +439,7 @@ def run_ema_cross_backtest(
             "profit_factor": round(sum(wins) / gross_loss, 4) if gross_loss else (None if not wins else "INF"),
             "expectancy_pct": round(sum(t["return_pct"] for t in trades) / len(trades), 4) if trades else None,
             "equity_final": round(equity, 8), "equity_floor_hit": equity_floor_hit,
-            "equity_curve": equity_curve, "trade_log": trades}
+            "equity_curve": equity_curve, "trade_log": trades,
+            "funding_boundary_ambiguous_trades": sum(
+                1 for trade in trades if trade["funding_boundary_ambiguous"]
+            )}
