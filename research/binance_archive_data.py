@@ -4,7 +4,9 @@ from __future__ import annotations
 import argparse
 import calendar
 import csv
+import hashlib
 import io
+import json
 import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -111,6 +113,35 @@ def download_archive(symbol: str, interval: str, start_ms: int, end_ms: int) -> 
     return rows
 
 
+def build_output_manifest(
+    output_path: str | Path, *, symbol: str, interval: str,
+    start_ms: int, end_ms: int, bars: int,
+) -> dict:
+    """Describe the normalized download artifact; provenance claims remain unverified."""
+    path = Path(output_path)
+    digest = hashlib.sha256()
+    size_bytes = 0
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+            size_bytes += len(chunk)
+    return {
+        "manifest_version": 1,
+        "status": "STRUCTURAL_COVERAGE_COMPLETE",
+        "symbol": symbol.upper(),
+        "interval": interval,
+        "requested_range_ms": {"start_inclusive": start_ms, "end_exclusive": end_ms},
+        "bars": bars,
+        "source_claims": [
+            "Binance Vision USD-M Futures public archive",
+            "Binance USD-M Futures REST klines fallback when archive coverage is missing",
+        ],
+        "file": {"path": str(path), "size_bytes": size_bytes, "sha256": digest.hexdigest()},
+        "source_authenticity_verified": False,
+        "note": "Exact candle-grid coverage was checked by the downloader; this manifest does not retain per-request HTTP evidence or independently authenticate the upstream source.",
+    }
+
+
 def utc_ms(date_text: str) -> int:
     return int(datetime.strptime(date_text, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
 
@@ -130,8 +161,14 @@ def main() -> None:
         writer = csv.DictWriter(handle, fieldnames=FIELDS)
         writer.writeheader()
         writer.writerows(rows)
-    print(f"status=COMPLETE source=binance_vision symbol={args.symbol.upper()} "
-          f"interval={args.interval} bars={len(rows)} output={destination}")
+    manifest = build_output_manifest(
+        destination, symbol=args.symbol, interval=args.interval,
+        start_ms=utc_ms(args.start), end_ms=utc_ms(args.end), bars=len(rows),
+    )
+    manifest_path = destination.with_suffix(destination.suffix + ".manifest.json")
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\\n", encoding="utf-8")
+    print(f"status=COMPLETE source=binance_vision_with_rest_fallback symbol={args.symbol.upper()} "
+          f"interval={args.interval} bars={len(rows)} output={destination} manifest={manifest_path}")
 
 
 if __name__ == "__main__":
