@@ -46,7 +46,7 @@ def evaluate_live_order_gate(snapshot, limits):
 
     reasons = []
     required_snapshot = (
-        "exchange_healthy", "kill_switch_active", "candle_closed", "model_status",
+        "exchange_healthy", "kill_switch_active", "live_execution_enabled", "candle_closed", "model_status",
         "signal", "data_age_sec", "analysis_age_sec", "spread_bps",
         "risk_fraction", "daily_loss_fraction", "open_positions", "requested_notional",
     )
@@ -67,6 +67,8 @@ def evaluate_live_order_gate(snapshot, limits):
         reasons.append("EXCHANGE_UNHEALTHY")
     if snapshot["kill_switch_active"] is not False:
         reasons.append("KILL_SWITCH_ACTIVE")
+    if snapshot["live_execution_enabled"] is not True:
+        reasons.append("LIVE_EXECUTION_DISABLED")
     if snapshot["candle_closed"] is not True:
         reasons.append("CANDLE_NOT_CLOSED")
     if snapshot["model_status"] != "PRODUCTION":
