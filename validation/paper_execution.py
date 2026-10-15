@@ -13,9 +13,17 @@ _SCHEMA_VERSION = 3
 
 
 def _positive_finite(value, field):
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value) or value <= 0:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{field} must be finite and positive")
-    return float(value)
+    try:
+        if not isfinite(value) or value <= 0:
+            raise ValueError(f"{field} must be finite and positive")
+        converted = float(value)
+    except (OverflowError, ValueError) as exc:
+        raise ValueError(f"{field} must be finite and positive") from exc
+    if not isfinite(converted) or converted <= 0:
+        raise ValueError(f"{field} must be finite and positive")
+    return converted
 
 
 class PaperExecutionBook:
