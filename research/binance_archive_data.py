@@ -18,6 +18,30 @@ FIELDS = ("t", "o", "h", "l", "c", "v", "q")
 BASE = "https://data.binance.vision/data/futures/um"
 
 
+def _validated_candle(raw: list, timestamp: int) -> dict:
+    """Parse and validate OHLCV values before accepting archive/API data."""
+    import math
+
+    try:
+        values = {
+            "o": float(raw[1]), "h": float(raw[2]), "l": float(raw[3]),
+            "c": float(raw[4]), "v": float(raw[5]), "q": float(raw[7]),
+        }
+    except (TypeError, ValueError, IndexError) as exc:
+        raise ValueError(f"invalid OHLCV values at candle timestamp {timestamp}") from exc
+    if not all(math.isfinite(value) for value in values.values()):
+        raise ValueError(f"non-finite OHLCV values at candle timestamp {timestamp}")
+    if min(values["o"], values["h"], values["l"], values["c"]) <= 0:
+        raise ValueError(f"non-positive OHLC price at candle timestamp {timestamp}")
+    if values["v"] < 0 or values["q"] < 0:
+        raise ValueError(f"negative volume at candle timestamp {timestamp}")
+    if values["h"] < max(values["o"], values["l"], values["c"]):
+        raise ValueError(f"high price inconsistent with OHLC at candle timestamp {timestamp}")
+    if values["l"] > min(values["o"], values["h"], values["c"]):
+        raise ValueError(f"low price inconsistent with OHLC at candle timestamp {timestamp}")
+    return {"t": timestamp, **values}
+
+
 def _read_zip(payload: bytes, start_ms: int, end_ms: int, interval_ms: int) -> list[dict]:
     rows = []
     with zipfile.ZipFile(io.BytesIO(payload)) as archive:
@@ -28,11 +52,7 @@ def _read_zip(payload: bytes, start_ms: int, end_ms: int, interval_ms: int) -> l
                         continue
                     ts = int(raw[0])
                     if start_ms <= ts < end_ms and ts + interval_ms <= end_ms:
-                        rows.append({
-                            "t": ts, "o": float(raw[1]), "h": float(raw[2]),
-                            "l": float(raw[3]), "c": float(raw[4]), "v": float(raw[5]),
-                            "q": float(raw[7]),
-                        })
+                        rows.append(_validated_candle(raw, ts))
     return rows
 
 
@@ -96,11 +116,7 @@ def download_archive(symbol: str, interval: str, start_ms: int, end_ms: int) -> 
                     ts = int(raw[0])
                     close_ts = int(raw[6])
                     if ts in batch and close_ts < int(datetime.now(timezone.utc).timestamp() * 1000):
-                        deduped[ts] = {
-                            "t": ts, "o": float(raw[1]), "h": float(raw[2]),
-                            "l": float(raw[3]), "c": float(raw[4]), "v": float(raw[5]),
-                            "q": float(raw[7]),
-                        }
+                        deduped[ts] = _validated_candle(raw, ts)
         rows = [deduped[ts] for ts in sorted(deduped)]
     actual = [row["t"] for row in rows]
     if actual != expected:
