@@ -89,6 +89,8 @@ class FundingHistoryAuditTests(unittest.TestCase):
                        end_ms=1735776000000)
         self.assertFalse(result["pass_basic_integrity"])
         self.assertEqual(result["trailing_gap_hours"], 0.0)
+        self.assertEqual(result["events_outside_requested_window"], 1)
+        self.assertEqual(result["outside_window_timestamp_examples_ms"], [1735776000000])
 
     def test_flags_trailing_funding_gap_outside_requested_window(self):
         path = self.write_csv([
