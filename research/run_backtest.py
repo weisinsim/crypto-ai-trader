@@ -112,6 +112,7 @@ def summarize_walk_forward_cost_stress(walk_results: list[dict]) -> dict:
     for name in scenario_names:
         rows = [
             fold.get("cost_stress", {}).get("scenarios", {}).get(name, {})
+            if isinstance(fold, dict) else {}
             for fold in walk_results
         ]
         valid_returns = [
@@ -177,8 +178,10 @@ def summarize_walk_forward_cost_stress(walk_results: list[dict]) -> dict:
     passing_stress = sum(_fold_stress_is_complete_and_valid(fold) for fold in walk_results)
     minimum_trades_per_fold = 30
     under_sampled_folds = [
-        fold.get("fold") for fold in walk_results
-        if isinstance(fold.get("trades"), bool)
+        fold.get("fold") if isinstance(fold, dict) else None
+        for fold in walk_results
+        if not isinstance(fold, dict)
+        or isinstance(fold.get("trades"), bool)
         or not isinstance(fold.get("trades"), int)
         or fold.get("trades", 0) < minimum_trades_per_fold
     ]
