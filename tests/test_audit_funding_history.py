@@ -80,6 +80,26 @@ class FundingHistoryAuditTests(unittest.TestCase):
         self.assertEqual(result["leading_gap_hours"], 0.0)
         self.assertEqual(result["trailing_gap_hours"], 8.0)
 
+    def test_rejects_funding_event_at_exclusive_end_boundary(self):
+        path = self.write_csv([
+            ("2025-01-01T08:00:00Z", "0.0001"),
+            ("2025-01-02T00:00:00Z", "-0.0001"),
+        ])
+        result = audit(path, max_gap_hours=8, start_ms=1735689600000,
+                       end_ms=1735776000000)
+        self.assertFalse(result["pass_basic_integrity"])
+        self.assertEqual(result["trailing_gap_hours"], 0.0)
+
+    def test_flags_trailing_funding_gap_outside_requested_window(self):
+        path = self.write_csv([
+            ("2025-01-01T00:00:00Z", "0.0001"),
+            ("2025-01-01T08:00:00Z", "-0.0001"),
+        ])
+        result = audit(path, max_gap_hours=8, start_ms=1735689600000,
+                       end_ms=1735776000000)
+        self.assertFalse(result["pass_basic_integrity"])
+        self.assertEqual(result["trailing_gap_hours"], 16.0)
+
     def test_empty_file_fails_closed(self):
         path = self.write_csv([])
         self.assertFalse(audit(path)["pass_basic_integrity"])
