@@ -153,9 +153,13 @@ def summarize_walk_forward_cost_stress(walk_results: list[dict]) -> dict:
                     return False
             if row["max_drawdown_pct"] < 0 or row["max_drawdown_pct"] > 100:
                 return False
-            if row["profit_factor"] < 0:
+            # Re-check the actual scenario metrics rather than trusting a summary flag.
+            if row["net_return_pct"] <= 0 or row["profit_factor"] <= 1.15:
                 return False
-        return stress.get("robustness_screen", {}).get("pass") is True
+            if row.get("equity_floor_hit") is True:
+                return False
+        screen = stress.get("robustness_screen")
+        return isinstance(screen, dict) and screen.get("pass") is True
 
     missing_stress = sum(
         not isinstance(fold.get("cost_stress"), dict)
