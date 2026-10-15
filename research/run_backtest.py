@@ -68,6 +68,49 @@ def load_funding_csv(path: str) -> list[dict]:
     return rows
 
 
+
+def summarize_funding_data_quality(
+    funding_rows: list[dict] | None, candle_rows: list[dict]
+) -> dict:
+    """Describe funding timestamp coverage without assuming a fixed settlement cadence."""
+    if not funding_rows:
+        return {
+            "provided": False,
+            "records_in_candle_range": 0,
+            "exact_candle_open_matches": 0,
+            "non_candle_open_events": 0,
+            "source_labels": [],
+            "venue_labels": [],
+            "event_interval_ms": [],
+            "event_completeness_verified": False,
+            "interpretation": "No historical funding events supplied; no coverage or settlement claim can be made.",
+        }
+    candle_timestamps = {row["t"] for row in candle_rows}
+    event_timestamps = [row["funding_time"] for row in funding_rows]
+    deltas = [right - left for left, right in zip(event_timestamps, event_timestamps[1:])]
+    matched = sum(timestamp in candle_timestamps for timestamp in event_timestamps)
+    return {
+        "provided": True,
+        "records_in_candle_range": len(funding_rows),
+        "first_event_ts": event_timestamps[0],
+        "last_event_ts": event_timestamps[-1],
+        "exact_candle_open_matches": matched,
+        "non_candle_open_events": len(event_timestamps) - matched,
+        "source_labels": sorted({row.get("mark_price_source", "unspecified") for row in funding_rows}),
+        "venue_labels": sorted({row.get("venue", "") or "unspecified" for row in funding_rows}),
+        "event_interval_ms": {
+            "min": min(deltas) if deltas else None,
+            "max": max(deltas) if deltas else None,
+            "distinct_count": len(set(deltas)),
+        },
+        "event_completeness_verified": False,
+        "interpretation": (
+            "Timestamp diagnostics only. Exact candle-open matches do not prove event completeness, "
+            "actual mark-price provenance, or position eligibility at settlement."
+        ),
+    }
+
+
 def build_walk_forward_windows(n: int, start_eval: int, folds: int, min_bars: int) -> list[tuple[int, int]]:
     """Build contiguous, non-overlapping forward windows or fail if a fold is too short."""
     if n < 0 or start_eval < 0 or start_eval >= n:
@@ -484,11 +527,15 @@ def main() -> None:
             "source_authenticity_verified": False,
             "note": "SHA-256 fingerprints identify the exact local input bytes; they do not authenticate the venue or prove complete coverage.",
         },
-        "funding_data": ({"source": args.funding_csv, "records": len(historical_funding),
-                          "first_ts": historical_funding[0]["funding_time"],
-                          "last_ts": historical_funding[-1]["funding_time"],
-                          "symbol": historical_funding[0]["symbol"]}
-                         if historical_funding else {"source": None, "records": 0}),
+        "funding_data": ({
+            "source": args.funding_csv,
+            "symbol": historical_funding[0]["symbol"],
+            **summarize_funding_data_quality(historical_funding, rows),
+        } if historical_funding else {
+            "source": None,
+            "symbol": None,
+            **summarize_funding_data_quality(None, rows),
+        }),
         "split": {"train_fraction": args.train_fraction, "boundary_ts": boundary_ts,
                   "warmup_bars": split, "holdout_bars": len(holdout)},
         "funding_boundary_policy_sensitivity": boundary_sensitivity,
