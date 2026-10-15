@@ -188,6 +188,17 @@ class ResearchReportTests(unittest.TestCase):
         self.assertIn("FAIL_MISSING_OR_INVALID_NET_R", report)
         self.assertNotIn("PASS_ALL_COSTS_PRELIMINARY_ONLY", report)
 
+    def test_stability_diagnostic_rejects_boolean_net_r(self):
+        manifest = {"reports": [{
+            "symbol": "BTCUSDT", "cost_bps": 5, "status": "RESEARCH_ONLY",
+            "development_metrics_by_exit": {"target_3.0R": {
+                "single_position": {"net_R": True}}},
+            "holdout_metrics_by_exit": {"target_3.0R": {
+                "single_position": {"net_R": False}}},
+        }]}
+        report = render(manifest)
+        self.assertIn("| BTCUSDT | 5 | 3.0R | single_position | — | — | METRICS_MISSING |", report)
+
     def test_flags_opposite_development_and_holdout_signs(self):
         manifest = {"reports": [
             {"symbol": "BTCUSDT", "cost_bps": 10, "status": "RESEARCH_ONLY",
