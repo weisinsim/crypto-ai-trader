@@ -13,9 +13,17 @@ from typing import Mapping
 def _finite_number(value: object, field: str, *, allow_none: bool = False) -> float | None:
     if value is None and allow_none:
         return None
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{field} must be a finite number")
-    return float(value)
+    try:
+        if not isfinite(value):
+            raise ValueError(f"{field} must be a finite number")
+        converted = float(value)
+    except (OverflowError, ValueError) as exc:
+        raise ValueError(f"{field} must be a finite number") from exc
+    if not isfinite(converted):
+        raise ValueError(f"{field} must be a finite number")
+    return converted
 
 
 def summarize_funding_scenarios(scenarios: Mapping[str, Mapping[str, object]]) -> dict:
@@ -41,10 +49,13 @@ def summarize_funding_scenarios(scenarios: Mapping[str, Mapping[str, object]]) -
         for index, trade in enumerate(trade_log):
             if not isinstance(trade, Mapping):
                 raise ValueError(f"scenario {name!r} trade {index} must be a mapping")
-            cashflow_total += _finite_number(
+            cashflow = _finite_number(
                 trade.get("funding_cashflow", 0.0),
                 f"scenario {name!r} trade {index} funding_cashflow",
             )
+            cashflow_total += cashflow
+            if not isfinite(cashflow_total):
+                raise ValueError(f"scenario {name!r} cumulative funding cashflow must remain finite")
             count = trade.get("funding_settlement_count", 0)
             if isinstance(count, bool) or not isinstance(count, int) or count < 0:
                 raise ValueError(f"scenario {name!r} trade {index} funding_settlement_count must be a non-negative integer")
