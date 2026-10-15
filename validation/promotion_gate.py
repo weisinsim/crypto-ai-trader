@@ -4,6 +4,16 @@ from collections.abc import Mapping
 import math
 
 
+def _finite_number(value):
+    """Validate numeric inputs without accepting booleans or overflowing huge integers."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(value)
+    except (OverflowError, ValueError):
+        return False
+
+
 def classify_candidate(dev_net_r, holdout_net_r, holdout_trades, holdout_profit_factor, min_trades=30):
     if (
         isinstance(min_trades, bool)
@@ -15,14 +25,12 @@ def classify_candidate(dev_net_r, holdout_net_r, holdout_trades, holdout_profit_
     ):
         return "FAIL_INSUFFICIENT_HOLDOUT_TRADES"
     values = (dev_net_r, holdout_net_r)
-    if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in values):
+    if any(not _finite_number(v) for v in values):
         return "FAIL_MISSING_OR_INVALID_NET_R"
     if dev_net_r <= 0 or holdout_net_r <= 0:
         return "FAIL_NONPOSITIVE_DEVELOPMENT_OR_HOLDOUT"
     if (
-        isinstance(holdout_profit_factor, bool)
-        or not isinstance(holdout_profit_factor, (int, float))
-        or not math.isfinite(holdout_profit_factor)
+        not _finite_number(holdout_profit_factor)
         or holdout_profit_factor <= 1
     ):
         return "FAIL_HOLDOUT_PROFIT_FACTOR"
@@ -72,11 +80,11 @@ def evaluate_live_order_gate(snapshot, limits):
     )
     for key in numeric_snapshot:
         value = snapshot[key]
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        if not _finite_number(value):
             reasons.append(f"INVALID_{key.upper()}")
     for key in required_limits:
         value = limits[key]
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        if not _finite_number(value):
             reasons.append(f"INVALID_LIMIT_{key.upper()}")
     if any(reason.startswith(("INVALID_", "INVALID_LIMIT_")) for reason in reasons):
         return {"approved": False, "reasons": reasons}
