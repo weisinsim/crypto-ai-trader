@@ -187,6 +187,17 @@ def main() -> None:
                 if rows[0]["t"] <= event["funding_time"] <= rows[b - 1]["t"]
             ]
         fold_result = run_ema_cross_backtest(rows[:b], trade_start_ts=start_ts, **fold_common)
+        # Re-run the same expanding-history fold under base/stress/severe
+        # execution costs. Keep fold boundaries and funding observations fixed.
+        fold_cost_stress = run_cost_stress_scenarios(
+            rows[:b], base_fee_rate=args.fee_rate,
+            base_slippage_rate=args.slippage_rate,
+            stress_multiplier=args.stress_multiplier,
+            severe_stress_multiplier=args.severe_stress_multiplier,
+            backtest_kwargs={key: value for key, value in fold_common.items()
+                             if key not in ("fee_rate", "slippage_rate")},
+            trade_start_ts=start_ts,
+        )
         fold_trades = [t for t in fold_result["trade_log"] if start_ts <= t["entry_time"] <= rows[b - 1]["t"]]
         fold_curve = [p for p in fold_result["equity_curve"] if start_ts <= p["t"] <= rows[b - 1]["t"]]
         walk_results.append({
@@ -198,6 +209,7 @@ def main() -> None:
             "win_rate_pct": round(sum(t["pnl_equity"] > 0 for t in fold_trades) / len(fold_trades) * 100, 2) if fold_trades else None,
             "profit_factor": round(sum(t["pnl_equity"] for t in fold_trades if t["pnl_equity"] > 0) / -sum(t["pnl_equity"] for t in fold_trades if t["pnl_equity"] < 0), 4) if any(t["pnl_equity"] < 0 for t in fold_trades) else (None if not any(t["pnl_equity"] > 0 for t in fold_trades) else "INF"),
             "trade_log": fold_trades,
+            "cost_stress": fold_cost_stress,
             "funding_sensitivity": summarize_funding_scenarios({
                 f"fold_{fold + 1}": {
                     "status": fold_result["status"],
