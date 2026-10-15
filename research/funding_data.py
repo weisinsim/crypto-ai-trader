@@ -55,6 +55,12 @@ def parse_funding_rows(raw_rows: list[dict], symbol: str, start_ms: int, end_ms:
         raise ValueError("require integer timestamps with 0 <= start_ms < end_ms")
     rows = []
     for raw in raw_rows:
+        raw_symbol = raw.get("symbol")
+        if raw_symbol is not None and str(raw_symbol).strip().upper() != symbol.upper():
+            raise ValueError(
+                f"funding response symbol mismatch at {raw.get('fundingTime')}: "
+                f"expected {symbol.upper()}, got {str(raw_symbol).strip().upper()}"
+            )
         ts = _parse_integer_timestamp(raw["fundingTime"])
         rate = float(raw["fundingRate"])
         mark_price = float(raw["markPrice"])
