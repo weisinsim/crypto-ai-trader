@@ -54,6 +54,8 @@ def audit(path, interval):
         if delta != step:
             cadence_anomalies.append({"after": a, "before": b, "delta_ms": delta})
     invalid_ohlc = 0
+    invalid_volume = 0
+    volume_fields = ("volume", "quote_volume", "v", "q")
     for r in rows:
         try:
             o, h, low, close = (float(r[k]) for k in ("open", "high", "low", "close"))
@@ -63,13 +65,24 @@ def audit(path, interval):
             valid = False
         if not valid:
             invalid_ohlc += 1
+        present_volume_fields = [field for field in volume_fields if field in r and r[field] not in (None, "")]
+        try:
+            volumes = [float(r[field]) for field in present_volume_fields]
+            volume_valid = all(math.isfinite(value) and value >= 0 for value in volumes)
+        except (ValueError, TypeError):
+            volume_valid = False
+        if not volume_valid:
+            invalid_volume += 1
     return {"file": str(path), "rows": len(rows), "first_close_ms": ts[0] if ts else None,
             "last_close_ms": ts[-1] if ts else None, "duplicates": duplicates,
             "non_increasing_pairs": non_increasing, "gap_count": len(gaps),
             "cadence_anomaly_count": len(cadence_anomalies), "cadence_anomalies_sample": cadence_anomalies[:10],
             "missing_candles_approx": sum(g["missing_approx"] for g in gaps),
-            "invalid_ohlc_rows": invalid_ohlc, "gaps_sample": gaps[:10], "timestamp_errors": timestamp_errors,
-            "pass_basic_integrity": bool(rows) and duplicates == 0 and non_increasing == 0 and invalid_ohlc == 0 and not cadence_anomalies}
+            "invalid_ohlc_rows": invalid_ohlc, "invalid_volume_rows": invalid_volume,
+            "volume_fields_checked": list(volume_fields),
+            "gaps_sample": gaps[:10], "timestamp_errors": timestamp_errors,
+            "pass_basic_integrity": bool(rows) and duplicates == 0 and non_increasing == 0
+                and invalid_ohlc == 0 and invalid_volume == 0 and not cadence_anomalies}
 
 
 def main():
