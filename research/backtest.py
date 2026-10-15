@@ -108,6 +108,7 @@ def run_ema_cross_backtest(
     slippage_rate: float = 0.0002,
     funding_rate_per_bar: float = 0.0,
     funding_rates: Iterable[dict] | None = None,
+    funding_entry_boundary_policy: str = "exclude",
     allow_short: bool = True,
     risk_fraction: float = 0.01,
     trade_start_ts: int | None = None,
@@ -116,12 +117,16 @@ def run_ema_cross_backtest(
 
     Signals are computed from completed bar i-1 and filled at bar i open.
     Optional historical funding events are settled only when an existing position
-    is open at an event timestamp; event rows require funding_time/rate/mark_price.
+    is open at an event timestamp by default; event rows require funding_time/rate/mark_price.
+    funding_entry_boundary_policy="include" is a sensitivity assumption for entry-time
+    boundary events, not a claim about exchange eligibility.
     To avoid silently mis-timing fees, every event must align with a candle open.
     If a bar touches both stop and target, stop is assumed first. Fees are
     charged on entry and exit notional; funding is charged per held bar.
     Returns percentage-equity results with one unit of initial equity and no leverage.
     """
+    if funding_entry_boundary_policy not in ("exclude", "include"):
+        raise ValueError("funding_entry_boundary_policy must be 'exclude' or 'include'")
     rows = validate_candles(candles)
     funding_events = {}
     if funding_rates is not None:
@@ -360,6 +365,16 @@ def run_ema_cross_backtest(
                             "equity_before": equity, "qty": qty,
                             "entry_fee": abs(qty * entry_fill) * fee_rate,
                             "funding_cost": 0.0, "funding_settlement_timestamps": []}
+                # Boundary sensitivity only: optionally model a position as
+                # eligible when its entry candle timestamp equals settlement.
+                # This is not an exchange fact; compare both policies.
+                if (funding_rates is not None and funding_entry_boundary_policy == "include"
+                        and int(bar["t"]) in funding_events):
+                    event = funding_events[int(bar["t"])]
+                    position["funding_cost"] += (
+                        position["qty"] * event["mark_price"] * event["funding_rate"] * position["side"]
+                    )
+                    position["funding_settlement_timestamps"].append(int(bar["t"]))
                 opened_this_bar = True
 
         # A newly opened position also has intrabar exposure. Mark its
