@@ -54,9 +54,16 @@ def audit(path, max_gap_hours=24.0, max_abs_rate=0.05, start_ms=None, end_ms=Non
         (leading_gap_hours is None or 0 <= leading_gap_hours <= max_gap_hours)
         and (trailing_gap_hours is None or 0 <= trailing_gap_hours <= max_gap_hours)
     )
+    # The requested range is [start_ms, end_ms): a funding event exactly at
+    # end_ms belongs to the next window and must not silently pass this audit.
+    events_within_requested_window = (
+        (start_ms is None or all(ts >= start_ms for ts in timestamps))
+        and (end_ms is None or all(ts < end_ms for ts in timestamps))
+    )
     ordered = timestamps == sorted(timestamps)
     passed = (duplicates == 0 and non_increasing == 0 and ordered
-              and not large_gaps and boundary_gaps_valid)
+              and not large_gaps and boundary_gaps_valid
+              and events_within_requested_window)
     return {
         "file": str(path), "rows": len(rows),
         "first_timestamp_ms": timestamps[0], "last_timestamp_ms": timestamps[-1],
