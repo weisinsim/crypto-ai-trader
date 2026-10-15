@@ -70,7 +70,10 @@ def _deduplicate_candles(rows: list[dict]) -> dict[int, dict]:
     return by_timestamp
 
 
-def download_archive(symbol: str, interval: str, start_ms: int, end_ms: int) -> list[dict]:
+def download_archive(
+    symbol: str, interval: str, start_ms: int, end_ms: int,
+    request_log: list[dict] | None = None,
+) -> list[dict]:
     if interval not in INTERVAL_MS:
         raise ValueError(f"unsupported interval: {interval}")
     step = INTERVAL_MS[interval]
@@ -78,6 +81,19 @@ def download_archive(symbol: str, interval: str, start_ms: int, end_ms: int) -> 
         raise ValueError("date range must be positive and aligned to candle boundaries")
     symbol = symbol.upper()
     rows = []
+    requests = request_log if request_log is not None else []
+
+    def record_request(source: str, url: str, response, *, params: dict | None = None) -> None:
+        payload = response.content
+        requests.append({
+            "source": source,
+            "url": url,
+            "status_code": response.status_code,
+            "payload_bytes": len(payload),
+            "payload_sha256": hashlib.sha256(payload).hexdigest(),
+            "params": params or {},
+        })
+
     start_month = datetime.fromtimestamp(start_ms / 1000, timezone.utc).replace(day=1)
     end_month = datetime.fromtimestamp((end_ms - 1) / 1000, timezone.utc).replace(day=1)
     with httpx.Client(timeout=30.0, follow_redirects=True) as client:
@@ -87,6 +103,7 @@ def download_archive(symbol: str, interval: str, start_ms: int, end_ms: int) -> 
             name = f"{symbol}-{interval}-{month:%Y-%m}.zip"
             url = f"{BASE}/monthly/klines/{symbol}/{interval}/{name}"
             response = client.get(url)
+            record_request("binance_vision_monthly_archive", url, response)
             if response.status_code == 200:
                 rows.extend(_read_zip(response.content, start_ms, end_ms, step))
             elif response.status_code == 404:
@@ -97,6 +114,7 @@ def download_archive(symbol: str, interval: str, start_ms: int, end_ms: int) -> 
                     daily_name = f"{symbol}-{interval}-{day:%Y-%m-%d}.zip"
                     daily_url = f"{BASE}/daily/klines/{symbol}/{interval}/{daily_name}"
                     daily = client.get(daily_url)
+                    record_request("binance_vision_daily_archive", daily_url, daily)
                     if daily.status_code == 200:
                         rows.extend(_read_zip(daily.content, start_ms, end_ms, step))
                     elif daily.status_code != 404:
@@ -120,16 +138,24 @@ def download_archive(symbol: str, interval: str, start_ms: int, end_ms: int) -> 
         with httpx.Client(timeout=30.0, follow_redirects=True) as client:
             for offset in range(0, len(missing), 1000):
                 batch = missing[offset:offset + 1000]
-                response = client.get(api_url, params={
+                params = {
                     "symbol": symbol, "interval": interval,
                     "startTime": batch[0], "endTime": batch[-1] + step - 1,
                     "limit": min(1500, len(batch) + 100),
-                })
+                }
+                response = client.get(api_url, params=params)
+                record_request("binance_usdm_rest_kline_fallback", api_url, response, params=params)
                 response.raise_for_status()
+                fallback_seen: set[int] = set()
                 for raw in response.json():
                     ts = int(raw[0])
                     close_ts = int(raw[6])
-                    if ts in batch and close_ts < int(datetime.now(timezone.utc).timestamp() * 1000):
+                    if ts not in batch:
+                        continue
+                    if ts in fallback_seen:
+                        raise ValueError(f"duplicate REST fallback candle timestamp: {ts}")
+                    fallback_seen.add(ts)
+                    if close_ts < int(datetime.now(timezone.utc).timestamp() * 1000):
                         deduped[ts] = _validated_candle(raw, ts)
         rows = [deduped[ts] for ts in sorted(deduped)]
     actual = [row["t"] for row in rows]
@@ -146,6 +172,7 @@ def download_archive(symbol: str, interval: str, start_ms: int, end_ms: int) -> 
 def build_output_manifest(
     output_path: str | Path, *, symbol: str, interval: str,
     start_ms: int, end_ms: int, bars: int,
+    request_log: list[dict] | None = None,
 ) -> dict:
     """Describe the normalized download artifact; provenance claims remain unverified."""
     path = Path(output_path)
@@ -162,13 +189,18 @@ def build_output_manifest(
         "interval": interval,
         "requested_range_ms": {"start_inclusive": start_ms, "end_exclusive": end_ms},
         "bars": bars,
+        "request_evidence": {
+            "request_count": len(request_log or []),
+            "requests": request_log or [],
+            "note": "HTTP status and payload fingerprints are recorded for auditability; HTTPS responses and payload hashes do not independently prove upstream authenticity.",
+        },
         "source_claims": [
             "Binance Vision USD-M Futures public archive",
             "Binance USD-M Futures REST klines fallback when archive coverage is missing",
         ],
         "file": {"path": str(path), "size_bytes": size_bytes, "sha256": digest.hexdigest()},
         "source_authenticity_verified": False,
-        "note": "Exact candle-grid coverage was checked by the downloader; this manifest does not retain per-request HTTP evidence or independently authenticate the upstream source.",
+        "note": "Exact candle-grid coverage was checked by the downloader; this manifest does not independently authenticate the upstream source.",
     }
 
 
@@ -184,7 +216,8 @@ def main() -> None:
     parser.add_argument("--end", required=True, help="exclusive UTC date YYYY-MM-DD")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
-    rows = download_archive(args.symbol, args.interval, utc_ms(args.start), utc_ms(args.end))
+    request_log: list[dict] = []
+    rows = download_archive(args.symbol, args.interval, utc_ms(args.start), utc_ms(args.end), request_log=request_log)
     destination = Path(args.output)
     destination.parent.mkdir(parents=True, exist_ok=True)
     with destination.open("w", newline="", encoding="utf-8") as handle:
@@ -194,6 +227,7 @@ def main() -> None:
     manifest = build_output_manifest(
         destination, symbol=args.symbol, interval=args.interval,
         start_ms=utc_ms(args.start), end_ms=utc_ms(args.end), bars=len(rows),
+        request_log=request_log,
     )
     manifest_path = destination.with_suffix(destination.suffix + ".manifest.json")
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
