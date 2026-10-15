@@ -1,13 +1,41 @@
 import unittest
 from unittest.mock import patch
 
-from validation.download_funding_rates import download, utc_ms
+from validation.download_funding_rates import download, parse_archive_row, utc_ms
 
 
 class FundingDownloaderTests(unittest.TestCase):
     def test_utc_ms_treats_naive_dates_as_utc(self):
         self.assertEqual(utc_ms("2025-01-01"), 1735689600000)
         self.assertEqual(utc_ms("2025-01-01T00:00:00Z"), 1735689600000)
+
+    def test_archive_parser_supports_rate_before_interval_hours(self):
+        row = parse_archive_row(
+            ["1735689600000", "0.0001", "8", "BTCUSDT"],
+            "BTCUSDT", 1735689600000, 1735776000000,
+        )
+        self.assertEqual(row["funding_rate"], "0.0001")
+        self.assertEqual(row["timestamp"], "2025-01-01T00:00:00Z")
+
+    def test_archive_parser_supports_interval_hours_before_rate(self):
+        row = parse_archive_row(
+            ["1735689600000", "8", "0.0002", "BTCUSDT"],
+            "BTCUSDT", 1735689600000, 1735776000000,
+        )
+        self.assertEqual(row["funding_rate"], "0.0002")
+
+    def test_archive_parser_ignores_rows_outside_requested_window(self):
+        self.assertIsNone(parse_archive_row(
+            ["1735776000000", "0.0001", "BTCUSDT"],
+            "BTCUSDT", 1735689600000, 1735776000000,
+        ))
+
+    def test_archive_parser_rejects_rows_without_plausible_rate(self):
+        with self.assertRaisesRegex(RuntimeError, "No plausible decimal funding rate"):
+            parse_archive_row(
+                ["1735689600000", "8", "BTCUSDT"],
+                "BTCUSDT", 1735689600000, 1735776000000,
+            )
 
     @patch("validation.download_funding_rates.get_json")
     def test_download_paginates_when_api_limit_is_reached(self, get_json):
