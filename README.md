@@ -31,6 +31,14 @@ python -m research.run_backtest --csv data/BTCUSDT_1h.csv --symbol BTCUSDT --int
 
 The downloader retains Binance's reported `markPrice` field and labels its source. Its output is `DOWNLOADED_NOT_RECONCILED`: successful retrieval does not prove complete historical coverage, contract/account eligibility, or agreement with realized account cashflows. Review `validation/FUNDING_SETTLEMENT_RECONCILIATION.md` before interpreting funding PnL. Do not use synthetic fixtures as market data.
 
+Before running a funding-aware backtest, run the standalone timestamp audit to inspect misaligned events without forcing them onto candle timestamps:
+
+```bash
+python -m research.audit_funding_data --candles data/BTCUSDT_1h.csv --funding-csv data/BTCUSDT_funding.csv --symbol BTCUSDT --interval 1h --output reports/BTCUSDT_funding_audit.json
+```
+
+The audit reports out-of-range and nonmatching timestamps and exits with a report status of `REVIEW_REQUIRED` when it detects alignment issues. It does not alter timestamps or assert complete event coverage.
+
 The backtest report's `funding_data` section includes timestamp diagnostics: number of events in the candle range, exact candle-open timestamp matches, non-matching event timestamps, observed event-interval range, and source/venue labels. These are diagnostic counts only. Exact timestamp matches do not prove that every funding event is present, that reported mark prices are independently authenticated, or that a position qualified for settlement. The report therefore keeps `event_completeness_verified` false; reconcile source coverage and account cashflows independently before treating funding PnL as authoritative.
 
 
