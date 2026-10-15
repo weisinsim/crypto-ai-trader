@@ -146,6 +146,16 @@ class ResearchReportTests(unittest.TestCase):
         report = render(manifest)
         self.assertIn("2/3 | FAIL_CROSS_COST_ROBUSTNESS", report)
 
+    def test_boolean_values_are_not_formatted_as_numeric_metrics(self):
+        manifest = {"reports": [{
+            "symbol": "BTCUSDT", "cost_bps": 5, "status": "RESEARCH_ONLY",
+            "holdout_metrics_by_exit": {"target_2.5R": {
+                "signal_level": {"trades": 31, "win_rate_pct": True,
+                                  "profit_factor": False, "net_R": True}}},
+        }]}
+        report = render(manifest)
+        self.assertIn("| BTCUSDT | 5 | 2.5R | signal_level | 31 | — | — | — |", report)
+
     def test_preliminary_screen_rejects_boolean_numeric_metrics(self):
         manifest = {
             "min_trades_threshold": 2,
