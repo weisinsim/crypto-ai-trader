@@ -21,6 +21,18 @@ def parse_timestamp(value):
 
 
 def audit(path, max_gap_hours=24.0, max_abs_rate=0.05, start_ms=None, end_ms=None):
+    # Validate the public function arguments too; callers may use audit() directly
+    # without going through the CLI's argparse checks.
+    if not math.isfinite(max_gap_hours) or max_gap_hours <= 0:
+        raise ValueError("max_gap_hours must be finite and > 0")
+    if not math.isfinite(max_abs_rate) or max_abs_rate <= 0:
+        raise ValueError("max_abs_rate must be finite and > 0")
+    if start_ms is not None and (isinstance(start_ms, bool) or not isinstance(start_ms, int)):
+        raise ValueError("start_ms must be an integer timestamp in milliseconds")
+    if end_ms is not None and (isinstance(end_ms, bool) or not isinstance(end_ms, int)):
+        raise ValueError("end_ms must be an integer timestamp in milliseconds")
+    if start_ms is not None and end_ms is not None and end_ms <= start_ms:
+        raise ValueError("end_ms must be later than start_ms")
     rows = []
     with open(path, newline="", encoding="utf-8-sig") as stream:
         for line_number, row in enumerate(csv.DictReader(stream), start=2):
