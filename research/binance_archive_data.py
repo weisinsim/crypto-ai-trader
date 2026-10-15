@@ -166,7 +166,7 @@ def main() -> None:
         start_ms=utc_ms(args.start), end_ms=utc_ms(args.end), bars=len(rows),
     )
     manifest_path = destination.with_suffix(destination.suffix + ".manifest.json")
-    manifest_path.write_text(json.dumps(manifest, indent=2) + "\\n", encoding="utf-8")
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(f"status=COMPLETE source=binance_vision_with_rest_fallback symbol={args.symbol.upper()} "
           f"interval={args.interval} bars={len(rows)} output={destination} manifest={manifest_path}")
 
