@@ -1,9 +1,13 @@
 import csv
+import hashlib
 import io
+import json
+import tempfile
 import zipfile
 import unittest
+from pathlib import Path
 
-from research.binance_archive_data import _read_zip, download_archive
+from research.binance_archive_data import _read_zip, build_output_manifest, download_archive
 
 
 def make_zip(rows):
@@ -29,6 +33,22 @@ class BinanceArchiveDataTests(unittest.TestCase):
         rows = _read_zip(payload, 0, 2 * hour, hour)
         self.assertEqual([row["t"] for row in rows], [0, hour])
         self.assertEqual(rows[0]["q"], 55.0)
+
+    def test_output_manifest_fingerprints_csv_and_does_not_claim_authenticity(self):
+        payload = b"t,o,h,l,c,v,q\\n0,1,2,0,1,1,1\\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "candles.csv"
+            path.write_bytes(payload)
+            manifest = build_output_manifest(
+                path, symbol="btcusdt", interval="1h",
+                start_ms=0, end_ms=3_600_000, bars=1,
+            )
+        self.assertEqual(manifest["status"], "STRUCTURAL_COVERAGE_COMPLETE")
+        self.assertEqual(manifest["symbol"], "BTCUSDT")
+        self.assertEqual(manifest["file"]["sha256"], hashlib.sha256(payload).hexdigest())
+        self.assertEqual(manifest["file"]["size_bytes"], len(payload))
+        self.assertFalse(manifest["source_authenticity_verified"])
+        self.assertEqual(manifest["requested_range_ms"]["end_exclusive"], 3_600_000)
 
     def test_rejects_invalid_interval(self):
         with self.assertRaisesRegex(ValueError, "unsupported interval"):
