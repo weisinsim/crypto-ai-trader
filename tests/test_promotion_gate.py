@@ -28,7 +28,8 @@ class PromotionGateTests(unittest.TestCase):
 
     def valid_order_inputs(self):
         snapshot = {
-            "exchange_healthy": True, "kill_switch_active": False, "candle_closed": True,
+            "exchange_healthy": True, "kill_switch_active": False,
+            "live_execution_enabled": True, "candle_closed": True,
             "model_status": "PRODUCTION", "signal": "LONG", "data_age_sec": 2.0,
             "analysis_age_sec": 3.0, "spread_bps": 4.0, "risk_fraction": 0.005,
             "daily_loss_fraction": 0.01, "open_positions": 0, "requested_notional": 100.0,
@@ -60,6 +61,13 @@ class PromotionGateTests(unittest.TestCase):
         self.assertFalse(result["approved"])
         self.assertIn("INVALID_NEGATIVE_MARKET_METRIC", result["reasons"])
         self.assertIn("INVALID_DAILY_LOSS_FRACTION", result["reasons"])
+
+    def test_live_execution_disabled_fails_closed(self):
+        snapshot, limits = self.valid_order_inputs()
+        snapshot["live_execution_enabled"] = False
+        result = evaluate_live_order_gate(snapshot, limits)
+        self.assertFalse(result["approved"])
+        self.assertIn("LIVE_EXECUTION_DISABLED", result["reasons"])
 
     def test_research_model_is_never_live_approved(self):
         snapshot, limits = self.valid_order_inputs()
