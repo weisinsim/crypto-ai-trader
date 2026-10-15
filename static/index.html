@@ -46,6 +46,12 @@ h1{font-size:22px;margin:0 0 5px}.sub{font-size:12px;color:#9aa4b2}
 <tr><td>XRP</td><td>10</td><td>+0.9567%</td><td>5.4313%</td><td>40.00%</td><td>1.1443</td><td class="fail">成本压力未通过</td></tr>
 </tbody></table></div>
 <div class="intro">以上为冻结参数稳定性诊断的完整 Holdout，不代表冻结 XRP V27.2 候选模型本身的最终确认结果。AVAX 在 0.30% 成本情景下收益为 +4.0646%，但在 0.46% 成本下转为 -2.5497%；XRP 在 0.30% 成本下转为 -0.2073%。目前没有任何币种通过全部成本情景。</div>
+<div class="intro">资金费率数据审计（最新代码提交 d4d8394）：回测报告现在会记录历史 funding 事件数量、与 K 线开盘时间戳的精确匹配数、非匹配事件数、观测到的事件间隔范围，以及来源/venue 标签。以上仅为诊断；事件完整性、标记价格真实性和结算时的实际持仓资格均未验证。没有实际加载并核验历史 funding CSV 前，不显示虚构的覆盖率或资金费率绩效。</div>
+<div class="researchScroll"><table class="researchTable"><thead><tr><th>资金费率验证项</th><th>当前状态</th><th>解释</th></tr></thead><tbody>
+<tr><td>报告质量诊断</td><td>已实现</td><td>记录事件数量、时间戳匹配、事件间隔和来源标签</td></tr>
+<tr><td>事件完整性 / 账户现金流核对</td><td class="fail">未验证</td><td>需要独立核对交易所历史记录与账户结算现金流</td></tr>
+<tr><td>最近诊断代码 CI</td><td>通过</td><td><a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/actions/runs/38766387715" target="_blank" rel="noopener">Research tests</a> · <a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/actions/runs/38766387729" target="_blank" rel="noopener">Python validation</a> · <a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/actions/runs/38766387760" target="_blank" rel="noopener">Validation audit</a></td></tr>
+</tbody></table></div>
 <div class="intro">公开策略基准门槛要求 Train、Validation、Holdout 三个时间区间在基础、0.30%、0.46% 往返成本下均满足净收益为正且 PF &gt; 1；Holdout 单独通过仅作为诊断。最新五币种研究已在提交 081fb7a 对应代码上完成（工作流 38486102719，五个币种任务及报告上传均成功）：15 个策略均为 FAIL_RESEARCH_GATE（15/15 个公开策略组合未通过完整研究门槛）；14 个 Holdout-only 诊断通过，ETH SMA200 在至少一个成本情景下也未通过 Holdout 诊断。研究工作流成功仅代表数据与计算完成，不代表策略通过。该门槛是保守筛选规则，不等于未来盈利证明。</div>
 <div class="researchScroll"><table class="researchTable"><thead><tr><th>最新开发验证</th><th>结果</th><th>详情</th></tr></thead><tbody>
 <tr><td>多空入场当根 K 线不利影线回撤回归测试（提交 a5d3dbc）</td><td>CI 通过</td><td><a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/commit/a5d3dbc8bdbf4883cd3becbb508a82b48655ab8c" target="_blank" rel="noopener">代码</a> · <a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/actions/runs/38510753478" target="_blank" rel="noopener">Research tests</a> · <a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/actions/runs/38510753496" target="_blank" rel="noopener">Python validation</a></td></tr>
