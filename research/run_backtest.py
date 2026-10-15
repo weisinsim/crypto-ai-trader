@@ -9,6 +9,7 @@ from pathlib import Path
 from statistics import mean
 
 from research.backtest import run_ema_cross_backtest, validate_candles
+from research.funding_sensitivity import summarize_funding_scenarios
 
 
 def load_csv(path: str, interval_ms: int) -> list[dict]:
@@ -184,6 +185,22 @@ def main() -> None:
             "win_rate_pct": round(sum(t["pnl_equity"] > 0 for t in fold_trades) / len(fold_trades) * 100, 2) if fold_trades else None,
             "profit_factor": round(sum(t["pnl_equity"] for t in fold_trades if t["pnl_equity"] > 0) / -sum(t["pnl_equity"] for t in fold_trades if t["pnl_equity"] < 0), 4) if any(t["pnl_equity"] < 0 for t in fold_trades) else (None if not any(t["pnl_equity"] > 0 for t in fold_trades) else "INF"),
             "trade_log": fold_trades,
+            "funding_sensitivity": summarize_funding_scenarios({
+                f"fold_{fold + 1}": {
+                    "status": fold_result["status"],
+                    "trades": len(fold_trades),
+                    "net_return_pct": round((fold_result["equity_final"] - 1.0) * 100, 4),
+                    "max_drawdown_pct": max_drawdown_pct(fold_curve),
+                    "profit_factor": (
+                        round(sum(t["pnl_equity"] for t in fold_trades if t["pnl_equity"] > 0)
+                              / -sum(t["pnl_equity"] for t in fold_trades if t["pnl_equity"] < 0), 4)
+                        if any(t["pnl_equity"] < 0 for t in fold_trades)
+                        else (None if not any(t["pnl_equity"] > 0 for t in fold_trades) else "INF")
+                    ),
+                    "equity_floor_hit": fold_result.get("equity_floor_hit", False),
+                    "trade_log": fold_trades,
+                }
+            }),
         })
 
     report = {
@@ -209,6 +226,17 @@ def main() -> None:
             "profit_factor": round(holdout_profit / holdout_loss, 4) if holdout_loss else (None if not holdout_profit else "INF"),
             "expectancy_equity_pct": round(mean(holdout_pnls) * 100, 4) if holdout_pnls else None,
             "trade_log": holdout_trades,
+            "funding_sensitivity": summarize_funding_scenarios({
+                "holdout": {
+                    "status": holdout_result["status"],
+                    "trades": len(holdout_trades),
+                    "net_return_pct": round((holdout_result["equity_final"] - 1.0) * 100, 4),
+                    "max_drawdown_pct": max_drawdown_pct(holdout_curve),
+                    "profit_factor": round(holdout_profit / holdout_loss, 4) if holdout_loss else (None if not holdout_profit else "INF"),
+                    "equity_floor_hit": holdout_result.get("equity_floor_hit", False),
+                    "trade_log": holdout_trades,
+                }
+            }),
         },
         "walk_forward": walk_results,
         "warnings": [
