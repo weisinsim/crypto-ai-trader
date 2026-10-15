@@ -30,6 +30,7 @@ Verify this against the specific contract's exchange documentation. Inverse cont
 ## Boundary and price rules
 
 1. Candle OHLC alone cannot determine intrabar ordering between a fill and a funding timestamp. Flag trades whose entry/exit candle contains a settlement event; do not silently treat the event as definitively eligible.
+   The current backtest's `funding_boundary_ambiguous` flag is narrower: it marks a held position stopped by an adverse opening gap on a candle whose open timestamp also has a funding event. The aggregate `funding_boundary_ambiguous_trades` counts only those flagged trades; it is not a count of every potentially ambiguous funding boundary. Treat this as a minimum diagnostic, not a complete reconciliation.
 2. The existing simulator's interval rule is `entry_candle_open < funding_time <= exit_candle_open`. This is a modeling convention, not proof of exchange eligibility. Compare results under conservative alternate boundary assumptions and isolate affected trades.
 3. Prefer actual mark-price observations at settlement. Prior trade-candle close proxies must be tagged, counted, and separately stress-tested; do not call them mark prices.
 4. Confirm funding rate timestamps, units, sorting, uniqueness, symbol match, full coverage, and any missing intervals. An 8-hour schedule is only a reference; funding intervals can vary.
