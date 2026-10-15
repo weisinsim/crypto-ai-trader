@@ -136,6 +136,27 @@ class FundingDataTests(unittest.TestCase):
                 saved = next(csv.DictReader(handle))
         self.assertEqual(saved["venue"], "okx")
 
+    def test_rejects_duplicate_funding_event_across_pages_even_if_identical(self):
+        def fake_fetch(params):
+            if params["startTime"] <= 100:
+                return [record(100), record(200)]
+            if params["startTime"] <= 201:
+                # Simulate an overlapping pagination response with a duplicate event.
+                return [record(200), record(300)]
+            return []
+        with self.assertRaisesRegex(ValueError, "duplicate funding record at 200"):
+            download_funding_rates("BTCUSDT", 100, 301, fetch_page=fake_fetch, limit=2, pause_seconds=0)
+
+    def test_rejects_conflicting_funding_event_across_pages(self):
+        def fake_fetch(params):
+            if params["startTime"] <= 100:
+                return [record(100), record(200)]
+            if params["startTime"] <= 201:
+                return [record(200, "0.0002"), record(300)]
+            return []
+        with self.assertRaisesRegex(ValueError, "conflicting duplicate funding record at 200"):
+            download_funding_rates("BTCUSDT", 100, 301, fetch_page=fake_fetch, limit=2, pause_seconds=0)
+
     def test_stale_duplicate_page_aborts_pagination(self):
         def fake_fetch(params):
             if params["startTime"] <= 100:
