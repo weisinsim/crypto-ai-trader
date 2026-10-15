@@ -12,8 +12,13 @@ def fmt(value, digits=2):
         return "—"
     if isinstance(value, str):
         return value
-    if isinstance(value, (int, float)) and math.isfinite(value):
-        return f"{value:.{digits}f}"
+    if isinstance(value, (int, float)):
+        try:
+            if math.isfinite(value):
+                return f"{value:.{digits}f}"
+        except (OverflowError, ValueError):
+            # Malformed JSON numeric values must not crash report generation.
+            pass
     return "—"
 
 
@@ -26,8 +31,13 @@ def target_metrics(report, target, mode, period="holdout"):
 
 
 def _finite_number(value):
-    """Accept finite numeric metrics but never booleans (bool subclasses int)."""
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+    """Accept finite numeric metrics but never booleans or unrepresentable huge integers."""
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(value)
+    except (OverflowError, ValueError):
+        return False
 
 
 def screening_status(dev, hold, min_trades):
