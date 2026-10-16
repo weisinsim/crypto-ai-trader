@@ -55,7 +55,9 @@ def render(root):
         for suffix in REQUIRED_REPORT_SUFFIXES
         if f"{symbol}{suffix}" not in present_names
     )
+    coverage_status = "PASS_COVERAGE_ONLY" if not missing_required_reports and not missing_symbols else "INCOMPLETE_REPORT_COVERAGE"
     lines.extend(["", "## Coverage", "",
+                  f"- Coverage status: {coverage_status}",
                   f"- Expected symbols: {len(EXPECTED_SYMBOLS)} ({', '.join(EXPECTED_SYMBOLS)})",
                   f"- Symbols represented: {len(symbols)} ({', '.join(sorted(symbols)) or 'none'})",
                   f"- Missing expected symbols: {', '.join(missing_symbols) or 'none'}",
