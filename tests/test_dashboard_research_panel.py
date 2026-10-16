@@ -24,6 +24,15 @@ class DashboardResearchPanelTests(unittest.TestCase):
         for symbol in ("BTC", "ETH", "SOL", "AVAX", "XRP"):
             self.assertIn(f"<td>{symbol}</td>", table)
 
+    def test_latest_report_coverage_gates_are_documented(self):
+        self.assertIn('aria-label="最新报告覆盖与资金费率审计门槛"', self.html)
+        self.assertIn("PR #21", self.html)
+        self.assertIn("PR #22", self.html)
+        self.assertIn("JSON 格式错误", self.html)
+        self.assertIn("资金费率审计失败", self.html)
+        self.assertIn("PASS_COVERAGE_ONLY", self.html)
+        self.assertIn("不声称最新五币种研究产物已经完整", self.html)
+
     def test_waiting_signals_keep_directional_watch_badges(self):
         self.assertIn('x.signal==="LONG"?"WATCH-LONG":"WATCH-SHORT"', self.html)
         self.assertEqual(self.html.count('x.signal==="LONG"?"WATCH-LONG":"WATCH-SHORT"'), 2)
