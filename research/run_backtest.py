@@ -124,6 +124,57 @@ def summarize_funding_data_quality(
     }
 
 
+def summarize_holdout_trade_quality(trades: list[dict]) -> dict:
+    """Summarize holdout trade outcomes by side, exit reason and holding duration.
+
+    These are descriptive diagnostics over the existing net PnL field. They do not
+    attribute fees/slippage separately because the trade log does not expose those
+    components as independently reconciled cashflows.
+    """
+    def group_summary(selected: list[dict]) -> dict:
+        pnls = [float(trade["pnl_equity"]) for trade in selected]
+        wins = [pnl for pnl in pnls if pnl > 0]
+        losses = [-pnl for pnl in pnls if pnl < 0]
+        funding_cashflows = [
+            float(trade.get("funding_cashflow", 0.0))
+            for trade in selected
+            if _finite_metric(trade.get("funding_cashflow", 0.0))
+        ]
+        return {
+            "trades": len(selected),
+            "wins": len(wins),
+            "losses": len(losses),
+            "breakeven": sum(pnl == 0 for pnl in pnls),
+            "win_rate_pct": round(len(wins) / len(selected) * 100, 2) if selected else None,
+            "net_pnl_equity": round(sum(pnls), 8),
+            "profit_factor": round(sum(wins) / sum(losses), 4) if losses else (None if not wins else "INF"),
+            "mean_pnl_equity": round(mean(pnls), 8) if pnls else None,
+            "mean_bars_held": round(mean(float(trade.get("bars_held", 0)) for trade in selected), 2) if selected else None,
+            "funding_cashflow_total": round(sum(funding_cashflows), 8),
+            "funding_boundary_ambiguous_trades": sum(bool(trade.get("funding_boundary_ambiguous")) for trade in selected),
+        }
+
+    def summarize_groups(key_fn) -> dict:
+        keys = sorted({str(key_fn(trade)) for trade in trades})
+        return {key: group_summary([trade for trade in trades if str(key_fn(trade)) == key]) for key in keys}
+
+    return {
+        "status": "DIAGNOSTIC_ONLY",
+        "by_side": summarize_groups(lambda trade: trade.get("side", "UNKNOWN")),
+        "by_exit_reason": summarize_groups(lambda trade: trade.get("reason", "UNKNOWN")),
+        "by_holding_duration": {
+            "0_3_bars": group_summary([trade for trade in trades if 0 <= int(trade.get("bars_held", 0)) <= 3]),
+            "4_12_bars": group_summary([trade for trade in trades if 4 <= int(trade.get("bars_held", 0)) <= 12]),
+            "13_plus_bars": group_summary([trade for trade in trades if int(trade.get("bars_held", 0)) >= 13]),
+        },
+        "limitations": [
+            "Net PnL is reported as emitted by the simulator; fee and slippage attribution is not separately reconstructed.",
+            "Funding cashflow is the simulator's applied cashflow and does not prove exchange-account reconciliation.",
+            "Small groups are descriptive only and should not be treated as statistically significant.",
+        ],
+    }
+
+
 def build_walk_forward_windows(n: int, start_eval: int, folds: int, min_bars: int) -> list[tuple[int, int]]:
     """Build contiguous, non-overlapping forward windows or fail if a fold is too short."""
     if n < 0 or start_eval < 0 or start_eval >= n:
@@ -560,6 +611,7 @@ def main() -> None:
             "win_rate_pct": round(sum(p > 0 for p in holdout_pnls) / len(holdout_pnls) * 100, 2) if holdout_pnls else None,
             "profit_factor": round(holdout_profit / holdout_loss, 4) if holdout_loss else (None if not holdout_profit else "INF"),
             "expectancy_equity_pct": round(mean(holdout_pnls) * 100, 4) if holdout_pnls else None,
+            "trade_quality_diagnostics": summarize_holdout_trade_quality(holdout_trades),
             "trade_log": holdout_trades,
             "funding_sensitivity": summarize_funding_scenarios({
                 "holdout": {
