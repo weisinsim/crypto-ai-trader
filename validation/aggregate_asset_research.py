@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+"""Create a conservative inventory of per-asset research artifacts."""
+import argparse
+import json
+from pathlib import Path
+
+REPORT_SUFFIXES = (
+    "_1h_baseline.json", "_1h_adaptive.json", "_1h_breakout_retest.json",
+    "_1h_mean_reversion.json", "_1h_frozen_stability.json",
+    "_1h_avax_followup.json", "_funding_audit.json",
+    "_1h_public_strategy_benchmark.json",
+)
+
+
+def inspect(path):
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"status": "INVALID_REPORT", "detail": str(exc)}
+    if not isinstance(payload, dict):
+        return {"status": "INVALID_REPORT", "detail": "JSON root is not an object"}
+    status = payload.get("status")
+    if not isinstance(status, str) or not status:
+        status = payload.get("production_gate")
+    if not isinstance(status, str) or not status:
+        status = "REPORT_PRESENT_STATUS_UNSPECIFIED"
+    return {"status": status, "detail": payload.get("reason", "")}
+
+
+def render(root):
+    files = sorted(p for p in root.rglob("*.json") if p.name.endswith(REPORT_SUFFIXES))
+    lines = [
+        "# Multi-asset research artifact inventory", "",
+        "> Research-only inventory. Artifact presence or a successful workflow is not evidence of profitability or production readiness.", "",
+        "| Symbol | Report | Status | Notes |", "|---|---|---|---|",
+    ]
+    symbols = set()
+    for path in files:
+        name = path.name
+        symbol = name.split("_1h_", 1)[0] if "_1h_" in name else name.split("_funding_", 1)[0]
+        symbols.add(symbol)
+        result = inspect(path)
+        report = name.replace(symbol + "_", "")
+        notes = str(result["detail"]).replace("|", "\\|").replace("\n", " ")[:180]
+        lines.append(f"| {symbol} | {report} | {result['status']} | {notes or '—'} |")
+    lines.extend(["", "## Coverage", "",
+                  f"- Symbols represented: {len(symbols)} ({', '.join(sorted(symbols)) or 'none'})",
+                  f"- JSON reports inventoried: {len(files)}",
+                  "- Missing reports are not inferred to be successful.",
+                  "- Reports without an explicit status are labeled REPORT_PRESENT_STATUS_UNSPECIFIED.",
+                  "- This inventory does not calculate or certify performance metrics.",
+                  ""])
+    return "\n".join(lines)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--root", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args()
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    report = render(args.root)
+    args.output.write_text(report, encoding="utf-8")
+    print(report)
+
+
+if __name__ == "__main__":
+    main()
