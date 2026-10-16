@@ -28,7 +28,7 @@ def inspect(path):
 
 
 def render(root):
-    files = sorted(p for p in root.rglob("*.json") if p.name.endswith(REPORT_SUFFIXES))
+    files = sorted(p for p in root.rglob("*.json") if p.name.endswith(REPORT_SUFFIXES)) if root.exists() else []
     lines = [
         "# Multi-asset research artifact inventory", "",
         "> Research-only inventory. Artifact presence or a successful workflow is not evidence of profitability or production readiness.", "",

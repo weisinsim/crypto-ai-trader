@@ -25,6 +25,12 @@ class AggregateAssetResearchTests(unittest.TestCase):
             self.assertIn("not evidence of profitability", report)
             self.assertIn("JSON reports inventoried: 2", report)
 
+    def test_missing_root_is_explicit(self):
+        with tempfile.TemporaryDirectory() as temp:
+            report = render(Path(temp) / "not-created")
+            self.assertIn("Symbols represented: 0 (none)", report)
+            self.assertIn("JSON reports inventoried: 0", report)
+
     def test_empty_root_is_explicit(self):
         with tempfile.TemporaryDirectory() as temp:
             report = render(Path(temp))

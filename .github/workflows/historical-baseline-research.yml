@@ -468,6 +468,7 @@ jobs:
           pattern: research-*-1h
           path: research-artifacts
           merge-multiple: false
+          if-no-artifact-found: warn
       - name: Generate conservative artifact inventory
         run: |
           python -m validation.aggregate_asset_research \
