@@ -204,7 +204,7 @@ jobs:
           holdout = report["holdout"]
           print("=== RESEARCH SUMMARY (NOT A PRODUCTION CERTIFICATION) ===")
           print(f"symbol={report['symbol']} interval={report['interval']} bars={report['bars']}")
-          print(f"funding_records={report['funding_data']['records']} funding_source={report['funding_data']['source']}")
+          print(f"funding_records={report['funding_data']['records_in_candle_range']} funding_source={report['funding_data']['source']}")
           print(f"holdout_trades={holdout['trades']} net_return_pct={holdout['net_return_pct']}")
           print(f"holdout_max_drawdown_pct={holdout['max_drawdown_pct']} win_rate_pct={holdout['win_rate_pct']}")
           print(f"holdout_profit_factor={holdout['profit_factor']} expectancy_equity_pct={holdout['expectancy_equity_pct']}")
@@ -237,7 +237,7 @@ jobs:
           )
           if gate["pass"]:
               print("NOTE: candidate gate passed only this research screen; it is not a production approval.")
-          if report["funding_data"]["records"] == 0:
+          if report["funding_data"]["records_in_candle_range"] == 0:
               print("WARN: historical funding unavailable; baseline excludes realized funding cashflows.")
           else:
               print("INFO: historical funding CSV supplied to baseline backtest.")
