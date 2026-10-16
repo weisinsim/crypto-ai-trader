@@ -50,6 +50,19 @@ class AggregateAssetResearchTests(unittest.TestCase):
             self.assertIn("Coverage status: PASS_COVERAGE_ONLY", report)
             self.assertIn("not evidence of profitability", report)
 
+    def test_invalid_required_json_prevents_coverage_pass(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            report_dir = root / "reports"
+            report_dir.mkdir()
+            for symbol in ("BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT", "XRPUSDT"):
+                (report_dir / f"{symbol}_1h_baseline.json").write_text("{}", encoding="utf-8")
+                (report_dir / f"{symbol}_funding_audit.json").write_text('{"status":"PASS"}', encoding="utf-8")
+            (report_dir / "BTCUSDT_funding_audit.json").write_text("{invalid", encoding="utf-8")
+            report = render(root)
+            self.assertIn("Coverage status: INCOMPLETE_REPORT_COVERAGE", report)
+            self.assertIn("Invalid required reports: BTCUSDT_funding_audit.json", report)
+
     def test_empty_root_is_explicit(self):
         with tempfile.TemporaryDirectory() as temp:
             report = render(Path(temp))
