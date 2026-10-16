@@ -62,7 +62,13 @@ def render(root):
         if f"{symbol}{suffix}" in present_names
         and inspect(next(path for path in files if path.name == f"{symbol}{suffix}"))["status"] == "INVALID_REPORT"
     )
-    coverage_status = "PASS_COVERAGE_ONLY" if not missing_required_reports and not invalid_required_reports and not missing_symbols else "INCOMPLETE_REPORT_COVERAGE"
+    nonpassing_funding_audits = sorted(
+        f"{symbol}_funding_audit.json"
+        for symbol in EXPECTED_SYMBOLS
+        if f"{symbol}_funding_audit.json" in present_names
+        and inspect(next(path for path in files if path.name == f"{symbol}_funding_audit.json"))["status"] != "PASS"
+    )
+    coverage_status = "PASS_COVERAGE_ONLY" if not missing_required_reports and not invalid_required_reports and not nonpassing_funding_audits and not missing_symbols else "INCOMPLETE_REPORT_COVERAGE"
     lines.extend(["", "## Coverage", "",
                   f"- Coverage status: {coverage_status}",
                   f"- Expected symbols: {len(EXPECTED_SYMBOLS)} ({', '.join(EXPECTED_SYMBOLS)})",
@@ -71,6 +77,7 @@ def render(root):
                   f"- Required report types per symbol: {', '.join(REQUIRED_REPORT_SUFFIXES)}",
                   f"- Missing required reports: {', '.join(missing_required_reports) or 'none'}",
                   f"- Invalid required reports: {', '.join(invalid_required_reports) or 'none'}",
+                  f"- Funding audits not PASS: {', '.join(nonpassing_funding_audits) or 'none'}",
                   f"- JSON reports inventoried: {len(files)}",
                   "- Missing reports are not inferred to be successful.",
                   "- Reports without an explicit status are labeled REPORT_PRESENT_STATUS_UNSPECIFIED.",
