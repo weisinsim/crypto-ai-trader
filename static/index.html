@@ -65,6 +65,17 @@ h1{font-size:22px;margin:0 0 5px}.sub{font-size:12px;color:#9aa4b2}
 <tr><td>历史 Holdout 策略结论</td><td class="fail">未批准实盘</td><td>已知策略成本压力与独立样本门槛仍未全部通过；软件 CI 成功不代表策略盈利。</td></tr>
 </tbody></table></div>
 <div class="intro">已将 exclude/include 两种入场边界假设纳入回测 JSON 报告：分别输出净收益、PF、最大回撤、胜率、资金费率现金流、结算次数和边界标记数，并记录 include−exclude 的收益与回撤差。最新合成资金费率边界集成测试已通过三项 CI（Research tests、Python validation、Validation audit）；测试验证同一开仓时间戳事件会影响 include 的结算账本及回测结果。该测试使用合成数据，不是交易所历史数据。没有提供历史资金费率文件时，两种情景通常不会产生差异；这不代表真实资金费率影响为零。冻结策略参数不放宽。</div>
+</section>
+<section class="researchPanel" aria-label="最新报告覆盖与资金费率审计门槛">
+<h2>最新研究报告质量门槛 · 2026-10-16</h2>
+<div class="intro"><b>RESEARCH ONLY · 实盘下单保持关闭。</b> 最新汇总器已增加必需报告的 JSON 有效性检查，并将任何非 PASS 的资金费率审计列为未通过。覆盖状态仅用于数据完整性控制，不代表策略盈利、样本外稳健性或实盘批准。</div>
+<div class="researchScroll"><table class="researchTable"><thead><tr><th>质量门槛</th><th>判断规则</th><th>状态含义</th></tr></thead><tbody>
+<tr><td>必需报告缺失</td><td>任一币种缺少 baseline 或 funding audit</td><td class="fail">INCOMPLETE_REPORT_COVERAGE</td></tr>
+<tr><td>JSON 格式错误</td><td>必需报告不能解析为 JSON 对象</td><td class="fail">INCOMPLETE_REPORT_COVERAGE</td></tr>
+<tr><td>资金费率审计失败</td><td>任一必需 funding audit 的 status 不等于 PASS</td><td class="fail">INCOMPLETE_REPORT_COVERAGE</td></tr>
+<tr><td>覆盖完整且审计通过</td><td>五个币种报告齐全、JSON 有效、审计均 PASS</td><td>PASS_COVERAGE_ONLY</td></tr>
+</tbody></table></div>
+<div class="intro">实现记录：<a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/pull/21" target="_blank" rel="noopener">PR #21 · 无效 JSON 阻断覆盖通过</a> · <a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/pull/22" target="_blank" rel="noopener">PR #22 · 资金费率审计必须 PASS</a>。本面板说明的是已实现的判定规则，不声称最新五币种研究产物已经完整，也不虚构最新回测收益。</div>
 </section><div id="cards" class="cards"></div><div id="historyPanel" class="historyPanel"></div>
 <div class="small">V28.2：Research-Gated Dashboard。实时行情与历史回测状态分开显示；所有候选模型仍处于研究阶段，信号不保证盈利。</div>
 </div>
