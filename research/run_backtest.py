@@ -45,8 +45,21 @@ def load_csv(path: str, interval_ms: int) -> list[dict]:
 
 
 def load_funding_csv(path: str) -> list[dict]:
+    # Binance API settlement timestamps can contain millisecond-level jitter.
+    # Normalize only timestamps within 1 second of the canonical 8h boundary;
+    # preserve the raw exchange timestamp for auditability. Larger deviations fail closed.
+    from research.funding_data import canonical_settlement_timestamp
+    def normalize_settlement_timestamp(raw_ts: int) -> int:
+        # Only snap timestamps already within 1 second of a canonical 8-hour
+        # boundary. Preserve legitimate non-grid timestamps for other schedules.
+        try:
+            return canonical_settlement_timestamp(raw_ts, tolerance_ms=1000)
+        except ValueError:
+            return raw_ts
+
     with open(path, newline="", encoding="utf-8") as handle:
-        rows = [{"funding_time": int(row["funding_time"]),
+        rows = [{"funding_time_raw": int(row["funding_time"]),
+                 "funding_time": normalize_settlement_timestamp(int(row["funding_time"])),
                  "funding_rate": float(row["funding_rate"]),
                  "mark_price": float(row["mark_price"]),
                  "symbol": row.get("symbol", "").strip().upper(),
