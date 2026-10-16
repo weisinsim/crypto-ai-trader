@@ -348,6 +348,28 @@ jobs:
         env:
           SYMBOL: ${{ matrix.symbol }}
         run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          symbol = os.environ["SYMBOL"]
+          params_path = Path(f"reports/{symbol}_1h_mean_reversion.json")
+          output_path = Path(f"reports/{symbol}_1h_frozen_stability.json")
+          source = json.loads(params_path.read_text(encoding="utf-8"))
+          selected = (source.get("selected_parameters") or source.get("selected_params")
+                      or source.get("parameters") or source.get("best_params"))
+          if not isinstance(selected, dict) or not selected:
+              report = {
+                  "symbol": symbol,
+                  "status": "NOT_RUN_NO_ELIGIBLE_TRAINING_PARAMETERS",
+                  "reason": "Mean-reversion training selection did not produce eligible frozen parameters; diagnostic is intentionally skipped rather than using diagnostic-only parameters.",
+                  "parameters_frozen_for_symbol": None,
+                  "production_approval": False,
+              }
+              output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+              print(json.dumps(report, indent=2))
+              raise SystemExit(0)
+          PY
           python -m research.frozen_parameter_stability \
             --csv "data/${SYMBOL}_1h.csv" \
             --symbol "${SYMBOL}" --train-fraction 0.6 \
