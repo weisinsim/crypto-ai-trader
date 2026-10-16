@@ -25,6 +25,7 @@ class AggregateAssetResearchTests(unittest.TestCase):
             self.assertIn("not evidence of profitability", report)
             self.assertIn("Expected symbols: 5", report)
             self.assertIn("Missing expected symbols: AVAXUSDT, ETHUSDT, SOLUSDT, XRPUSDT", report)
+            self.assertIn("Coverage status: INCOMPLETE_REPORT_COVERAGE", report)
             self.assertIn("Missing required reports: AVAXUSDT_1h_baseline.json, AVAXUSDT_funding_audit.json, BTCUSDT_funding_audit.json, ETHUSDT_1h_baseline.json, ETHUSDT_funding_audit.json, SOLUSDT_1h_baseline.json, SOLUSDT_funding_audit.json, XRPUSDT_1h_baseline.json, XRPUSDT_funding_audit.json", report)
             self.assertIn("JSON reports inventoried: 2", report)
 
@@ -33,8 +34,21 @@ class AggregateAssetResearchTests(unittest.TestCase):
             report = render(Path(temp) / "not-created")
             self.assertIn("Symbols represented: 0 (none)", report)
             self.assertIn("Missing expected symbols: AVAXUSDT, BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT", report)
+            self.assertIn("Coverage status: INCOMPLETE_REPORT_COVERAGE", report)
             self.assertIn("Missing required reports:", report)
             self.assertIn("JSON reports inventoried: 0", report)
+
+    def test_complete_required_coverage_is_not_profitability_approval(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            report_dir = root / "reports"
+            report_dir.mkdir()
+            for symbol in ("BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT", "XRPUSDT"):
+                (report_dir / f"{symbol}_1h_baseline.json").write_text("{}", encoding="utf-8")
+                (report_dir / f"{symbol}_funding_audit.json").write_text('{"status":"PASS"}', encoding="utf-8")
+            report = render(root)
+            self.assertIn("Coverage status: PASS_COVERAGE_ONLY", report)
+            self.assertIn("not evidence of profitability", report)
 
     def test_empty_root_is_explicit(self):
         with tempfile.TemporaryDirectory() as temp:
