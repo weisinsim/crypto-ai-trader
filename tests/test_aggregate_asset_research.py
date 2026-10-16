@@ -23,12 +23,15 @@ class AggregateAssetResearchTests(unittest.TestCase):
             self.assertIn("NOT_RUN_NO_ELIGIBLE_TRAINING_PARAMETERS", report)
             self.assertIn("REPORT_PRESENT_STATUS_UNSPECIFIED", report)
             self.assertIn("not evidence of profitability", report)
+            self.assertIn("Expected symbols: 5", report)
+            self.assertIn("Missing expected symbols: AVAXUSDT, ETHUSDT, SOLUSDT, XRPUSDT", report)
             self.assertIn("JSON reports inventoried: 2", report)
 
     def test_missing_root_is_explicit(self):
         with tempfile.TemporaryDirectory() as temp:
             report = render(Path(temp) / "not-created")
             self.assertIn("Symbols represented: 0 (none)", report)
+            self.assertIn("Missing expected symbols: AVAXUSDT, BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT", report)
             self.assertIn("JSON reports inventoried: 0", report)
 
     def test_empty_root_is_explicit(self):

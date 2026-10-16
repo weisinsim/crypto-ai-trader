@@ -4,6 +4,8 @@ import argparse
 import json
 from pathlib import Path
 
+EXPECTED_SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT", "XRPUSDT")
+
 REPORT_SUFFIXES = (
     "_1h_baseline.json", "_1h_adaptive.json", "_1h_breakout_retest.json",
     "_1h_mean_reversion.json", "_1h_frozen_stability.json",
@@ -43,8 +45,11 @@ def render(root):
         report = name.replace(symbol + "_", "")
         notes = str(result["detail"]).replace("|", "\\|").replace("\n", " ")[:180]
         lines.append(f"| {symbol} | {report} | {result['status']} | {notes or '—'} |")
+    missing_symbols = sorted(set(EXPECTED_SYMBOLS) - symbols)
     lines.extend(["", "## Coverage", "",
+                  f"- Expected symbols: {len(EXPECTED_SYMBOLS)} ({', '.join(EXPECTED_SYMBOLS)})",
                   f"- Symbols represented: {len(symbols)} ({', '.join(sorted(symbols)) or 'none'})",
+                  f"- Missing expected symbols: {', '.join(missing_symbols) or 'none'}",
                   f"- JSON reports inventoried: {len(files)}",
                   "- Missing reports are not inferred to be successful.",
                   "- Reports without an explicit status are labeled REPORT_PRESENT_STATUS_UNSPECIFIED.",
