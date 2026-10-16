@@ -17,6 +17,10 @@ BASE_URL = "https://fapi.binance.com"
 FIELDS = ("funding_time", "funding_rate", "mark_price", "symbol", "mark_price_source", "venue")
 
 
+class BinanceFundingAccessRestricted(RuntimeError):
+    """Binance Futures REST funding endpoint is blocked for this runner/network."""
+
+
 def canonical_settlement_timestamp(ts: int, tolerance_ms: int = 1000) -> int:
     """Normalize small timestamp jitter to the canonical 8-hour UTC settlement grid.
 
@@ -104,7 +108,7 @@ def download_funding_rates(
             url = base_url.rstrip("/") + "/fapi/v1/fundingRate"
             response = client.get(url, params=params)
             if response.status_code == 451:
-                raise RuntimeError(
+                raise BinanceFundingAccessRestricted(
                     "Binance USD-M funding REST endpoint returned HTTP 451 "
                     f"({response.url}). This runner/network is restricted by the "
                     "upstream service; retries and changing the date range will not "
@@ -450,7 +454,7 @@ def main() -> None:
     try:
         rows = download_funding_rates(args.symbol, args.start_ms, args.end_ms)
         source = "binance_rest"
-    except httpx.HTTPStatusError:
+    except (httpx.HTTPStatusError, BinanceFundingAccessRestricted):
         # The official public archive is independent of the jurisdiction-restricted REST host.
         rows = download_archive_funding(args.symbol, args.start_ms, args.end_ms)
         source = "binance_vision_archive"
