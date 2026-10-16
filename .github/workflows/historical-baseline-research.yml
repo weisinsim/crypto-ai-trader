@@ -451,3 +451,32 @@ jobs:
             reports/${{ matrix.symbol }}_1h_public_strategy_benchmark.json
           if-no-files-found: warn
           retention-days: 30
+
+  aggregate-report:
+    name: Aggregate multi-asset research report
+    if: always()
+    needs: [baseline]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download available per-symbol artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: research-*-1h
+          path: research-artifacts
+          merge-multiple: false
+      - name: Generate conservative artifact inventory
+        run: |
+          python -m validation.aggregate_asset_research \
+            --root research-artifacts \
+            --output reports/multi_asset_research_inventory.md
+      - name: Upload aggregated research inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: multi-asset-research-inventory
+          path: reports/multi_asset_research_inventory.md
+          if-no-files-found: error
+          retention-days: 30
