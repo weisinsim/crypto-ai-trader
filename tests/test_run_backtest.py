@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from research.run_backtest import main, max_drawdown_pct, summarize_funding_data_quality, summarize_walk_forward_cost_stress
+from research.run_backtest import main, max_drawdown_pct, summarize_funding_data_quality, summarize_holdout_trade_quality, summarize_walk_forward_cost_stress
 
 
 class FundingDataQualitySummaryTests(unittest.TestCase):
@@ -31,6 +31,27 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
         self.assertEqual(summary["records_in_candle_range"], 0)
         self.assertFalse(summary["event_completeness_verified"])
 
+
+
+class HoldoutTradeQualityTests(unittest.TestCase):
+    def test_groups_holdout_trades_without_overstating_cost_attribution(self):
+        trades = [
+            {"side": "LONG", "reason": "TAKE_PROFIT", "bars_held": 4, "pnl_equity": 0.03,
+             "funding_cashflow": -0.001, "funding_boundary_ambiguous": False},
+            {"side": "LONG", "reason": "STOP_LOSS", "bars_held": 2, "pnl_equity": -0.02,
+             "funding_cashflow": 0.0, "funding_boundary_ambiguous": True},
+            {"side": "SHORT", "reason": "STOP_LOSS", "bars_held": 15, "pnl_equity": -0.01,
+             "funding_cashflow": 0.002, "funding_boundary_ambiguous": False},
+        ]
+        summary = summarize_holdout_trade_quality(trades)
+        self.assertEqual(summary["status"], "DIAGNOSTIC_ONLY")
+        self.assertEqual(summary["by_side"]["LONG"]["trades"], 2)
+        self.assertEqual(summary["by_side"]["LONG"]["wins"], 1)
+        self.assertEqual(summary["by_side"]["LONG"]["losses"], 1)
+        self.assertEqual(summary["by_exit_reason"]["STOP_LOSS"]["trades"], 2)
+        self.assertEqual(summary["by_holding_duration"]["13_plus_bars"]["trades"], 1)
+        self.assertEqual(summary["by_side"]["LONG"]["funding_boundary_ambiguous_trades"], 1)
+        self.assertIn("fee and slippage attribution is not separately reconstructed", summary["limitations"][0])
 
 
 class RunBacktestCostStressTests(unittest.TestCase):
