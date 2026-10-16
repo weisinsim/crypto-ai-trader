@@ -1,0 +1,36 @@
+import tempfile
+import unittest
+from pathlib import Path
+
+from validation.aggregate_asset_research import render
+
+
+class AggregateAssetResearchTests(unittest.TestCase):
+    def test_inventories_reports_without_claiming_profitability(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            report_dir = root / "research-BTCUSDT-1h" / "reports"
+            report_dir.mkdir(parents=True)
+            (report_dir / "BTCUSDT_1h_frozen_stability.json").write_text(
+                '{"status":"NOT_RUN_NO_ELIGIBLE_TRAINING_PARAMETERS","reason":"No selected params"}',
+                encoding="utf-8",
+            )
+            (report_dir / "BTCUSDT_1h_baseline.json").write_text(
+                '{"trades": 100}', encoding="utf-8"
+            )
+            report = render(root)
+            self.assertIn("BTCUSDT", report)
+            self.assertIn("NOT_RUN_NO_ELIGIBLE_TRAINING_PARAMETERS", report)
+            self.assertIn("REPORT_PRESENT_STATUS_UNSPECIFIED", report)
+            self.assertIn("not evidence of profitability", report)
+            self.assertIn("JSON reports inventoried: 2", report)
+
+    def test_empty_root_is_explicit(self):
+        with tempfile.TemporaryDirectory() as temp:
+            report = render(Path(temp))
+            self.assertIn("Symbols represented: 0 (none)", report)
+            self.assertIn("JSON reports inventoried: 0", report)
+
+
+if __name__ == "__main__":
+    unittest.main()
