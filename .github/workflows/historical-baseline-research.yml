@@ -45,9 +45,11 @@ jobs:
           SYMBOL: ${{ matrix.symbol }}
           DAYS: ${{ inputs.days || '365' }}
         run: |
-          # Public archives may publish the latest UTC day with a delay.
-          # Use the last fully closed UTC day as the exclusive end boundary.
-          END="$(date -u -d "3 days ago" +%F)"
+          # Funding-rate monthly archives for the current UTC month may not exist yet.
+          # End at the start of this month so every requested funding month is complete.
+          # This intentionally sacrifices the partial current month rather than
+          # synthesizing funding or mixing incomplete price/funding windows.
+          END="$(date -u -d "$(date -u +%Y-%m-01)" +%F)"
           START="$(date -u -d "$END -${DAYS} days" +%F)"
           python -m research.binance_archive_data \
             --symbol "$SYMBOL" --interval 1h \
@@ -115,7 +117,7 @@ jobs:
           SYMBOL: ${{ matrix.symbol }}
           DAYS: ${{ inputs.days || '365' }}
         run: |
-          END="$(date -u -d "3 days ago" +%F)"
+          END="$(date -u -d "$(date -u +%Y-%m-01)" +%F)"
           START="$(date -u -d "$END -${DAYS} days" +%F)"
           START_MS="$(date -u -d "$START" +%s000)"
           END_MS="$(date -u -d "$END" +%s000)"
