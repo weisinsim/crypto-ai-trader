@@ -225,6 +225,16 @@ jobs:
                   f"lowest_numeric_pf={metrics['lowest_numeric_profit_factor']}"
               )
           print(f"production_approval={stress['production_approval']}")
+          gate = stress["walk_forward_candidate_gate"]
+          print("=== WALK-FORWARD CANDIDATE GATE (RESEARCH ONLY) ===")
+          print(
+              f"pass={gate['pass']} min_trades_per_fold={gate['minimum_trades_per_fold']} "
+              f"under_sampled_folds={gate['under_sampled_folds']} "
+              f"all_folds_stress_pass={gate['all_folds_stress_pass']} "
+              f"missing_stress_folds={gate['missing_cost_stress_folds']} promotion={gate['promotion']}"
+          )
+          if gate["pass"]:
+              print("NOTE: candidate gate passed only this research screen; it is not a production approval.")
           if report["funding_data"]["records"] == 0:
               print("WARN: historical funding unavailable; baseline excludes realized funding cashflows.")
           else:
