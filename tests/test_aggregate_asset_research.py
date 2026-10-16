@@ -25,6 +25,7 @@ class AggregateAssetResearchTests(unittest.TestCase):
             self.assertIn("not evidence of profitability", report)
             self.assertIn("Expected symbols: 5", report)
             self.assertIn("Missing expected symbols: AVAXUSDT, ETHUSDT, SOLUSDT, XRPUSDT", report)
+            self.assertIn("Missing required reports: AVAXUSDT_1h_baseline.json, AVAXUSDT_funding_audit.json, ETHUSDT_1h_baseline.json, ETHUSDT_funding_audit.json, SOLUSDT_1h_baseline.json, SOLUSDT_funding_audit.json, XRPUSDT_1h_baseline.json, XRPUSDT_funding_audit.json", report)
             self.assertIn("JSON reports inventoried: 2", report)
 
     def test_missing_root_is_explicit(self):
@@ -32,6 +33,7 @@ class AggregateAssetResearchTests(unittest.TestCase):
             report = render(Path(temp) / "not-created")
             self.assertIn("Symbols represented: 0 (none)", report)
             self.assertIn("Missing expected symbols: AVAXUSDT, BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT", report)
+            self.assertIn("Missing required reports:", report)
             self.assertIn("JSON reports inventoried: 0", report)
 
     def test_empty_root_is_explicit(self):
