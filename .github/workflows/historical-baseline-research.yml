@@ -348,8 +348,8 @@ jobs:
         env:
           SYMBOL: ${{ matrix.symbol }}
         run: |
-          python - <<'PY'
-          import json, os
+          if python - <<'PY'
+          import json, os, sys
           from pathlib import Path
 
           symbol = os.environ["SYMBOL"]
@@ -368,14 +368,19 @@ jobs:
               }
               output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
               print(json.dumps(report, indent=2))
-              raise SystemExit(0)
+              sys.exit(1)
+          print("Eligible training-selected parameters found; running frozen diagnostic.")
           PY
-          python -m research.frozen_parameter_stability \
-            --csv "data/${SYMBOL}_1h.csv" \
-            --symbol "${SYMBOL}" --train-fraction 0.6 \
-            --funding-csv "data/${SYMBOL}_funding.csv" \
-            --params-json "reports/${SYMBOL}_1h_mean_reversion.json" \
-            --output "reports/${SYMBOL}_1h_frozen_stability.json"
+          then
+            python -m research.frozen_parameter_stability \
+              --csv "data/${SYMBOL}_1h.csv" \
+              --symbol "${SYMBOL}" --train-fraction 0.6 \
+              --funding-csv "data/${SYMBOL}_funding.csv" \
+              --params-json "reports/${SYMBOL}_1h_mean_reversion.json" \
+              --output "reports/${SYMBOL}_1h_frozen_stability.json"
+          else
+            echo "::warning::Frozen-parameter diagnostic skipped because no eligible training parameters were selected."
+          fi
       - name: Print frozen direction and monthly diagnostics
         if: success()
         env:
