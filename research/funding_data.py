@@ -101,7 +101,17 @@ def download_funding_rates(
         client = httpx.Client(timeout=15.0)
 
         def fetch_page(params):
-            response = client.get(base_url.rstrip("/") + "/fapi/v1/fundingRate", params=params)
+            url = base_url.rstrip("/") + "/fapi/v1/fundingRate"
+            response = client.get(url, params=params)
+            if response.status_code == 451:
+                raise RuntimeError(
+                    "Binance USD-M funding REST endpoint returned HTTP 451 "
+                    f"({response.url}). This runner/network is restricted by the "
+                    "upstream service; retries and changing the date range will not "
+                    "reliably fix a jurisdiction/access block. Use an authorized "
+                    "network or a verifiable official Binance Vision archive. "
+                    "Do not synthesize funding records or treat missing funding as zero."
+                )
             response.raise_for_status()
             return response.json()
 
