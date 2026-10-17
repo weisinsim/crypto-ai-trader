@@ -23,8 +23,8 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
         self.assertEqual(summary["non_candle_open_events"], 1)
         self.assertEqual(summary["source_labels"], ["proxy", "reported"])
         self.assertFalse(summary["event_completeness_verified"])
-        self.assertFalse(summary["review_required"])
-        self.assertEqual(summary["audit_status"], "TIMESTAMP_ALIGNMENT_PASS_NOT_RECONCILED")
+        self.assertTrue(summary["review_required"])
+        self.assertEqual(summary["audit_status"], "REVIEW_REQUIRED")
         self.assertIn("do not prove event completeness", summary["interpretation"])
 
     def test_missing_funding_is_explicitly_unverified(self):
