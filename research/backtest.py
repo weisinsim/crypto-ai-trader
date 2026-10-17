@@ -276,6 +276,12 @@ def run_ema_cross_backtest(
                 (gap_stop_at_open and int(bar["t"]) in settlement_timestamps)
             )
         )
+        equity_before = pos["equity_before"]
+        if not isfinite(equity_before) or equity_before <= 0:
+            raise ValueError("trade return calculation requires positive finite entry equity")
+        return_pct = (new_equity / equity_before - 1) * 100
+        if not isfinite(return_pct):
+            raise ValueError("trade return calculation produced a non-finite value")
         trade = {
             "side": "LONG" if side == 1 else "SHORT",
             "entry_time": pos["entry_time"], "exit_time": int(bar["t"]),
@@ -285,7 +291,7 @@ def run_ema_cross_backtest(
             "funding_cashflow": round(funding_cashflow, 8),
             "funding_settlement_count": len(settlement_timestamps),
             "funding_boundary_ambiguous": funding_boundary_ambiguous,
-            "return_pct": round((new_equity / pos["equity_before"] - 1) * 100, 6),
+            "return_pct": round(return_pct, 6),
             "pnl_equity": round(pnl, 8),
         }
         return new_equity, trade
