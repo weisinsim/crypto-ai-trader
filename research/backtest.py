@@ -191,6 +191,8 @@ def run_ema_cross_backtest(
             raise ValueError(f"{name} must be an integer")
     if fast < 2 or slow <= fast or atr_period < 1 or trend_period < 0:
         raise ValueError("require 2 <= fast < slow, atr_period >= 1 and trend_period >= 0")
+    if trend_period == 1:
+        raise ValueError("trend_period must be 0 (disabled) or >= 2")
     if trade_start_ts is not None and (
         isinstance(trade_start_ts, bool) or not isinstance(trade_start_ts, int) or trade_start_ts < 0
     ):
@@ -237,8 +239,6 @@ def run_ema_cross_backtest(
     closes = [float(r["c"]) for r in rows]
     fast_ema, slow_ema = _ema(closes, fast), _ema(closes, slow)
     trend_ema = _ema(closes, trend_period) if trend_period >= 2 else None
-    if trend_period == 1:
-        raise ValueError("trend_period must be 0 (disabled) or >= 2")
     atrs = _atr(rows, atr_period)
     indicator_series = [fast_ema, slow_ema, atrs]
     if trend_ema is not None:
