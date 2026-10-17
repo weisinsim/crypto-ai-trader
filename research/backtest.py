@@ -223,6 +223,15 @@ def run_ema_cross_backtest(
     if trend_period == 1:
         raise ValueError("trend_period must be 0 (disabled) or >= 2")
     atrs = _atr(rows, atr_period)
+    indicator_series = [fast_ema, slow_ema, atrs]
+    if trend_ema is not None:
+        indicator_series.append(trend_ema)
+    if any(
+        value is not None and not isfinite(value)
+        for series in indicator_series
+        for value in series
+    ):
+        raise ValueError("indicator calculation produced a non-finite value")
     equity = 1.0
     equity_floor = 1e-6
     equity_floor_hit = False
