@@ -287,8 +287,13 @@ def run_ema_cross_backtest(
         # already open at the event; positions opened later on this bar are excluded.
         if position is not None and int(bar["t"]) in funding_events and funding_rates is not None:
             event = funding_events[int(bar["t"])]
-            position["funding_cost"] = position.get("funding_cost", 0.0) + (
-                position["qty"] * event["mark_price"] * event["funding_rate"] * position["side"])
+            settlement_cost = (
+                position["qty"] * event["mark_price"] * event["funding_rate"] * position["side"]
+            )
+            updated_funding_cost = position.get("funding_cost", 0.0) + settlement_cost
+            if not isfinite(settlement_cost) or not isfinite(updated_funding_cost):
+                raise ValueError("funding settlement produced a non-finite cost")
+            position["funding_cost"] = updated_funding_cost
             position.setdefault("funding_settlement_timestamps", []).append(int(bar["t"]))
         # Measure the adverse intrabar mark BEFORE resolving this candle's
         # stop/target. Otherwise a target exit could realize a gain first and
@@ -379,9 +384,13 @@ def run_ema_cross_backtest(
                 if (funding_rates is not None and funding_entry_boundary_policy == "include"
                         and int(bar["t"]) in funding_events):
                     event = funding_events[int(bar["t"])]
-                    position["funding_cost"] += (
+                    settlement_cost = (
                         position["qty"] * event["mark_price"] * event["funding_rate"] * position["side"]
                     )
+                    updated_funding_cost = position["funding_cost"] + settlement_cost
+                    if not isfinite(settlement_cost) or not isfinite(updated_funding_cost):
+                        raise ValueError("funding settlement produced a non-finite cost")
+                    position["funding_cost"] = updated_funding_cost
                     position["funding_settlement_timestamps"].append(int(bar["t"]))
                 opened_this_bar = True
 
