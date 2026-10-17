@@ -92,7 +92,6 @@ class PaperReconciliationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid order status"):
             reconcile_paper_positions({"bad-status": bad_status})
 
-
     def test_aggregate_exposure_overflow_is_rejected(self):
         orders = {
             "large-1": {
@@ -113,6 +112,16 @@ class PaperReconciliationTests(unittest.TestCase):
                 "huge": {
                     "symbol": "BTCUSDT", "side": "LONG", "status": "OPEN",
                     "quantity": 10 ** 1000, "filled_quantity": 0,
+                }
+            })
+
+    def test_order_identity_mismatch_fails_closed(self):
+        with self.assertRaisesRegex(ValueError, "order identity does not match ledger key"):
+            reconcile_paper_positions({
+                "ledger-key": {
+                    "client_order_id": "different-id",
+                    "symbol": "BTCUSDT", "side": "LONG", "status": "FILLED",
+                    "quantity": 1, "filled_quantity": 1,
                 }
             })
 
