@@ -58,6 +58,19 @@ def _metrics(result: Mapping[str, Any], fee_rate: float, slippage_rate: float) -
             raise ValueError(f"trade {index} funding_settlement_count must be a non-negative integer")
         settlement_count_total += raw_count
 
+    if not isinstance(result, Mapping):
+        raise ValueError("backtest result must be a mapping")
+    for metric_name in ("net_return_pct", "max_drawdown_pct", "profit_factor", "equity_final"):
+        metric_value = result.get(metric_name)
+        if metric_value is not None and (
+            isinstance(metric_value, bool)
+            or not isinstance(metric_value, (int, float))
+            or not math.isfinite(metric_value)
+        ):
+            raise ValueError(f"backtest {metric_name} must be a finite number or None")
+    if not isinstance(result.get("equity_floor_hit", False), bool):
+        raise ValueError("backtest equity_floor_hit must be a boolean")
+
     return {
         "status": result.get("status", "UNKNOWN"),
         "fee_rate": fee_rate,
