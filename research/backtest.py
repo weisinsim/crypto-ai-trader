@@ -327,7 +327,15 @@ def run_ema_cross_backtest(
                     exit_price = position["stop"]
                 reason = "STOP"
             elif target_hit:
-                exit_price, reason = position["target"], "TARGET"
+                # A favorable opening gap through the target should not be
+                # priced worse than the observed open in this OHLC approximation.
+                if position["side"] == 1 and float(bar["o"]) > position["target"]:
+                    exit_price = float(bar["o"])
+                elif position["side"] == -1 and float(bar["o"]) < position["target"]:
+                    exit_price = float(bar["o"])
+                else:
+                    exit_price = position["target"]
+                reason = "TARGET"
             elif i == len(rows) - 1:
                 exit_price, reason = float(bar["c"]), "END_OF_DATA"
             if exit_price is not None:
