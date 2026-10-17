@@ -23,6 +23,8 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
         self.assertEqual(summary["non_candle_open_events"], 1)
         self.assertEqual(summary["source_labels"], ["proxy", "reported"])
         self.assertFalse(summary["event_completeness_verified"])
+        self.assertFalse(summary["review_required"])
+        self.assertEqual(summary["audit_status"], "TIMESTAMP_ALIGNMENT_PASS_NOT_RECONCILED")
         self.assertIn("do not prove event completeness", summary["interpretation"])
 
     def test_missing_funding_is_explicitly_unverified(self):
@@ -30,6 +32,8 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
         self.assertFalse(summary["provided"])
         self.assertEqual(summary["records_in_candle_range"], 0)
         self.assertFalse(summary["event_completeness_verified"])
+        self.assertTrue(summary["review_required"])
+        self.assertEqual(summary["audit_status"], "REVIEW_REQUIRED")
 
     def test_uses_sorted_raw_timestamps_and_flags_duplicates_and_out_of_range_events(self):
         candles = [{"t": 100}, {"t": 200}, {"t": 300}]
@@ -45,6 +49,8 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
         self.assertEqual(summary["records_outside_candle_range"], 1)
         self.assertEqual(summary["duplicate_event_records"], 1)
         self.assertEqual(summary["duplicate_event_timestamps"], [200])
+        self.assertTrue(summary["review_required"])
+        self.assertEqual(summary["audit_status"], "REVIEW_REQUIRED")
         self.assertEqual(summary["event_interval_ms"]["min"], 0)
 
 
