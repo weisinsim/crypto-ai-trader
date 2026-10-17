@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import math
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,17 +23,36 @@ FIELDS = (
 )
 
 
+def _integer_timestamp(value, field: str = "fundingTime") -> int:
+    """Parse millisecond timestamps without accepting booleans or truncating floats."""
+    if isinstance(value, bool):
+        raise ValueError(f"{field} must be an integer timestamp")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    raise ValueError(f"{field} must be an integer timestamp")
+
+
 def normalize_funding_rows(raw_rows: list[dict], symbol: str) -> list[dict]:
+    if not isinstance(symbol, str) or not symbol.strip() or not symbol.strip().isalnum():
+        raise ValueError("symbol must be a non-empty alphanumeric exchange symbol")
     rows = []
     for raw in raw_rows:
-        funding_time = int(raw["fundingTime"])
+        raw_symbol = raw.get("symbol")
+        if raw_symbol is not None and str(raw_symbol).strip().upper() != symbol.upper():
+            raise ValueError(
+                f"funding response symbol mismatch: expected {symbol.upper()}, "
+                f"got {str(raw_symbol).strip().upper()}"
+            )
+        funding_time = _integer_timestamp(raw["fundingTime"])
         rate = float(raw["fundingRate"])
         mark_price = float(raw["markPrice"])
         if funding_time < 0:
             raise ValueError("funding timestamp cannot be negative")
-        if not rate == rate or rate in (float("inf"), float("-inf")):
+        if not math.isfinite(rate):
             raise ValueError("funding rate must be finite")
-        if not mark_price > 0 or mark_price != mark_price or mark_price in (float("inf"), float("-inf")):
+        if not math.isfinite(mark_price) or mark_price <= 0:
             raise ValueError("mark price must be finite and positive")
         rows.append({
             "funding_time": funding_time,
@@ -61,12 +81,15 @@ def download_funding_history(
     """Download funding events in [start_ms, end_ms), using event-time pagination."""
     if not isinstance(symbol, str) or not symbol.strip() or not symbol.strip().isalnum():
         raise ValueError("symbol must be a non-empty alphanumeric exchange symbol")
-    if start_ms < 0 or end_ms <= start_ms:
-        raise ValueError("require 0 <= start_ms < end_ms")
-    if not 1 <= limit <= 1000:
-        raise ValueError("limit must be between 1 and 1000")
-    if pause_seconds < 0:
-        raise ValueError("pause_seconds cannot be negative")
+    if (isinstance(start_ms, bool) or not isinstance(start_ms, int)
+            or isinstance(end_ms, bool) or not isinstance(end_ms, int)
+            or start_ms < 0 or end_ms <= start_ms):
+        raise ValueError("require integer timestamps with 0 <= start_ms < end_ms")
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
+        raise ValueError("limit must be an integer between 1 and 1000")
+    if (isinstance(pause_seconds, bool) or not isinstance(pause_seconds, (int, float))
+            or not math.isfinite(pause_seconds) or pause_seconds < 0):
+        raise ValueError("pause_seconds must be a finite non-negative number")
 
     client = None
     if fetch_page is None:
@@ -89,13 +112,15 @@ def download_funding_history(
             })
             if not page:
                 break
-            ordered = sorted(page, key=lambda row: int(row["fundingTime"]))
+            if not isinstance(page, list):
+                raise ValueError("funding endpoint response must be a list")
+            ordered = sorted(page, key=lambda row: _integer_timestamp(row["fundingTime"]))
             in_range = [
                 row for row in ordered
-                if start_ms <= int(row["fundingTime"]) < end_ms
+                if start_ms <= _integer_timestamp(row["fundingTime"]) < end_ms
             ]
             raw_rows.extend(in_range)
-            last_ts = max(int(row["fundingTime"]) for row in page)
+            last_ts = max(_integer_timestamp(row["fundingTime"]) for row in page)
             if last_ts < cursor:
                 raise RuntimeError("funding pagination moved backwards")
             next_cursor = last_ts + 1
