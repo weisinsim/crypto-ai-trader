@@ -69,6 +69,15 @@ def reconcile_paper_positions(orders):
 
         quantity = _finite_number(order.get("quantity"), "quantity", positive=True)
         filled = _finite_number(order.get("filled_quantity"), "filled_quantity")
+        average_fill_price = order.get("average_fill_price")
+        if filled > 0 and average_fill_price is not None:
+            average_fill_price = _finite_number(
+                average_fill_price, "average_fill_price", positive=True
+            )
+            if has_stop and side == "LONG" and not stop_loss < average_fill_price < take_profit:
+                raise ValueError("LONG protection must bracket average fill price")
+            if has_stop and side == "SHORT" and not take_profit < average_fill_price < stop_loss:
+                raise ValueError("SHORT protection must bracket average fill price")
         if filled > quantity + 1e-12:
             raise ValueError("inconsistent order quantities")
 
