@@ -213,9 +213,26 @@ def run_ema_cross_backtest(
     if not 0 < risk_fraction <= 1:
         raise ValueError("risk_fraction must be in (0, 1]")
     if len(rows) < slow + 2:
-        return {"status": "INSUFFICIENT_DATA", "bars": len(rows), "trades": 0,
-                "net_return_pct": 0.0, "max_drawdown_pct": 0.0, "win_rate_pct": None,
-                "profit_factor": None, "expectancy_pct": None, "equity_floor_hit": False, "trade_log": []}
+        initial_equity = 1.0
+        equity_curve = (
+            [{"t": int(row["t"]), "equity": initial_equity} for row in rows]
+            if rows else []
+        )
+        return {
+            "status": "INSUFFICIENT_DATA",
+            "bars": len(rows),
+            "trades": 0,
+            "net_return_pct": 0.0,
+            "max_drawdown_pct": 0.0,
+            "win_rate_pct": None,
+            "profit_factor": None,
+            "expectancy_pct": None,
+            "equity_final": initial_equity,
+            "equity_floor_hit": False,
+            "equity_curve": equity_curve,
+            "trade_log": [],
+            "funding_boundary_ambiguous_trades": 0,
+        }
 
     closes = [float(r["c"]) for r in rows]
     fast_ema, slow_ema = _ema(closes, fast), _ema(closes, slow)
