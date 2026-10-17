@@ -54,6 +54,16 @@ class FundingAuditTests(unittest.TestCase):
         self.assertEqual(report["funding"]["records_outside_candle_range"], 1)
         self.assertEqual(report["status"], "REVIEW_REQUIRED")
 
+    def test_duplicate_raw_event_timestamps_require_review(self):
+        rows = [dict(self.funding[0]), dict(self.funding[-1])]
+        rows[0]["funding_time_raw"] = 200
+        rows[1]["funding_time_raw"] = 200
+        report = audit_funding_against_candles(self.candles, rows, "BTCUSDT")
+        self.assertEqual(report["duplicate_event_records"], 1)
+        self.assertEqual(report["duplicate_event_timestamps"], [200])
+        self.assertEqual(report["funding"]["event_interval_ms"]["min"], 0)
+        self.assertEqual(report["status"], "REVIEW_REQUIRED")
+
     def test_exact_alignment_does_not_claim_reconciliation(self):
         rows = [dict(self.funding[0]), dict(self.funding[-1])]
         report = audit_funding_against_candles(self.candles, rows, "BTCUSDT")
