@@ -114,6 +114,14 @@ class PaperExecutionBookTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "filled paper exposure"):
             self.book.evaluate_protective_exit("paper-1", {"h": 130, "l": 80})
 
+    def test_protective_exit_rejects_non_mapping_candle(self):
+        self.place_long()
+        self.book.record_fill("paper-1", 2, 100)
+        for candle in (None, 42, "not-a-candle", ["h", "l"]):
+            with self.subTest(candle=candle):
+                with self.assertRaisesRegex(ValueError, "candle must be a mapping"):
+                    self.book.evaluate_protective_exit("paper-1", candle)
+
     def test_persisted_state_survives_restart_and_preserves_idempotency(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "paper-ledger.json"

@@ -265,6 +265,8 @@ class PaperExecutionBook:
         order = self._get(client_order_id)
         if order["status"] not in ("FILLED", "CANCELLED") or order["filled_quantity"] <= 0:
             raise ValueError("protective exits require filled paper exposure")
+        if not isinstance(candle, dict):
+            raise ValueError("candle must be a mapping")
         if any(key not in candle for key in ("h", "l")):
             raise ValueError("candle requires high (h) and low (l)")
         high = _positive_finite(candle["h"], "candle high")
