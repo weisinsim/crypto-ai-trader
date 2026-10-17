@@ -109,5 +109,14 @@ class BinanceFundingDataTests(unittest.TestCase):
                 "BTCUSDT",
             )
 
+    def test_rejects_boolean_or_non_numeric_rate_and_mark_price(self):
+        for rate, mark in ((True, "100"), ("0.001", False),
+                           (None, "100"), ("0.001", "not-a-price")):
+            with self.subTest(rate=rate, mark=mark), self.assertRaises(ValueError):
+                normalize_funding_rows(
+                    [{"fundingTime": 100, "fundingRate": rate, "markPrice": mark}],
+                    "BTCUSDT",
+                )
+
 if __name__ == "__main__":
     unittest.main()
