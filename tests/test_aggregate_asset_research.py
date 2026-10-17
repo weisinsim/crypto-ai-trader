@@ -93,6 +93,21 @@ class AggregateAssetResearchTests(unittest.TestCase):
                 report,
             )
 
+    def test_funding_audit_production_gate_cannot_substitute_for_explicit_status(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            report_dir = root / "reports"
+            report_dir.mkdir()
+            for symbol in ("BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT", "XRPUSDT"):
+                (report_dir / f"{symbol}_1h_baseline.json").write_text("{}", encoding="utf-8")
+                (report_dir / f"{symbol}_funding_audit.json").write_text('{"status":"PASS"}', encoding="utf-8")
+            (report_dir / "BTCUSDT_funding_audit.json").write_text(
+                '{"production_gate":"PASS"}', encoding="utf-8"
+            )
+            report = render(root)
+            self.assertIn("Coverage status: INCOMPLETE_REPORT_COVERAGE", report)
+            self.assertIn("Funding audits not PASS: BTCUSDT_funding_audit.json", report)
+
     def test_empty_root_is_explicit(self):
         with tempfile.TemporaryDirectory() as temp:
             report = render(Path(temp))
