@@ -48,7 +48,7 @@ class FundingAuditTests(unittest.TestCase):
         self.assertFalse(report["event_completeness_verified"])
 
     def test_gap_threshold_must_be_positive(self):
-        with self.assertRaisesRegex(ValueError, "must be positive"):
+        with self.assertRaisesRegex(ValueError, "finite positive number"):
             audit_funding_against_candles(self.candles, self.funding, "BTCUSDT", max_gap_hours=0)
 
     def test_gap_threshold_rejects_non_finite_values_and_booleans(self):
