@@ -523,7 +523,7 @@ class BacktestTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "equity marking produced a non-finite value"):
             run_ema_cross_backtest(
                 rows, fast=3, slow=9, atr_period=3, fee_rate=0, slippage_rate=0,
-                funding_rate_per_bar=1.79e308,
+                risk_fraction=1.0, funding_rate_per_bar=1.79e308,
             )
 
 
