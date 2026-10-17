@@ -462,6 +462,19 @@ class BacktestTests(unittest.TestCase):
             sum(1 for item in result["trade_log"] if item["funding_boundary_ambiguous"]),
         )
 
+    def test_entry_boundary_funding_is_included_in_entry_bar_drawdown(self):
+        rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(240)])
+        kwargs = dict(fast=3, slow=9, atr_period=3, fee_rate=0, slippage_rate=0)
+        baseline = run_ema_cross_backtest(rows, **kwargs)
+        trade = next(t for t in baseline["trade_log"] if t["bars_held"] > 0)
+        event = {"funding_time": trade["entry_time"], "funding_rate": 0.05,
+                 "mark_price": 100.0}
+        excluded = run_ema_cross_backtest(
+            rows, **kwargs, funding_rates=[event], funding_entry_boundary_policy="exclude")
+        included = run_ema_cross_backtest(
+            rows, **kwargs, funding_rates=[event], funding_entry_boundary_policy="include")
+        self.assertGreater(included["max_drawdown_pct"], excluded["max_drawdown_pct"])
+
 
 if __name__ == "__main__":
     unittest.main()
