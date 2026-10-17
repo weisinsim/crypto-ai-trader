@@ -176,7 +176,7 @@ class BacktestTests(unittest.TestCase):
         with_cost = run_ema_cross_backtest(
             rows, fast=3, slow=9, atr_period=3, fee_rate=0, slippage_rate=0,
             funding_rates=[{"funding_time": event_ts, "funding_rate": 0.01,
-                            "mark_price": 1.79e308}],
+                            "mark_price": 100.0}],
         )
         target_trade = next(t for t in with_cost["trade_log"]
                             if t["entry_time"] == held_trade["entry_time"])
@@ -483,7 +483,7 @@ class BacktestTests(unittest.TestCase):
         for timestamp, policy in ((trade["exit_time"], "exclude"),
                                   (trade["entry_time"], "include")):
             event = {"funding_time": timestamp, "funding_rate": 1.79e308,
-                     "mark_price": 100.0}
+                     "mark_price": 1.79e308}
             with self.subTest(timestamp=timestamp, policy=policy), self.assertRaisesRegex(
                 ValueError, "non-finite cost"
             ):
