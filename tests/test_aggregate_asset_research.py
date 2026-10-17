@@ -78,6 +78,21 @@ class AggregateAssetResearchTests(unittest.TestCase):
             self.assertIn("Coverage status: INCOMPLETE_REPORT_COVERAGE", report)
             self.assertIn("Funding audits not PASS: AVAXUSDT_funding_audit.json", report)
 
+    def test_unspecified_funding_audit_status_prevents_coverage_pass(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            report_dir = root / "reports"
+            report_dir.mkdir()
+            for symbol in ("BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT", "XRPUSDT"):
+                (report_dir / f"{symbol}_1h_baseline.json").write_text("{}", encoding="utf-8")
+                (report_dir / f"{symbol}_funding_audit.json").write_text("{}", encoding="utf-8")
+            report = render(root)
+            self.assertIn("Coverage status: INCOMPLETE_REPORT_COVERAGE", report)
+            self.assertIn(
+                "Funding audits not PASS: AVAXUSDT_funding_audit.json, BTCUSDT_funding_audit.json, ETHUSDT_funding_audit.json, SOLUSDT_funding_audit.json, XRPUSDT_funding_audit.json",
+                report,
+            )
+
     def test_empty_root_is_explicit(self):
         with tempfile.TemporaryDirectory() as temp:
             report = render(Path(temp))
