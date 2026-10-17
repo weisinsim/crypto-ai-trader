@@ -99,16 +99,31 @@ def summarize_funding_data_quality(
             "interpretation": "No historical funding events supplied; no coverage or settlement claim can be made.",
         }
     candle_timestamps = {row["t"] for row in candle_rows}
-    event_timestamps = [row["funding_time"] for row in funding_rows]
+    # Prefer raw exchange event times for audit diagnostics; the normalized
+    # timestamps remain available to the backtest settlement simulator.
+    event_timestamps = sorted(
+        int(row.get("funding_time_raw", row["funding_time"])) for row in funding_rows
+    )
+    timestamp_counts = {}
+    for timestamp in event_timestamps:
+        timestamp_counts[timestamp] = timestamp_counts.get(timestamp, 0) + 1
+    duplicate_timestamps = sorted(
+        timestamp for timestamp, count in timestamp_counts.items() if count > 1
+    )
+    start_ts, end_ts = min(candle_timestamps), max(candle_timestamps)
+    in_range = [timestamp for timestamp in event_timestamps if start_ts <= timestamp <= end_ts]
     deltas = [right - left for left, right in zip(event_timestamps, event_timestamps[1:])]
-    matched = sum(timestamp in candle_timestamps for timestamp in event_timestamps)
+    matched = sum(timestamp in candle_timestamps for timestamp in in_range)
     return {
         "provided": True,
-        "records_in_candle_range": len(funding_rows),
+        "records_in_candle_range": len(in_range),
+        "records_outside_candle_range": len(event_timestamps) - len(in_range),
+        "duplicate_event_records": sum(count - 1 for count in timestamp_counts.values() if count > 1),
+        "duplicate_event_timestamps": duplicate_timestamps,
         "first_event_ts": event_timestamps[0],
         "last_event_ts": event_timestamps[-1],
         "exact_candle_open_matches": matched,
-        "non_candle_open_events": len(event_timestamps) - matched,
+        "non_candle_open_events": len(in_range) - matched,
         "source_labels": sorted({row.get("mark_price_source", "unspecified") for row in funding_rows}),
         "venue_labels": sorted({row.get("venue", "") or "unspecified" for row in funding_rows}),
         "event_interval_ms": {
@@ -118,7 +133,8 @@ def summarize_funding_data_quality(
         },
         "event_completeness_verified": False,
         "interpretation": (
-            "Timestamp diagnostics only. Exact candle-open matches do not prove event completeness, "
+            "Raw timestamp diagnostics only. Duplicate events and events outside candle coverage require review. "
+            "Exact candle-open matches do not prove event completeness, "
             "actual mark-price provenance, or position eligibility at settlement."
         ),
     }
