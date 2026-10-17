@@ -123,7 +123,7 @@ class BacktestTests(unittest.TestCase):
                 rows, fast=3, slow=9, atr_period=3, fee_rate=0, slippage_rate=0,
             )
 
-    def test_trade_accounting_overflow_fails_closed(self):
+    def test_position_sizing_risk_overflow_fails_closed(self):
         from unittest.mock import patch
 
         rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(120)])
