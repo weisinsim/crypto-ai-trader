@@ -535,3 +535,56 @@ class WalkForwardCostStressSummaryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FundingAuditPreservationIntegrationTests(unittest.TestCase):
+    def test_report_flags_funding_events_outside_candle_range_before_simulation_filter(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            candle_path = Path(tmp) / "candles.csv"
+            funding_path = Path(tmp) / "funding.csv"
+            output_path = Path(tmp) / "report.json"
+            with candle_path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=["t", "o", "h", "l", "c", "v", "q"])
+                writer.writeheader()
+                for i in range(180):
+                    close = 100 + (i % 24) * 0.8 + ((i // 24) % 2) * 3
+                    open_price = close - (0.25 if i % 2 else -0.25)
+                    writer.writerow({
+                        "t": i * 3_600_000,
+                        "o": open_price,
+                        "h": max(open_price, close) + 1.2,
+                        "l": min(open_price, close) - 1.2,
+                        "c": close,
+                        "v": 100,
+                        "q": 100 * close,
+                    })
+            with funding_path.open("w", newline="", encoding="utf-8") as handle:
+                fields = ["funding_time", "funding_rate", "mark_price", "symbol",
+                          "mark_price_source", "venue"]
+                writer = csv.DictWriter(handle, fieldnames=fields)
+                writer.writeheader()
+                writer.writerow({
+                    "funding_time": 0, "funding_rate": 0.0001, "mark_price": 100,
+                    "symbol": "BTCUSDT", "mark_price_source": "test_fixture",
+                    "venue": "binance_usdm",
+                })
+                writer.writerow({
+                    "funding_time": 700_000_000, "funding_rate": 0.0001, "mark_price": 100,
+                    "symbol": "BTCUSDT", "mark_price_source": "test_fixture",
+                    "venue": "binance_usdm",
+                })
+
+            argv = [
+                "run_backtest.py", "--csv", str(candle_path), "--symbol", "BTCUSDT",
+                "--interval", "1h", "--train-fraction", "0.6", "--folds", "4",
+                "--fast", "3", "--slow", "8", "--funding-csv", str(funding_path),
+                "--output", str(output_path),
+            ]
+            with patch.object(sys, "argv", argv):
+                main()
+
+            report = json.loads(output_path.read_text(encoding="utf-8"))
+            funding_quality = report["funding_data"]
+            self.assertEqual(funding_quality["records_outside_candle_range"], 1)
+            self.assertTrue(funding_quality["review_required"])
+            self.assertEqual(report["funding_interpretation_gate"], "FUNDING_DATA_REVIEW_REQUIRED")

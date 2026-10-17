@@ -475,7 +475,11 @@ def main() -> None:
     if len(rows) < args.slow * 3:
         raise ValueError("not enough bars for warm-up, holdout and walk-forward")
 
-    historical_funding = load_funding_csv(args.funding_csv) if args.funding_csv else None
+    # Keep the complete downloaded event set for data-quality diagnostics.
+    # Only the in-range subset is passed to the simulator, which requires every
+    # supplied settlement timestamp to belong to the candle history.
+    funding_rows_for_audit = load_funding_csv(args.funding_csv) if args.funding_csv else None
+    historical_funding = funding_rows_for_audit
     if historical_funding is not None and historical_funding[0]["symbol"] != args.symbol.upper():
         raise ValueError("funding CSV symbol does not match --symbol")
     if historical_funding is not None:
@@ -604,7 +608,7 @@ def main() -> None:
             ),
         })
 
-    funding_quality = summarize_funding_data_quality(historical_funding, rows)
+    funding_quality = summarize_funding_data_quality(funding_rows_for_audit, rows)
     report = {
         "status": "RESEARCH_ONLY",
         "funding_interpretation_gate": (
