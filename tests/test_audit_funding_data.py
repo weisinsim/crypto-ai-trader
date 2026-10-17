@@ -35,6 +35,18 @@ class FundingAuditTests(unittest.TestCase):
         self.assertEqual(report["funding"]["first_event_ts"], 101)
         self.assertEqual(report["status"], "REVIEW_REQUIRED")
 
+    def test_gap_intervals_are_computed_in_raw_timestamp_order(self):
+        rows = [dict(self.funding[0]), dict(self.funding[-1])]
+        rows[0]["funding_time"] = 300
+        rows[0]["funding_time_raw"] = 300
+        rows[1]["funding_time"] = 400
+        rows[1]["funding_time_raw"] = 200
+        report = audit_funding_against_candles(self.candles, rows, "BTCUSDT")
+        self.assertEqual(report["funding"]["first_event_ts"], 200)
+        self.assertEqual(report["funding"]["last_event_ts"], 300)
+        self.assertEqual(report["funding"]["event_interval_ms"]["min"], 100)
+        self.assertEqual(report["funding"]["event_interval_ms"]["max"], 100)
+
     def test_reports_out_of_range_events(self):
         rows = [dict(self.funding[0]), dict(self.funding[-1])]
         rows[0]["funding_time"] = 50
