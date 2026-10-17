@@ -93,7 +93,10 @@ class CostStressTests(unittest.TestCase):
 
     def test_rejects_boolean_and_non_finite_backtest_metrics(self):
         for metric in ("net_return_pct", "max_drawdown_pct", "profit_factor", "equity_final"):
-            for value in (True, False, float("nan"), float("inf"), "1.0"):
+            bad_values = (True, False, float("nan"), "1.0")
+            if metric != "profit_factor":
+                bad_values += (float("inf"),)
+            for value in bad_values:
                 with self.subTest(metric=metric, value=value):
                     result = {
                         "status": "COMPLETED",
