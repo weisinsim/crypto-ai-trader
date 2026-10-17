@@ -519,13 +519,26 @@ def run_ema_cross_backtest(
 
     wins = [t["pnl_equity"] for t in trades if t["pnl_equity"] > 0]
     losses = [-t["pnl_equity"] for t in trades if t["pnl_equity"] < 0]
+    gross_profit = sum(wins)
     gross_loss = sum(losses)
+    net_return_pct = (equity - 1) * 100
+    max_drawdown_pct = max_dd * 100
+    expectancy_pct = sum(t["return_pct"] for t in trades) / len(trades) if trades else None
+    if not all(isfinite(value) for value in (equity, gross_profit, gross_loss, net_return_pct,
+                                               max_drawdown_pct)):
+        raise ValueError("summary metrics produced a non-finite value")
+    if expectancy_pct is not None and not isfinite(expectancy_pct):
+        raise ValueError("summary metrics produced a non-finite value")
+    profit_factor = (gross_profit / gross_loss if gross_loss else
+                     (None if not wins else "INF"))
+    if isinstance(profit_factor, float) and not isfinite(profit_factor):
+        raise ValueError("summary metrics produced a non-finite value")
     return {"status": "COMPLETED", "bars": len(rows), "trades": len(trades),
-            "net_return_pct": round((equity - 1) * 100, 4),
-            "max_drawdown_pct": round(max_dd * 100, 4),
+            "net_return_pct": round(net_return_pct, 4),
+            "max_drawdown_pct": round(max_drawdown_pct, 4),
             "win_rate_pct": round(len(wins) / len(trades) * 100, 2) if trades else None,
-            "profit_factor": round(sum(wins) / gross_loss, 4) if gross_loss else (None if not wins else "INF"),
-            "expectancy_pct": round(sum(t["return_pct"] for t in trades) / len(trades), 4) if trades else None,
+            "profit_factor": round(profit_factor, 4) if isinstance(profit_factor, float) else profit_factor,
+            "expectancy_pct": round(expectancy_pct, 4) if expectancy_pct is not None else None,
             "equity_final": round(equity, 8), "equity_floor_hit": equity_floor_hit,
             "equity_curve": equity_curve, "trade_log": trades,
             "funding_boundary_ambiguous_trades": sum(
