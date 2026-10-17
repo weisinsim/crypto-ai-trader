@@ -3,6 +3,7 @@ import json
 import time
 from validation.candle_closure import filter_closed_candles
 from validation.dashboard_health import build_health_payload
+from validation.signal_confirmation import invalidate_stale_confirmation
 from pathlib import Path
 
 import httpx
