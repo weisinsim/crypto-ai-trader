@@ -279,14 +279,29 @@ class PaperExecutionBook:
         low = _positive_finite(candle["l"], "candle low")
         if low > high:
             raise ValueError("candle low cannot exceed high")
+        open_price = None
+        if "o" in candle:
+            open_price = _positive_finite(candle["o"], "candle open")
+            if not low <= open_price <= high:
+                raise ValueError("candle open must lie within low/high range")
         if order["side"] == "LONG":
             stop_hit, target_hit = low <= order["stop_loss"], high >= order["take_profit"]
+            stop_gap = open_price is not None and open_price <= order["stop_loss"]
+            target_gap = open_price is not None and open_price >= order["take_profit"]
         else:
             stop_hit, target_hit = high >= order["stop_loss"], low <= order["take_profit"]
+            stop_gap = open_price is not None and open_price >= order["stop_loss"]
+            target_gap = open_price is not None and open_price <= order["take_profit"]
         if not stop_hit and not target_hit:
             return deepcopy(order)
         before = deepcopy(order)
-        if stop_hit:
+        # When open is provided, model a gap-through at the open rather than
+        # pretending the stop/target could fill at its trigger price.
+        if stop_gap:
+            order["exit_price"], order["exit_reason"] = open_price, "STOP"
+        elif target_gap:
+            order["exit_price"], order["exit_reason"] = open_price, "TAKE_PROFIT"
+        elif stop_hit:
             order["exit_price"], order["exit_reason"] = order["stop_loss"], "STOP"
         else:
             order["exit_price"], order["exit_reason"] = order["take_profit"], "TAKE_PROFIT"
