@@ -124,6 +124,33 @@ class PaperReconciliationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid LONG protective-level geometry"):
             reconcile_paper_positions({"bad-protection": base})
 
+    def test_long_protection_must_bracket_average_fill_price(self):
+        order = {
+            "symbol": "BTCUSDT", "side": "LONG", "status": "FILLED",
+            "quantity": 1, "filled_quantity": 1,
+            "stop_loss": 110, "take_profit": 120, "average_fill_price": 100,
+        }
+        with self.assertRaisesRegex(ValueError, "LONG protection must bracket average fill price"):
+            reconcile_paper_positions({"bad-entry-protection": order})
+
+    def test_short_protection_must_bracket_average_fill_price(self):
+        order = {
+            "symbol": "BTCUSDT", "side": "SHORT", "status": "FILLED",
+            "quantity": 1, "filled_quantity": 1,
+            "stop_loss": 90, "take_profit": 80, "average_fill_price": 100,
+        }
+        with self.assertRaisesRegex(ValueError, "SHORT protection must bracket average fill price"):
+            reconcile_paper_positions({"bad-entry-protection": order})
+
+    def test_protection_bracketing_average_fill_is_accepted(self):
+        order = {
+            "symbol": "BTCUSDT", "side": "LONG", "status": "FILLED",
+            "quantity": 1, "filled_quantity": 1,
+            "stop_loss": 90, "take_profit": 120, "average_fill_price": 100,
+        }
+        result = reconcile_paper_positions({"valid-entry-protection": order})
+        self.assertEqual(result["BTCUSDT"]["net_quantity"], 1.0)
+
     def test_partial_protective_metadata_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "protective levels must be provided together"):
             reconcile_paper_positions({
