@@ -35,13 +35,16 @@ def audit_funding_against_candles(
 
     candle_ts = {int(row["t"]) for row in candle_rows}
     start_ts, end_ts = min(candle_ts), max(candle_ts)
-    in_range = [row for row in funding_rows if start_ts <= int(row["funding_time"]) <= end_ts]
-    out_of_range = len(funding_rows) - len(in_range)
-    matched = sum(int(row["funding_time"]) in candle_ts for row in in_range)
-    deltas = [
-        int(right["funding_time"]) - int(left["funding_time"])
-        for left, right in zip(funding_rows, funding_rows[1:])
-    ]
+    # Audit the exchange-reported timestamp when available. The backtest loader
+    # may separately normalize tiny boundary jitter for settlement calculations.
+    def audit_ts(row: dict) -> int:
+        return int(row.get("funding_time_raw", row["funding_time"]))
+
+    event_timestamps = [audit_ts(row) for row in funding_rows]
+    in_range = [ts for ts in event_timestamps if start_ts <= ts <= end_ts]
+    out_of_range = len(event_timestamps) - len(in_range)
+    matched = sum(ts in candle_ts for ts in in_range)
+    deltas = [right - left for left, right in zip(event_timestamps, event_timestamps[1:])]
     interval_counts = Counter(deltas)
     max_gap_ms = max_gap_hours * 3_600_000 if max_gap_hours is not None else None
     large_gaps = [delta for delta in deltas if max_gap_ms is not None and delta > max_gap_ms]
@@ -58,8 +61,8 @@ def audit_funding_against_candles(
             "records_outside_candle_range": out_of_range,
             "exact_candle_open_matches": matched,
             "nonmatching_in_range": len(in_range) - matched,
-            "first_event_ts": int(funding_rows[0]["funding_time"]),
-            "last_event_ts": int(funding_rows[-1]["funding_time"]),
+            "first_event_ts": event_timestamps[0],
+            "last_event_ts": event_timestamps[-1],
             "source_labels": sorted({row.get("mark_price_source", "unspecified") for row in funding_rows}),
             "venue_labels": sorted({row.get("venue", "") or "unspecified" for row in funding_rows}),
             "event_interval_ms": {
@@ -74,9 +77,9 @@ def audit_funding_against_candles(
         "source_authenticity_verified": False,
         "account_cashflows_reconciled": False,
         "note": (
-            "Timestamp alignment is not proof of complete event coverage, authenticated mark prices, "
-            "settlement eligibility, or agreement with account cashflows. Nonmatching events are reported, "
-            "never rounded or snapped to candle timestamps."
+            "Timestamp alignment uses the raw exchange-reported event time when available and is not proof "
+            "of complete event coverage, authenticated mark prices, settlement eligibility, or agreement "
+            "with account cashflows. Nonmatching events are reported without snapping in this audit."
         ),
     }
 
