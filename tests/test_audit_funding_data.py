@@ -51,6 +51,14 @@ class FundingAuditTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "must be positive"):
             audit_funding_against_candles(self.candles, self.funding, "BTCUSDT", max_gap_hours=0)
 
+    def test_gap_threshold_rejects_non_finite_values_and_booleans(self):
+        for value in (float("nan"), float("inf"), float("-inf"), True):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "finite positive number"):
+                    audit_funding_against_candles(
+                        self.candles, self.funding, "BTCUSDT", max_gap_hours=value
+                    )
+
     def test_symbol_mismatch_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "do not match"):
             audit_funding_against_candles(self.candles, self.funding, "ETHUSDT")
