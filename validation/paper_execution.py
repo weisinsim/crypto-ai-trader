@@ -104,6 +104,12 @@ class PaperExecutionBook:
                 raise ValueError("invalid order status in paper ledger")
             for field in ("quantity", "stop_loss", "take_profit"):
                 _positive_finite(order[field], field)
+            # Persisted state must preserve the same protective-level geometry
+            # enforced when an order is first created.
+            if order["side"] == "LONG" and not order["stop_loss"] < order["take_profit"]:
+                raise ValueError("invalid LONG protective-level geometry in paper ledger")
+            if order["side"] == "SHORT" and not order["take_profit"] < order["stop_loss"]:
+                raise ValueError("invalid SHORT protective-level geometry in paper ledger")
             filled = _nonnegative_finite(order["filled_quantity"], "filled quantity")
             if filled > order["quantity"] + 1e-12:
                 raise ValueError("invalid filled quantity in paper ledger")
