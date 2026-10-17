@@ -104,35 +104,44 @@ async def bybit_json(path, params=None, timeout=3.0):
 async def index():
     return FileResponse(str(STATIC_DIR / "index.html"))
 
-@app.get("/api/health")
-async def health():
-    # Health must reflect the least healthy tracked market, not just one fresh symbol.
-    # A stale/partial feed must not look healthy because another symbol is updating.
-    now = time.time()
+def build_health_payload(now: float, symbol_cache: dict, symbols: list[str], status: str, source: str | None) -> dict:
+    """Build a fail-closed health snapshot for every configured symbol."""
     stale_after_sec = 180
-    ready = sum(v["price"] is not None for v in cache.values())
-    analyzed = sum(v["analysis_ts"] > 0 for v in cache.values())
-    ages = {s: (round(now - v["ts"], 1) if v["ts"] else None) for s, v in cache.items()}
+    ages = {
+        symbol: (
+            round(now - symbol_cache[symbol]["ts"], 1)
+            if symbol_cache[symbol].get("ts") else None
+        )
+        for symbol in symbols
+    }
     stale_symbols = [
-        s for s, age in ages.items()
+        symbol for symbol, age in ages.items()
         if age is None or age > stale_after_sec
     ]
-    all_symbols_ready = ready == len(SYMBOLS)
-    all_symbols_analyzed = analyzed == len(SYMBOLS)
-    healthy = all_symbols_ready and all_symbols_analyzed and not stale_symbols
+    ready = sum(symbol_cache[symbol].get("price") is not None for symbol in symbols)
+    analyzed = sum(symbol_cache[symbol].get("analysis_ts", 0) > 0 for symbol in symbols)
+    healthy = ready == len(symbols) and analyzed == len(symbols) and not stale_symbols
     return {
         "ok": healthy,
-        "status": market_status["status"],
+        "status": status,
         "symbols_ready": ready,
-        "symbols_total": len(SYMBOLS),
+        "symbols_total": len(symbols),
         "analysis_ready": analyzed,
-        "analysis_total": len(SYMBOLS),
+        "analysis_total": len(symbols),
         "stale_after_sec": stale_after_sec,
         "age_sec": max((age for age in ages.values() if age is not None), default=None),
         "symbol_age_sec": ages,
         "stale_symbols": stale_symbols,
-        "source": diagnostics["rest_source"] or diagnostics["ws_source"] or diagnostics["fallback_source"],
+        "source": source,
     }
+
+
+@app.get("/api/health")
+async def health():
+    # Health must reflect the least healthy tracked market, not just one fresh symbol.
+    now = time.time()
+    source = diagnostics["rest_source"] or diagnostics["ws_source"] or diagnostics["fallback_source"]
+    return build_health_payload(now, cache, SYMBOLS, market_status["status"], source)
 
 @app.get("/api/debug")
 async def debug():
