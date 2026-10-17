@@ -41,6 +41,9 @@ def audit_funding_against_candles(
         return int(row.get("funding_time_raw", row["funding_time"]))
 
     event_timestamps = sorted(audit_ts(row) for row in funding_rows)
+    timestamp_counts = Counter(event_timestamps)
+    duplicate_timestamps = sorted(ts for ts, count in timestamp_counts.items() if count > 1)
+    duplicate_event_records = sum(count - 1 for count in timestamp_counts.values() if count > 1)
     in_range = [ts for ts in event_timestamps if start_ts <= ts <= end_ts]
     out_of_range = len(event_timestamps) - len(in_range)
     matched = sum(ts in candle_ts for ts in in_range)
@@ -48,11 +51,15 @@ def audit_funding_against_candles(
     interval_counts = Counter(deltas)
     max_gap_ms = max_gap_hours * 3_600_000 if max_gap_hours is not None else None
     large_gaps = [delta for delta in deltas if max_gap_ms is not None and delta > max_gap_ms]
-    needs_review = bool(out_of_range or matched != len(in_range) or large_gaps)
+    needs_review = bool(
+        out_of_range or matched != len(in_range) or large_gaps or duplicate_event_records
+    )
     return {
         "status": "REVIEW_REQUIRED" if needs_review else "TIMESTAMP_ALIGNMENT_PASS_NOT_RECONCILED",
         "gap_threshold_hours": max_gap_hours,
         "intervals_exceeding_gap_threshold": len(large_gaps),
+        "duplicate_event_records": duplicate_event_records,
+        "duplicate_event_timestamps": duplicate_timestamps,
         "symbol": symbol,
         "candle_range": {"start_ts": start_ts, "end_ts": end_ts, "count": len(candle_rows)},
         "funding": {
