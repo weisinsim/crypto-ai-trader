@@ -2,6 +2,7 @@ import asyncio
 import json
 import time
 from validation.candle_closure import filter_closed_candles
+from validation.dashboard_health import build_health_payload
 from pathlib import Path
 
 import httpx
@@ -107,32 +108,9 @@ async def index():
 @app.get("/api/health")
 async def health():
     # Health must reflect the least healthy tracked market, not just one fresh symbol.
-    # A stale/partial feed must not look healthy because another symbol is updating.
     now = time.time()
-    stale_after_sec = 180
-    ready = sum(v["price"] is not None for v in cache.values())
-    analyzed = sum(v["analysis_ts"] > 0 for v in cache.values())
-    ages = {s: (round(now - v["ts"], 1) if v["ts"] else None) for s, v in cache.items()}
-    stale_symbols = [
-        s for s, age in ages.items()
-        if age is None or age > stale_after_sec
-    ]
-    all_symbols_ready = ready == len(SYMBOLS)
-    all_symbols_analyzed = analyzed == len(SYMBOLS)
-    healthy = all_symbols_ready and all_symbols_analyzed and not stale_symbols
-    return {
-        "ok": healthy,
-        "status": market_status["status"],
-        "symbols_ready": ready,
-        "symbols_total": len(SYMBOLS),
-        "analysis_ready": analyzed,
-        "analysis_total": len(SYMBOLS),
-        "stale_after_sec": stale_after_sec,
-        "age_sec": max((age for age in ages.values() if age is not None), default=None),
-        "symbol_age_sec": ages,
-        "stale_symbols": stale_symbols,
-        "source": diagnostics["rest_source"] or diagnostics["ws_source"] or diagnostics["fallback_source"],
-    }
+    source = diagnostics["rest_source"] or diagnostics["ws_source"] or diagnostics["fallback_source"]
+    return build_health_payload(now, cache, SYMBOLS, market_status["status"], source)
 
 @app.get("/api/debug")
 async def debug():
