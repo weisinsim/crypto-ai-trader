@@ -475,6 +475,23 @@ class BacktestTests(unittest.TestCase):
             rows, **kwargs, funding_rates=[event], funding_entry_boundary_policy="include")
         self.assertGreater(included["max_drawdown_pct"], excluded["max_drawdown_pct"])
 
+    def test_funding_settlement_arithmetic_overflow_fails_closed(self):
+        rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(240)])
+        kwargs = dict(fast=3, slow=9, atr_period=3, fee_rate=0, slippage_rate=0)
+        baseline = run_ema_cross_backtest(rows, **kwargs)
+        trade = next(t for t in baseline["trade_log"] if t["bars_held"] > 0)
+        for timestamp, policy in ((trade["exit_time"], "exclude"),
+                                  (trade["entry_time"], "include")):
+            event = {"funding_time": timestamp, "funding_rate": 1.79e308,
+                     "mark_price": 1.79e308}
+            with self.subTest(timestamp=timestamp, policy=policy), self.assertRaisesRegex(
+                ValueError, "non-finite cost"
+            ):
+                run_ema_cross_backtest(
+                    rows, **kwargs, funding_rates=[event],
+                    funding_entry_boundary_policy=policy,
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
