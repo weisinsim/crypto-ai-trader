@@ -93,11 +93,15 @@ class PaperExecutionBook:
                 raise ValueError("invalid fill events in paper ledger")
             if not isinstance(order["cancelled_remainder"], bool):
                 raise ValueError("invalid cancelled remainder flag in paper ledger")
+            fill_event_quantity = 0.0
             for fill_id, event in order["fill_events"].items():
                 if not isinstance(fill_id, str) or not fill_id.strip() or not isinstance(event, dict) or set(event) != {"quantity", "price"}:
                     raise ValueError("invalid fill event record")
-                _positive_finite(event["quantity"], "fill event quantity")
+                event_quantity = _positive_finite(event["quantity"], "fill event quantity")
                 _positive_finite(event["price"], "fill event price")
+                fill_event_quantity += event_quantity
+                if not isfinite(fill_event_quantity):
+                    raise ValueError("aggregate fill event quantity must remain finite")
             if order["client_order_id"] != key or order["side"] not in {"LONG", "SHORT"}:
                 raise ValueError("invalid order identity in paper ledger")
             if order["status"] not in allowed_statuses:
@@ -111,6 +115,8 @@ class PaperExecutionBook:
             if order["side"] == "SHORT" and not order["take_profit"] < order["stop_loss"]:
                 raise ValueError("invalid SHORT protective-level geometry in paper ledger")
             filled = _nonnegative_finite(order["filled_quantity"], "filled quantity")
+            if fill_event_quantity > filled + 1e-12:
+                raise ValueError("fill event quantity exceeds recorded filled quantity")
             if filled > order["quantity"] + 1e-12:
                 raise ValueError("invalid filled quantity in paper ledger")
             if filled > 0:
