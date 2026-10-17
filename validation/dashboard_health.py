@@ -52,8 +52,11 @@ def build_health_payload(
         if _finite_number(analysis_ts) and analysis_ts > 0:
             analyzed += 1
 
+    # An empty symbol universe is not evidence of a healthy market-data feed.
+    # Fail closed so a misconfigured/empty dashboard cannot report HEALTHY.
     healthy = (
-        valid_now
+        bool(symbols)
+        and valid_now
         and ready == len(symbols)
         and analyzed == len(symbols)
         and not stale_symbols
