@@ -73,5 +73,41 @@ class BinanceFundingDataTests(unittest.TestCase):
         self.assertEqual(saved[0]["venue"], "binance_usdm")
 
 
+    def test_rejects_boolean_or_non_integer_range_and_limit(self):
+        for kwargs in (
+            {"start_ms": True, "end_ms": 200},
+            {"start_ms": 100, "end_ms": 200.5},
+            {"start_ms": 100, "end_ms": 200, "limit": True},
+        ):
+            args = {"symbol": "BTCUSDT", "start_ms": 100, "end_ms": 200,
+                    "fetch_page": lambda _: [], "pause_seconds": 0}
+            args.update(kwargs)
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
+                download_funding_history(**args)
+
+    def test_rejects_non_finite_pause_and_boolean_pause(self):
+        for pause in (float("nan"), float("inf"), True):
+            with self.subTest(pause=pause), self.assertRaisesRegex(ValueError, "pause_seconds"):
+                download_funding_history(
+                    "BTCUSDT", 100, 200, fetch_page=lambda _: [],
+                    pause_seconds=pause,
+                )
+
+    def test_rejects_fractional_or_boolean_exchange_timestamps(self):
+        for timestamp in (100.5, True):
+            with self.subTest(timestamp=timestamp), self.assertRaisesRegex(ValueError, "integer timestamp"):
+                normalize_funding_rows(
+                    [{"fundingTime": timestamp, "fundingRate": "0.001", "markPrice": "99"}],
+                    "BTCUSDT",
+                )
+
+    def test_rejects_response_symbol_mismatch(self):
+        with self.assertRaisesRegex(ValueError, "symbol mismatch"):
+            normalize_funding_rows(
+                [{"fundingTime": 100, "fundingRate": "0.001", "markPrice": "99",
+                  "symbol": "ETHUSDT"}],
+                "BTCUSDT",
+            )
+
 if __name__ == "__main__":
     unittest.main()
