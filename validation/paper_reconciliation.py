@@ -38,7 +38,9 @@ def reconcile_paper_positions(orders):
     for order_id, order in orders.items():
         if not isinstance(order_id, str) or not order_id.strip() or not isinstance(order, Mapping):
             raise ValueError("invalid order record")
-        if order.get("client_order_id") != order_id:
+        # Older lightweight callers may omit this field, but if present it must
+        # agree with the ledger key or the position identity is ambiguous.
+        if "client_order_id" in order and order["client_order_id"] != order_id:
             raise ValueError("order identity does not match ledger key")
         symbol = order.get("symbol")
         side = order.get("side")
