@@ -50,6 +50,47 @@ class CostStressTests(unittest.TestCase):
         self.assertFalse(report["robustness_screen"]["pass"])
         self.assertFalse(report["robustness_screen"]["production_approval"])
 
+    def test_rejects_non_finite_funding_cashflow_in_backtest_result(self):
+        bad_values = (float("nan"), float("inf"), True, "not-a-number")
+        for value in bad_values:
+            with self.subTest(value=value):
+                with patch(
+                    "research.cost_stress.run_ema_cross_backtest",
+                    return_value={
+                        "status": "COMPLETED",
+                        "trade_log": [{"funding_cashflow": value, "funding_settlement_count": 1}],
+                        "net_return_pct": 1.0,
+                        "max_drawdown_pct": 2.0,
+                        "profit_factor": 1.2,
+                        "equity_final": 1.01,
+                        "equity_floor_hit": False,
+                    },
+                ):
+                    with self.assertRaisesRegex(ValueError, "funding_cashflow"):
+                        run_cost_stress_scenarios(
+                            [{"t": 1}], base_fee_rate=0.001, base_slippage_rate=0.001
+                        )
+
+    def test_rejects_invalid_funding_settlement_count_in_backtest_result(self):
+        for value in (-1, 1.5, True, "2"):
+            with self.subTest(value=value):
+                with patch(
+                    "research.cost_stress.run_ema_cross_backtest",
+                    return_value={
+                        "status": "COMPLETED",
+                        "trade_log": [{"funding_cashflow": 0.0, "funding_settlement_count": value}],
+                        "net_return_pct": 1.0,
+                        "max_drawdown_pct": 2.0,
+                        "profit_factor": 1.2,
+                        "equity_final": 1.01,
+                        "equity_floor_hit": False,
+                    },
+                ):
+                    with self.assertRaisesRegex(ValueError, "funding_settlement_count"):
+                        run_cost_stress_scenarios(
+                            [{"t": 1}], base_fee_rate=0.001, base_slippage_rate=0.001
+                        )
+
     def test_rejects_invalid_multipliers(self):
         for stress, severe in ((0.9, 2), (float("nan"), 2), (1.5, 1.4), (True, 2)):
             with self.subTest(stress=stress, severe=severe):
