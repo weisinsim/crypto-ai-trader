@@ -46,8 +46,13 @@ def normalize_funding_rows(raw_rows: list[dict], symbol: str) -> list[dict]:
                 f"got {str(raw_symbol).strip().upper()}"
             )
         funding_time = _integer_timestamp(raw["fundingTime"])
-        rate = float(raw["fundingRate"])
-        mark_price = float(raw["markPrice"])
+        if isinstance(raw["fundingRate"], bool) or isinstance(raw["markPrice"], bool):
+            raise ValueError("funding rate and mark price must be numeric, not boolean")
+        try:
+            rate = float(raw["fundingRate"])
+            mark_price = float(raw["markPrice"])
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("funding rate and mark price must be numeric") from exc
         if funding_time < 0:
             raise ValueError("funding timestamp cannot be negative")
         if not math.isfinite(rate):
