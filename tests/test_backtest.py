@@ -66,6 +66,27 @@ class CandleValidationTests(unittest.TestCase):
 
 
 class BacktestTests(unittest.TestCase):
+    def test_held_long_target_gap_exits_at_open(self):
+        from unittest.mock import patch
+
+        rows = [
+            {"t": i * 3_600_000, "o": 100.0, "h": 101.0, "l": 99.0, "c": 100.0, "v": 10}
+            for i in range(6)
+        ]
+        rows[4].update({"o": 125.0, "h": 130.0, "l": 121.0, "c": 126.0})
+        fast = [None, 2.0, 4.0, 4.0, 4.0, 4.0]
+        slow = [None, 3.0, 3.0, 3.0, 3.0, 3.0]
+        with patch("research.backtest._ema", side_effect=lambda values, period: fast if period == 2 else slow), \
+             patch("research.backtest._atr", return_value=[10.0] * len(rows)):
+            result = run_ema_cross_backtest(
+                rows, fast=2, slow=3, atr_period=1, stop_atr=1.0,
+                target_atr=2.0, fee_rate=0.0, slippage_rate=0.0,
+                risk_fraction=0.01, allow_short=False,
+            )
+        trade = next(t for t in result["trade_log"] if t["reason"] == "TARGET")
+        self.assertEqual(trade["exit_time"], rows[4]["t"])
+        self.assertEqual(trade["exit"], 125.0)
+
     def test_equity_floor_failure_stops_ema_backtest_and_is_reported(self):
         rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(240)])
         result = run_ema_cross_backtest(
