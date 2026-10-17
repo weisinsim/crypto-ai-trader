@@ -108,6 +108,16 @@ class BacktestTests(unittest.TestCase):
         if result["trades"] == 0:
             self.assertIsNone(result["win_rate_pct"])
 
+    def test_position_sizing_rejects_non_finite_derived_values(self):
+        from unittest.mock import patch
+
+        rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(120)])
+        with patch("research.backtest._atr", return_value=[float("inf")] * len(rows)):
+            with self.assertRaisesRegex(ValueError, "position sizing produced"):
+                run_ema_cross_backtest(
+                    rows, fast=3, slow=9, atr_period=3, fee_rate=0, slippage_rate=0,
+                )
+
     def test_invalid_parameters_rejected(self):
         rows = candles_from_closes([100 + i for i in range(30)])
         with self.assertRaises(ValueError):
