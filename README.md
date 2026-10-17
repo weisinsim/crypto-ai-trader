@@ -70,6 +70,10 @@ Before enabling exchange execution, separately implement and validate idempotent
 
 `validation/guarded_order_gate.py` composes the existing pre-trade decision helper with the daily-loss lock and adds `PERSISTENT_DAILY_LOSS_LOCKED` when the day is locked. This is testable decision logic only, not a guarantee that every caller uses it and not an order-submission mechanism. Any future execution adapter must enforce one centralized, fail-closed gate and reconcile actual exchange state before any production use.
 
+## Funding-data interpretation gate
+
+The backtest report includes `funding_interpretation_gate` and `funding_data.audit_status`. Missing funding history, duplicate raw event timestamps, events outside the candle coverage, or raw event times that do not align to candle opens set the gate to `FUNDING_DATA_REVIEW_REQUIRED` / `REVIEW_REQUIRED`. A clean timestamp-alignment diagnostic is only `TIMESTAMP_ALIGNMENT_ONLY_NOT_RECONCILED`; it does not prove complete venue history, source authenticity, or account cashflow reconciliation. The gate is an interpretation warning, not a claim that funding is fully audited and not a production approval.
+
 ## Research status and promotion criteria
 
 A passing unit test or successful compile validates software behavior only; it is not evidence of strategy profitability. Do not promote any model to production without a reproducible, independently reviewable report that documents:
