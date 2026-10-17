@@ -252,6 +252,10 @@ def run_ema_cross_backtest(
                         pos["qty"] * pos["entry_fill"] * funding_rate_per_bar * side * pos["bars_held"])
         pnl = gross_pnl - pos["entry_fee"] - exit_fee - funding_cost
         new_equity = current_equity + pnl
+        if not all(isfinite(value) for value in (
+            exit_fill, gross_pnl, exit_fee, funding_cost, pnl, new_equity,
+        )):
+            raise ValueError("trade accounting produced a non-finite value")
         funding_cost_total = (pos.get("funding_cost", 0.0) if funding_rates is not None else
                               pos["qty"] * pos["entry_fill"] * funding_rate_per_bar * side * pos["bars_held"])
         funding_cashflow = -funding_cost_total
