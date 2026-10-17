@@ -31,6 +31,22 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
         self.assertEqual(summary["records_in_candle_range"], 0)
         self.assertFalse(summary["event_completeness_verified"])
 
+    def test_uses_sorted_raw_timestamps_and_flags_duplicates_and_out_of_range_events(self):
+        candles = [{"t": 100}, {"t": 200}, {"t": 300}]
+        funding = [
+            {"funding_time": 100, "funding_time_raw": 200, "mark_price_source": "reported"},
+            {"funding_time": 200, "funding_time_raw": 200, "mark_price_source": "reported"},
+            {"funding_time": 300, "funding_time_raw": 400, "mark_price_source": "reported"},
+        ]
+        summary = summarize_funding_data_quality(funding, candles)
+        self.assertEqual(summary["first_event_ts"], 200)
+        self.assertEqual(summary["last_event_ts"], 400)
+        self.assertEqual(summary["records_in_candle_range"], 2)
+        self.assertEqual(summary["records_outside_candle_range"], 1)
+        self.assertEqual(summary["duplicate_event_records"], 1)
+        self.assertEqual(summary["duplicate_event_timestamps"], [200])
+        self.assertEqual(summary["event_interval_ms"]["min"], 0)
+
 
 
 class HoldoutTradeQualityTests(unittest.TestCase):
