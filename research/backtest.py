@@ -332,7 +332,10 @@ def run_ema_cross_backtest(
                 unrealized_pnl, estimated_exit_fee, accrued_funding, adverse_equity,
             )):
                 raise ValueError("equity marking produced a non-finite value")
-            max_dd = max(max_dd, (peak - adverse_equity) / peak if peak else 0.0)
+            drawdown = (peak - adverse_equity) / peak if peak else 0.0
+            if not isfinite(drawdown):
+                raise ValueError("drawdown calculation produced a non-finite value")
+            max_dd = max(max_dd, drawdown)
 
         # A position carried into this candle is checked against this bar.
         if position is not None:
@@ -487,7 +490,10 @@ def run_ema_cross_backtest(
             adverse_marked_equity = mark_open_position(adverse_price)
         peak = max(peak, marked_equity)
         # Use the close-equity high-water mark and intrabar adverse trough.
-        max_dd = max(max_dd, (peak - adverse_marked_equity) / peak if peak else 0)
+        drawdown = (peak - adverse_marked_equity) / peak if peak else 0.0
+        if not isfinite(drawdown):
+            raise ValueError("drawdown calculation produced a non-finite value")
+        max_dd = max(max_dd, drawdown)
         if equity_floor_hit:
             marked_equity = equity_floor
             adverse_marked_equity = equity_floor
@@ -504,7 +510,10 @@ def run_ema_cross_backtest(
             equity = equity_floor
         # Include the final liquidation value in maximum drawdown.
         peak = max(peak, equity)
-        max_dd = max(max_dd, (peak - equity) / peak if peak else 0.0)
+        drawdown = (peak - equity) / peak if peak else 0.0
+        if not isfinite(drawdown):
+            raise ValueError("drawdown calculation produced a non-finite value")
+        max_dd = max(max_dd, drawdown)
         if equity_curve and equity_curve[-1]["t"] == int(bar["t"]):
             equity_curve[-1]["equity"] = equity
 
