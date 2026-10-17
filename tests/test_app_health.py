@@ -53,6 +53,37 @@ class DashboardHealthGateTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["analysis_ready"], 3)
 
+    def test_malformed_cache_records_fail_closed_without_crashing(self):
+        data = healthy_cache()
+        data["BTCUSDT"]["ts"] = "not-a-timestamp"
+        data["ETHUSDT"]["price"] = float("nan")
+        data["SOLUSDT"]["analysis_ts"] = "not-an-analysis-time"
+        result = build_health_payload(10_030.0, data, SYMBOLS, "RUNNING", "binance")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["symbols_ready"], 2)
+        self.assertEqual(result["analysis_ready"], 2)
+        self.assertIn("BTCUSDT", result["stale_symbols"])
+
+    def test_missing_symbol_record_fails_closed_without_crashing(self):
+        data = healthy_cache()
+        del data["ETHUSDT"]
+        result = build_health_payload(10_030.0, data, SYMBOLS, "RUNNING", "binance")
+        self.assertFalse(result["ok"])
+        self.assertIn("ETHUSDT", result["stale_symbols"])
+        self.assertEqual(result["symbols_ready"], 2)
+
+    def test_staleness_uses_raw_age_before_display_rounding(self):
+        data = healthy_cache()
+        data["BTCUSDT"]["ts"] = 9_849.96
+        result = build_health_payload(10_030.0, data, SYMBOLS, "RUNNING", "binance")
+        self.assertFalse(result["ok"])
+        self.assertIn("BTCUSDT", result["stale_symbols"])
+
+    def test_invalid_now_fails_closed(self):
+        result = build_health_payload(float("nan"), healthy_cache(), SYMBOLS, "RUNNING", "binance")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["stale_symbols"], SYMBOLS)
+
     def test_exact_staleness_threshold_is_allowed(self):
         data = healthy_cache()
         data["BTCUSDT"]["ts"] = 9_850.0
