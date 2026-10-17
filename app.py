@@ -242,21 +242,11 @@ def record_confirmed_signal(s, candle_close_ms=None):
     # A changed signal invalidates any previously confirmed direction before
     # applying the new model's validation gate. Otherwise a blocked opposite
     # signal can leave a stale LONG/SHORT confirmation displayed as ACTIVE.
-    if prev in ("LONG", "SHORT") and sig != prev:
-        if signal_history[s]:
-            signal_history[s][0]["status"] = "INVALIDATED"
-            signal_history[s][0]["ended_at"] = ts_ms
-        cache[s].update({
-            "confirmed_signal": "NO-TRADE",
-            "confirmed_signal_time": ts_ms,
-            "confirmed_entry": None,
-            "confirmed_sl": None,
-            "confirmed_tp1": None,
-            "confirmed_tp2": None,
-            "confirmed_status": "INVALIDATED",
-        })
+    prev = invalidate_stale_confirmation(
+        prev, sig, cache[s], signal_history[s], ts_ms
+    )
+    if prev == "NO-TRADE":
         confirmed_state[s] = "NO-TRADE"
-        prev = "NO-TRADE"
 
     # Only independently validated candidate/frozen models may become executable confirmations.
     cfg = MODEL_LIBRARY.get(s, {})
