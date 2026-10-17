@@ -23,17 +23,20 @@ def build_health_payload(
     stale_after_sec = 180
     valid_now = _finite_number(now)
     ages = {}
+    raw_ages = {}
     for symbol in symbols:
         record = symbol_cache.get(symbol) if isinstance(symbol_cache, dict) else None
         timestamp = record.get("ts") if isinstance(record, dict) else None
         if valid_now and _finite_number(timestamp) and timestamp > 0:
             age = now - timestamp
-            ages[symbol] = round(age, 1) if isfinite(age) and age >= 0 else None
+            raw_ages[symbol] = age if isfinite(age) and age >= 0 else None
+            ages[symbol] = round(raw_ages[symbol], 1) if raw_ages[symbol] is not None else None
         else:
+            raw_ages[symbol] = None
             ages[symbol] = None
 
     stale_symbols = [
-        symbol for symbol, age in ages.items()
+        symbol for symbol, age in raw_ages.items()
         if age is None or age > stale_after_sec
     ]
     ready = 0
