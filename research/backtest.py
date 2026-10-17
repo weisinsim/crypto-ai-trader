@@ -371,6 +371,9 @@ def run_ema_cross_backtest(
                 qty_by_risk = equity * risk_fraction / max(risk, 1e-12)
                 qty_by_notional = equity / max(entry_fill, 1e-12)
                 qty = min(qty_by_risk, qty_by_notional)
+                derived_values = (risk, entry_fill, qty_by_risk, qty_by_notional, qty)
+                if not all(isfinite(value) for value in derived_values) or qty <= 0:
+                    raise ValueError("position sizing produced non-finite or non-positive values")
                 position = {"side": side, "entry_fill": entry_fill,
                             "stop": open_price - side * risk,
                             "target": open_price + side * risk * target_atr,
