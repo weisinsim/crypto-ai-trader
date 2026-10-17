@@ -74,7 +74,7 @@ class BacktestTests(unittest.TestCase):
             for i in range(6)
         ]
         rows[4].update({"o": 125.0, "h": 130.0, "l": 121.0, "c": 126.0})
-        fast = [None, 2.0, 3.0, 4.0, 4.0, 4.0]
+        fast = [None, 2.0, 4.0, 4.0, 4.0, 4.0]
         slow = [None, 3.0, 3.0, 3.0, 3.0, 3.0]
         with patch("research.backtest._ema", side_effect=lambda values, period: fast if period == 2 else slow), \
              patch("research.backtest._atr", return_value=[10.0] * len(rows)):
