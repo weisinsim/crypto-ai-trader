@@ -60,6 +60,41 @@ class PaperExecutionBookTests(unittest.TestCase):
         self.assertEqual(closed["exit_reason"], "STOP")
         self.assertEqual(closed["exit_price"], 90)
 
+    def test_long_stop_gap_exits_at_open_not_stop_trigger(self):
+        self.place_long()
+        self.book.record_fill("paper-1", 2, 100)
+        closed = self.book.evaluate_protective_exit(
+            "paper-1", {"o": 85, "h": 95, "l": 80}
+        )
+        self.assertEqual(closed["exit_reason"], "STOP")
+        self.assertEqual(closed["exit_price"], 85)
+
+    def test_short_stop_gap_exits_at_open_not_stop_trigger(self):
+        self.book.place_order("short-gap", "BTCUSDT", "SHORT", 1, 120, 80)
+        self.book.record_fill("short-gap", 1, 100)
+        closed = self.book.evaluate_protective_exit(
+            "short-gap", {"o": 130, "h": 135, "l": 125}
+        )
+        self.assertEqual(closed["exit_reason"], "STOP")
+        self.assertEqual(closed["exit_price"], 130)
+
+    def test_target_gap_uses_open_price(self):
+        self.place_long()
+        self.book.record_fill("paper-1", 2, 100)
+        closed = self.book.evaluate_protective_exit(
+            "paper-1", {"o": 125, "h": 130, "l": 121}
+        )
+        self.assertEqual(closed["exit_reason"], "TAKE_PROFIT")
+        self.assertEqual(closed["exit_price"], 125)
+
+    def test_candle_open_outside_high_low_range_is_rejected(self):
+        self.place_long()
+        self.book.record_fill("paper-1", 2, 100)
+        with self.assertRaisesRegex(ValueError, "candle open must lie within low/high range"):
+            self.book.evaluate_protective_exit(
+                "paper-1", {"o": 130, "h": 125, "l": 95}
+            )
+
     def test_closed_order_rejects_duplicate_protective_exit(self):
         self.place_long()
         self.book.record_fill("paper-1", 2, 100)
