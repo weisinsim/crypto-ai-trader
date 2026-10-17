@@ -115,6 +115,24 @@ class PaperReconciliationTests(unittest.TestCase):
                 }
             })
 
+    def test_invalid_protective_levels_fail_closed_when_present(self):
+        base = {
+            "symbol": "BTCUSDT", "side": "LONG", "status": "FILLED",
+            "quantity": 1, "filled_quantity": 1,
+            "stop_loss": 120, "take_profit": 90,
+        }
+        with self.assertRaisesRegex(ValueError, "invalid LONG protective-level geometry"):
+            reconcile_paper_positions({"bad-protection": base})
+
+    def test_partial_protective_metadata_fails_closed(self):
+        with self.assertRaisesRegex(ValueError, "protective levels must be provided together"):
+            reconcile_paper_positions({
+                "partial-protection": {
+                    "symbol": "BTCUSDT", "side": "LONG", "status": "OPEN",
+                    "quantity": 1, "filled_quantity": 0, "stop_loss": 90,
+                }
+            })
+
     def test_order_identity_mismatch_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "order identity does not match ledger key"):
             reconcile_paper_positions({

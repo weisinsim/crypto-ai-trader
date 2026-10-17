@@ -52,6 +52,21 @@ def reconcile_paper_positions(orders):
         if not isinstance(status, str) or status not in _ALLOWED_STATUSES:
             raise ValueError("invalid order status")
 
+        # Real paper-ledger records always carry both protective levels. Keep
+        # compatibility with older lightweight callers that omit both, but reject
+        # partial or invalid protection metadata whenever either field is present.
+        has_stop = "stop_loss" in order
+        has_target = "take_profit" in order
+        if has_stop != has_target:
+            raise ValueError("protective levels must be provided together")
+        if has_stop:
+            stop_loss = _finite_number(order.get("stop_loss"), "stop_loss", positive=True)
+            take_profit = _finite_number(order.get("take_profit"), "take_profit", positive=True)
+            if side == "LONG" and not stop_loss < take_profit:
+                raise ValueError("invalid LONG protective-level geometry")
+            if side == "SHORT" and not take_profit < stop_loss:
+                raise ValueError("invalid SHORT protective-level geometry")
+
         quantity = _finite_number(order.get("quantity"), "quantity", positive=True)
         filled = _finite_number(order.get("filled_quantity"), "filled_quantity")
         if filled > quantity + 1e-12:
