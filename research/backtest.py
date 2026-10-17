@@ -322,6 +322,10 @@ def run_ema_cross_backtest(
                                * side * (position["bars_held"] + 1))
             adverse_equity = (equity + unrealized_pnl - position["entry_fee"]
                               - estimated_exit_fee - accrued_funding)
+            if not all(isfinite(value) for value in (
+                unrealized_pnl, estimated_exit_fee, accrued_funding, adverse_equity,
+            )):
+                raise ValueError("equity marking produced a non-finite value")
             max_dd = max(max_dd, (peak - adverse_equity) / peak if peak else 0.0)
 
         # A position carried into this candle is checked against this bar.
@@ -466,7 +470,12 @@ def run_ema_cross_backtest(
                 accrued_funding = (position.get("funding_cost", 0.0) if funding_rates is not None else
                                    position["qty"] * position["entry_fill"] * funding_rate_per_bar
                                    * side * position["bars_held"])
-                return equity + unrealized_pnl - position["entry_fee"] - estimated_exit_fee - accrued_funding
+                marked = equity + unrealized_pnl - position["entry_fee"] - estimated_exit_fee - accrued_funding
+                if not all(isfinite(value) for value in (
+                    unrealized_pnl, estimated_exit_fee, accrued_funding, marked,
+                )):
+                    raise ValueError("equity marking produced a non-finite value")
+                return marked
 
             marked_equity = mark_open_position(close_price)
             adverse_marked_equity = mark_open_position(adverse_price)
