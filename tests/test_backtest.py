@@ -108,22 +108,19 @@ class BacktestTests(unittest.TestCase):
         if result["trades"] == 0:
             self.assertIsNone(result["win_rate_pct"])
 
-    def test_position_sizing_rejects_non_finite_derived_values(self):
-        from unittest.mock import patch
-
-        rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(120)])
-        with patch("research.backtest._atr", return_value=[float("inf")] * len(rows)):
-            with self.assertRaisesRegex(ValueError, "position sizing produced"):
-                run_ema_cross_backtest(
-                    rows, fast=3, slow=9, atr_period=3, fee_rate=0, slippage_rate=0,
-                )
-
     def test_position_sizing_rejects_non_finite_stop_or_target(self):
         rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(120)])
         with self.assertRaisesRegex(ValueError, "position sizing produced"):
             run_ema_cross_backtest(
                 rows, fast=3, slow=9, atr_period=3, fee_rate=0, slippage_rate=0,
                 target_atr=1e308,
+            )
+
+    def test_indicator_arithmetic_overflow_fails_closed(self):
+        rows = candles_from_closes([1e308 if i % 2 else 8e307 for i in range(120)])
+        with self.assertRaisesRegex(ValueError, "indicator calculation produced"):
+            run_ema_cross_backtest(
+                rows, fast=3, slow=9, atr_period=3, fee_rate=0, slippage_rate=0,
             )
 
     def test_invalid_parameters_rejected(self):
