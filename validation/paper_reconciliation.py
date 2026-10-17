@@ -38,6 +38,8 @@ def reconcile_paper_positions(orders):
     for order_id, order in orders.items():
         if not isinstance(order_id, str) or not order_id.strip() or not isinstance(order, Mapping):
             raise ValueError("invalid order record")
+        if order.get("client_order_id") != order_id:
+            raise ValueError("order identity does not match ledger key")
         symbol = order.get("symbol")
         side = order.get("side")
         status = order.get("status")
@@ -64,7 +66,7 @@ def reconcile_paper_positions(orders):
         if status == "CLOSED":
             if filled <= 0:
                 raise ValueError("closed order must retain historical filled quantity")
-            exit_price = _finite_number(order.get("exit_price"), "exit_price", positive=True)
+            _finite_number(order.get("exit_price"), "exit_price", positive=True)
             if order.get("exit_reason") not in _EXIT_REASONS:
                 raise ValueError("closed order has invalid exit reason")
 
