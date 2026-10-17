@@ -471,11 +471,11 @@ def run_ema_cross_backtest(
                                    position["qty"] * position["entry_fill"] * funding_rate_per_bar
                                    * side * position["bars_held"])
                 marked = equity + unrealized_pnl - position["entry_fee"] - estimated_exit_fee - accrued_funding
-            if not all(isfinite(value) for value in (
-                unrealized_pnl, estimated_exit_fee, accrued_funding, marked,
-            )):
-                raise ValueError("equity marking produced a non-finite value")
-            return marked
+                if not all(isfinite(value) for value in (
+                    unrealized_pnl, estimated_exit_fee, accrued_funding, marked,
+                )):
+                    raise ValueError("equity marking produced a non-finite value")
+                return marked
 
             marked_equity = mark_open_position(close_price)
             adverse_marked_equity = mark_open_position(adverse_price)
