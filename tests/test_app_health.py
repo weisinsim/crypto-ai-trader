@@ -1,6 +1,6 @@
 import unittest
 
-from app import build_health_payload
+from validation.dashboard_health import build_health_payload
 
 
 SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
