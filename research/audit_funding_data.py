@@ -40,7 +40,7 @@ def audit_funding_against_candles(
     def audit_ts(row: dict) -> int:
         return int(row.get("funding_time_raw", row["funding_time"]))
 
-    event_timestamps = [audit_ts(row) for row in funding_rows]
+    event_timestamps = sorted(audit_ts(row) for row in funding_rows)
     in_range = [ts for ts in event_timestamps if start_ts <= ts <= end_ts]
     out_of_range = len(event_timestamps) - len(in_range)
     matched = sum(ts in candle_ts for ts in in_range)
