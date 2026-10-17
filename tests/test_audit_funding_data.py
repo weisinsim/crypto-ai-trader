@@ -22,7 +22,18 @@ class FundingAuditTests(unittest.TestCase):
         self.assertEqual(report["funding"]["nonmatching_in_range"], 1)
         self.assertEqual(report["funding"]["records_outside_candle_range"], 0)
         self.assertFalse(report["event_completeness_verified"])
-        self.assertIn("never rounded or snapped", report["note"])
+        self.assertIn("without snapping", report["note"])
+
+    def test_audit_prefers_raw_timestamp_over_normalized_backtest_timestamp(self):
+        rows = [dict(self.funding[0]), dict(self.funding[-1])]
+        rows[0]["funding_time"] = 100
+        rows[0]["funding_time_raw"] = 101
+        rows[1]["funding_time_raw"] = 400
+        report = audit_funding_against_candles(self.candles, rows, "BTCUSDT")
+        self.assertEqual(report["funding"]["exact_candle_open_matches"], 1)
+        self.assertEqual(report["funding"]["nonmatching_in_range"], 1)
+        self.assertEqual(report["funding"]["first_event_ts"], 101)
+        self.assertEqual(report["status"], "REVIEW_REQUIRED")
 
     def test_reports_out_of_range_events(self):
         rows = [dict(self.funding[0]), dict(self.funding[-1])]
