@@ -108,6 +108,33 @@ class BacktestTests(unittest.TestCase):
         if result["trades"] == 0:
             self.assertIsNone(result["win_rate_pct"])
 
+    def test_completed_summary_metrics_match_trade_log_contract(self):
+        rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(240)])
+        result = run_ema_cross_backtest(
+            rows, fast=3, slow=9, atr_period=3, fee_rate=0.001,
+            slippage_rate=0.0005, risk_fraction=0.01,
+        )
+        if result["status"] != "COMPLETED":
+            self.skipTest("requires enough data for a completed backtest")
+        trades = result["trade_log"]
+        self.assertEqual(result["trades"], len(trades))
+        if trades:
+            expected_win_rate = round(
+                sum(1 for trade in trades if trade["pnl_equity"] > 0) / len(trades) * 100, 2
+            )
+            expected_expectancy = round(
+                sum(trade["return_pct"] for trade in trades) / len(trades), 4
+            )
+            self.assertEqual(result["win_rate_pct"], expected_win_rate)
+            self.assertEqual(result["expectancy_pct"], expected_expectancy)
+        else:
+            self.assertIsNone(result["win_rate_pct"])
+            self.assertIsNone(result["expectancy_pct"])
+        self.assertTrue(all(
+            isinstance(result[key], (int, float)) and result[key] == result[key]
+            for key in ("net_return_pct", "max_drawdown_pct", "equity_final")
+        ))
+
     def test_position_sizing_rejects_non_finite_stop_or_target(self):
         rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(120)])
         with self.assertRaisesRegex(ValueError, "position sizing produced"):
