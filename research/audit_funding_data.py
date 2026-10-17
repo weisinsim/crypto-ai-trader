@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from collections import Counter
 from pathlib import Path
 
@@ -24,8 +25,13 @@ def audit_funding_against_candles(
     if symbols != {symbol}:
         raise ValueError(f"funding symbols {sorted(symbols)} do not match requested symbol {symbol}")
 
-    if max_gap_hours is not None and (not isinstance(max_gap_hours, (int, float)) or max_gap_hours <= 0):
-        raise ValueError("max_gap_hours must be positive when provided")
+    if max_gap_hours is not None and (
+        isinstance(max_gap_hours, bool)
+        or not isinstance(max_gap_hours, (int, float))
+        or not math.isfinite(max_gap_hours)
+        or max_gap_hours <= 0
+    ):
+        raise ValueError("max_gap_hours must be a finite positive number when provided")
 
     candle_ts = {int(row["t"]) for row in candle_rows}
     start_ts, end_ts = min(candle_ts), max(candle_ts)
