@@ -1,6 +1,16 @@
 """Dependency-free health gate for dashboard market-data freshness."""
 from __future__ import annotations
 
+from math import isfinite
+
+
+def _finite_number(value) -> bool:
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, (int, float))
+        and isfinite(value)
+    )
+
 
 def build_health_payload(
     now: float,
@@ -9,22 +19,45 @@ def build_health_payload(
     status: str,
     source: str | None,
 ) -> dict:
-    """Build a fail-closed health snapshot for every configured symbol."""
+    """Build a fail-closed health snapshot, including malformed cache records."""
     stale_after_sec = 180
-    ages = {
-        symbol: (
-            round(now - symbol_cache[symbol]["ts"], 1)
-            if symbol_cache[symbol].get("ts") else None
-        )
-        for symbol in symbols
-    }
+    valid_now = _finite_number(now)
+    ages = {}
+    raw_ages = {}
+    for symbol in symbols:
+        record = symbol_cache.get(symbol) if isinstance(symbol_cache, dict) else None
+        timestamp = record.get("ts") if isinstance(record, dict) else None
+        if valid_now and _finite_number(timestamp) and timestamp > 0:
+            age = now - timestamp
+            raw_ages[symbol] = age if isfinite(age) and age >= 0 else None
+            ages[symbol] = round(raw_ages[symbol], 1) if raw_ages[symbol] is not None else None
+        else:
+            raw_ages[symbol] = None
+            ages[symbol] = None
+
     stale_symbols = [
-        symbol for symbol, age in ages.items()
+        symbol for symbol, age in raw_ages.items()
         if age is None or age > stale_after_sec
     ]
-    ready = sum(symbol_cache[symbol].get("price") is not None for symbol in symbols)
-    analyzed = sum(symbol_cache[symbol].get("analysis_ts", 0) > 0 for symbol in symbols)
-    healthy = ready == len(symbols) and analyzed == len(symbols) and not stale_symbols
+    ready = 0
+    analyzed = 0
+    for symbol in symbols:
+        record = symbol_cache.get(symbol) if isinstance(symbol_cache, dict) else None
+        if not isinstance(record, dict):
+            continue
+        price = record.get("price")
+        analysis_ts = record.get("analysis_ts")
+        if _finite_number(price) and price > 0:
+            ready += 1
+        if _finite_number(analysis_ts) and analysis_ts > 0:
+            analyzed += 1
+
+    healthy = (
+        valid_now
+        and ready == len(symbols)
+        and analyzed == len(symbols)
+        and not stale_symbols
+    )
     return {
         "ok": healthy,
         "status": status,
