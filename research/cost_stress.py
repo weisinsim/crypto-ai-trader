@@ -33,6 +33,8 @@ def _multiplier(value: Any, label: str) -> float:
 
 
 def _metrics(result: Mapping[str, Any], fee_rate: float, slippage_rate: float) -> dict:
+    if not isinstance(result, Mapping):
+        raise ValueError("backtest result must be a mapping")
     trade_log = result.get("trade_log", [])
     if not isinstance(trade_log, list):
         raise ValueError("backtest trade_log must be a list")
@@ -58,8 +60,6 @@ def _metrics(result: Mapping[str, Any], fee_rate: float, slippage_rate: float) -
             raise ValueError(f"trade {index} funding_settlement_count must be a non-negative integer")
         settlement_count_total += raw_count
 
-    if not isinstance(result, Mapping):
-        raise ValueError("backtest result must be a mapping")
     for metric_name in ("net_return_pct", "max_drawdown_pct", "profit_factor", "equity_final"):
         metric_value = result.get(metric_name)
         if metric_value is not None and (
