@@ -2,6 +2,7 @@ import asyncio
 import json
 import time
 from validation.candle_closure import filter_closed_candles
+from validation.dashboard_health import build_health_payload
 from pathlib import Path
 
 import httpx
@@ -103,38 +104,6 @@ async def bybit_json(path, params=None, timeout=3.0):
 @app.get("/")
 async def index():
     return FileResponse(str(STATIC_DIR / "index.html"))
-
-def build_health_payload(now: float, symbol_cache: dict, symbols: list[str], status: str, source: str | None) -> dict:
-    """Build a fail-closed health snapshot for every configured symbol."""
-    stale_after_sec = 180
-    ages = {
-        symbol: (
-            round(now - symbol_cache[symbol]["ts"], 1)
-            if symbol_cache[symbol].get("ts") else None
-        )
-        for symbol in symbols
-    }
-    stale_symbols = [
-        symbol for symbol, age in ages.items()
-        if age is None or age > stale_after_sec
-    ]
-    ready = sum(symbol_cache[symbol].get("price") is not None for symbol in symbols)
-    analyzed = sum(symbol_cache[symbol].get("analysis_ts", 0) > 0 for symbol in symbols)
-    healthy = ready == len(symbols) and analyzed == len(symbols) and not stale_symbols
-    return {
-        "ok": healthy,
-        "status": status,
-        "symbols_ready": ready,
-        "symbols_total": len(symbols),
-        "analysis_ready": analyzed,
-        "analysis_total": len(symbols),
-        "stale_after_sec": stale_after_sec,
-        "age_sec": max((age for age in ages.values() if age is not None), default=None),
-        "symbol_age_sec": ages,
-        "stale_symbols": stale_symbols,
-        "source": source,
-    }
-
 
 @app.get("/api/health")
 async def health():
