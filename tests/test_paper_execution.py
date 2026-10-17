@@ -246,6 +246,35 @@ class PaperExecutionBookTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "quantity must be finite and positive"):
             book.place_order("huge", "BTCUSDT", "LONG", 10 ** 1000, 90, 120)
 
+    def test_persisted_invalid_protective_geometry_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "invalid-geometry.json"
+            order = {
+                "client_order_id": "bad-geometry", "symbol": "BTCUSDT", "side": "LONG",
+                "quantity": 1.0, "stop_loss": 120.0, "take_profit": 90.0,
+                "status": "OPEN", "filled_quantity": 0.0, "average_fill_price": None,
+                "exit_price": None, "exit_reason": None, "fill_events": {},
+                "cancelled_remainder": False,
+            }
+            path.write_text(json.dumps({"schema_version": 3, "orders": {"bad-geometry": order}}), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "invalid LONG protective-level geometry"):
+                PaperExecutionBook(path)
+
+    def test_persisted_invalid_short_protective_geometry_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "invalid-short-geometry.json"
+            order = {
+                "client_order_id": "bad-short", "symbol": "ETHUSDT", "side": "SHORT",
+                "quantity": 1.0, "stop_loss": 80.0, "take_profit": 120.0,
+                "status": "OPEN", "filled_quantity": 0.0, "average_fill_price": None,
+                "exit_price": None, "exit_reason": None, "fill_events": {},
+                "cancelled_remainder": False,
+            }
+            path.write_text(json.dumps({"schema_version": 3, "orders": {"bad-short": order}}), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "invalid SHORT protective-level geometry"):
+                PaperExecutionBook(path)
+
+
 
 if __name__ == "__main__":
     unittest.main()
