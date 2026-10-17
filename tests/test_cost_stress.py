@@ -91,6 +91,41 @@ class CostStressTests(unittest.TestCase):
                             [{"t": 1}], base_fee_rate=0.001, base_slippage_rate=0.001
                         )
 
+    def test_rejects_boolean_and_non_finite_backtest_metrics(self):
+        for metric in ("net_return_pct", "max_drawdown_pct", "profit_factor", "equity_final"):
+            bad_values = (True, False, float("nan"), "1.0")
+            if metric != "profit_factor":
+                bad_values += (float("inf"),)
+            for value in bad_values:
+                with self.subTest(metric=metric, value=value):
+                    result = {
+                        "status": "COMPLETED",
+                        "trade_log": [],
+                        "net_return_pct": 1.0,
+                        "max_drawdown_pct": 2.0,
+                        "profit_factor": 1.2,
+                        "equity_final": 1.01,
+                        "equity_floor_hit": False,
+                    }
+                    result[metric] = value
+                    with patch("research.cost_stress.run_ema_cross_backtest", return_value=result):
+                        with self.assertRaisesRegex(ValueError, metric):
+                            run_cost_stress_scenarios(
+                                [{"t": 1}], base_fee_rate=0.001, base_slippage_rate=0.001
+                            )
+
+    def test_rejects_non_boolean_equity_floor_flag(self):
+        result = {
+            "status": "COMPLETED", "trade_log": [], "net_return_pct": 1.0,
+            "max_drawdown_pct": 2.0, "profit_factor": 1.2,
+            "equity_final": 1.01, "equity_floor_hit": 0,
+        }
+        with patch("research.cost_stress.run_ema_cross_backtest", return_value=result):
+            with self.assertRaisesRegex(ValueError, "equity_floor_hit"):
+                run_cost_stress_scenarios(
+                    [{"t": 1}], base_fee_rate=0.001, base_slippage_rate=0.001
+                )
+
     def test_rejects_invalid_multipliers(self):
         for stress, severe in ((0.9, 2), (float("nan"), 2), (1.5, 1.4), (True, 2)):
             with self.subTest(stress=stress, severe=severe):
