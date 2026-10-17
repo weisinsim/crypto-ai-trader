@@ -16,19 +16,32 @@ REPORT_SUFFIXES = (
 )
 
 
-def inspect(path):
+def read_payload(path):
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        return {"status": "INVALID_REPORT", "detail": str(exc)}
+        return None, {"status": "INVALID_REPORT", "detail": str(exc)}
     if not isinstance(payload, dict):
-        return {"status": "INVALID_REPORT", "detail": "JSON root is not an object"}
+        return None, {"status": "INVALID_REPORT", "detail": "JSON root is not an object"}
+    return payload, None
+
+
+def inspect(path):
+    payload, error = read_payload(path)
+    if error:
+        return error
     status = payload.get("status")
     if not isinstance(status, str) or not status:
         status = payload.get("production_gate")
     if not isinstance(status, str) or not status:
         status = "REPORT_PRESENT_STATUS_UNSPECIFIED"
     return {"status": status, "detail": payload.get("reason", "")}
+
+
+def funding_audit_passes(path):
+    """Only an explicit status=PASS in the audit itself satisfies this gate."""
+    payload, error = read_payload(path)
+    return not error and payload.get("status") == "PASS"
 
 
 def render(root):
@@ -66,7 +79,7 @@ def render(root):
         f"{symbol}_funding_audit.json"
         for symbol in EXPECTED_SYMBOLS
         if f"{symbol}_funding_audit.json" in present_names
-        and inspect(next(path for path in files if path.name == f"{symbol}_funding_audit.json"))["status"] != "PASS"
+        and not funding_audit_passes(next(path for path in files if path.name == f"{symbol}_funding_audit.json"))
     )
     coverage_status = "PASS_COVERAGE_ONLY" if not missing_required_reports and not invalid_required_reports and not nonpassing_funding_audits and not missing_symbols else "INCOMPLETE_REPORT_COVERAGE"
     lines.extend(["", "## Coverage", "",
