@@ -441,7 +441,14 @@ def run_ema_cross_backtest(
                                   if funding_rates is not None else 0.0)
             adverse_equity = (equity + unrealized_pnl - position["entry_fee"]
                               - estimated_exit_fee - entry_bar_funding)
-            max_dd = max(max_dd, (peak - adverse_equity) / peak if peak else 0.0)
+            if not all(isfinite(value) for value in (
+                unrealized_pnl, estimated_exit_fee, entry_bar_funding, adverse_equity,
+            )):
+                raise ValueError("equity marking produced a non-finite value")
+            drawdown = (peak - adverse_equity) / peak if peak else 0.0
+            if not isfinite(drawdown):
+                raise ValueError("drawdown calculation produced a non-finite value")
+            max_dd = max(max_dd, drawdown)
 
         # The position was filled at this bar's open, so its stop/target may
         # already be hit within this same OHLC candle. Resolve stop first.
