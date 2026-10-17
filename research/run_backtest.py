@@ -96,6 +96,8 @@ def summarize_funding_data_quality(
             "venue_labels": [],
             "event_interval_ms": [],
             "event_completeness_verified": False,
+            "review_required": True,
+            "audit_status": "REVIEW_REQUIRED",
             "interpretation": "No historical funding events supplied; no coverage or settlement claim can be made.",
         }
     candle_timestamps = {row["t"] for row in candle_rows}
@@ -132,6 +134,16 @@ def summarize_funding_data_quality(
             "distinct_count": len(set(deltas)),
         },
         "event_completeness_verified": False,
+        "review_required": bool(
+            duplicate_timestamps
+            or len(event_timestamps) != len(in_range)
+            or len(in_range) != matched
+        ),
+        "audit_status": (
+            "REVIEW_REQUIRED"
+            if duplicate_timestamps or len(event_timestamps) != len(in_range) or len(in_range) != matched
+            else "TIMESTAMP_ALIGNMENT_PASS_NOT_RECONCILED"
+        ),
         "interpretation": (
             "Raw timestamp diagnostics only. Duplicate events and events outside candle coverage require review. "
             "Exact candle-open matches do not prove event completeness, "
@@ -592,8 +604,14 @@ def main() -> None:
             ),
         })
 
+    funding_quality = summarize_funding_data_quality(historical_funding, rows)
     report = {
         "status": "RESEARCH_ONLY",
+        "funding_interpretation_gate": (
+            "FUNDING_DATA_REVIEW_REQUIRED"
+            if funding_quality["review_required"]
+            else "TIMESTAMP_ALIGNMENT_ONLY_NOT_RECONCILED"
+        ),
         "symbol": args.symbol.upper(),
         "interval": args.interval,
         "interval_note": "CSV timestamps were validated for exact interval continuity; verify source and range before interpreting metrics.",
@@ -607,15 +625,11 @@ def main() -> None:
             "source_authenticity_verified": False,
             "note": "SHA-256 fingerprints identify the exact local input bytes; they do not authenticate the venue or prove complete coverage.",
         },
-        "funding_data": ({
-            "source": args.funding_csv,
-            "symbol": historical_funding[0]["symbol"],
-            **summarize_funding_data_quality(historical_funding, rows),
-        } if historical_funding else {
-            "source": None,
-            "symbol": None,
-            **summarize_funding_data_quality(None, rows),
-        }),
+        "funding_data": {
+            "source": args.funding_csv if historical_funding else None,
+            "symbol": historical_funding[0]["symbol"] if historical_funding else None,
+            **funding_quality,
+        },
         "split": {"train_fraction": args.train_fraction, "boundary_ts": boundary_ts,
                   "warmup_bars": split, "holdout_bars": len(holdout)},
         "funding_boundary_policy_sensitivity": boundary_sensitivity,
