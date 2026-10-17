@@ -33,24 +33,43 @@ def _multiplier(value: Any, label: str) -> float:
 
 
 def _metrics(result: Mapping[str, Any], fee_rate: float, slippage_rate: float) -> dict:
+    trade_log = result.get("trade_log", [])
+    if not isinstance(trade_log, list):
+        raise ValueError("backtest trade_log must be a list")
+    funding_cashflow_total = 0.0
+    settlement_count_total = 0
+    for index, trade in enumerate(trade_log):
+        if not isinstance(trade, Mapping):
+            raise ValueError(f"backtest trade_log item {index} must be a mapping")
+        raw_cashflow = trade.get("funding_cashflow", 0.0)
+        if isinstance(raw_cashflow, bool):
+            raise ValueError(f"trade {index} funding_cashflow must be finite")
+        try:
+            cashflow = float(raw_cashflow)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(f"trade {index} funding_cashflow must be finite") from exc
+        if not math.isfinite(cashflow):
+            raise ValueError(f"trade {index} funding_cashflow must be finite")
+        funding_cashflow_total += cashflow
+        if not math.isfinite(funding_cashflow_total):
+            raise ValueError("cumulative funding cashflow must remain finite")
+        raw_count = trade.get("funding_settlement_count", 0)
+        if isinstance(raw_count, bool) or not isinstance(raw_count, int) or raw_count < 0:
+            raise ValueError(f"trade {index} funding_settlement_count must be a non-negative integer")
+        settlement_count_total += raw_count
+
     return {
         "status": result.get("status", "UNKNOWN"),
         "fee_rate": fee_rate,
         "slippage_rate": slippage_rate,
-        "trades": len(result.get("trade_log", [])),
+        "trades": len(trade_log),
         "net_return_pct": result.get("net_return_pct"),
         "max_drawdown_pct": result.get("max_drawdown_pct"),
         "profit_factor": result.get("profit_factor"),
         "equity_final": result.get("equity_final"),
         "equity_floor_hit": result.get("equity_floor_hit", False),
-        "funding_cashflow_total": round(sum(
-            float(trade.get("funding_cashflow", 0.0) or 0.0)
-            for trade in result.get("trade_log", [])
-        ), 10),
-        "funding_settlement_count_total": sum(
-            int(trade.get("funding_settlement_count", 0) or 0)
-            for trade in result.get("trade_log", [])
-        ),
+        "funding_cashflow_total": round(funding_cashflow_total, 10),
+        "funding_settlement_count_total": settlement_count_total,
     }
 
 
