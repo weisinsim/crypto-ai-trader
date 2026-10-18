@@ -335,6 +335,22 @@ def summarize_holdout_boundary_trade_diagnostics(trades, holdout_start_ts: int, 
     }
 
 
+def summarize_uncensored_holdout_trade_metrics(trades: list[dict]) -> dict:
+    """Report stop/target-only trade metrics separately from endpoint-forced exits."""
+    completed = [trade for trade in trades if trade.get("reason") in ("STOP", "TARGET")]
+    pnls = [float(trade["pnl_equity"]) for trade in completed]
+    profit = sum(pnl for pnl in pnls if pnl > 0)
+    loss = -sum(pnl for pnl in pnls if pnl < 0)
+    return {
+        "trade_count": len(completed),
+        "excluded_end_of_data_exits": sum(1 for trade in trades if trade.get("reason") == "END_OF_DATA"),
+        "net_pnl_equity": round(sum(pnls), 8),
+        "win_rate_pct": round(sum(pnl > 0 for pnl in pnls) / len(pnls) * 100, 2) if pnls else None,
+        "profit_factor": round(profit / loss, 4) if loss else (None if not profit else "INF"),
+        "interpretation": "diagnostic_only_excludes_endpoint_forced_exits",
+    }
+
+
 def summarize_holdout_trade_quality(trades: list[dict]) -> dict:
     """Summarize holdout trade outcomes by side, exit reason and holding duration.
 
@@ -900,6 +916,7 @@ def main() -> None:
             "profit_factor": round(holdout_profit / holdout_loss, 4) if holdout_loss else (None if not holdout_profit else "INF"),
             "expectancy_equity_pct": round(mean(holdout_pnls) * 100, 4) if holdout_pnls else None,
             "trade_quality_diagnostics": summarize_holdout_trade_quality(holdout_trades),
+            "uncensored_trade_metrics_diagnostic": summarize_uncensored_holdout_trade_metrics(holdout_trades),
             "trade_log": holdout_trades,
             "funding_sensitivity": summarize_funding_scenarios({
                 "holdout": {
