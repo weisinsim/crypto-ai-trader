@@ -43,7 +43,7 @@ class ResearchManifestTests(unittest.TestCase):
         self.assertTrue(result["funding_proxy_review_required"])
         self.assertFalse(result["profitability_claim_eligible"])
 
-    def test_missing_rows_is_partial_and_not_live(self):
+    def test_failed_candle_or_baseline_status_fails_closed(self):\n        for field, value in (("candle_status", "FAILED"), ("baseline_status", "UNKNOWN"),\n                             ("funding_download_status", "FAILED")):\n            rows = [dict(row) for row in self.rows]\n            rows[0][field] = value\n            result = build_manifest(rows)\n            with self.subTest(field=field):\n                self.assertEqual(result["batch_completion_status"], "PARTIAL_OR_FAILED")\n                self.assertFalse(result["processing_statuses_complete"])\n\n    def test_missing_rows_is_partial_and_not_live(self):
         result = build_manifest([])
         self.assertEqual(result["batch_completion_status"], "PARTIAL_OR_FAILED")
         self.assertFalse(result["live_trading_enabled"])
