@@ -64,3 +64,33 @@ def test_okx_funding_fails_closed_if_exact_mark_candle_missing(monkeypatch):
     monkeypatch.setattr(okx_funding_data.httpx, "Client", lambda timeout: fake)
     with pytest.raises(ValueError, match="missing exact OKX mark-price candle"):
         okx_funding_data.download_okx_funding("BTCUSDT", ts-1000, ts+1000, pause_seconds=0)
+
+
+@pytest.mark.parametrize("symbol", [None, 7, [], ""])
+def test_okx_funding_rejects_invalid_symbol_before_request(monkeypatch, symbol):
+    def no_client(**kwargs):
+        raise AssertionError("HTTP client must not be created for invalid input")
+    monkeypatch.setattr(okx_funding_data.httpx, "Client", no_client)
+    with pytest.raises(ValueError, match="unsupported OKX"):
+        okx_funding_data.download_okx_funding(symbol, 1, 2, pause_seconds=0)
+
+
+@pytest.mark.parametrize(
+    ("start_ms", "end_ms"),
+    [(True, 2), (1, False), (1.5, 2), (1, 2.5), (-1, 2), (2, 2)],
+)
+def test_okx_funding_rejects_invalid_timestamp_ranges(monkeypatch, start_ms, end_ms):
+    def no_client(**kwargs):
+        raise AssertionError("HTTP client must not be created for invalid input")
+    monkeypatch.setattr(okx_funding_data.httpx, "Client", no_client)
+    with pytest.raises(ValueError, match="integer timestamps"):
+        okx_funding_data.download_okx_funding("BTCUSDT", start_ms, end_ms, pause_seconds=0)
+
+
+@pytest.mark.parametrize("pause_seconds", [True, -0.1, float("inf"), float("nan"), "0"])
+def test_okx_funding_rejects_invalid_pause(monkeypatch, pause_seconds):
+    def no_client(**kwargs):
+        raise AssertionError("HTTP client must not be created for invalid input")
+    monkeypatch.setattr(okx_funding_data.httpx, "Client", no_client)
+    with pytest.raises(ValueError, match="pause_seconds"):
+        okx_funding_data.download_okx_funding("BTCUSDT", 1, 2, pause_seconds=pause_seconds)

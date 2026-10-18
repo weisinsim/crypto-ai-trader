@@ -9,10 +9,15 @@ from research.okx_candle_data import BASE_URL, INSTRUMENTS
 def download_okx_funding(symbol: str, start_ms: int, end_ms: int, *,
                          base_url: str = BASE_URL, pause_seconds: float = 0.12) -> list[dict]:
     """Download realized OKX funding events and require exact-time official mark-candle opens."""
-    if symbol not in INSTRUMENTS:
+    if not isinstance(symbol, str) or symbol not in INSTRUMENTS:
         raise ValueError(f"unsupported OKX confirmation symbol: {symbol}")
-    if start_ms < 0 or end_ms <= start_ms:
-        raise ValueError("require 0 <= start_ms < end_ms")
+    if (isinstance(start_ms, bool) or not isinstance(start_ms, int)
+            or isinstance(end_ms, bool) or not isinstance(end_ms, int)
+            or start_ms < 0 or end_ms <= start_ms):
+        raise ValueError("require integer timestamps with 0 <= start_ms < end_ms")
+    if (isinstance(pause_seconds, bool) or not isinstance(pause_seconds, (int, float))
+            or not isfinite(pause_seconds) or pause_seconds < 0):
+        raise ValueError("pause_seconds must be a finite non-negative number")
     inst_id = INSTRUMENTS[symbol]
     raw = []
     cursor = end_ms
