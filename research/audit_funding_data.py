@@ -29,9 +29,9 @@ def audit_funding_against_candles(
         try:
             parsed = int(value)
         except (TypeError, ValueError, OverflowError) as exc:
-            raise ValueError(f"{field} must be a positive integer timestamp in milliseconds") from exc
+            raise ValueError(f"{field} must be a non-negative integer timestamp in milliseconds") from exc
         if parsed < 0 or (isinstance(value, str) and value != str(parsed)):
-            raise ValueError(f"{field} must be a positive integer timestamp in milliseconds")
+            raise ValueError(f"{field} must be a non-negative integer timestamp in milliseconds")
         return parsed
 
     def normalized_symbol(row: dict) -> str:
