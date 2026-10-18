@@ -5,6 +5,14 @@ on:
     branches: [main]
     paths:
       - "validation/audit_funding_history.py"
+      - "validation/audit_research_input_inventory.py"
+      - "validation/audit_replay_signals.py"
+      - "validation/audit_window_coverage.py"
+      - "validation/audit_historical_data.py"
+      - "validation/download_funding_rates.py"
+      - "validation/download_futures_klines.py"
+      - "validation/exit_parameter_audit.py"
+      - "validation/run_multi_asset_exit_audit.py"
       - "validation/replay_dashboard_signals.py"
       - ".github/workflows/historical-research-data.yml"
   workflow_dispatch:
@@ -12,7 +20,7 @@ on:
       start_date:
         description: "UTC inclusive start date (YYYY-MM-DD)"
         required: true
-        default: "2026-04-10"
+        default: "2025-10-01"
         type: string
       end_date:
         description: "UTC exclusive end date (YYYY-MM-DD); use a completed-month boundary for public funding archives"
@@ -28,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      START_DATE: ${{ github.event.inputs.start_date || '2026-04-10' }}
+      START_DATE: ${{ github.event.inputs.start_date || '2025-10-01' }}
       END_DATE: ${{ github.event.inputs.end_date || '2026-10-01' }}
       PYTHONPATH: ${{ github.workspace }}
     steps:
