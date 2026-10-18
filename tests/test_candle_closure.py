@@ -86,5 +86,22 @@ class ClosedCandleFilterTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             upsert_candle([], {"t": 1.5, "c": 1})
 
+    def test_rest_series_requires_strictly_increasing_timestamps(self):
+        from validation.candle_closure import validate_candle_series
+        with self.assertRaises(ValueError):
+            validate_candle_series([{"t": 100}, {"t": 90}])
+        with self.assertRaises(ValueError):
+            validate_candle_series([{"t": 100}, {"t": 100}])
+
+    def test_rest_series_keeps_last_limit_after_validation(self):
+        from validation.candle_closure import validate_candle_series
+        rows = [{"t": 100}, {"t": 200}, {"t": 300}]
+        self.assertEqual([r["t"] for r in validate_candle_series(rows, limit=2)], [200, 300])
+
+    def test_rest_series_rejects_non_mapping_rows(self):
+        from validation.candle_closure import validate_candle_series
+        with self.assertRaises(ValueError):
+            validate_candle_series([{"t": 100}, None])
+
 if __name__ == "__main__":
     unittest.main()
