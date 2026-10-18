@@ -77,6 +77,13 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
         self.assertTrue(summary["review_required"])
         self.assertEqual(summary["audit_status"], "REVIEW_REQUIRED")
 
+    def test_funding_csv_loader_reports_missing_required_columns(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "funding.csv"
+            path.write_text("symbol,funding_time,funding_rate\\nBTCUSDT,0,0.001\\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "missing required columns.*mark_price"):
+                load_funding_csv(str(path))
+
     def test_funding_csv_loader_preserves_missing_provenance_instead_of_inventing_labels(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "funding.csv"
