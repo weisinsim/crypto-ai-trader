@@ -1,5 +1,6 @@
 import csv
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -63,6 +64,29 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "must not overwrite"):
                     main()
             self.assertEqual(candles_path.read_bytes(), candles_bytes)
+
+    def test_cli_refuses_to_overwrite_candle_input_through_hardlink(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            candles_path = Path(tmp) / "candles.csv"
+            alias_path = Path(tmp) / "alias.csv"
+            candles_bytes = (
+                "t,o,h,l,c,v,q\\n"
+                + "".join(f"{i * 3600000},100,101,99,100,1,100\\n" for i in range(180))
+            ).encode("utf-8")
+            candles_path.write_bytes(candles_bytes)
+            try:
+                os.link(candles_path, alias_path)
+            except (AttributeError, NotImplementedError, OSError):
+                self.skipTest("hard links are not supported in this environment")
+            argv = [
+                "run_backtest.py", "--csv", str(candles_path), "--symbol", "BTCUSDT",
+                "--interval", "1h", "--output", str(alias_path),
+            ]
+            with patch.object(sys, "argv", argv):
+                with self.assertRaisesRegex(ValueError, "must not overwrite"):
+                    main()
+            self.assertEqual(candles_path.read_bytes(), candles_bytes)
+            self.assertEqual(alias_path.read_bytes(), candles_bytes)
 
     def test_cli_refuses_to_overwrite_funding_input(self):
         with tempfile.TemporaryDirectory() as tmp:
