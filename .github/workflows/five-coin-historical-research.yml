@@ -128,8 +128,25 @@ jobs:
           if summary.exists():
               with summary.open(newline="", encoding="utf-8") as f:
                   rows = list(csv.DictReader(f))
+          expected_assets = 5
+          all_assets_processed = len(rows) == expected_assets
+          any_audit_review = any(
+              row.get("funding_audit_status") == "REVIEW_REQUIRED" for row in rows
+          )
+          any_proxy = any(
+              "PROXY" in row.get("funding_download_status", "").upper()
+              for row in rows
+          )
+          if not all_assets_processed:
+              batch_completion_status = "PARTIAL_OR_FAILED"
+          elif any_audit_review:
+              batch_completion_status = "ALL_ASSETS_PROCESSED_REVIEW_REQUIRED"
+          else:
+              batch_completion_status = "ALL_ASSETS_PROCESSED_NOT_RECONCILED"
           payload = {
               "status": "RESEARCH_ONLY",
+              "batch_completion_status": batch_completion_status,
+              "expected_assets": expected_assets,
               "strategy_approval": False,
               "live_trading_enabled": False,
               "funding_gap_review_threshold_hours": 12,
@@ -140,6 +157,7 @@ jobs:
                   "If API access returns HTTP 451, archive fallback funding uses the last fully closed hourly mark-price candle as a proxy, not the actual settlement mark; those results are exploratory only."
               ),
               "rows_completed": len(rows),
+              "funding_proxy_used": any_proxy,
               "assets": rows,
           }
           Path("reports/research_batch_manifest.json").write_text(
