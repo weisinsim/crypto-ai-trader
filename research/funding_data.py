@@ -76,8 +76,8 @@ def _parse_integer_timestamp(value, field: str = "fundingTime") -> int:
         raise ValueError(f"{field} must be an integer timestamp")
     if isinstance(value, int):
         return value
-    if isinstance(value, str) and value.strip().isdigit():
-        return int(value.strip())
+    if isinstance(value, str) and value.isascii() and value.isdigit():
+        return int(value)
     raise ValueError(f"{field} must be an integer timestamp")
 
 
