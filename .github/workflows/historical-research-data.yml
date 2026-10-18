@@ -57,12 +57,12 @@ jobs:
           END_DATE: ${{ inputs.end_date }}
         run: |
           mkdir -p research-results
-          python validation/audit_research_input_inventory.py \\
-            --candle-dir data/historical \\
-            --funding-dir data/funding \\
-            --start "${START_DATE}T00:00:00Z" \\
-            --end "${END_DATE}T00:00:00Z" \\
-            --symbols BTCUSDT ETHUSDT SOLUSDT AVAXUSDT XRPUSDT \\
+          python validation/audit_research_input_inventory.py \
+            --candle-dir data/historical \
+            --funding-dir data/funding \
+            --start "${START_DATE}T00:00:00Z" \
+            --end "${END_DATE}T00:00:00Z" \
+            --symbols BTCUSDT ETHUSDT SOLUSDT AVAXUSDT XRPUSDT \
             --out research-results/input-inventory.json
           cat research-results/input-inventory.json
       - name: Audit exact requested candle window
