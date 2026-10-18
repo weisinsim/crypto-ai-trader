@@ -24,16 +24,18 @@ class FundingAuditTests(unittest.TestCase):
         self.assertFalse(report["event_completeness_verified"])
         self.assertIn("without snapping", report["note"])
 
-    def test_audit_prefers_raw_timestamp_over_normalized_backtest_timestamp(self):
+    def test_audit_reports_raw_jitter_and_normalized_alignment_separately(self):
         rows = [dict(self.funding[0]), dict(self.funding[-1])]
         rows[0]["funding_time"] = 100
         rows[0]["funding_time_raw"] = 101
         rows[1]["funding_time_raw"] = 400
         report = audit_funding_against_candles(self.candles, rows, "BTCUSDT")
         self.assertEqual(report["funding"]["exact_candle_open_matches"], 1)
-        self.assertEqual(report["funding"]["nonmatching_in_range"], 1)
+        self.assertEqual(report["funding"]["normalized_candle_open_matches"], 2)
+        self.assertEqual(report["funding"]["boundary_jitter_normalized_records"], 1)
+        self.assertEqual(report["funding"]["nonmatching_in_range"], 0)
         self.assertEqual(report["funding"]["first_event_ts"], 101)
-        self.assertEqual(report["status"], "REVIEW_REQUIRED")
+        self.assertEqual(report["status"], "BOUNDARY_JITTER_NORMALIZED_ALIGNMENT_PASS_NOT_RECONCILED")
 
     def test_gap_intervals_are_computed_in_raw_timestamp_order(self):
         rows = [dict(self.funding[0]), dict(self.funding[-1])]
