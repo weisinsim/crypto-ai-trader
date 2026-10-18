@@ -183,7 +183,8 @@ def summarize_funding_data_quality(
             "event_interval_ms": [],
             "event_completeness_verified": False,
             "review_required": True,
-            "audit_status": "REVIEW_REQUIRED",            "interpretation": "No historical funding events supplied; no coverage or settlement claim can be made.",
+            "audit_status": "REVIEW_REQUIRED",
+            "interpretation": "No historical funding events supplied; no coverage or settlement claim can be made.",
         }
     candle_timestamps = {row["t"] for row in candle_rows}
     source_counts: dict[str, int] = {}
@@ -364,6 +365,7 @@ def build_walk_forward_windows(n: int, start_eval: int, folds: int, min_bars: in
         raise AssertionError("walk-forward windows overlap or leave gaps")
     return windows
 
+
 def max_drawdown_pct(points: list[dict], initial_equity: float = 1.0) -> float:
     """Compute peak-to-trough drawdown, including the evaluation's starting equity."""
     try:
@@ -541,7 +543,8 @@ def summarize_walk_forward_cost_stress(walk_results: list[dict]) -> dict:
         "walk_forward_candidate_gate": {
             "pass": walk_forward_gate_pass,
             "criteria": (
-                "every fold has complete cost-stress data, passes base/stress/severe "                "robustness screens, and has at least 30 trades"
+                "every fold has complete cost-stress data, passes base/stress/severe "
+                "robustness screens, and has at least 30 trades"
             ),
             "minimum_trades_per_fold": minimum_trades_per_fold,
             "under_sampled_folds": under_sampled_folds,
@@ -761,3 +764,113 @@ def main() -> None:
         if historical_funding is not None:
             fold_common["funding_rates"] = [
                 event for event in historical_funding
+                if rows[0]["t"] <= event["funding_time"] <= rows[b - 1]["t"]
+            ]
+        fold_result = run_ema_cross_backtest(rows[:b], trade_start_ts=start_ts, **fold_common)
+        # Re-run the same expanding-history fold under base/stress/severe
+        # execution costs. Keep fold boundaries and funding observations fixed.
+        fold_cost_stress = run_cost_stress_scenarios(
+            rows[:b], base_fee_rate=args.fee_rate,
+            base_slippage_rate=args.slippage_rate,
+            stress_multiplier=args.stress_multiplier,
+            severe_stress_multiplier=args.severe_stress_multiplier,
+            backtest_kwargs={key: value for key, value in fold_common.items()
+                             if key not in ("fee_rate", "slippage_rate")},
+            trade_start_ts=start_ts,
+        )
+        fold_trades = [t for t in fold_result["trade_log"] if start_ts <= t["entry_time"] <= rows[b - 1]["t"]]
+        fold_curve = [p for p in fold_result["equity_curve"] if start_ts <= p["t"] <= rows[b - 1]["t"]]
+        walk_results.append({
+            "fold": fold + 1, "status": fold_result["status"],
+            "start_ts": start_ts, "end_ts": rows[b - 1]["t"],
+            "bars": b - a, "trades": len(fold_trades),
+            "net_return_pct": round((fold_result["equity_final"] - 1.0) * 100, 4),
+            "max_drawdown_pct": max_drawdown_pct(fold_curve),
+            "equity_final": fold_result["equity_final"],
+            "win_rate_pct": round(sum(t["pnl_equity"] > 0 for t in fold_trades) / len(fold_trades) * 100, 2) if fold_trades else None,
+            "profit_factor": round(sum(t["pnl_equity"] for t in fold_trades if t["pnl_equity"] > 0) / -sum(t["pnl_equity"] for t in fold_trades if t["pnl_equity"] < 0), 4) if any(t["pnl_equity"] < 0 for t in fold_trades) else (None if not any(t["pnl_equity"] > 0 for t in fold_trades) else "INF"),
+            "trade_log": fold_trades,
+            "cost_stress": fold_cost_stress,
+            "funding_boundary_policy_sensitivity": _summarize_fold_funding_boundary(
+                rows=rows, end_index=b, start_ts=start_ts, common=fold_common,
+                symbol_end_ts=rows[b - 1]["t"], fold_number=fold + 1,
+            ),
+        })
+
+    funding_quality = summarize_funding_data_quality(funding_rows_for_audit, rows)
+    report = {
+        "status": "RESEARCH_ONLY",
+        "profitability_claim_eligible": False,
+        "strategy_approval": False,
+        "live_trading_enabled": False,
+        "funding_interpretation_gate": (
+            "FUNDING_DATA_REVIEW_REQUIRED"
+            if funding_quality["review_required"] or funding_quality.get("proxy_mark_price_review_required", False)
+            else "TIMESTAMP_ALIGNMENT_ONLY_NOT_RECONCILED"
+        ),
+        "symbol": args.symbol.upper(),
+        "interval": args.interval,
+        "interval_note": "CSV timestamps were validated for exact interval continuity; verify source and range before interpreting metrics.",
+        "bars": len(rows), "first_ts": rows[0]["t"], "last_ts": rows[-1]["t"],
+        "parameters": {key: value for key, value in common.items() if key != "funding_rates"},
+        "data_lineage": {
+            "candles": source_file_manifest(args.csv),
+            "funding": source_file_manifest(args.funding_csv),
+            "timestamp_alignment": "exact candle-open timestamp required for funding settlements",
+            "event_completeness_verified": False,
+            "source_authenticity_verified": False,
+            "funding_pnl_authoritative": False,
+            "funding_pnl_authority_blockers": [
+                "event completeness has not been verified",
+                "source authenticity and mark-price provenance have not been independently verified",
+                "funding cashflows have not been reconciled to an exchange account ledger",
+            ],
+            "note": "SHA-256 fingerprints identify the exact local input bytes; they do not authenticate the venue or prove complete coverage.",
+        },
+        "funding_data": {
+            "source": args.funding_csv if historical_funding else None,
+            "symbol": historical_funding[0]["symbol"] if historical_funding else None,
+            **funding_quality,
+        },
+        "split": {"train_fraction": args.train_fraction, "boundary_ts": boundary_ts,
+                  "warmup_bars": split, "holdout_bars": len(holdout)},
+        "funding_boundary_policy_sensitivity": boundary_sensitivity,
+        "holdout": {
+            "bars": len(holdout), "trades": len(holdout_trades),
+            "net_return_pct": round((holdout_result["equity_final"] - 1.0) * 100, 4),
+            "max_drawdown_pct": max_drawdown_pct(holdout_curve),
+            "equity_final": holdout_result["equity_final"],
+            "win_rate_pct": round(sum(p > 0 for p in holdout_pnls) / len(holdout_pnls) * 100, 2) if holdout_pnls else None,
+            "profit_factor": round(holdout_profit / holdout_loss, 4) if holdout_loss else (None if not holdout_profit else "INF"),
+            "expectancy_equity_pct": round(mean(holdout_pnls) * 100, 4) if holdout_pnls else None,
+            "trade_quality_diagnostics": summarize_holdout_trade_quality(holdout_trades),
+            "trade_log": holdout_trades,
+            "funding_sensitivity": summarize_funding_scenarios({
+                "holdout": {
+                    "status": holdout_result["status"],
+                    "trades": len(holdout_trades),
+                    "net_return_pct": round((holdout_result["equity_final"] - 1.0) * 100, 4),
+                    "max_drawdown_pct": max_drawdown_pct(holdout_curve),
+                    "profit_factor": round(holdout_profit / holdout_loss, 4) if holdout_loss else (None if not holdout_profit else "INF"),
+                    "equity_floor_hit": holdout_result.get("equity_floor_hit", False),
+                    "trade_log": holdout_trades,
+                }
+            }),
+        },
+        "walk_forward": walk_results,
+        "walk_forward_cost_stress_summary": summarize_walk_forward_cost_stress(walk_results),
+        "cost_stress": cost_stress,
+        "warnings": [
+            "This runner evaluates a fixed EMA baseline; it does not optimize or certify a profitable model.",
+            "Net return is calculated from final account equity relative to the 1.0 starting equity; trade PnL sums are not used as a substitute for compounded portfolio return.",
+            ("Historical funding CSV was applied at matching candle timestamps." if historical_funding is not None else "Funding is a constant per-bar assumption, not historical realized funding; provide --funding-csv before production decisions."),
+            "All report results require independent review of CSV coverage, exchange data and execution assumptions."
+        ],
+    }
+    write_json_atomic(output_path, report)
+    print(f"status=RESEARCH_ONLY symbol={args.symbol.upper()} bars={len(rows)} "
+          f"holdout_trades={len(holdout_trades)} output={output_path}")
+
+
+if __name__ == "__main__":
+    main()
