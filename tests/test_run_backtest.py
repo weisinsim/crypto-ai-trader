@@ -785,3 +785,19 @@ class FundingCsvMalformedRowTests(unittest.TestCase):
             path.write_text("symbol,funding_time,funding_rate,mark_price\nBTCUSDT,0,0.001\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "malformed row at line 2"):
                 load_funding_csv(str(path))
+
+
+class DuplicateCsvHeaderTests(unittest.TestCase):
+    def test_candle_csv_rejects_duplicate_columns(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "candles.csv"
+            path.write_text("t,o,h,l,c,c\n0,100,101,99,100,999\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "duplicate columns.*c"):
+                load_csv(str(path), 3_600_000)
+
+    def test_funding_csv_rejects_duplicate_columns(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "funding.csv"
+            path.write_text("symbol,funding_time,funding_rate,mark_price,mark_price\nBTCUSDT,0,0.001,100,999\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "duplicate columns.*mark_price"):
+                load_funding_csv(str(path))
