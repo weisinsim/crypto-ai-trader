@@ -91,6 +91,7 @@ jobs:
               --candles "data/research_batch/${symbol}_${INTERVAL}.csv" \
               --funding-csv "data/research_batch/${symbol}_funding.csv" \
               --symbol "${symbol}" --interval "${INTERVAL}" \
+              --max-gap-hours 12 \
               --output "reports/${symbol}_funding_audit.json"
             echo "::endgroup::"
 
