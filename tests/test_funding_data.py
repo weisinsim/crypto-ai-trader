@@ -229,6 +229,32 @@ class FundingDataTests(unittest.TestCase):
             self.assertEqual(path.read_text(encoding="utf-8"), original)
             self.assertEqual([item.name for item in Path(directory).iterdir()], ["funding.csv"])
 
+    def test_save_funding_csv_rejects_invalid_rows_before_replacing_existing_file(self):
+        import tempfile
+        from pathlib import Path
+
+        valid = {
+            "funding_time": 100, "funding_rate": 0.0001, "mark_price": 100.0,
+            "symbol": "BTCUSDT", "mark_price_source": "mark_kline_open", "venue": "binance",
+        }
+        invalid_rows = [
+            [{**valid, "funding_rate": float("nan")}],
+            [{**valid, "funding_rate": float("inf")}],
+            [{**valid, "mark_price": 0}],
+            [{**valid, "mark_price": float("nan")}],
+            [valid, {**valid, "funding_time": 100}],
+            [{key: value for key, value in valid.items() if key != "venue"}],
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "funding.csv"
+            original = "previous,content\\n"
+            for rows in invalid_rows:
+                path.write_text(original, encoding="utf-8")
+                with self.subTest(rows=rows), self.assertRaises(ValueError):
+                    save_funding_csv(rows, path)
+                self.assertEqual(path.read_text(encoding="utf-8"), original)
+                self.assertEqual([item.name for item in Path(directory).iterdir()], ["funding.csv"])
+
     def test_save_funding_csv_preserves_venue_metadata(self):
         import csv
         import tempfile
