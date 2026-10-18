@@ -35,7 +35,7 @@ def parse_klines(raw_rows: list[list], interval_ms: int, end_ms: int) -> list[di
         raw_ts = raw[0]
         if isinstance(raw_ts, bool) or not (
             isinstance(raw_ts, int) or
-            (isinstance(raw_ts, str) and raw_ts.strip().isdigit())
+            (isinstance(raw_ts, str) and raw_ts.isascii() and raw_ts.isdigit())
         ):
             raise ValueError(f"invalid kline timestamp in row {index}")
         ts = int(raw_ts)
