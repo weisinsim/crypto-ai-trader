@@ -2,10 +2,56 @@ import unittest
 import tempfile
 from pathlib import Path
 
-from validation.replay_dashboard_signals import ema, rsi, atr, replay, ts_ms, read_rows, closed_rows_at, signal_state_for, risk_levels, validate_candle_cadence
+from validation.replay_dashboard_signals import ema, rsi, atr, adx, replay, ts_ms, read_rows, closed_rows_at, signal_state_for, risk_levels, validate_candle_cadence
 
 
 class ReplayDashboardSignalsTests(unittest.TestCase):
+    def test_adx_optimized_matches_original_rolling_calculation(self):
+        def original_adx(h, l, c, n=14):
+            if len(c) < n*2+1: return None
+            tr=[]; plus=[]; minus=[]
+            for i in range(1,len(c)):
+                up=h[i]-h[i-1]; dn=l[i-1]-l[i]
+                tr.append(max(h[i]-l[i],abs(h[i]-c[i-1]),abs(l[i]-c[i-1])))
+                plus.append(up if up>dn and up>0 else 0)
+                minus.append(dn if dn>up and dn>0 else 0)
+            def avg(a): return sum(a[-n:])/n if len(a)>=n else None
+            dxs=[]
+            for j in range(n,len(tr)):
+                t,p,m=avg(tr[:j+1]),avg(plus[:j+1]),avg(minus[:j+1])
+                if t and t>0:
+                    pdi=100*p/t; mdi=100*m/t
+                    dxs.append(100*abs(pdi-mdi)/max(pdi+mdi,1e-9))
+            return sum(dxs[-n:])/min(n,len(dxs)) if dxs else None
+
+        close = [100 + i * 0.13 + ((i % 7) - 3) * 0.4 for i in range(180)]
+        high = [v + 0.8 + (i % 3) * 0.1 for i, v in enumerate(close)]
+        low = [v - 0.7 - (i % 4) * 0.1 for i, v in enumerate(close)]
+        for end in (29, 40, 75, 120, len(close)):
+            self.assertAlmostEqual(adx(high[:end], low[:end], close[:end]), original_adx(high[:end], low[:end], close[:end]), places=10)
+
+    def test_adx_flat_history_matches_original_zero_true_range_handling(self):
+        def original_adx(h, l, c, n=14):
+            if len(c) < n*2+1: return None
+            tr=[]; plus=[]; minus=[]
+            for i in range(1,len(c)):
+                up=h[i]-h[i-1]; dn=l[i-1]-l[i]
+                tr.append(max(h[i]-l[i],abs(h[i]-c[i-1]),abs(l[i]-c[i-1])))
+                plus.append(up if up>dn and up>0 else 0)
+                minus.append(dn if dn>up and dn>0 else 0)
+            def avg(a): return sum(a[-n:])/n if len(a)>=n else None
+            dxs=[]
+            for j in range(n,len(tr)):
+                t,p,m=avg(tr[:j+1]),avg(plus[:j+1]),avg(minus[:j+1])
+                if t and t>0:
+                    pdi=100*p/t; mdi=100*m/t
+                    dxs.append(100*abs(pdi-mdi)/max(pdi+mdi,1e-9))
+            return sum(dxs[-n:])/min(n,len(dxs)) if dxs else None
+        close = [100.0] * 40 + [100.5, 101, 100.7, 102, 101.4, 102.2, 103]
+        high = [v + (0 if i < 40 else 0.5) for i, v in enumerate(close)]
+        low = [v - (0 if i < 40 else 0.5) for i, v in enumerate(close)]
+        self.assertAlmostEqual(adx(high, low, close), original_adx(high, low, close), places=10)
+
     def test_zero_atr_uses_live_model_fallback_for_risk_levels(self):
         btc_stop, btc_target, btc_target2 = risk_levels("BTCUSDT", 100, 1, 0, 1.2, 1.5)
         self.assertAlmostEqual(btc_stop, 99.4)
