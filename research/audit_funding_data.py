@@ -75,8 +75,18 @@ def audit_funding_against_candles(
     interval_counts = Counter(deltas)
     max_gap_ms = max_gap_hours * 3_600_000 if max_gap_hours is not None else None
     large_gaps = [delta for delta in deltas if max_gap_ms is not None and delta > max_gap_ms]
+    in_range_event_ts = [raw_ts for raw_ts, _ in in_range_pairs]
+    leading_gap_ms = in_range_event_ts[0] - start_ts if in_range_event_ts else None
+    trailing_gap_ms = end_ts - in_range_event_ts[-1] if in_range_event_ts else None
+    edge_gaps_exceeding_threshold = (
+        max_gap_ms is not None and (
+            leading_gap_ms is None or trailing_gap_ms is None
+            or leading_gap_ms > max_gap_ms or trailing_gap_ms > max_gap_ms
+        )
+    )
     needs_review = bool(
         out_of_range or nonmatching or large_gaps or duplicate_event_records
+        or edge_gaps_exceeding_threshold
     )
     return {
         "status": "REVIEW_REQUIRED" if needs_review else (
@@ -107,6 +117,11 @@ def audit_funding_against_candles(
                 "distinct_count": len(interval_counts),
                 "counts": {str(k): v for k, v in sorted(interval_counts.items())},
                 "intervals_over_threshold_ms": large_gaps,
+                "range_edge_gaps_ms": {
+                    "leading_from_first_candle_to_first_funding_event": leading_gap_ms,
+                    "trailing_from_last_funding_event_to_last_candle": trailing_gap_ms,
+                    "edge_gaps_exceeding_threshold": edge_gaps_exceeding_threshold,
+                },
             },
         },
         "event_completeness_verified": False,
