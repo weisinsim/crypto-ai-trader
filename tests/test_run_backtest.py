@@ -167,6 +167,21 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
         )
         self.assertFalse(summary["event_completeness_verified"])
 
+    def test_unusually_large_funding_event_gap_requires_review(self):
+        candles = [{"t": ts} for ts in (100, 200, 300, 400, 500, 600, 2000)]
+        funding = [
+            {"funding_time": ts, "mark_price_source": "reported", "venue": "binance_usdm"}
+            for ts in (100, 200, 300, 400, 500, 600, 2000)
+        ]
+        summary = summarize_funding_data_quality(funding, candles)
+        self.assertTrue(summary["cadence_gap_review_required"])
+        self.assertTrue(summary["review_required"])
+        self.assertEqual(summary["event_interval_ms"]["median"], 100)
+        self.assertEqual(summary["cadence_gap_intervals"], [
+            {"from_ts": 600, "to_ts": 2000, "interval_ms": 1400}
+        ])
+        self.assertFalse(summary["event_completeness_verified"])
+
     def test_proxy_mark_price_requires_review_even_when_timestamps_align(self):
         candles = [{"t": 100}, {"t": 200}, {"t": 300}]
         funding = [
