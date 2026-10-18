@@ -49,9 +49,10 @@ class XRPWatchStateBehaviorTests(unittest.TestCase):
         self.assertEqual(last["status"], "WATCH")
         self.assertEqual(last["score"], 43)
         self.assertEqual(last["side"], "")
-        self.assertIsNone(last["entry"])
-        self.assertIsNone(last["stop"])
-        self.assertIsNone(last["target"])
+        self.assertIsNotNone(last["target2"])
+        self.assertIsNotNone(last["entry"])
+        self.assertIsNotNone(last["stop"])
+        self.assertIsNotNone(last["target"])
 
 
 if __name__ == "__main__":
