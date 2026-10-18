@@ -101,8 +101,15 @@ def summarize_funding_data_quality(
             "interpretation": "No historical funding events supplied; no coverage or settlement claim can be made.",
         }
     candle_timestamps = {row["t"] for row in candle_rows}
-    source_labels = sorted({str(row.get("mark_price_source", "unspecified") or "unspecified") for row in funding_rows})
-    proxy_mark_price_review_required = any("PROXY" in label.upper() for label in source_labels)
+    source_counts: dict[str, int] = {}
+    for row in funding_rows:
+        label = str(row.get("mark_price_source", "unspecified") or "unspecified")
+        source_counts[label] = source_counts.get(label, 0) + 1
+    source_labels = sorted(source_counts)
+    proxy_mark_price_records = sum(
+        count for label, count in source_counts.items() if "PROXY" in label.upper()
+    )
+    proxy_mark_price_review_required = proxy_mark_price_records > 0
     # Preserve raw timestamps for cadence diagnostics. For candle alignment only,
     # use the already-normalized timestamp when the raw jitter is <=1s and the
     # normalized timestamp is an actual candle open.
@@ -154,6 +161,8 @@ def summarize_funding_data_quality(
         "boundary_jitter_normalized_records": jitter_normalized,
         "non_candle_open_events": nonmatching,
         "source_labels": source_labels,
+        "source_record_counts": dict(sorted(source_counts.items())),
+        "proxy_mark_price_records": proxy_mark_price_records,
         "proxy_mark_price_review_required": proxy_mark_price_review_required,
         "venue_labels": sorted({row.get("venue", "") or "unspecified" for row in funding_rows}),
         "event_interval_ms": {

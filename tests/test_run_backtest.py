@@ -57,6 +57,10 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
         summary = summarize_funding_data_quality(funding, candles)
         self.assertFalse(summary["review_required"])
         self.assertTrue(summary["proxy_mark_price_review_required"])
+        self.assertEqual(summary["proxy_mark_price_records"], 2)
+        self.assertEqual(summary["source_record_counts"], {
+            "archive_prior_closed_mark_price_1h_proxy_NOT_SETTLEMENT_MARK": 2
+        })
         self.assertIn("PROXY", summary["source_labels"][0].upper())
 
     def test_missing_funding_is_explicitly_unverified(self):
