@@ -12,7 +12,7 @@ class HistoricalWorkflowInputGuardTests(unittest.TestCase):
         cls.text = WORKFLOW.read_text(encoding="utf-8")
 
     def test_manual_dates_are_mapped_to_job_environment(self):
-        self.assertIn("START_DATE: ${{ github.event.inputs.start_date || '2026-04-10' }}", self.text)
+        self.assertIn("START_DATE: ${{ github.event.inputs.start_date || '2025-10-01' }}", self.text)
         self.assertIn("END_DATE: ${{ github.event.inputs.end_date || '2026-10-01' }}", self.text)
         self.assertIn("PYTHONPATH: ${{ github.workspace }}", self.text)
 
