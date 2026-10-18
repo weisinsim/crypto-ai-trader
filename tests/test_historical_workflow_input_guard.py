@@ -12,8 +12,8 @@ class HistoricalWorkflowInputGuardTests(unittest.TestCase):
         cls.text = WORKFLOW.read_text(encoding="utf-8")
 
     def test_manual_dates_are_mapped_to_job_environment(self):
-        self.assertIn("START_DATE: ${{ inputs.start_date }}", self.text)
-        self.assertIn("END_DATE: ${{ inputs.end_date }}", self.text)
+        self.assertRegex(self.text, r"START_DATE: \\$\\{\\{ inputs\\.start_date(?: \\|\\| '[^']+')? \\}\\}")
+        self.assertRegex(self.text, r"END_DATE: \\$\\{\\{ inputs\\.end_date(?: \\|\\| '[^']+')? \\}\\}")
 
     def test_validation_precedes_every_download(self):
         validation = self.text.index("- name: Validate requested UTC date window")
