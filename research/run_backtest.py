@@ -23,7 +23,7 @@ def write_json_atomic(path: Path, payload: dict, *, sort_keys: bool = False) -> 
     fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, indent=2, sort_keys=sort_keys)
+            json.dump(payload, handle, indent=2, sort_keys=sort_keys, allow_nan=False)
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
