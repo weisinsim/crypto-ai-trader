@@ -220,6 +220,11 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
             or isinstance(end_ms, bool) or not isinstance(end_ms, int)
             or start_ms < 0 or end_ms <= start_ms):
         raise ValueError("require integer timestamps with 0 <= start_ms < end_ms")
+    try:
+        datetime.fromtimestamp(start_ms / 1000, timezone.utc)
+        datetime.fromtimestamp((end_ms - 1) / 1000, timezone.utc)
+    except (OverflowError, OSError, ValueError) as exc:
+        raise ValueError("timestamp range is outside the supported UTC datetime range") from exc
     symbol = symbol.strip().upper()
     rows = []
     with httpx.Client(timeout=30.0, follow_redirects=True) as client:
