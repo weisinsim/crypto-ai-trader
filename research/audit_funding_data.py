@@ -234,8 +234,7 @@ def main(argv: list[str] | None = None) -> int:
         "hash_algorithm": "sha256",
         "source_authenticity_verified": False,
     }
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_json_atomic(output_path, report, sort_keys=True)
     print(json.dumps({"status": report["status"], "output": str(output_path), "symbol": report["symbol"]}))
     return 0
 
