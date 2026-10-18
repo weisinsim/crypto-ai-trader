@@ -37,6 +37,13 @@ class AppClosedCandleGuardTests(unittest.TestCase):
         ]
         self.assertEqual(len(calls), 1)
 
+    def test_runtime_adapters_keep_exchange_open_time_timestamps(self):
+        source = Path(__file__).resolve().parents[1] / "app.py"
+        text = source.read_text(encoding="utf-8")
+        self.assertIn('"t": normalize_timestamp_ms(x[0])', text)
+        self.assertIn('"t":int(k["t"])', text)
+        self.assertIn('"t":int(k["start"])', text)
+
     def test_bybit_fallback_validates_both_snapshot_series(self):
         fn = self.functions["seed_symbol"]
         validated_assignments = []
