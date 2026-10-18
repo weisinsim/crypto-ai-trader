@@ -129,6 +129,9 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
             with patch.object(sys, "argv", argv):
                 main()
             report = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertFalse(report["profitability_claim_eligible"])
+            self.assertFalse(report["strategy_approval"])
+            self.assertFalse(report["live_trading_enabled"])
             self.assertFalse(report["data_lineage"]["funding_pnl_authoritative"])
             self.assertEqual(len(report["data_lineage"]["funding_pnl_authority_blockers"]), 3)
 

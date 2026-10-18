@@ -765,6 +765,9 @@ def main() -> None:
     funding_quality = summarize_funding_data_quality(funding_rows_for_audit, rows)
     report = {
         "status": "RESEARCH_ONLY",
+        "profitability_claim_eligible": False,
+        "strategy_approval": False,
+        "live_trading_enabled": False,
         "funding_interpretation_gate": (
             "FUNDING_DATA_REVIEW_REQUIRED"
             if funding_quality["review_required"] or funding_quality.get("proxy_mark_price_review_required", False)
