@@ -264,6 +264,12 @@ def _finite_metric(value) -> bool:
     except (OverflowError, ValueError):
         return False
 
+def _profit_factor_above_threshold(value, threshold: float) -> bool:
+    """Treat the simulator's explicit no-loss sentinel as infinite profit factor."""
+    if value == "INF":
+        return True
+    return _finite_metric(value) and value > threshold
+
 
 def summarize_walk_forward_cost_stress(walk_results: list[dict]) -> dict:
     """Aggregate fold-level cost robustness without hiding failed or missing folds."""
@@ -297,8 +303,7 @@ def summarize_walk_forward_cost_stress(walk_results: list[dict]) -> dict:
                 for row in rows
             ),
             "folds_pf_above_1_15": sum(
-                _finite_metric(row.get("profit_factor"))
-                and row["profit_factor"] > 1.15
+                _profit_factor_above_threshold(row.get("profit_factor"), 1.15)
                 for row in rows
             ),
             "worst_net_return_pct": round(min(valid_returns), 4) if valid_returns else None,
@@ -320,12 +325,15 @@ def summarize_walk_forward_cost_stress(walk_results: list[dict]) -> dict:
                 return False
             for metric in ("net_return_pct", "max_drawdown_pct", "profit_factor"):
                 value = row.get(metric)
-                if not _finite_metric(value):
+                if metric == "profit_factor":
+                    if value != "INF" and not _finite_metric(value):
+                        return False
+                elif not _finite_metric(value):
                     return False
             if row["max_drawdown_pct"] < 0 or row["max_drawdown_pct"] > 100:
                 return False
             # Re-check the actual scenario metrics rather than trusting a summary flag.
-            if row["net_return_pct"] <= 0 or row["profit_factor"] <= 1.15:
+            if row["net_return_pct"] <= 0 or not _profit_factor_above_threshold(row["profit_factor"], 1.15):
                 return False
             if row.get("equity_floor_hit") is not False:
                 return False
