@@ -104,6 +104,7 @@ def download_funding_history(
         raise ValueError("pause_seconds must be a finite non-negative number")
 
     client = None
+    use_live_api = fetch_page is None
     if fetch_page is None:
         client = httpx.Client(timeout=15.0)
 
@@ -152,6 +153,13 @@ def download_funding_history(
                 break
             if pause_seconds:
                 time.sleep(pause_seconds)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code != 451 or not use_live_api:
+            raise
+        # The archive contains rates but not settlement mark prices. Its
+        # fallback explicitly labels a prior closed mark-price candle proxy.
+        from research.binance_archive import download_archive_funding
+        return download_archive_funding(symbol, start_ms, end_ms)
     finally:
         if client is not None:
             client.close()
