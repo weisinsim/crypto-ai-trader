@@ -61,7 +61,7 @@ def _parse_archive_timestamp(value, field: str = "archive timestamp") -> int:
         raise ValueError(f"{field} must be an integer timestamp")
     if isinstance(value, int):
         parsed = value
-    elif isinstance(value, str) and value.strip().isdigit():
+    elif isinstance(value, str) and value.strip().isascii() and value.strip().isdigit():
         parsed = int(value.strip())
     else:
         raise ValueError(f"{field} must be an integer timestamp")
