@@ -60,7 +60,7 @@ def inspect_csv(path: Path, kind: str, start_ms: int, end_ms: int,
                     values = [float(row[field]) for field in ("open", "high", "low", "close")]
                     if not all(math.isfinite(value) for value in values):
                         raise ValueError(f"Non-finite OHLC at line {line}")
-                    if min(values) <= 0 or max(values[1:]) < max(values[0], values[3]) or min(values[1:]) > min(values[0], values[3]):
+                    if min(values) <= 0 or values[1] < max(values[0], values[3]) or values[2] > min(values[0], values[3]) or values[1] < values[2]:
                         raise ValueError(f"Invalid OHLC relationship at line {line}")
     except (OSError, ValueError, TypeError) as exc:
         return {**result, **fingerprint(path), "status": "INVALID", "pass": False, "error": str(exc)}
