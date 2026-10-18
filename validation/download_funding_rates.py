@@ -6,6 +6,7 @@ time in UTC and funding_rate is the decimal rate (0.0001 = 0.01%).
 """
 import argparse
 import csv
+import hashlib
 import json
 import io
 import time
@@ -195,8 +196,15 @@ def main():
             writer = csv.DictWriter(stream, fieldnames=["timestamp", "funding_rate"])
             writer.writeheader()
             writer.writerows(rows)
+        digest = hashlib.sha256()
+        size_bytes = 0
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+                size_bytes += len(chunk)
         manifest.append({
             "symbol": symbol, "rows": len(rows), "file": str(path),
+            "sha256": digest.hexdigest(), "size_bytes": size_bytes,
             "first_timestamp": rows[0]["timestamp"] if rows else None,
             "last_timestamp": rows[-1]["timestamp"] if rows else None,
             "notice": "Verify funding history coverage and event cadence before using it in a backtest."
