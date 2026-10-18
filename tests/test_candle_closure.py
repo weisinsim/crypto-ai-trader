@@ -28,6 +28,29 @@ class ClosedCandleFilterTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             filter_closed_candles(self.rows, "5m", 100_000_000)
 
+    def test_rejects_fractional_candle_timestamp_instead_of_truncating(self):
+        rows = [{"t": 3_600_000.5}]
+        with self.assertRaisesRegex(ValueError, "integer millisecond timestamp"):
+            filter_closed_candles(rows, "1h", 7_200_000)
+
+    def test_rejects_boolean_and_negative_timestamps(self):
+        for timestamp in (True, -1):
+            with self.subTest(timestamp=timestamp):
+                with self.assertRaises(ValueError):
+                    filter_closed_candles([{"t": timestamp}], "1h", 7_200_000)
+
+    def test_accepts_integer_timestamp_string(self):
+        rows = [{"t": "3600000", "c": 101}]
+        self.assertEqual(filter_closed_candles(rows, "1h", "7200000"), rows)
+
+    def test_rejects_missing_timestamp_row(self):
+        with self.assertRaisesRegex(ValueError, "mapping with timestamp"):
+            filter_closed_candles([{"c": 100}], "1h", 7_200_000)
+
+    def test_rejects_fractional_now_timestamp(self):
+        with self.assertRaisesRegex(ValueError, "integer millisecond timestamp"):
+            filter_closed_candles(self.rows, "1h", 7_200_000.5)
+
 
 if __name__ == "__main__":
     unittest.main()
