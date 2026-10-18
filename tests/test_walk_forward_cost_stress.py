@@ -28,6 +28,15 @@ class WalkForwardCostStressTests(unittest.TestCase):
         self.assertTrue(report["walk_forward_candidate_gate"]["pass"])
         self.assertFalse(report["production_approval"])
 
+    def test_inf_profit_factor_is_valid_for_threshold_gate(self):
+        fold = self._passing_fold()
+        for scenario in fold["cost_stress"]["scenarios"].values():
+            scenario["profit_factor"] = "INF"
+        report = summarize_walk_forward_cost_stress([fold])
+        self.assertTrue(report["walk_forward_candidate_gate"]["pass"])
+        self.assertEqual(report["scenario_summary"]["base"]["folds_pf_above_1_15"], 1)
+        self.assertIsNone(report["scenario_summary"]["base"]["lowest_numeric_profit_factor"])
+
     def test_missing_equity_floor_status_fails_closed(self):
         fold = self._passing_fold()
         del fold["cost_stress"]["scenarios"]["stress"]["equity_floor_hit"]
