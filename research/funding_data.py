@@ -174,14 +174,21 @@ def download_funding_rates(
                 break
             parsed = parse_funding_rows(page, symbol, start_ms, end_ms)
             page_timestamps = [_parse_integer_timestamp(row["fundingTime"]) for row in page]
-            outside_page = [ts for ts in page_timestamps if ts < cursor or ts >= end_ms]
-            if outside_page:
+            # A page can overlap the previous page. Preserve duplicate detection
+            # across pages (including conflicting duplicates) instead of masking
+            # it with the range guard. A page containing only stale timestamps
+            # cannot advance pagination and must fail immediately.
+            if any(ts >= end_ms for ts in page_timestamps):
+                outside_end = [ts for ts in page_timestamps if ts >= end_ms]
                 raise ValueError(
-                    f"funding API returned timestamps outside requested page range "
-                    f"[{cursor}, {end_ms}): {outside_page[:5]}"
+                    f"funding API returned timestamps outside requested range "
+                    f"[{start_ms}, {end_ms}): {outside_end[:5]}"
                 )
+            forward_timestamps = [ts for ts in page_timestamps if ts >= cursor]
+            if not forward_timestamps:
+                raise RuntimeError("funding pagination did not advance")
             records.extend(parsed)
-            last_ts = max(page_timestamps)
+            last_ts = max(forward_timestamps)
             next_cursor = last_ts + 1
             if next_cursor <= cursor:
                 raise RuntimeError("funding pagination did not advance")
