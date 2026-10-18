@@ -69,53 +69,77 @@ jobs:
           END_DATE: ${{ inputs.end_date }}
           INTERVAL: ${{ inputs.interval }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           mkdir -p reports data/research_batch
           printf 'symbol,interval,candle_status,funding_download_status,funding_audit_status,baseline_status\n' > reports/batch_summary.csv
+          batch_failed=0
           for symbol in BTCUSDT ETHUSDT SOLUSDT AVAXUSDT XRPUSDT; do
+            candle_status=FAILED
+            funding_status=FAILED
+            audit_status=FAILED
+            baseline_status=FAILED
+
             echo "::group::${symbol} candles"
-            python -m research.binance_data \
+            if python -m research.binance_data \
               --symbol "${symbol}" --interval "${INTERVAL}" \
               --start "${START_DATE}" --end "${END_DATE}" \
-              --output "data/research_batch/${symbol}_${INTERVAL}.csv"
+              --output "data/research_batch/${symbol}_${INTERVAL}.csv"; then
+              candle_status=COMPLETE
+            else
+              batch_failed=1
+            fi
             echo "::endgroup::"
 
-            echo "::group::${symbol} funding history"
-            python -m research.binance_funding_data \
-              --symbol "${symbol}" --start "${START_DATE}" --end "${END_DATE}" \
-              --output "data/research_batch/${symbol}_funding.csv"
-            echo "::endgroup::"
+            if [[ "${candle_status}" == COMPLETE ]]; then
+              echo "::group::${symbol} funding history"
+              if python -m research.binance_funding_data \
+                --symbol "${symbol}" --start "${START_DATE}" --end "${END_DATE}" \
+                --output "data/research_batch/${symbol}_funding.csv"; then
+                funding_status=DOWNLOADED_NOT_RECONCILED
+              else
+                batch_failed=1
+              fi
+              echo "::endgroup::"
+            fi
 
-            echo "::group::${symbol} funding timestamp audit"
-            python -m research.audit_funding_data \
-              --candles "data/research_batch/${symbol}_${INTERVAL}.csv" \
-              --funding-csv "data/research_batch/${symbol}_funding.csv" \
-              --symbol "${symbol}" --interval "${INTERVAL}" \
-              --max-gap-hours 12 \
-              --output "reports/${symbol}_funding_audit.json"
-            echo "::endgroup::"
+            if [[ "${candle_status}" == COMPLETE && "${funding_status}" != FAILED ]]; then
+              echo "::group::${symbol} funding timestamp audit"
+              if python -m research.audit_funding_data \
+                --candles "data/research_batch/${symbol}_${INTERVAL}.csv" \
+                --funding-csv "data/research_batch/${symbol}_funding.csv" \
+                --symbol "${symbol}" --interval "${INTERVAL}" \
+                --max-gap-hours 12 --output "reports/${symbol}_funding_audit.json"; then
+                audit_status="$(python -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("status", "UNKNOWN"))' "reports/${symbol}_funding_audit.json" 2>/dev/null || echo UNKNOWN)"
+                if grep -qi 'proxy' "data/research_batch/${symbol}_funding.csv"; then
+                  funding_status=DOWNLOADED_PROXY_MARK_PRICE_NOT_RECONCILED
+                fi
+              else
+                batch_failed=1
+              fi
+              echo "::endgroup::"
+            fi
 
-            echo "::group::${symbol} baseline research backtest"
-            python -m research.run_backtest \
-              --csv "data/research_batch/${symbol}_${INTERVAL}.csv" \
-              --symbol "${symbol}" --interval "${INTERVAL}" \
-              --funding-csv "data/research_batch/${symbol}_funding.csv" \
-              --output "reports/${symbol}_${INTERVAL}_baseline.json"
-            echo "::endgroup::"
+            if [[ "${candle_status}" == COMPLETE && "${funding_status}" != FAILED ]]; then
+              echo "::group::${symbol} baseline research backtest"
+              if python -m research.run_backtest \
+                --csv "data/research_batch/${symbol}_${INTERVAL}.csv" \
+                --symbol "${symbol}" --interval "${INTERVAL}" \
+                --funding-csv "data/research_batch/${symbol}_funding.csv" \
+                --output "reports/${symbol}_${INTERVAL}_baseline.json"; then
+                baseline_status="$(python -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("status", "UNKNOWN"))' "reports/${symbol}_${INTERVAL}_baseline.json" 2>/dev/null || echo UNKNOWN)"
+              else
+                batch_failed=1
+              fi
+              echo "::endgroup::"
+            fi
 
-            python - "${symbol}" "${INTERVAL}" <<'PY' >> reports/batch_summary.csv
-          import json, sys
-          symbol, interval = sys.argv[1:]
-          audit = json.load(open(f"reports/{symbol}_funding_audit.json", encoding="utf-8"))
-          report = json.load(open(f"reports/{symbol}_{interval}_baseline.json", encoding="utf-8"))
-          sources = audit.get("funding", {}).get("source_labels", [])
-          proxy_used = any("proxy" in source.lower() for source in sources)
-          funding_status = "DOWNLOADED_PROXY_MARK_PRICE_NOT_RECONCILED" if proxy_used else "DOWNLOADED_NOT_RECONCILED"
-          audit_status = audit.get("status", "UNKNOWN")
-          backtest_status = report.get("status", "UNKNOWN")
-          print(f"{symbol},{interval},COMPLETE,{funding_status},{audit_status},{backtest_status}")
-          PY
+            printf '%s,%s,%s,%s,%s,%s\n' "${symbol}" "${INTERVAL}" "${candle_status}" "${funding_status}" "${audit_status}" "${baseline_status}" >> reports/batch_summary.csv
+            echo "summary ${symbol}: candles=${candle_status} funding=${funding_status} audit=${audit_status} baseline=${baseline_status}"
           done
+          if [[ "${batch_failed}" -ne 0 ]]; then
+            echo "One or more asset stages failed; manifest and artifacts will still be generated."
+            exit 1
+          fi
 
       - name: Build manifest and research-only summary
         if: always()
