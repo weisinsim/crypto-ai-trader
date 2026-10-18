@@ -43,6 +43,31 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
                     main()
             self.assertEqual(funding_path.read_bytes(), funding_bytes)
 
+    def test_candle_csv_rejects_noncanonical_timestamp_tokens(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for token in (" 0", "0 ", "+0", "0.0", "-0"):
+                path = Path(tmp) / "candles.csv"
+                path.write_text(
+                    f"t,o,h,l,c\\n{token},100,101,99,100\\n",
+                    encoding="utf-8",
+                )
+                with self.subTest(token=token):
+                    with self.assertRaisesRegex(ValueError, "invalid timestamp"):
+                        load_csv(str(path), 3_600_000)
+
+    def test_funding_csv_rejects_noncanonical_timestamp_tokens(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for token in (" 0", "0 ", "+0", "0.0", "-0"):
+                path = Path(tmp) / "funding.csv"
+                path.write_text(
+                    "symbol,funding_time,funding_rate,mark_price\\n"
+                    f"BTCUSDT,{token},0.001,100\\n",
+                    encoding="utf-8",
+                )
+                with self.subTest(token=token):
+                    with self.assertRaisesRegex(ValueError, "invalid timestamp"):
+                        load_funding_csv(str(path))
+
     def test_reports_timestamp_alignment_without_claiming_completeness(self):
         candles = [{"t": 100}, {"t": 200}, {"t": 300}, {"t": 400}]
         funding = [
