@@ -29,6 +29,26 @@ class FundingHistoryAuditTests(unittest.TestCase):
         self.assertEqual(result["sha256"], hashlib.sha256(source_bytes).hexdigest())
         self.assertEqual(result["size_bytes"], len(source_bytes))
 
+    def test_accepts_subsecond_archive_timestamp_jitter_at_gap_threshold(self):
+        path = self.write_csv([
+            ("2025-01-01T00:00:00.000Z", "0.0001"),
+            ("2025-01-01T08:00:00.002Z", "-0.0001"),
+            ("2025-01-01T16:00:00.004Z", "0.0002"),
+        ])
+        result = audit(path, max_gap_hours=8)
+        self.assertTrue(result["pass_basic_integrity"])
+        self.assertEqual(result["gaps_over_threshold"], 0)
+        self.assertEqual(result["gap_threshold_tolerance_ms"], 1000)
+
+    def test_still_rejects_gap_exceeding_threshold_tolerance(self):
+        path = self.write_csv([
+            ("2025-01-01T00:00:00.000Z", "0.0001"),
+            ("2025-01-01T08:00:01.001Z", "-0.0001"),
+        ])
+        result = audit(path, max_gap_hours=8)
+        self.assertFalse(result["pass_basic_integrity"])
+        self.assertEqual(result["gaps_over_threshold"], 1)
+
     def test_flags_large_internal_gap(self):
         path = self.write_csv([
             ("2025-01-01T00:00:00Z", "0.0001"),
