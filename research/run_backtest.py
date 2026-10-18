@@ -63,7 +63,7 @@ def load_funding_csv(path: str) -> list[dict]:
                  "funding_rate": float(row["funding_rate"]),
                  "mark_price": float(row["mark_price"]),
                  "symbol": row.get("symbol", "").strip().upper(),
-                 "mark_price_source": row.get("mark_price_source", "unspecified").strip() or "unspecified",
+                 "mark_price_source": row.get("mark_price_source", "").strip(),
                  "venue": row.get("venue", "").strip().lower()}
                 for row in csv.DictReader(handle)]
     symbols = {row["symbol"] for row in rows}
@@ -106,6 +106,15 @@ def summarize_funding_data_quality(
         label = str(row.get("mark_price_source", "unspecified") or "unspecified")
         source_counts[label] = source_counts.get(label, 0) + 1
     source_labels = sorted(source_counts)
+    missing_source_labels = sum(
+        1 for row in funding_rows
+        if not isinstance(row.get("mark_price_source"), str)
+        or not row.get("mark_price_source", "").strip()
+    )
+    missing_venue_labels = sum(
+        1 for row in funding_rows
+        if not isinstance(row.get("venue"), str) or not row.get("venue", "").strip()
+    )
     proxy_mark_price_records = sum(
         count for label, count in source_counts.items() if "PROXY" in label.upper()
     )
@@ -147,7 +156,10 @@ def summarize_funding_data_quality(
     nonmatching = len(in_range_pairs) - matched
     out_of_range = len(event_timestamps) - len(in_range_pairs)
     duplicate_event_records = sum(count - 1 for count in timestamp_counts.values() if count > 1)
-    needs_review = bool(duplicate_timestamps or out_of_range or nonmatching)
+    needs_review = bool(
+        duplicate_timestamps or out_of_range or nonmatching
+        or missing_source_labels or missing_venue_labels
+    )
     return {
         "provided": True,
         "records_in_candle_range": len(in_range_pairs),
@@ -162,6 +174,8 @@ def summarize_funding_data_quality(
         "non_candle_open_events": nonmatching,
         "source_labels": source_labels,
         "source_record_counts": dict(sorted(source_counts.items())),
+        "records_missing_or_invalid_source_label": missing_source_labels,
+        "records_missing_or_invalid_venue_label": missing_venue_labels,
         "proxy_mark_price_records": proxy_mark_price_records,
         "proxy_mark_price_review_required": proxy_mark_price_review_required,
         "venue_labels": sorted({row.get("venue", "") or "unspecified" for row in funding_rows}),
