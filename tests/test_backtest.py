@@ -564,3 +564,23 @@ class BacktestTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FundingNumericValidationOverflowTests(unittest.TestCase):
+    def test_funding_numeric_overflow_is_normalized_to_value_error(self):
+        rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(80)])
+        huge = 10 ** 10000
+        for field in ("funding_rate", "mark_price"):
+            event = {
+                "funding_time": rows[10]["t"],
+                "funding_rate": 0.001,
+                "mark_price": 100.0,
+            }
+            event[field] = huge
+            with self.subTest(field=field), self.assertRaisesRegex(
+                ValueError, "invalid numeric fields"
+            ):
+                run_ema_cross_backtest(
+                    rows, fast=3, slow=9, atr_period=3,
+                    funding_rates=[event],
+                )
