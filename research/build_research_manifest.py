@@ -76,7 +76,7 @@ def main(argv: list[str] | None = None) -> int:
     payload = build_manifest(rows)
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(payload, indent=2) + "\\n", encoding="utf-8")
+    output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(payload, indent=2))
     return 0
 
