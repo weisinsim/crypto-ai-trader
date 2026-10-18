@@ -169,6 +169,18 @@ def closed_rows_at(rows, timestamp_ms):
     return [row for row in rows if row["ts"] <= timestamp_ms]
 
 
+def closed_four_count_at(rows, decision_close_ms, start_index=0):
+    """Advance to the count of 4h candles whose close time is at/before decision time.
+
+    Historical CSV timestamps are candle OPEN times. The returned index is the
+    first row not yet closed, so rows[:index] are safe to use without lookahead.
+    """
+    index = start_index
+    while index < len(rows) and rows[index]["ts"] + 14_400_000 <= decision_close_ms:
+        index += 1
+    return index
+
+
 def risk_levels(symbol, price, direction, atr_value, stop_mult, target_mult):
     """Match the live dashboard's ATR fallback when calculating stop/target levels."""
     fallback = price * (0.01 if symbol == "XRPUSDT" else 0.005)
@@ -207,8 +219,7 @@ def replay(symbol, one, four, *, include_states=False):
         # own close. Comparing open timestamps directly leaks an unfinished
         # 4h candle into the replay.
         decision_close_ms=one[i]["ts"] + 3_600_000
-        while four_index<len(four) and four[four_index]["ts"] + 14_400_000 <= decision_close_ms:
-            four_index+=1
+        four_index=closed_four_count_at(four, decision_close_ms, four_index)
         if four_index<50: continue
         p=c_all[i]; e20=ema20_all[i]; e50=ema50_all[i]; e200=ema200_all[i]
         e20_4=ema20_4_all[four_index-1]; e50_4=ema50_4_all[four_index-1]
