@@ -7,9 +7,19 @@ from pathlib import Path
 from unittest.mock import patch
 
 from research.audit_funding_data import audit_funding_against_candles, main
+from research.run_backtest import write_json_atomic
 
 
 class FundingAuditTests(unittest.TestCase):
+    def test_atomic_json_writer_replaces_existing_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "audit.json"
+            path.write_text('{"old": true}\n', encoding="utf-8")
+            write_json_atomic(path, {"new": True}, sort_keys=True)
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"new": True})
+            self.assertTrue(path.read_text(encoding="utf-8").endswith("\n"))
+            self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["audit.json"])
+
     def setUp(self):
         self.candles = [{"t": 100}, {"t": 200}, {"t": 300}, {"t": 400}]
         self.funding = [
