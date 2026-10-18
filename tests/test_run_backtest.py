@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from research.run_backtest import write_json_atomic, load_csv, load_funding_csv, main, max_drawdown_pct, summarize_funding_data_quality, summarize_holdout_trade_quality, summarize_walk_forward_cost_stress
+from research.run_backtest import write_json_atomic, load_csv, load_funding_csv, main, max_drawdown_pct, summarize_funding_data_quality, summarize_holdout_trade_quality, summarize_holdout_boundary_trade_diagnostics, summarize_walk_forward_cost_stress
 
 
 class FundingDataQualitySummaryTests(unittest.TestCase):
@@ -800,6 +800,40 @@ class WalkForwardCostStressSummaryTests(unittest.TestCase):
         self.assertFalse(summary["walk_forward_candidate_gate"]["pass"])
         self.assertEqual(summary["folds_passing_all_three_cost_scenarios"], 0)
 
+
+
+
+class HoldoutBoundaryTradeDiagnosticsTests(unittest.TestCase):
+    def test_end_of_data_exit_requires_review(self):
+        trades = [
+            {"entry_time": 900, "exit_time": 1000, "reason": "END_OF_DATA"},
+            {"entry_time": 950, "exit_time": 980, "reason": "TARGET"},
+        ]
+        summary = summarize_holdout_boundary_trade_diagnostics(trades, 800, 1000)
+        self.assertEqual(summary["entries_in_holdout"], 2)
+        self.assertEqual(summary["end_of_data_exits"], 1)
+        self.assertEqual(summary["missing_exit_time"], 0)
+        self.assertEqual(summary["interpretation"], "review_required")
+
+    def test_missing_exit_time_requires_review(self):
+        summary = summarize_holdout_boundary_trade_diagnostics(
+            [{"entry_time": 900, "reason": "STOP"}], 800, 1000
+        )
+        self.assertEqual(summary["missing_exit_time"], 1)
+        self.assertEqual(summary["interpretation"], "review_required")
+
+    def test_stop_and_target_exits_are_not_flagged_as_censored(self):
+        summary = summarize_holdout_boundary_trade_diagnostics(
+            [
+                {"entry_time": 900, "exit_time": 930, "reason": "STOP"},
+                {"entry_time": 940, "exit_time": 980, "reason": "TARGET"},
+            ], 800, 1000
+        )
+        self.assertEqual(summary["end_of_data_exits"], 0)
+        self.assertEqual(
+            summary["interpretation"],
+            "all_holdout_trades_closed_by_stop_or_target_within_window",
+        )
 
 
 if __name__ == "__main__":
