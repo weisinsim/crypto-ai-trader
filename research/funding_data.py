@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from bisect import bisect_right
 import csv
 import io
 import time
@@ -408,7 +409,6 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                             mark_1m_opens[minute_open_ts] = mark_open
                             mark_1m_closes.append((minute_open_ts + 60_000, mark_close))
                 mark_1m_closes.sort()
-                mark_1m_closes.sort()
             for row in rate_rows:
                 try:
                     ts = canonical_settlement_timestamp(_parse_archive_timestamp(row[0]))
@@ -426,11 +426,15 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                         if mark is not None:
                             mark_source = "mark_kline_1m_open"
                     if mark is None and mark_1m_closes:
-                        prior = [item for item in mark_1m_closes if item[0] <= ts]
+                        # Binary search avoids rescanning the entire minute-mark history
+                        # for every funding event in long archive ranges.
+                        prior_index = bisect_right(mark_1m_closes, (ts, float("inf"))) - 1
                         # Secondary fallback is historical only and limited to one minute.
-                        if prior and 0 <= ts - prior[-1][0] <= 60_000:
-                            mark = prior[-1][1]
-                            mark_source = "mark_kline_1m_prior_close"
+                        if prior_index >= 0:
+                            prior_close_ts, prior_close_price = mark_1m_closes[prior_index]
+                            if 0 <= ts - prior_close_ts <= 60_000:
+                                mark = prior_close_price
+                                mark_source = "mark_kline_1m_prior_close"
                     if mark is None:
                         nearest_1m_open = (
                             min(mark_1m_opens, key=lambda mark_ts: abs(mark_ts - ts))
