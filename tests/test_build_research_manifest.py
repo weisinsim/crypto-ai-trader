@@ -41,6 +41,17 @@ class ResearchManifestTests(unittest.TestCase):
         self.assertEqual(result["funding_data_quality_status"], "FUNDING_AUDIT_REVIEW_REQUIRED")
         self.assertTrue(result["funding_audit_review_required"])
 
+    def test_failed_or_unreadable_audit_stage_marks_batch_incomplete(self):
+        for status in ("FAILED", "ERROR", "UNKNOWN", ""):
+            rows = [dict(row) for row in self.rows]
+            rows[0]["funding_audit_status"] = status
+            result = build_manifest(rows)
+            with self.subTest(status=status):
+                self.assertEqual(result["batch_completion_status"], "PARTIAL_OR_FAILED")
+                self.assertEqual(result["funding_data_quality_status"], "BATCH_INCOMPLETE_REVIEW_REQUIRED")
+                self.assertFalse(result["processing_statuses_complete"])
+                self.assertFalse(result["live_trading_enabled"])
+
     def test_proxy_marks_always_require_settlement_review(self):
         rows = [dict(row) for row in self.rows]
         rows[0]["funding_download_status"] = "DOWNLOADED_PROXY_MARK_PRICE_NOT_RECONCILED"
