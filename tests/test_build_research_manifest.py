@@ -6,8 +6,13 @@ from research.build_research_manifest import build_manifest
 class ResearchManifestTests(unittest.TestCase):
     def setUp(self):
         self.rows = [
-            {"symbol": symbol, "funding_download_status": "DOWNLOADED_NOT_RECONCILED",
-             "funding_audit_status": "TIMESTAMP_ALIGNMENT_PASS_NOT_RECONCILED"}
+            {
+                "symbol": symbol,
+                "candle_status": "COMPLETE",
+                "funding_download_status": "DOWNLOADED_NOT_RECONCILED",
+                "funding_audit_status": "TIMESTAMP_ALIGNMENT_PASS_NOT_RECONCILED",
+                "baseline_status": "RESEARCH_ONLY",
+            }
             for symbol in ("BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT", "XRPUSDT")
         ]
 
@@ -16,6 +21,7 @@ class ResearchManifestTests(unittest.TestCase):
         self.assertEqual(result["batch_completion_status"], "ALL_ASSETS_PROCESSED_NOT_RECONCILED")
         self.assertEqual(result["funding_data_quality_status"], "TIMESTAMP_ALIGNMENT_ONLY_NOT_RECONCILED")
         self.assertTrue(result["symbol_set_complete"])
+        self.assertTrue(result["processing_statuses_complete"])
         self.assertFalse(result["profitability_claim_eligible"])
         self.assertFalse(result["strategy_approval"])
         self.assertFalse(result["live_trading_enabled"])
@@ -43,7 +49,20 @@ class ResearchManifestTests(unittest.TestCase):
         self.assertTrue(result["funding_proxy_review_required"])
         self.assertFalse(result["profitability_claim_eligible"])
 
-    def test_failed_candle_or_baseline_status_fails_closed(self):\n        for field, value in (("candle_status", "FAILED"), ("baseline_status", "UNKNOWN"),\n                             ("funding_download_status", "FAILED")):\n            rows = [dict(row) for row in self.rows]\n            rows[0][field] = value\n            result = build_manifest(rows)\n            with self.subTest(field=field):\n                self.assertEqual(result["batch_completion_status"], "PARTIAL_OR_FAILED")\n                self.assertFalse(result["processing_statuses_complete"])\n\n    def test_missing_rows_is_partial_and_not_live(self):
+    def test_failed_candle_or_baseline_status_fails_closed(self):
+        for field, value in (
+            ("candle_status", "FAILED"),
+            ("baseline_status", "UNKNOWN"),
+            ("funding_download_status", "FAILED"),
+        ):
+            rows = [dict(row) for row in self.rows]
+            rows[0][field] = value
+            result = build_manifest(rows)
+            with self.subTest(field=field):
+                self.assertEqual(result["batch_completion_status"], "PARTIAL_OR_FAILED")
+                self.assertFalse(result["processing_statuses_complete"])
+
+    def test_missing_rows_is_partial_and_not_live(self):
         result = build_manifest([])
         self.assertEqual(result["batch_completion_status"], "PARTIAL_OR_FAILED")
         self.assertFalse(result["live_trading_enabled"])
