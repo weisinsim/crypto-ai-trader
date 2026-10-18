@@ -1,4 +1,5 @@
 import csv
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -26,9 +27,13 @@ class HistoricalDataAuditTests(unittest.TestCase):
             {"timestamp": "2025-01-01T00:59:59.999Z", "open": "100", "high": "102", "low": "99", "close": "101"},
             {"timestamp": "2025-01-01T01:59:59.999Z", "open": "101", "high": "103", "low": "100", "close": "102"},
         ]
-        result = audit(self.write_csv(rows), "1h")
+        path = self.write_csv(rows)
+        result = audit(path, "1h")
         self.assertTrue(result["pass_basic_integrity"])
         self.assertEqual(result["gap_count"], 0)
+        source_bytes = path.read_bytes()
+        self.assertEqual(result["sha256"], hashlib.sha256(source_bytes).hexdigest())
+        self.assertEqual(result["size_bytes"], len(source_bytes))
 
     def test_gap_is_reported(self):
         rows = [
