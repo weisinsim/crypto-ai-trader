@@ -46,6 +46,12 @@ class CandleValidationTests(unittest.TestCase):
             ):
                 validate_candles([{"t": timestamp, **valid}])
 
+    def test_rejects_noncanonical_timestamp_strings(self):
+        valid = {"o": 100, "h": 101, "l": 99, "c": 100}
+        for timestamp in (" 1000", "1000 ", "+1000", "1_000", "1.0", "-0"):
+            with self.subTest(timestamp=timestamp), self.assertRaisesRegex(ValueError, "timestamp"):
+                validate_candles([{"t": timestamp, **valid}])
+
     def test_accepts_integer_timestamp_string_without_truncation(self):
         rows = validate_candles([{"t": "1000", "o": 100, "h": 101, "l": 99, "c": 100}])
         self.assertEqual(rows[0]["t"], "1000")
@@ -206,6 +212,17 @@ class BacktestTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "COMPLETED")
         self.assertGreaterEqual(result["trades"], 0)
+
+    def test_rejects_noncanonical_funding_timestamp_strings(self):
+        rows = candles_from_closes([100 + i * 0.1 for i in range(80)])
+        for timestamp in (" 3600000", "3600000 ", "+3600000", "3600000.0"):
+            with self.subTest(timestamp=timestamp), self.assertRaisesRegex(ValueError, "timestamp"):
+                run_ema_cross_backtest(
+                    rows, fast=3, slow=7, atr_period=3,
+                    funding_rates=[{
+                        "funding_time": timestamp, "funding_rate": 0.001, "mark_price": 100,
+                    }],
+                )
 
     def test_non_finite_cost_and_funding_parameters_rejected(self):
         rows = candles_from_closes([100 + (i % 5) for i in range(80)])
