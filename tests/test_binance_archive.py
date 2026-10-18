@@ -25,6 +25,7 @@ class BinanceArchiveTests(unittest.TestCase):
         archive_rows.side_effect = [
             [[str(funding_ts), "8", "0.001"]],
             [kline(funding_ts - HOUR, "99.5")],
+            [kline(funding_ts - HOUR, "99")],
         ]
         rows = download_archive_funding("BTCUSDT", funding_ts, funding_ts + 1)
         self.assertEqual(len(rows), 1)
@@ -35,10 +36,26 @@ class BinanceArchiveTests(unittest.TestCase):
         self.assertEqual(rows[0]["venue"], "binance_usdm_archive")
 
     @patch("research.binance_archive._archive_rows")
+    def test_archive_funding_falls_back_to_prior_regular_price_candle(self, archive_rows):
+        funding_ts = 8 * HOUR
+        archive_rows.side_effect = [
+            [["%s" % funding_ts, "8", "0.001"]],
+            [],
+            [kline(funding_ts - HOUR, "98.75")],
+        ]
+        rows = download_archive_funding("BTCUSDT", funding_ts, funding_ts + 1)
+        self.assertEqual(rows[0]["mark_price"], 98.75)
+        self.assertEqual(
+            rows[0]["mark_price_source"],
+            "binance_archive_prior_closed_regular_price_1h_proxy_NOT_SETTLEMENT_MARK",
+        )
+
+    @patch("research.binance_archive._archive_rows")
     def test_archive_funding_fails_closed_without_prior_mark_candle(self, archive_rows):
         funding_ts = 8 * HOUR
         archive_rows.side_effect = [
             [[str(funding_ts), "8", "0.001"]],
+            [],
             [],
         ]
         with self.assertRaisesRegex(ValueError, "refusing to fabricate settlement mark"):
