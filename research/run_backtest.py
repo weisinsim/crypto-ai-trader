@@ -6,6 +6,8 @@ import csv
 import hashlib
 import json
 import math
+import os
+import tempfile
 import re
 from pathlib import Path
 from statistics import mean
@@ -13,6 +15,25 @@ from statistics import mean
 from research.backtest import run_ema_cross_backtest, validate_candles
 from research.funding_sensitivity import summarize_funding_scenarios
 from research.cost_stress import run_cost_stress_scenarios
+
+
+def write_json_atomic(path: Path, payload: dict, *, sort_keys: bool = False) -> None:
+    """Write a JSON report via a same-directory temporary file and atomic replace."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, sort_keys=sort_keys)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+    except BaseException:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+        raise
 
 
 def source_file_manifest(path: str | None) -> dict:
@@ -837,8 +858,7 @@ def main() -> None:
             "All report results require independent review of CSV coverage, exchange data and execution assumptions."
         ],
     }
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    write_json_atomic(output_path, report)
     print(f"status=RESEARCH_ONLY symbol={args.symbol.upper()} bars={len(rows)} "
           f"holdout_trades={len(holdout_trades)} output={output_path}")
 
