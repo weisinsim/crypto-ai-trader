@@ -292,6 +292,7 @@ class WalkForwardCostStressSummaryTests(unittest.TestCase):
     def test_missing_or_failed_fold_is_not_counted_as_passing(self):
         folds = [
             {
+                "status": "COMPLETED",
                 "cost_stress": {
                     "robustness_screen": {"pass": True},
                     "scenarios": {

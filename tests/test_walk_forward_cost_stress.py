@@ -16,6 +16,7 @@ class WalkForwardCostStressTests(unittest.TestCase):
             }
         return {
             "fold": 1,
+            "status": "COMPLETED",
             "trades": 30,
             "cost_stress": {
                 "scenarios": scenarios,
@@ -51,9 +52,16 @@ class WalkForwardCostStressTests(unittest.TestCase):
         self.assertFalse(report["walk_forward_candidate_gate"]["pass"])
 
     def test_missing_cost_stress_is_not_counted_as_pass(self):
-        report = summarize_walk_forward_cost_stress([{"fold": 1, "trades": 50}])
+        report = summarize_walk_forward_cost_stress([{"fold": 1, "status": "COMPLETED", "trades": 50}])
         self.assertFalse(report["walk_forward_candidate_gate"]["pass"])
         self.assertEqual(report["folds_with_missing_cost_stress"], 1)
+
+    def test_non_completed_fold_fails_closed_even_with_passing_stress_rows(self):
+        fold = self._passing_fold()
+        fold["status"] = "INSUFFICIENT_DATA"
+        report = summarize_walk_forward_cost_stress([fold])
+        self.assertFalse(report["walk_forward_candidate_gate"]["pass"])
+        self.assertEqual(report["folds_passing_all_three_cost_scenarios"], 0)
 
 
 if __name__ == "__main__":

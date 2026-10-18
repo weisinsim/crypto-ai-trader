@@ -311,7 +311,7 @@ def summarize_walk_forward_cost_stress(walk_results: list[dict]) -> dict:
             "lowest_numeric_profit_factor": round(min(numeric_pf), 4) if numeric_pf else None,
         }
     def _fold_stress_is_complete_and_valid(fold: dict) -> bool:
-        if not isinstance(fold, dict):
+        if not isinstance(fold, dict) or fold.get("status") != "COMPLETED":
             return False
         stress = fold.get("cost_stress")
         if not isinstance(stress, dict):
@@ -601,7 +601,8 @@ def main() -> None:
         fold_trades = [t for t in fold_result["trade_log"] if start_ts <= t["entry_time"] <= rows[b - 1]["t"]]
         fold_curve = [p for p in fold_result["equity_curve"] if start_ts <= p["t"] <= rows[b - 1]["t"]]
         walk_results.append({
-            "fold": fold + 1, "start_ts": start_ts, "end_ts": rows[b - 1]["t"],
+            "fold": fold + 1, "status": fold_result["status"],
+            "start_ts": start_ts, "end_ts": rows[b - 1]["t"],
             "bars": b - a, "trades": len(fold_trades),
             "net_return_pct": round((fold_result["equity_final"] - 1.0) * 100, 4),
             "max_drawdown_pct": max_drawdown_pct(fold_curve),
