@@ -98,10 +98,6 @@ def audit_funding_against_candles(
             or leading_gap_ms > max_gap_ms or trailing_gap_ms > max_gap_ms
         )
     )
-    needs_review = bool(
-        not candle_order_valid or duplicate_candle_timestamps or out_of_range or nonmatching or large_gaps or duplicate_event_records
-        or edge_gaps_exceeding_threshold
-    )
     def label_values(field: str, default: str) -> list[str]:
         # CSV-loaded rows normally contain strings, but this public audit helper
         # also accepts direct callers. Keep malformed/null labels serializable and
@@ -116,6 +112,22 @@ def audit_funding_against_candles(
             else:
                 values.add(f"invalid:{type(value).__name__}")
         return sorted(values)
+
+    def provenance_label_issues(field: str) -> int:
+        # Provenance is usable only when every event has a non-empty text label.
+        # A display fallback such as "unspecified" must never count as provenance.
+        return sum(
+            1 for row in funding_rows
+            if not isinstance(row.get(field), str) or not row.get(field, "").strip()
+        )
+
+    missing_source_labels = provenance_label_issues("mark_price_source")
+    missing_venue_labels = provenance_label_issues("venue")
+    needs_review = bool(
+        not candle_order_valid or duplicate_candle_timestamps or out_of_range or nonmatching or large_gaps
+        or duplicate_event_records or edge_gaps_exceeding_threshold
+        or missing_source_labels or missing_venue_labels
+    )
 
     return {
         "status": "REVIEW_REQUIRED" if needs_review else (
@@ -145,6 +157,8 @@ def audit_funding_against_candles(
             "last_event_ts": event_timestamps[-1],
             "source_labels": label_values("mark_price_source", "unspecified"),
             "venue_labels": label_values("venue", "unspecified"),
+            "records_missing_or_invalid_source_label": missing_source_labels,
+            "records_missing_or_invalid_venue_label": missing_venue_labels,
             "event_interval_ms": {
                 "min": min(deltas) if deltas else None,
                 "max": max(deltas) if deltas else None,

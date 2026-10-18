@@ -147,6 +147,27 @@ class FundingAuditTests(unittest.TestCase):
         self.assertEqual(report["funding"]["source_labels"], ["invalid:int", "unspecified"])
         self.assertEqual(report["funding"]["venue_labels"], ["invalid:dict", "unspecified"])
         self.assertFalse(report["source_authenticity_verified"])
+        self.assertEqual(report["funding"]["records_missing_or_invalid_source_label"], 2)
+        self.assertEqual(report["funding"]["records_missing_or_invalid_venue_label"], 2)
+        self.assertEqual(report["status"], "REVIEW_REQUIRED")
+
+    def test_missing_or_blank_provenance_labels_require_review(self):
+        rows = [dict(self.funding[0]), dict(self.funding[-1])]
+        rows[0].pop("mark_price_source")
+        rows[1]["mark_price_source"] = "  "
+        rows[0]["venue"] = None
+        rows[1]["venue"] = "binance_usdm"
+        report = audit_funding_against_candles(self.candles, rows, "BTCUSDT")
+        self.assertEqual(report["funding"]["records_missing_or_invalid_source_label"], 2)
+        self.assertEqual(report["funding"]["records_missing_or_invalid_venue_label"], 1)
+        self.assertEqual(report["status"], "REVIEW_REQUIRED")
+        self.assertFalse(report["source_authenticity_verified"])
+
+    def test_complete_text_provenance_labels_do_not_create_review_by_themselves(self):
+        report = audit_funding_against_candles(self.candles, self.funding[:1] + self.funding[-1:], "BTCUSDT")
+        self.assertEqual(report["funding"]["records_missing_or_invalid_source_label"], 0)
+        self.assertEqual(report["funding"]["records_missing_or_invalid_venue_label"], 0)
+        self.assertEqual(report["status"], "TIMESTAMP_ALIGNMENT_PASS_NOT_RECONCILED")
 
     def test_symbol_mismatch_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "do not match"):
