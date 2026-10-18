@@ -82,6 +82,28 @@ class FundingAuditTests(unittest.TestCase):
         self.assertEqual(report["intervals_exceeding_gap_threshold"], 1)
         self.assertFalse(report["event_completeness_verified"])
 
+    def test_gap_threshold_also_reviews_long_leading_and_trailing_range_edges(self):
+        rows = [dict(self.funding[0]), dict(self.funding[-1])]
+        rows[0]["funding_time"] = 200
+        rows[0]["funding_time_raw"] = 200
+        rows[1]["funding_time"] = 300
+        rows[1]["funding_time_raw"] = 300
+        report = audit_funding_against_candles(self.candles, rows, "BTCUSDT", max_gap_hours=0.00001)
+        edge_gaps = report["funding"]["event_interval_ms"]["range_edge_gaps_ms"]
+        self.assertEqual(edge_gaps["leading_from_first_candle_to_first_funding_event"], 100)
+        self.assertEqual(edge_gaps["trailing_from_last_funding_event_to_last_candle"], 100)
+        self.assertTrue(edge_gaps["edge_gaps_exceeding_threshold"])
+        self.assertEqual(report["status"], "REVIEW_REQUIRED")
+        self.assertFalse(report["event_completeness_verified"])
+
+    def test_no_in_range_funding_event_requires_edge_review_when_threshold_is_set(self):
+        rows = [dict(self.funding[0])]
+        rows[0]["funding_time"] = 50
+        rows[0]["funding_time_raw"] = 50
+        report = audit_funding_against_candles(self.candles, rows, "BTCUSDT", max_gap_hours=1)
+        self.assertTrue(report["funding"]["event_interval_ms"]["range_edge_gaps_ms"]["edge_gaps_exceeding_threshold"])
+        self.assertEqual(report["status"], "REVIEW_REQUIRED")
+
     def test_gap_threshold_must_be_positive(self):
         with self.assertRaisesRegex(ValueError, "finite positive number"):
             audit_funding_against_candles(self.candles, self.funding, "BTCUSDT", max_gap_hours=0)
