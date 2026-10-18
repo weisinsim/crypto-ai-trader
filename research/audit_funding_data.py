@@ -91,7 +91,7 @@ def audit_funding_against_candles(
         "candle_range": {"start_ts": start_ts, "end_ts": end_ts, "count": len(candle_rows)},
         "funding": {
             "total_records": len(funding_rows),
-            "records_in_candle_range": len(in_range),
+            "records_in_candle_range": len(in_range_pairs),
             "records_outside_candle_range": out_of_range,
             "exact_candle_open_matches": raw_matched,
             "normalized_candle_open_matches": matched,
