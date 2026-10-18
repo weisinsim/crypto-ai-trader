@@ -166,7 +166,7 @@ def replay(symbol, one, four, *, include_states=False):
         if symbol=="ETHUSDT":
             reason="NO_PRODUCTION"
         elif symbol=="XRPUSDT":
-            xrp = evaluate_xrp_signal(c, e20, e20_4, e50_4, r, a, res, XRP)
+            xrp = evaluate_xrp_signal(c, e20, e50, e20_4, e50_4, r, a, res, XRP)
             signal = xrp["signal"]
             side = "LONG" if signal == "LONG" else ""
             direction = xrp["direction"]
