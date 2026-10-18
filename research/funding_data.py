@@ -72,10 +72,15 @@ def parse_funding_rows(raw_rows: list[dict], symbol: str, start_ms: int, end_ms:
             or isinstance(end_ms, bool) or not isinstance(end_ms, int)
             or start_ms < 0 or end_ms <= start_ms):
         raise ValueError("require integer timestamps with 0 <= start_ms < end_ms")
+    if not isinstance(raw_rows, list):
+        raise ValueError("funding response must be a list of rows")
     rows = []
     for index, raw in enumerate(raw_rows):
         if not isinstance(raw, dict):
             raise ValueError(f"funding row {index} must be a mapping")
+        missing = [field for field in ("fundingTime", "fundingRate", "markPrice") if field not in raw]
+        if missing:
+            raise ValueError(f"funding row {index} missing required fields: {missing}")
         raw_symbol = raw.get("symbol")
         if raw_symbol is not None and str(raw_symbol).strip().upper() != symbol.upper():
             raise ValueError(

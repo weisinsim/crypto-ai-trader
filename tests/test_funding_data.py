@@ -212,3 +212,21 @@ class FundingRowShapeValidationTests(unittest.TestCase):
                 ValueError, "funding row 0 must be a mapping"
             ):
                 parse_funding_rows([raw], "BTCUSDT", 0, 200)
+
+
+class FundingRequiredFieldsValidationTests(unittest.TestCase):
+    def test_parse_funding_rows_rejects_missing_required_fields(self):
+        for field in ("fundingTime", "fundingRate", "markPrice"):
+            malformed = record(100)
+            del malformed[field]
+            with self.subTest(field=field), self.assertRaisesRegex(
+                ValueError, f"missing required fields:.*{field}"
+            ):
+                parse_funding_rows([malformed], "BTCUSDT", 0, 200)
+
+    def test_parse_funding_rows_rejects_non_list_response(self):
+        for raw_rows in (None, {}, "not-a-list", 123):
+            with self.subTest(raw_rows=raw_rows), self.assertRaisesRegex(
+                ValueError, "funding response must be a list of rows"
+            ):
+                parse_funding_rows(raw_rows, "BTCUSDT", 0, 200)
