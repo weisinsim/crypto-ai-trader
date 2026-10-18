@@ -21,6 +21,22 @@ class FundingAuditTests(unittest.TestCase):
              "symbol": "BTCUSDT", "mark_price_source": "reported", "venue": "binance_usdm"},
         ]
 
+    def test_nonpositive_candle_timestamps_fail_closed(self):
+        for value in (-1, True, 1.5, " 100 "):
+            with self.subTest(value=value):
+                candles = [dict(self.candles[0]), dict(self.candles[1])]
+                candles[0]["t"] = value
+                with self.assertRaisesRegex(ValueError, "candle timestamp must be a non-negative integer"):
+                    audit_funding_against_candles(candles, self.funding, "BTCUSDT")
+
+    def test_nonpositive_or_fractional_funding_timestamps_fail_closed(self):
+        for value in (-1, True, 1.5, " 100 "):
+            with self.subTest(value=value):
+                rows = [dict(self.funding[0]), dict(self.funding[-1])]
+                rows[0]["funding_time_raw"] = value
+                with self.assertRaisesRegex(ValueError, "funding timestamp must be a non-negative integer"):
+                    audit_funding_against_candles(self.candles, rows, "BTCUSDT")
+
     def test_nonchronological_candle_rows_require_review(self):
         candles = [self.candles[0], self.candles[2], self.candles[1], self.candles[3]]
         report = audit_funding_against_candles(candles, self.funding, "BTCUSDT")

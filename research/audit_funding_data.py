@@ -21,6 +21,19 @@ def audit_funding_against_candles(
         raise ValueError("symbol must be non-empty")
     if not funding_rows:
         raise ValueError("funding data is empty")
+
+    def timestamp_ms(value, field: str) -> int:
+        # Reject timestamps that would be silently truncated or treated as booleans.
+        if isinstance(value, bool) or not isinstance(value, (int, str)):
+            raise ValueError(f"{field} must be a non-negative integer timestamp in milliseconds")
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(f"{field} must be a non-negative integer timestamp in milliseconds") from exc
+        if parsed < 0 or (isinstance(value, str) and value != str(parsed)):
+            raise ValueError(f"{field} must be a non-negative integer timestamp in milliseconds")
+        return parsed
+
     def normalized_symbol(row: dict) -> str:
         value = row.get("symbol", "")
         if not isinstance(value, str):
@@ -39,7 +52,7 @@ def audit_funding_against_candles(
     ):
         raise ValueError("max_gap_hours must be a finite positive number when provided")
 
-    candle_timestamps = [int(row["t"]) for row in candle_rows]
+    candle_timestamps = [timestamp_ms(row.get("t"), "candle timestamp") for row in candle_rows]
     candle_order_valid = all(
         right > left for left, right in zip(candle_timestamps, candle_timestamps[1:])
     )
@@ -52,7 +65,7 @@ def audit_funding_against_candles(
     # Audit the exchange-reported timestamp when available. The backtest loader
     # may separately normalize tiny boundary jitter for settlement calculations.
     def audit_ts(row: dict) -> int:
-        return int(row.get("funding_time_raw", row["funding_time"]))
+        return timestamp_ms(row.get("funding_time_raw", row.get("funding_time")), "funding timestamp")
 
     event_timestamps = sorted(audit_ts(row) for row in funding_rows)
     timestamp_counts = Counter(event_timestamps)
