@@ -54,6 +54,16 @@ class BinanceDataTests(unittest.TestCase):
             download_klines("BTCUSDT", "1h", 1, 3_600_000,
                             fetch_page=lambda _: [], pause_seconds=0)
 
+    def test_parse_rejects_noncanonical_timestamp_strings(self):
+        for timestamp in (" 0", "0 ", "+0", "0.0", "٠", "²"):
+            raw = raw_kline(timestamp)
+            with self.subTest(timestamp=timestamp), self.assertRaisesRegex(ValueError, "invalid kline timestamp"):
+                parse_klines([raw], 3_600_000, 3_600_000)
+
+    def test_parse_accepts_canonical_ascii_timestamp_string(self):
+        rows = parse_klines([raw_kline("0")], 3_600_000, 3_600_000)
+        self.assertEqual(rows[0]["t"], 0)
+
     def test_parse_rejects_malformed_row_shapes_and_timestamps(self):
         for raw in (None, {"t": 0}, [True, "99", "101", "98", "100", "12", 0, "1200"],
                     [0.5, "99", "101", "98", "100", "12", 0, "1200"]):
