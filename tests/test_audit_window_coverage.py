@@ -1,4 +1,5 @@
 import csv
+import hashlib
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -66,6 +67,26 @@ class WindowCoverageTests(unittest.TestCase):
             result = audit_file(path, "1h", start, start + 4 * 3_600_000)
             self.assertFalse(result["pass_window_coverage"])
             self.assertEqual(result["out_of_order_or_duplicate_adjacent_pairs"], 1)
+
+
+    def test_reports_source_fingerprint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "BTCUSDT_1h.csv"
+            start = utc_ms("2025-01-01")
+            self.write_rows(path, self.stamps_for_indices(start, range(4)))
+            result = audit_file(path, "1h", start, start + 4 * 3_600_000)
+            source = path.read_bytes()
+            self.assertEqual(result["sha256"], hashlib.sha256(source).hexdigest())
+            self.assertEqual(result["size_bytes"], len(source))
+            self.assertEqual(result["source_rows"], 4)
+
+    def test_rejects_timezone_naive_candle_timestamp(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "BTCUSDT_1h.csv"
+            path.write_text("timestamp\n2025-01-01T00:59:59.999\n", encoding="utf-8")
+            start = utc_ms("2025-01-01")
+            with self.assertRaisesRegex(ValueError, "must include timezone"):
+                audit_file(path, "1h", start, start + 3_600_000)
 
 
 if __name__ == "__main__":
