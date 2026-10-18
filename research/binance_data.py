@@ -16,19 +16,43 @@ FIELDS = ("t", "o", "h", "l", "c", "v", "q")
 
 
 def parse_klines(raw_rows: list[list], interval_ms: int, end_ms: int) -> list[dict]:
-    """Normalize exchange kline arrays and exclude candles not closed by end_ms."""
+    """Validate and normalize exchange kline arrays; keep only closed candles."""
+    if not isinstance(raw_rows, list):
+        raise ValueError("kline response must be a list")
+    if (isinstance(interval_ms, bool) or not isinstance(interval_ms, int)
+            or interval_ms <= 0):
+        raise ValueError("interval_ms must be a positive integer")
+    if isinstance(end_ms, bool) or not isinstance(end_ms, int) or end_ms < 0:
+        raise ValueError("end_ms must be a non-negative integer")
     rows = []
-    for raw in raw_rows:
+    for index, raw in enumerate(raw_rows):
+        if not isinstance(raw, (list, tuple)):
+            raise ValueError(f"kline row {index} must be a sequence")
         if len(raw) < 8:
             raise ValueError("kline row has fewer than 8 fields")
-        ts = int(raw[0])
+        raw_ts = raw[0]
+        if isinstance(raw_ts, bool) or not (
+            isinstance(raw_ts, int) or
+            (isinstance(raw_ts, str) and raw_ts.strip().isdigit())
+        ):
+            raise ValueError(f"invalid kline timestamp in row {index}")
+        ts = int(raw_ts)
+        if ts < 0:
+            raise ValueError(f"negative kline timestamp in row {index}")
+        try:
+            o, h, low, c, v, q = (float(raw[i]) for i in (1, 2, 3, 4, 5, 7))
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(f"non-numeric OHLCV field in kline row {index}") from exc
+        import math
+        if not all(math.isfinite(value) for value in (o, h, low, c, v, q)):
+            raise ValueError(f"non-finite OHLCV field in kline row {index}")
+        if min(o, h, low, c) <= 0 or v < 0 or q < 0:
+            raise ValueError(f"invalid price or negative volume in kline row {index}")
+        if h < max(o, c, low) or low > min(o, c, h):
+            raise ValueError(f"inconsistent OHLC values in kline row {index}")
         if ts + interval_ms > end_ms:
             continue
-        rows.append({
-            "t": ts, "o": float(raw[1]), "h": float(raw[2]),
-            "l": float(raw[3]), "c": float(raw[4]), "v": float(raw[5]),
-            "q": float(raw[7]),
-        })
+        rows.append({"t": ts, "o": o, "h": h, "l": low, "c": c, "v": v, "q": q})
     rows.sort(key=lambda r: r["t"])
     seen = set()
     for row in rows:
@@ -57,12 +81,16 @@ def download_klines(
         raise ValueError("symbol must be a non-empty alphanumeric exchange symbol")
     if interval not in INTERVAL_MS:
         raise ValueError(f"unsupported interval: {interval}")
-    if pause_seconds < 0:
-        raise ValueError("pause_seconds cannot be negative")
-    if start_ms < 0 or end_ms <= start_ms:
-        raise ValueError("require 0 <= start_ms < end_ms")
-    if not 1 <= limit <= 1500:
-        raise ValueError("limit must be between 1 and 1500")
+    import math
+    if (isinstance(pause_seconds, bool) or not isinstance(pause_seconds, (int, float))
+            or not math.isfinite(pause_seconds) or pause_seconds < 0):
+        raise ValueError("pause_seconds must be a finite non-negative number")
+    if (isinstance(start_ms, bool) or not isinstance(start_ms, int)
+            or isinstance(end_ms, bool) or not isinstance(end_ms, int)
+            or start_ms < 0 or end_ms <= start_ms):
+        raise ValueError("require integer timestamps with 0 <= start_ms < end_ms")
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1500:
+        raise ValueError("limit must be an integer between 1 and 1500")
     duration = INTERVAL_MS[interval]
     if start_ms % duration or end_ms % duration:
         raise ValueError("start_ms and end_ms must align to interval boundaries")
@@ -101,10 +129,9 @@ def download_klines(
             client.close()
 
     rows.sort(key=lambda r: r["t"])
-    unique = {}
-    for row in rows:
-        unique[row["t"]] = row
-    rows = list(unique.values())
+    actual_page_timestamps = [row["t"] for row in rows]
+    if len(actual_page_timestamps) != len(set(actual_page_timestamps)):
+        raise ValueError("duplicate kline timestamp across pages")
     expected = list(range(start_ms, end_ms, duration))
     actual = [r["t"] for r in rows]
     if actual != expected:
