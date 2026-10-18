@@ -50,21 +50,22 @@ def audit_funding_against_candles(
     # only when the raw value is within 1 second and the canonical timestamp is
     # an actual candle open. This reports documented boundary jitter without
     # silently rounding arbitrary event times onto candles.
-    alignment_timestamps = []
+    timestamp_pairs = []
     jitter_normalized = 0
     for row in funding_rows:
         raw_ts = audit_ts(row)
         normalized_ts = int(row.get("funding_time", raw_ts))
         if (normalized_ts != raw_ts and abs(normalized_ts - raw_ts) <= 1000
                 and normalized_ts in candle_ts):
-            alignment_timestamps.append(normalized_ts)
+            alignment_ts = normalized_ts
             jitter_normalized += 1
         else:
-            alignment_timestamps.append(raw_ts)
+            alignment_ts = raw_ts
+        timestamp_pairs.append((raw_ts, alignment_ts))
+    timestamp_pairs.sort(key=lambda pair: pair[0])
     in_range_pairs = [
-        (raw_ts, align_ts) for raw_ts, align_ts in zip(
-            [audit_ts(row) for row in funding_rows], alignment_timestamps
-        ) if start_ts <= raw_ts <= end_ts
+        (raw_ts, align_ts) for raw_ts, align_ts in timestamp_pairs
+        if start_ts <= raw_ts <= end_ts
     ]
     out_of_range = len(event_timestamps) - len(in_range_pairs)
     raw_matched = sum(raw_ts in candle_ts for raw_ts, _ in in_range_pairs)
