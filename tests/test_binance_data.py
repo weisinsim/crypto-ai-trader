@@ -56,7 +56,8 @@ class BinanceDataTests(unittest.TestCase):
 
     def test_parse_rejects_noncanonical_timestamp_strings(self):
         for timestamp in (" 0", "0 ", "+0", "0.0", "٠", "²"):
-            raw = raw_kline(timestamp)
+            raw = raw_kline(0)
+            raw[0] = timestamp
             with self.subTest(timestamp=timestamp), self.assertRaisesRegex(ValueError, "invalid kline timestamp"):
                 parse_klines([raw], 3_600_000, 3_600_000)
 
