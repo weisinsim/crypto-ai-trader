@@ -209,7 +209,13 @@ def main():
             "last_timestamp": rows[-1]["timestamp"] if rows else None,
             "notice": "Verify funding history coverage and event cadence before using it in a backtest."
         })
-    print(json.dumps({"notice": "Public funding data downloaded; no profitability claim.", "files": manifest}, indent=2))
+    manifest_payload = {
+        "notice": "Public funding data downloaded; no profitability claim.",
+        "files": manifest,
+    }
+    manifest_path = out_dir / "funding_download_manifest.json"
+    manifest_path.write_text(json.dumps(manifest_payload, indent=2) + "\\n", encoding="utf-8")
+    print(json.dumps(manifest_payload, indent=2))
 
 
 if __name__ == "__main__":
