@@ -65,7 +65,7 @@ class WindowCoverageTests(unittest.TestCase):
             self.write_rows(path, self.stamps_for_indices(start, (0, 2, 1, 3)))
             result = audit_file(path, "1h", start, start + 4 * 3_600_000)
             self.assertFalse(result["pass_window_coverage"])
-            self.assertEqual(result["out_of_order_or_duplicate_adjacent_pairs"], 2)
+            self.assertEqual(result["out_of_order_or_duplicate_adjacent_pairs"], 1)
 
 
 if __name__ == "__main__":
