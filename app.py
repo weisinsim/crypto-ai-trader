@@ -4,6 +4,7 @@ import time
 from validation.candle_closure import filter_closed_candles, normalize_timestamp_ms, upsert_candle, validate_candle_series
 from validation.dashboard_health import build_health_payload
 from validation.signal_confirmation import invalidate_stale_confirmation
+from validation.xrp_model import evaluate_xrp_signal
 from pathlib import Path
 
 import httpx
@@ -350,25 +351,14 @@ async def analyze_symbol(s):
         direction_bias="LONG" if trend4=="BULL" else ("SHORT" if trend4=="BEAR" else "NEUTRAL")
         signal="NO-TRADE"; entry=sl=tp1=tp2=None; direction=0; entry_location="—"
         score_breakdown={}
-        # XRP V27.2 remains frozen and unchanged.
+        # XRP V27.2 remains frozen; shared rules keep live and replay outputs aligned.
         if s=="XRPUSDT":
-            slope5=((e20_4/e50_4)-1) if e20_4 and e50_4 else 0
-            atr_pct_raw=(a/p) if a and p else 0
-            shock_raw=abs(c1[-1]/c1[-2]-1) if len(c1)>1 else 0
-            kill=abs(slope5)>XRP_PARAMS["kill_slope"] or atr_pct_raw>XRP_PARAMS["atr_max"] or shock_raw>XRP_PARAMS["shock_max"]
-            dev=((p-e20)/a) if a and e20 else 0
-            mean_rev=r is not None and r<=35 and dev<=-0.5 and p>c1[-2]
-            trend=e20_4>e50_4 and e20>e50
-            pull=trend and c1[-2]<=c1[-3] and p>e20 and r is not None and r<=55
-            brk=trend and resistance is not None and p>resistance and p>c1[-2]
-            if not kill and (mean_rev or pull or brk): signal="LONG"
-            elif not kill and ((r is not None and r<=40) or trend): signal="WATCH-LONG"
-            if signal in ("LONG","WATCH-LONG"):
-                entry=p; sl=p-XRP_PARAMS["sl_atr"]*(a or p*.01); tp1=p+XRP_PARAMS["tp_atr"]*(a or p*.01); tp2=p+3.5*(a or p*.01); direction=1
-            score=43 if signal=="WATCH-LONG" else 75 if signal=="LONG" else 0
-            if kill: score=0; signal="NO-TRADE"; direction=0
+            xrp = evaluate_xrp_signal(c1, e20, e20_4, e50_4, r, a, resistance, XRP_PARAMS)
+            signal=xrp["signal"]; direction=xrp["direction"]
+            entry=xrp["entry"]; sl=xrp["stop"]; tp1=xrp["target1"]; tp2=xrp["target2"]
+            score=xrp["score"]
             score_label="A" if score>=75 else "B" if score>=65 else "C" if score>=50 else "NO-TRADE"
-            score_breakdown={"model":"V27.2","kill_switch":not kill,"rsi":round(r,1) if r else None}
+            score_breakdown={"model":"V27.2","kill_switch":not xrp["kill"],"rsi":round(r,1) if r is not None else None}
         elif s=="ETHUSDT":
             # ETH has not passed independent validation; deliberately suppress false positives.
             score=0; score_label="NO-PRODUCTION"
