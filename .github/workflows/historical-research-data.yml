@@ -27,8 +27,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      START_DATE: ${{ inputs.start_date || '2026-04-10' }}
-      END_DATE: ${{ inputs.end_date || '2026-10-01' }}
+      START_DATE: ${{ github.event.inputs.start_date || '2026-04-10' }}
+      END_DATE: ${{ github.event.inputs.end_date || '2026-10-01' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
