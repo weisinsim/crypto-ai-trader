@@ -296,7 +296,15 @@ def summarize_walk_forward_cost_stress(walk_results: list[dict]) -> dict:
         ]
         per_scenario[name] = {
             "folds_reported": len(rows),
-            "folds_completed": sum(row.get("status") == "COMPLETED" for row in rows),
+            "folds_completed": sum(
+                isinstance(fold, dict)
+                and fold.get("status") == "COMPLETED"
+                and isinstance(fold.get("cost_stress"), dict)
+                and isinstance(fold["cost_stress"].get("scenarios"), dict)
+                and isinstance(fold["cost_stress"]["scenarios"].get(name), dict)
+                and fold["cost_stress"]["scenarios"][name].get("status") == "COMPLETED"
+                for fold in walk_results
+            ),
             "folds_positive_return": sum(
                 _finite_metric(row.get("net_return_pct"))
                 and row["net_return_pct"] > 0
