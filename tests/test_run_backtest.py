@@ -836,6 +836,31 @@ class HoldoutBoundaryTradeDiagnosticsTests(unittest.TestCase):
         )
 
 
+
+class UncensoredHoldoutMetricsTests(unittest.TestCase):
+    def test_excludes_endpoint_forced_exit_from_diagnostic_metrics(self):
+        trades = [
+            {"reason": "TARGET", "pnl_equity": 0.12},
+            {"reason": "STOP", "pnl_equity": -0.05},
+            {"reason": "END_OF_DATA", "pnl_equity": 0.40},
+        ]
+        summary = summarize_uncensored_holdout_trade_metrics(trades)
+        self.assertEqual(summary["trade_count"], 2)
+        self.assertEqual(summary["excluded_end_of_data_exits"], 1)
+        self.assertAlmostEqual(summary["net_pnl_equity"], 0.07)
+        self.assertEqual(summary["win_rate_pct"], 50.0)
+        self.assertEqual(summary["profit_factor"], 2.4)
+        self.assertEqual(summary["interpretation"], "diagnostic_only_excludes_endpoint_forced_exits")
+
+    def test_empty_or_only_censored_trades_return_no_win_rate(self):
+        summary = summarize_uncensored_holdout_trade_metrics([
+            {"reason": "END_OF_DATA", "pnl_equity": -0.01},
+        ])
+        self.assertEqual(summary["trade_count"], 0)
+        self.assertIsNone(summary["win_rate_pct"])
+        self.assertIsNone(summary["profit_factor"])
+
+
 if __name__ == "__main__":
     unittest.main()
 
