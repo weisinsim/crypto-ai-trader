@@ -7,7 +7,7 @@ import zipfile
 import unittest
 from pathlib import Path
 
-from research.binance_archive_data import _read_zip, _validated_candle, _deduplicate_candles, build_output_manifest, download_archive
+from research.binance_archive_data import _read_zip, _validated_candle, _deduplicate_candles, _strict_timestamp, build_output_manifest, download_archive
 
 
 def make_zip(rows):
@@ -54,6 +54,25 @@ class BinanceArchiveDataTests(unittest.TestCase):
         self.assertEqual(manifest["request_evidence"]["request_count"], 1)
         self.assertEqual(manifest["request_evidence"]["requests"][0]["status_code"], 200)
         self.assertIn("do not independently prove upstream authenticity", manifest["request_evidence"]["note"])
+
+    def test_strict_timestamp_accepts_integer_string(self):
+        self.assertEqual(_strict_timestamp(" 123 ", field="test timestamp"), 123)
+
+    def test_strict_timestamp_rejects_fractional_values(self):
+        for value in (1.5, "1.5"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "invalid test timestamp"):
+                    _strict_timestamp(value, field="test timestamp")
+
+    def test_strict_timestamp_rejects_boolean_and_negative_values(self):
+        for value in (True, -1, "-1"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "invalid test timestamp|negative timestamp"):
+                    _strict_timestamp(value, field="test timestamp")
+
+    def test_strict_timestamp_rejects_non_finite_float(self):
+        with self.assertRaisesRegex(ValueError, "finite integer"):
+            _strict_timestamp(float("nan"), field="test timestamp")
 
     def test_rejects_non_finite_candle_prices(self):
         with self.assertRaisesRegex(ValueError, "non-finite"):

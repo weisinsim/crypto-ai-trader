@@ -18,6 +18,28 @@ FIELDS = ("t", "o", "h", "l", "c", "v", "q")
 BASE = "https://data.binance.vision/data/futures/um"
 
 
+def _strict_timestamp(value, *, field: str) -> int:
+    """Parse an integer millisecond timestamp without silently truncating data."""
+    import math
+    import numbers
+
+    if isinstance(value, bool):
+        raise ValueError(f"invalid {field}: boolean timestamp")
+    if isinstance(value, numbers.Integral):
+        timestamp = int(value)
+    elif isinstance(value, float):
+        if not math.isfinite(value) or not value.is_integer():
+            raise ValueError(f"invalid {field}: timestamp must be a finite integer")
+        timestamp = int(value)
+    elif isinstance(value, str) and value.strip().isdigit():
+        timestamp = int(value.strip())
+    else:
+        raise ValueError(f"invalid {field}: timestamp must be an integer millisecond value")
+    if timestamp < 0:
+        raise ValueError(f"invalid {field}: negative timestamp")
+    return timestamp
+
+
 def _validated_candle(raw: list, timestamp: int) -> dict:
     """Parse and validate OHLCV values before accepting archive/API data."""
     import math
@@ -146,10 +168,15 @@ def download_archive(
                 response = client.get(api_url, params=params)
                 record_request("binance_usdm_rest_kline_fallback", api_url, response, params=params)
                 response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, list):
+                    raise ValueError("invalid REST fallback payload: expected a list of kline rows")
                 fallback_seen: set[int] = set()
-                for raw in response.json():
-                    ts = int(raw[0])
-                    close_ts = int(raw[6])
+                for index, raw in enumerate(payload):
+                    if not isinstance(raw, (list, tuple)) or len(raw) < 8:
+                        raise ValueError(f"invalid REST fallback kline row at index {index}: expected at least 8 fields")
+                    ts = _strict_timestamp(raw[0], field=f"REST fallback open timestamp at row {index}")
+                    close_ts = _strict_timestamp(raw[6], field=f"REST fallback close timestamp at row {index}")
                     if ts not in batch:
                         continue
                     if ts in fallback_seen:
