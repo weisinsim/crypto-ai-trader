@@ -185,9 +185,17 @@ def replay(symbol, one, four, *, include_states=False):
                     else: reason="WATCH_SCORE_BELOW_75"
                 elif reason=="NO-TRADE":
                     reason="WATCH_LONG" if direction==1 else "WATCH_SHORT"
-        status = side if side else ("WATCH" if reason.startswith("WATCH") else "NO-TRADE")
+        if side:
+            signal_state = side
+        elif reason == "WATCH_LONG" or (reason == "WATCH_SCORE_BELOW_75" and direction == 1):
+            signal_state = "WATCH-LONG"
+        elif reason == "WATCH_SHORT" or (reason == "WATCH_SCORE_BELOW_75" and direction == -1):
+            signal_state = "WATCH-SHORT"
+        else:
+            signal_state = "NO-TRADE"
+        status = side if side else ("WATCH" if signal_state.startswith("WATCH-") else "NO-TRADE")
         if side or include_states:
-            output.append({"timestamp":one[i]["timestamp"],"status":status,"side":side,
+            output.append({"timestamp":one[i]["timestamp"],"status":status,"signal":signal_state,"side":side,
                            "entry":entry,"atr":a,"stop":sl,"target":target,
                            "target2":(p+direction*(tm*1.5)*a) if symbol!="XRPUSDT" and direction else (p+direction*3.5*a if symbol=="XRPUSDT" and direction else None),
                            "score":score,"model":symbol,"model_version":"app.py-replay-v2",
@@ -209,7 +217,7 @@ def main():
     for s in a.symbols:
         one=read_rows(data/f"{s}_1h.csv"); four=read_rows(data/f"{s}_4h.csv")
         trades=replay(s,one,four)
-        fields=["timestamp","status","side","entry","atr","stop","target","target2","score","model","model_version","rsi","ema20_1h","ema50_1h","ema20_4h","ema50_4h","adx","vwap","support","resistance","reason"]
+        fields=["timestamp","status","signal","side","entry","atr","stop","target","target2","score","model","model_version","rsi","ema20_1h","ema50_1h","ema20_4h","ema50_4h","adx","vwap","support","resistance","reason"]
         if a.include_states:
             states=replay(s,one,four,include_states=True)
             with (out/f"{s}_states.csv").open("w",newline="",encoding="utf-8") as sf:
