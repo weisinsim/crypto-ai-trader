@@ -88,7 +88,7 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
         self.assertIn('return "WATCH-SHORT"', source)
         shared = (Path(__file__).resolve().parents[1] / "validation" / "xrp_model.py").read_text(encoding="utf-8")
         self.assertIn('score = 43 if signal == "WATCH-LONG"', shared)
-        self.assertIn('score = 75 if signal == "LONG"', shared)
+        self.assertIn('score = 43 if signal == "WATCH-LONG" else 75 if signal == "LONG" else 0', shared)
 
     def test_eth_is_suppressed(self):
         one = []
