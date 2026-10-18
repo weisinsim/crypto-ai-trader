@@ -202,8 +202,13 @@ def replay(symbol, one, four, *, include_states=False):
     ema20_4_all=ema_series(c4_all,20); ema50_4_all=ema_series(c4_all,50)
     four_index=0
     for i in range(199,len(one)):
-        now=one[i]["ts"]
-        while four_index<len(four) and four[four_index]["ts"]<=now: four_index+=1
+        # CSV timestamps are candle OPEN times. The hourly decision occurs at
+        # the end of that 1h candle, and a 4h candle is usable only after its
+        # own close. Comparing open timestamps directly leaks an unfinished
+        # 4h candle into the replay.
+        decision_close_ms=one[i]["ts"] + 3_600_000
+        while four_index<len(four) and four[four_index]["ts"] + 14_400_000 <= decision_close_ms:
+            four_index+=1
         if four_index<50: continue
         p=c_all[i]; e20=ema20_all[i]; e50=ema50_all[i]; e200=ema200_all[i]
         e20_4=ema20_4_all[four_index-1]; e50_4=ema50_4_all[four_index-1]
