@@ -14,6 +14,7 @@ class HistoricalWorkflowInputGuardTests(unittest.TestCase):
     def test_manual_dates_are_mapped_to_job_environment(self):
         self.assertIn("START_DATE: ${{ github.event.inputs.start_date || '2026-04-10' }}", self.text)
         self.assertIn("END_DATE: ${{ github.event.inputs.end_date || '2026-10-01' }}", self.text)
+        self.assertIn("PYTHONPATH: ${{ github.workspace }}", self.text)
 
     def test_validation_precedes_every_download(self):
         validation = self.text.index("- name: Validate requested UTC date window")
