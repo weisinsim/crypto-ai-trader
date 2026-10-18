@@ -19,6 +19,17 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
             self.assertTrue(path.read_text(encoding="utf-8").endswith("\n"))
             self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["report.json"])
 
+    def test_atomic_json_writer_preserves_existing_report_on_write_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "report.json"
+            original = '{"old": true}\\n'
+            path.write_text(original, encoding="utf-8")
+            with patch("research.run_backtest.json.dump", side_effect=OSError("simulated disk error")):
+                with self.assertRaisesRegex(OSError, "simulated disk error"):
+                    write_json_atomic(path, {"new": True})
+            self.assertEqual(path.read_text(encoding="utf-8"), original)
+            self.assertEqual([p.name for p in Path(tmp).iterdir()], ["report.json"])
+
     def test_atomic_json_writer_creates_parent_directories(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "nested" / "report.json"
