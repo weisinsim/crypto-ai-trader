@@ -154,6 +154,25 @@ class FundingDataTests(unittest.TestCase):
         self.assertEqual(rows[0]["mark_price_source"], "binance_fapi_funding_rate_mark_price")
         self.assertEqual(rows[0]["venue"], "binance")
 
+    def test_save_funding_csv_preserves_previous_file_on_write_failure(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "funding.csv"
+            original = "previous,funding\\n"
+            path.write_text(original, encoding="utf-8")
+            rows = [{
+                "funding_time": 100, "funding_rate": 0.0001, "mark_price": 100.0,
+                "symbol": "BTCUSDT", "mark_price_source": "mark_kline_open", "venue": "binance",
+            }]
+            with patch("research.funding_data.csv.DictWriter.writerows", side_effect=OSError("simulated disk error")):
+                with self.assertRaisesRegex(OSError, "simulated disk error"):
+                    save_funding_csv(rows, path)
+            self.assertEqual(path.read_text(encoding="utf-8"), original)
+            self.assertEqual([item.name for item in Path(directory).iterdir()], ["funding.csv"])
+
     def test_save_funding_csv_preserves_venue_metadata(self):
         import csv
         import tempfile
