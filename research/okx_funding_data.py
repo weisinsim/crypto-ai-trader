@@ -33,14 +33,36 @@ def download_okx_funding(symbol: str, start_ms: int, end_ms: int, *,
             page = payload.get("data", [])
             if not page:
                 break
-            for item in page:
-                ts = int(item["fundingTime"])
-                rate = float(item.get("realizedRate", item["fundingRate"]))
+            if not isinstance(page, list):
+                raise ValueError("OKX funding response data must be a list")
+            parsed_page = []
+            for index, item in enumerate(page):
+                if not isinstance(item, dict):
+                    raise ValueError(f"OKX funding row {index} must be a mapping")
+                if "fundingTime" not in item:
+                    raise ValueError(f"OKX funding row {index} missing required field: fundingTime")
+                rate_key = "realizedRate" if "realizedRate" in item else "fundingRate"
+                if rate_key not in item:
+                    raise ValueError(f"OKX funding row {index} missing realizedRate/fundingRate")
+                raw_ts, raw_rate = item["fundingTime"], item[rate_key]
+                if isinstance(raw_ts, bool) or not (
+                    isinstance(raw_ts, int) or
+                    (isinstance(raw_ts, str) and raw_ts.strip().isdigit())
+                ):
+                    raise ValueError(f"invalid OKX funding timestamp in row {index}")
+                ts = int(raw_ts)
+                if isinstance(raw_rate, bool):
+                    raise ValueError(f"invalid OKX funding rate at {ts}")
+                try:
+                    rate = float(raw_rate)
+                except (TypeError, ValueError, OverflowError) as exc:
+                    raise ValueError(f"invalid OKX funding rate at {ts}") from exc
                 if not isfinite(rate):
                     raise ValueError(f"invalid OKX funding rate at {ts}")
+                parsed_page.append(ts)
                 if start_ms <= ts < end_ms:
                     raw.append((ts, rate))
-            oldest = min(int(item["fundingTime"]) for item in page)
+            oldest = min(parsed_page)
             if oldest >= cursor:
                 raise RuntimeError("OKX funding pagination did not move backward")
             if oldest <= start_ms:
