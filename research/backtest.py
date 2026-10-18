@@ -160,7 +160,7 @@ def run_ema_cross_backtest(
             try:
                 rate = float(event["funding_rate"])
                 mark_price = float(event["mark_price"])
-            except (TypeError, ValueError) as exc:
+            except (TypeError, ValueError, OverflowError) as exc:
                 raise ValueError(f"funding event {index} has invalid numeric fields") from exc
             if isinstance(event["funding_rate"], bool) or isinstance(event["mark_price"], bool):
                 raise ValueError(f"funding event {index} has invalid numeric fields")
