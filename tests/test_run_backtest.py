@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from research.run_backtest import write_json_atomic, load_csv, load_funding_csv, main, max_drawdown_pct, summarize_funding_data_quality, summarize_holdout_trade_quality, summarize_holdout_boundary_trade_diagnostics, summarize_uncensored_holdout_trade_metrics, summarize_walk_forward_cost_stress
+from research.run_backtest import write_json_atomic, load_csv, load_funding_csv, main, max_drawdown_pct, summarize_funding_data_quality, summarize_holdout_trade_quality, summarize_holdout_boundary_trade_diagnostics, summarize_uncensored_holdout_trade_metrics, summarize_same_bar_exit_ambiguity, summarize_walk_forward_cost_stress
 
 
 class FundingDataQualitySummaryTests(unittest.TestCase):
@@ -859,6 +859,32 @@ class UncensoredHoldoutMetricsTests(unittest.TestCase):
         self.assertEqual(summary["trade_count"], 0)
         self.assertIsNone(summary["win_rate_pct"])
         self.assertIsNone(summary["profit_factor"])
+
+
+
+
+class SameBarExitAmbiguityTests(unittest.TestCase):
+    def test_reports_ambiguous_closed_trades_separately(self):
+        summary = summarize_same_bar_exit_ambiguity([
+            {"reason": "STOP", "same_bar_stop_target_ambiguous": True, "pnl_equity": -0.04},
+            {"reason": "TARGET", "same_bar_stop_target_ambiguous": False, "pnl_equity": 0.08},
+            {"reason": "END_OF_DATA", "same_bar_stop_target_ambiguous": True, "pnl_equity": 0.02},
+        ])
+        self.assertEqual(summary["closed_trade_count"], 2)
+        self.assertEqual(summary["ambiguous_trade_count"], 1)
+        self.assertEqual(summary["ambiguous_trade_pct"], 50.0)
+        self.assertEqual(summary["ambiguous_net_pnl_equity"], -0.04)
+        self.assertEqual(summary["interpretation"],
+                         "diagnostic_only_stop_first_assumption_used_for_ambiguous_candles")
+
+    def test_empty_closed_trade_sample_has_no_percentage(self):
+        summary = summarize_same_bar_exit_ambiguity([
+            {"reason": "END_OF_DATA", "same_bar_stop_target_ambiguous": False, "pnl_equity": 0.01},
+        ])
+        self.assertEqual(summary["closed_trade_count"], 0)
+        self.assertEqual(summary["ambiguous_trade_count"], 0)
+        self.assertIsNone(summary["ambiguous_trade_pct"])
+        self.assertEqual(summary["ambiguous_net_pnl_equity"], 0.0)
 
 
 if __name__ == "__main__":
