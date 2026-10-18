@@ -29,6 +29,7 @@ jobs:
     env:
       START_DATE: ${{ github.event.inputs.start_date || '2026-04-10' }}
       END_DATE: ${{ github.event.inputs.end_date || '2026-10-01' }}
+      PYTHONPATH: ${{ github.workspace }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
