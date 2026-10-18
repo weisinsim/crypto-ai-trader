@@ -7,7 +7,7 @@ import math
 from collections import Counter
 from pathlib import Path
 
-from research.run_backtest import load_csv, load_funding_csv
+from research.run_backtest import load_csv, load_funding_csv, source_file_manifest
 
 
 def audit_funding_against_candles(
@@ -202,6 +202,13 @@ def main(argv: list[str] | None = None) -> int:
     candles = load_csv(args.candles, interval_ms)
     funding = load_funding_csv(args.funding_csv)
     report = audit_funding_against_candles(candles, funding, args.symbol, args.max_gap_hours)
+    # Hash the exact input bytes for reproducibility; a digest is not source authentication.
+    report["input_manifest"] = {
+        "candles": source_file_manifest(args.candles),
+        "funding": source_file_manifest(args.funding_csv),
+        "hash_algorithm": "sha256",
+        "source_authenticity_verified": False,
+    }
     path = Path(args.output)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
