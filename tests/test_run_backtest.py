@@ -753,3 +753,35 @@ class CandleCsvSchemaValidationTests(unittest.TestCase):
             self._write_csv(path, ["t", "o", "h", "l", "c"], [])
             with self.assertRaisesRegex(ValueError, "no data rows"):
                 load_csv(str(path), 3_600_000)
+
+
+class FundingCsvMalformedRowTests(unittest.TestCase):
+    def test_invalid_numeric_values_have_line_numbered_errors(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "funding.csv"
+            for row, expected in [
+                ({"symbol": "BTCUSDT", "funding_time": "bad", "funding_rate": "0.001", "mark_price": "100"}, "invalid numeric"),
+                ({"symbol": "BTCUSDT", "funding_time": "0", "funding_rate": "NaN", "mark_price": "100"}, "non-finite"),
+                ({"symbol": "BTCUSDT", "funding_time": "0", "funding_rate": "0.001", "mark_price": "0"}, "invalid mark prices"),
+            ]:
+                with path.open("w", newline="", encoding="utf-8") as handle:
+                    writer = csv.DictWriter(handle, fieldnames=["symbol", "funding_time", "funding_rate", "mark_price"])
+                    writer.writeheader()
+                    writer.writerow(row)
+                with self.subTest(expected=expected):
+                    if expected == "non-finite":
+                        with self.assertRaisesRegex(ValueError, "non-finite rates"):
+                            load_funding_csv(str(path))
+                    elif expected == "invalid mark prices":
+                        with self.assertRaisesRegex(ValueError, expected):
+                            load_funding_csv(str(path))
+                    else:
+                        with self.assertRaisesRegex(ValueError, "line 2"):
+                            load_funding_csv(str(path))
+
+    def test_short_row_is_rejected_with_line_number(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "funding.csv"
+            path.write_text("symbol,funding_time,funding_rate,mark_price\nBTCUSDT,0,0.001\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "malformed row at line 2"):
+                load_funding_csv(str(path))
