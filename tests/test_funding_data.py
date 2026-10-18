@@ -1,6 +1,6 @@
 import unittest
 
-from research.funding_data import _find_prior_mark_close, _parse_archive_timestamp, canonical_settlement_timestamp, download_archive_funding, download_funding_rates, parse_funding_rows, save_funding_csv
+from research.funding_data import _find_prior_mark_close, _parse_archive_timestamp, _parse_finite_number, canonical_settlement_timestamp, download_archive_funding, download_funding_rates, parse_funding_rows, save_funding_csv
 
 
 def record(ts, rate="0.0001"):
@@ -8,6 +8,16 @@ def record(ts, rate="0.0001"):
 
 
 class FundingDataTests(unittest.TestCase):
+    def test_archive_numeric_parser_rejects_non_finite_values_and_invalid_prices(self):
+        for value in ("nan", "inf", "-inf", float("nan"), float("inf"), True):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "finite"):
+                _parse_finite_number(value, "test value")
+        for value in ("0", "-1", "nan", "inf"):
+            with self.subTest(price=value), self.assertRaisesRegex(ValueError, "finite and positive"):
+                _parse_finite_number(value, "test price", positive=True)
+        self.assertEqual(_parse_finite_number("-0.001", "funding rate"), -0.001)
+        self.assertEqual(_parse_finite_number("100.5", "mark price", positive=True), 100.5)
+
     def test_archive_timestamp_parser_rejects_fractional_and_malformed_values(self):
         for value in (100.5, "100.5", "1e3", "nan", "inf", True, False, -1, "-1"):
             with self.subTest(value=value):
