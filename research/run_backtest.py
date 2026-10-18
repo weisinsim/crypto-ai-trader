@@ -149,6 +149,12 @@ def load_funding_csv(path: str) -> list[dict]:
     symbols = {row["symbol"] for row in rows}
     if not rows or "" in symbols or len(symbols) != 1:
         raise ValueError("funding CSV must contain rows for exactly one non-empty symbol")
+    # Missing venue labels remain auditable warnings in the quality report, but
+    # rows that explicitly identify multiple venues must never be combined into
+    # one backtest dataset.
+    venues = {row["venue"] for row in rows if row["venue"]}
+    if len(venues) > 1:
+        raise ValueError("funding CSV must not mix records from different venues")
     if any(row["funding_time"] < 0 for row in rows):
         raise ValueError("funding CSV contains negative settlement timestamps")
     if any(not math.isfinite(row["funding_rate"]) or
