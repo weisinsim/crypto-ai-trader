@@ -130,6 +130,26 @@ class FundingDataTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     download_funding_rates("BTCUSDT", start, end, fetch_page=fetch, limit=limit)
 
+    def test_archive_downloader_rejects_invalid_symbol_and_timestamp_range_before_network(self):
+        from unittest.mock import patch
+
+        invalid_calls = (
+            (None, 0, 100),
+            ("", 0, 100),
+            ("BTC/USDT", 0, 100),
+            ("BTCUSDT", True, 100),
+            ("BTCUSDT", 0, False),
+            ("BTCUSDT", 1.5, 100),
+            ("BTCUSDT", 0, 100.5),
+            ("BTCUSDT", -1, 100),
+            ("BTCUSDT", 100, 100),
+        )
+        with patch("research.funding_data.httpx.Client") as client:
+            for symbol, start, end in invalid_calls:
+                with self.subTest(symbol=symbol, start=start, end=end):
+                    with self.assertRaises(ValueError):
+                        download_archive_funding(symbol, start, end)
+            client.assert_not_called()
     def test_archive_fallback_uses_official_rest_when_month_and_daily_archives_missing(self):
         from datetime import datetime, timezone
         from unittest.mock import Mock, patch
