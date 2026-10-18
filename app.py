@@ -1,7 +1,7 @@
 import asyncio
 import json
 import time
-from validation.candle_closure import filter_closed_candles
+from validation.candle_closure import filter_closed_candles, upsert_candle
 from validation.dashboard_health import build_health_payload
 from validation.signal_confirmation import invalidate_stale_confirmation
 from pathlib import Path
@@ -531,12 +531,13 @@ async def handle_bybit_ws(sock):
                         item={"t":int(k["start"]),"o":float(k["open"]),"h":float(k["high"]),"l":float(k["low"]),"c":float(k["close"]),"v":float(k["volume"]),"q":float(k["turnover"])}
                         tf="1h" if interval=="60" else "4h"
                         arr=series[s][tf]
-                        is_new_bar = bool(arr and arr[-1]["t"] != item["t"])
+                        is_new_bar = bool(arr and item["t"] > arr[-1]["t"])
+                        if not upsert_candle(arr, item):
+                            log_error("BYBIT WS STALE CANDLE", f"{s} {tf} timestamp {item['t']} older than {arr[-1]['t']}")
+                            continue
                         if interval=="60" and is_new_bar:
                             await analyze_symbol(s)
-                            record_confirmed_signal(s, int(arr[-1]["t"]) + 3600000)
-                        if arr and arr[-1]["t"]==item["t"]: arr[-1]=item
-                        else: arr.append(item); del arr[:-210]
+                            record_confirmed_signal(s, int(arr[-2]["t"]) + 3600000 if len(arr) >= 2 else None)
                         cache[s].update(price=item["c"], ts=time.time(), source="Bybit Live")
                         if time.time()-last_analysis[s] >= 3:
                             last_analysis[s]=time.time()
@@ -573,12 +574,13 @@ async def ws_loop():
                                 if interval in ("1h","4h"):
                                     item={"t":int(k["t"]),"o":float(k["o"]),"h":float(k["h"]),"l":float(k["l"]),"c":float(k["c"]),"v":float(k["v"]),"q":float(k["q"])}
                                     arr=series[s][interval]
-                                    is_new_bar = bool(arr and arr[-1]["t"] != item["t"])
+                                    is_new_bar = bool(arr and item["t"] > arr[-1]["t"])
+                                    if not upsert_candle(arr, item):
+                                        log_error("BINANCE WS STALE CANDLE", f"{s} {interval} timestamp {item['t']} older than {arr[-1]['t']}")
+                                        continue
                                     if interval=="1h" and is_new_bar:
                                         await analyze_symbol(s)
-                                        record_confirmed_signal(s, int(arr[-1]["t"]) + 3600000)
-                                    if arr and arr[-1]["t"]==item["t"]: arr[-1]=item
-                                    else: arr.append(item); del arr[:-210]
+                                        record_confirmed_signal(s, int(arr[-2]["t"]) + 3600000 if len(arr) >= 2 else None)
                                     cache[s].update(price=float(k["c"]), ts=time.time(), source="Binance Futures")
                                     if time.time()-last_analysis[s] >= 3:
                                         last_analysis[s]=time.time()
