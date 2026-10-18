@@ -154,10 +154,16 @@ def load_funding_csv(path: str) -> list[dict]:
     if any(not math.isfinite(row["funding_rate"]) or
            not math.isfinite(row["mark_price"]) or row["mark_price"] <= 0 for row in rows):
         raise ValueError("funding CSV contains non-finite rates or invalid mark prices")
-    rows.sort(key=lambda row: row["funding_time"])
+    # Preserve source order: silently sorting malformed input can hide a broken
+    # downloader/pagination sequence and makes the original dataset harder to audit.
+    # Validate both raw exchange timestamps and normalized settlement timestamps.
     for left, right in zip(rows, rows[1:]):
-        if left["funding_time"] == right["funding_time"]:
-            raise ValueError(f"duplicate funding timestamp: {left['funding_time']}")
+        if right["funding_time_raw"] <= left["funding_time_raw"]:
+            raise ValueError("funding CSV raw timestamps must be strictly increasing in file order")
+        if right["funding_time"] <= left["funding_time"]:
+            if right["funding_time"] == left["funding_time"]:
+                raise ValueError(f"duplicate funding timestamp after normalization: {right['funding_time']}")
+            raise ValueError("normalized funding timestamps must be strictly increasing in file order")
     return rows
 
 
