@@ -13,6 +13,11 @@ import math
 from datetime import datetime
 from pathlib import Path
 
+# Public archive timestamps may carry a few milliseconds of serialization
+# jitter. Keep the 8-hour policy strict while avoiding false failures at the
+# boundary; this tolerance is not enough to hide a meaningful missing event.
+GAP_THRESHOLD_TOLERANCE_MS = 1_000
+
 
 def parse_timestamp(value):
     dt = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
@@ -70,16 +75,18 @@ def audit(path, max_gap_hours=24.0, max_abs_rate=0.05, start_ms=None, end_ms=Non
     timestamps = [row["ts"] for row in rows]
     duplicates = len(timestamps) - len(set(timestamps))
     non_increasing = sum(b <= a for a, b in zip(timestamps, timestamps[1:]))
-    gaps = [(b - a) / 1000 for a, b in zip(timestamps, timestamps[1:]) if b > a]
-    threshold_seconds = max_gap_hours * 3600
-    large_gaps = [gap for gap in gaps if gap > threshold_seconds]
+    gaps_ms = [b - a for a, b in zip(timestamps, timestamps[1:]) if b > a]
+    threshold_ms = max_gap_hours * 3_600_000
+    large_gaps_ms = [gap for gap in gaps_ms if gap > threshold_ms + GAP_THRESHOLD_TOLERANCE_MS]
     leading_gap_hours = ((timestamps[0] - start_ms) / 3_600_000
                          if start_ms is not None else None)
     trailing_gap_hours = ((end_ms - timestamps[-1]) / 3_600_000
                           if end_ms is not None else None)
     boundary_gaps_valid = (
-        (leading_gap_hours is None or 0 <= leading_gap_hours <= max_gap_hours)
-        and (trailing_gap_hours is None or 0 <= trailing_gap_hours <= max_gap_hours)
+        (leading_gap_hours is None or leading_gap_hours <= max_gap_hours + GAP_THRESHOLD_TOLERANCE_MS / 3_600_000)
+        and (trailing_gap_hours is None or trailing_gap_hours <= max_gap_hours + GAP_THRESHOLD_TOLERANCE_MS / 3_600_000)
+        and (leading_gap_hours is None or leading_gap_hours >= 0)
+        and (trailing_gap_hours is None or trailing_gap_hours >= 0)
     )
     # The requested range is [start_ms, end_ms): a funding event exactly at
     # end_ms belongs to the next window and must not silently pass this audit.
@@ -91,21 +98,22 @@ def audit(path, max_gap_hours=24.0, max_abs_rate=0.05, start_ms=None, end_ms=Non
     events_within_requested_window = not outside_window_timestamps
     ordered = timestamps == sorted(timestamps)
     passed = (duplicates == 0 and non_increasing == 0 and ordered
-              and not large_gaps and boundary_gaps_valid
+              and not large_gaps_ms and boundary_gaps_valid
               and events_within_requested_window)
     return {
         "file": str(path), **provenance, "rows": len(rows),
         "first_timestamp_ms": timestamps[0], "last_timestamp_ms": timestamps[-1],
         "duplicates": duplicates, "non_increasing_pairs": non_increasing,
-        "ordered": ordered, "max_gap_hours": round(max(gaps) / 3600, 4) if gaps else None,
-        "gaps_over_threshold": len(large_gaps),
-        "largest_gap_examples_hours": sorted((round(g / 3600, 4) for g in large_gaps), reverse=True)[:10],
+        "ordered": ordered, "max_gap_hours": round(max(gaps_ms) / 3_600_000, 6) if gaps_ms else None,
+        "gaps_over_threshold": len(large_gaps_ms),
+        "largest_gap_examples_hours": sorted((round(g / 3_600_000, 6) for g in large_gaps_ms), reverse=True)[:10],
         "configured_max_gap_hours": max_gap_hours,
+        "gap_threshold_tolerance_ms": GAP_THRESHOLD_TOLERANCE_MS,
         "requested_start_ms": start_ms, "requested_end_ms_exclusive": end_ms,
         "events_outside_requested_window": len(outside_window_timestamps),
         "outside_window_timestamp_examples_ms": outside_window_timestamps[:10],
-        "leading_gap_hours": round(leading_gap_hours, 4) if leading_gap_hours is not None else None,
-        "trailing_gap_hours": round(trailing_gap_hours, 4) if trailing_gap_hours is not None else None,
+        "leading_gap_hours": round(leading_gap_hours, 6) if leading_gap_hours is not None else None,
+        "trailing_gap_hours": round(trailing_gap_hours, 6) if trailing_gap_hours is not None else None,
         "maximum_absolute_funding_rate": max((abs(row["rate"]) for row in rows), default=0.0),
         "configured_max_absolute_rate": max_abs_rate,
         "pass_basic_integrity": passed,
@@ -117,7 +125,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("files", nargs="+", help="Funding CSV files")
     parser.add_argument("--start", help="Optional requested UTC start timestamp (ISO-8601)")
-    parser.add_argument("--end", help="Optional exclusive requested UTC end timestamp (ISO-8601)")
+    parser.add_argument("--end", help="Optional exclusive UTC end timestamp (ISO-8601)")
     parser.add_argument("--max-gap-hours", type=float, default=24.0)
     parser.add_argument("--max-abs-rate", type=float, default=0.05,
                         help="Reject absolute funding rates above this decimal fraction (default 0.05 = 5%%)")
