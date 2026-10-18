@@ -8,6 +8,7 @@ It is a signal calculation helper only; it never places orders.
 def evaluate_xrp_signal(
     closes_1h,
     e20_1h,
+    e50_1h,
     e20_4h,
     e50_4h,
     rsi_1h,
