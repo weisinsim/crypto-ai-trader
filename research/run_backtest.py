@@ -84,14 +84,30 @@ def load_funding_csv(path: str) -> list[dict]:
         missing_columns = sorted(required_columns - headers)
         if missing_columns:
             raise ValueError(f"funding CSV missing required columns: {missing_columns}")
-        rows = [{"funding_time_raw": int(row["funding_time"]),
-                 "funding_time": normalize_settlement_timestamp(int(row["funding_time"])),
-                 "funding_rate": float(row["funding_rate"]),
-                 "mark_price": float(row["mark_price"]),
-                 "symbol": row.get("symbol", "").strip().upper(),
-                 "mark_price_source": row.get("mark_price_source", "").strip(),
-                 "venue": row.get("venue", "").strip().lower()}
-                for row in reader]
+        rows = []
+        for line_number, row in enumerate(reader, start=2):
+            if not row or any(value is None for value in row.values()):
+                raise ValueError(f"funding CSV contains malformed row at line {line_number}")
+            try:
+                raw_timestamp = int(row["funding_time"])
+                funding_rate = float(row["funding_rate"])
+                mark_price = float(row["mark_price"])
+            except (OverflowError, TypeError, ValueError) as exc:
+                raise ValueError(f"funding CSV contains invalid numeric value at line {line_number}") from exc
+            symbol_value = row.get("symbol")
+            source_value = row.get("mark_price_source", "")
+            venue_value = row.get("venue", "")
+            if not isinstance(symbol_value, str) or not isinstance(source_value, str) or not isinstance(venue_value, str):
+                raise ValueError(f"funding CSV contains invalid text field at line {line_number}")
+            rows.append({
+                "funding_time_raw": raw_timestamp,
+                "funding_time": normalize_settlement_timestamp(raw_timestamp),
+                "funding_rate": funding_rate,
+                "mark_price": mark_price,
+                "symbol": symbol_value.strip().upper(),
+                "mark_price_source": source_value.strip(),
+                "venue": venue_value.strip().lower(),
+            })
     symbols = {row["symbol"] for row in rows}
     if not rows or "" in symbols or len(symbols) != 1:
         raise ValueError("funding CSV must contain rows for exactly one non-empty symbol")
