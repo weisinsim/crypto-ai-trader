@@ -317,6 +317,24 @@ def summarize_funding_data_quality(
     }
 
 
+def summarize_holdout_boundary_trade_diagnostics(trades, holdout_start_ts: int, holdout_end_ts: int) -> dict:
+    """Flag holdout trades force-closed at the data endpoint or missing an exit time."""
+    end_of_data_exits = sum(1 for trade in trades if trade.get("reason") == "END_OF_DATA")
+    missing_exit_time = sum(1 for trade in trades if trade.get("exit_time") is None)
+    return {
+        "holdout_start_ts": holdout_start_ts,
+        "holdout_end_ts": holdout_end_ts,
+        "entries_in_holdout": len(trades),
+        "end_of_data_exits": end_of_data_exits,
+        "missing_exit_time": missing_exit_time,
+        "interpretation": (
+            "review_required" if end_of_data_exits or missing_exit_time
+            else "all_holdout_trades_closed_by_stop_or_target_within_window"
+        ),
+        "note": "END_OF_DATA exits are force-closed at the final candle and should be reviewed as censored outcomes.",
+    }
+
+
 def summarize_holdout_trade_quality(trades: list[dict]) -> dict:
     """Summarize holdout trade outcomes by side, exit reason and holding duration.
 
@@ -773,6 +791,13 @@ def main() -> None:
     )
     holdout_trades = [t for t in holdout_result["trade_log"] if boundary_ts <= t["entry_time"] <= rows[-1]["t"]]
     holdout_curve = [p for p in holdout_result["equity_curve"] if boundary_ts <= p["t"] <= rows[-1]["t"]]
+    # The simulator force-closes any remaining position on the final candle.
+    # Therefore, END_OF_DATA exits are right-censored outcomes, not ordinary
+    # stop/target exits; keep them visible so holdout metrics are not over-read.
+    holdout_end_ts = rows[-1]["t"]
+    holdout_boundary_trade_diagnostics = summarize_holdout_boundary_trade_diagnostics(
+        holdout_trades, boundary_ts, holdout_end_ts
+    )
     # Convert fixed-notional trade PnL to the starting-equity basis used by the runner.
     holdout_pnls = [t["pnl_equity"] for t in holdout_trades]
     holdout_profit = sum(p for p in holdout_pnls if p > 0)
@@ -867,6 +892,7 @@ def main() -> None:
         "funding_boundary_policy_sensitivity": boundary_sensitivity,
         "holdout": {
             "bars": len(holdout), "trades": len(holdout_trades),
+            "boundary_trade_diagnostics": holdout_boundary_trade_diagnostics,
             "net_return_pct": round((holdout_result["equity_final"] - 1.0) * 100, 4),
             "max_drawdown_pct": max_drawdown_pct(holdout_curve),
             "equity_final": holdout_result["equity_final"],
