@@ -6,6 +6,7 @@ import csv
 import hashlib
 import json
 import math
+import re
 from pathlib import Path
 from statistics import mean
 
@@ -51,6 +52,8 @@ def load_csv(path: str, interval_ms: int) -> list[dict]:
         for line_number, row in enumerate(reader, start=2):
             if not row or any(value is None for value in row.values()):
                 raise ValueError(f"candle CSV contains malformed row at line {line_number}")
+            if not re.fullmatch(r"[0-9]+", row["t"]):
+                raise ValueError(f"candle CSV contains invalid timestamp at line {line_number}")
             try:
                 parsed = {
                     "t": int(row["t"]), "o": float(row["o"]), "h": float(row["h"]),
@@ -100,6 +103,8 @@ def load_funding_csv(path: str) -> list[dict]:
         for line_number, row in enumerate(reader, start=2):
             if not row or any(value is None for value in row.values()):
                 raise ValueError(f"funding CSV contains malformed row at line {line_number}")
+            if not re.fullmatch(r"[0-9]+", row["funding_time"]):
+                raise ValueError(f"funding CSV contains invalid timestamp at line {line_number}")
             try:
                 raw_timestamp = int(row["funding_time"])
                 funding_rate = float(row["funding_rate"])

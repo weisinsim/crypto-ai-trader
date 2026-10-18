@@ -14,8 +14,8 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             candles_path = Path(tmp) / "candles.csv"
             candles_bytes = (
-                "t,o,h,l,c,v,q\\n"
-                + "".join(f"{i * 3600000},100,101,99,100,1,100\\n" for i in range(180))
+                "t,o,h,l,c,v,q\n"
+                + "".join(f"{i * 3600000},100,101,99,100,1,100\n" for i in range(180))
             ).encode("utf-8")
             candles_path.write_bytes(candles_bytes)
             argv = [
@@ -31,8 +31,8 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             candles_path = Path(tmp) / "candles.csv"
             funding_path = Path(tmp) / "funding.csv"
-            candles_path.write_text("not loaded before path collision check\\n", encoding="utf-8")
-            funding_bytes = b"symbol,funding_time,funding_rate,mark_price\\nBTCUSDT,0,0.001,100\\n"
+            candles_path.write_text("not loaded before path collision check\n", encoding="utf-8")
+            funding_bytes = b"symbol,funding_time,funding_rate,mark_price\nBTCUSDT,0,0.001,100\n"
             funding_path.write_bytes(funding_bytes)
             argv = [
                 "run_backtest.py", "--csv", str(candles_path), "--funding-csv", str(funding_path),
@@ -42,6 +42,31 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "must not overwrite"):
                     main()
             self.assertEqual(funding_path.read_bytes(), funding_bytes)
+
+    def test_candle_csv_rejects_noncanonical_timestamp_tokens(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for token in (" 0", "0 ", "+0", "0.0", "-0"):
+                path = Path(tmp) / "candles.csv"
+                path.write_text(
+                    f"t,o,h,l,c\n{token},100,101,99,100\n",
+                    encoding="utf-8",
+                )
+                with self.subTest(token=token):
+                    with self.assertRaisesRegex(ValueError, "invalid timestamp"):
+                        load_csv(str(path), 3_600_000)
+
+    def test_funding_csv_rejects_noncanonical_timestamp_tokens(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for token in (" 0", "0 ", "+0", "0.0", "-0"):
+                path = Path(tmp) / "funding.csv"
+                path.write_text(
+                    "symbol,funding_time,funding_rate,mark_price\n"
+                    f"BTCUSDT,{token},0.001,100\n",
+                    encoding="utf-8",
+                )
+                with self.subTest(token=token):
+                    with self.assertRaisesRegex(ValueError, "invalid timestamp"):
+                        load_funding_csv(str(path))
 
     def test_reports_timestamp_alignment_without_claiming_completeness(self):
         candles = [{"t": 100}, {"t": 200}, {"t": 300}, {"t": 400}]
@@ -113,7 +138,7 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
     def test_funding_csv_loader_reports_missing_required_columns(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "funding.csv"
-            path.write_text("symbol,funding_time,funding_rate\\nBTCUSDT,0,0.001\\n", encoding="utf-8")
+            path.write_text("symbol,funding_time,funding_rate\nBTCUSDT,0,0.001\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "missing required columns.*mark_price"):
                 load_funding_csv(str(path))
 
