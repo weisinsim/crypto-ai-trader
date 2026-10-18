@@ -175,13 +175,13 @@ class FundingAuditTests(unittest.TestCase):
             funding_path = Path(tmp) / "funding.csv"
             output_path = Path(tmp) / "audit.json"
             candles_path.write_text(
-                "t,o,h,l,c,v,q\\n100,100,101,99,100,1,100\\n200,100,101,99,100,1,100\\n",
+                "t,o,h,l,c,v,q\\n0,100,101,99,100,1,100\\n3600000,100,101,99,100,1,100\\n",
                 encoding="utf-8",
             )
             funding_path.write_text(
                 "symbol,funding_time,funding_rate,mark_price,mark_price_source,venue\\n"
-                "BTCUSDT,100,0.001,100,reported,binance_usdm\\n"
-                "BTCUSDT,200,0.001,100,reported,binance_usdm\\n",
+                "BTCUSDT,0,0.001,100,reported,binance_usdm\\n"
+                "BTCUSDT,3600000,0.001,100,reported,binance_usdm\\n",
                 encoding="utf-8",
             )
             argv = [
