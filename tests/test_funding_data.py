@@ -14,6 +14,11 @@ class FundingDataTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "integer timestamp|cannot be negative"):
                     _parse_archive_timestamp(value)
 
+    def test_archive_timestamp_parser_rejects_unicode_digit_strings(self):
+        for value in ("١٧٠٠٠٠٠٠٠٠٠٠٠", "²"):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "integer timestamp"):
+                _parse_archive_timestamp(value)
+
     def test_archive_timestamp_parser_accepts_integer_timestamp_strings(self):
         self.assertEqual(_parse_archive_timestamp(" 1700000000000 "), 1700000000000)
         self.assertEqual(_parse_archive_timestamp(1700000000000), 1700000000000)
