@@ -21,6 +21,12 @@ def audit_funding_against_candles(
     symbol = symbol.strip().upper()
     if not funding_rows:
         raise ValueError("funding data is empty")
+    for index, row in enumerate(candle_rows):
+        if not isinstance(row, dict):
+            raise ValueError(f"candle row {index} must be a mapping")
+    for index, row in enumerate(funding_rows):
+        if not isinstance(row, dict):
+            raise ValueError(f"funding row {index} must be a mapping")
 
     def timestamp_ms(value, field: str) -> int:
         # Reject timestamps that would be silently truncated or treated as booleans.

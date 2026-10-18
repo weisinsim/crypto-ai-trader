@@ -46,6 +46,12 @@ class FundingAuditTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "normalized funding timestamp must be a non-negative integer"):
                     audit_funding_against_candles(self.candles, rows, "BTCUSDT")
 
+    def test_non_mapping_rows_fail_with_clear_errors(self):
+        with self.assertRaisesRegex(ValueError, "candle row 1 must be a mapping"):
+            audit_funding_against_candles([self.candles[0], None], self.funding, "BTCUSDT")
+        with self.assertRaisesRegex(ValueError, "funding row 1 must be a mapping"):
+            audit_funding_against_candles(self.candles, [self.funding[0], None], "BTCUSDT")
+
     def test_requested_symbol_must_be_nonempty_text(self):
         for value in (None, 123, "", "   "):
             with self.subTest(value=value):
