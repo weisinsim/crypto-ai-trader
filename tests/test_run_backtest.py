@@ -79,6 +79,28 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
             self.assertFalse(report["data_lineage"]["funding_pnl_authoritative"])
             self.assertEqual(len(report["data_lineage"]["funding_pnl_authority_blockers"]), 3)
 
+    def test_report_funding_gate_blocks_proxy_marks_even_when_timestamps_align(self):
+        candles = [{"t": i * 3_600_000, "o": 100, "h": 101, "l": 99, "c": 100, "v": 1, "q": 100} for i in range(1400)]
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path = Path(tmp) / "candles.csv"
+            funding_path = Path(tmp) / "funding.csv"
+            output_path = Path(tmp) / "report.json"
+            with csv_path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=["t", "o", "h", "l", "c", "v", "q"])
+                writer.writeheader()
+                writer.writerows(candles)
+            with funding_path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=["funding_time", "funding_rate", "mark_price", "mark_price_source", "venue"])
+                writer.writeheader()
+                writer.writerow({"funding_time": 0, "funding_rate": 0.0001, "mark_price": 100, "mark_price_source": "archive_prior_closed_mark_price_1h_proxy_NOT_SETTLEMENT_MARK", "venue": "binance_usdm"})
+            argv = ["run_backtest.py", "--csv", str(csv_path), "--funding-csv", str(funding_path), "--symbol", "BTCUSDT", "--interval", "1h", "--output", str(output_path)]
+            with patch.object(sys, "argv", argv):
+                main()
+            report = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertEqual(report["funding_interpretation_gate"], "FUNDING_DATA_REVIEW_REQUIRED")
+            self.assertTrue(report["funding_data"]["quality"]["proxy_mark_price_review_required"])
+            self.assertFalse(report["data_lineage"]["funding_pnl_authoritative"])
+
     def test_missing_funding_is_explicitly_unverified(self):
         summary = summarize_funding_data_quality(None, [{"t": 100}])
         self.assertFalse(summary["provided"])
