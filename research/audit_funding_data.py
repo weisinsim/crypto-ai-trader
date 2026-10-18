@@ -218,7 +218,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     output_path = Path(args.output).resolve()
     input_paths = (Path(args.candles).resolve(), Path(args.funding_csv).resolve())
-    if output_path in input_paths:
+    if output_path in input_paths or any(
+        output_path.exists() and input_path.exists() and os.path.samefile(output_path, input_path)
+        for input_path in input_paths
+    ):
         raise ValueError("output path must not overwrite either input CSV")
     interval_ms = {
         "1m": 60_000, "5m": 300_000, "15m": 900_000, "30m": 1_800_000,
