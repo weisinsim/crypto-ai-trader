@@ -76,6 +76,21 @@ class FundingDataTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid funding rate"):
             parse_funding_rows([record(100, "nan")], "BTCUSDT", 0, 200)
 
+    def test_rejects_boolean_funding_rate_and_mark_price(self):
+        for field, value in (("fundingRate", True), ("fundingRate", False),
+                             ("markPrice", True), ("markPrice", False)):
+            with self.subTest(field=field, value=value):
+                malformed = {**record(100), field: value}
+                with self.assertRaisesRegex(ValueError, "invalid funding rate or mark price"):
+                    parse_funding_rows([malformed], "BTCUSDT", 0, 200)
+
+    def test_rejects_non_numeric_funding_rate_and_mark_price(self):
+        for field, value in (("fundingRate", None), ("markPrice", object())):
+            with self.subTest(field=field, value=type(value).__name__):
+                malformed = {**record(100), field: value}
+                with self.assertRaisesRegex(ValueError, "invalid funding rate or mark price"):
+                    parse_funding_rows([malformed], "BTCUSDT", 0, 200)
+
     def test_rejects_invalid_symbol_and_pause(self):
         with self.assertRaisesRegex(ValueError, "symbol"):
             download_funding_rates("BTC/USDT", 0, 100, fetch_page=lambda _: [])
