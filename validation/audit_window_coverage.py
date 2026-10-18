@@ -2,6 +2,7 @@
 """Check candle files cover the requested UTC [start, end) window exactly."""
 import argparse
 import csv
+import hashlib
 import json
 from collections import Counter
 from datetime import datetime, timezone
@@ -20,15 +21,39 @@ def utc_ms(value):
     return int(dt.timestamp() * 1000)
 
 
+def file_provenance(path):
+    """Fingerprint exact input bytes so audit results can be reproduced."""
+    digest = hashlib.sha256()
+    size_bytes = 0
+    with open(path, "rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+            size_bytes += len(chunk)
+    return {"sha256": digest.hexdigest(), "size_bytes": size_bytes}
+
+
 def close_timestamps(path):
     with open(path, newline="", encoding="utf-8-sig") as stream:
         reader = csv.DictReader(stream)
         if not reader.fieldnames or "timestamp" not in reader.fieldnames:
             raise ValueError(f"Missing timestamp column: {path}")
-        return [utc_ms(row["timestamp"].replace("Z", "+00:00")) for row in reader]
+        timestamps = []
+        for line_number, row in enumerate(reader, start=2):
+            value = row.get("timestamp", "")
+            try:
+                dt = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+            except (ValueError, AttributeError) as exc:
+                raise ValueError(f"Invalid timestamp at line {line_number}: {value!r}") from exc
+            if dt.tzinfo is None or dt.utcoffset() is None:
+                raise ValueError(f"Timestamp must include timezone at line {line_number}: {value!r}")
+            timestamps.append(int(dt.timestamp() * 1000))
+        return timestamps
 
 
 def audit_file(path, interval, start_ms, end_ms):
+    if interval not in INTERVALS:
+        raise ValueError(f"Unsupported interval: {interval}")
+    provenance = file_provenance(path)
     step = INTERVALS[interval]
     actual = close_timestamps(path)
     expected = list(range(start_ms + step - 1, end_ms, step))
@@ -42,7 +67,8 @@ def audit_file(path, interval, start_ms, end_ms):
         1 for previous, current in zip(actual, actual[1:]) if current <= previous
     )
     return {
-        "file": str(path), "interval": interval,
+        "file": str(path), **provenance, "interval": interval,
+        "source_rows": len(actual),
         "expected_rows": len(expected), "actual_rows_in_window": len(actual_in_window),
         "first_actual_ms": actual[0] if actual else None, "last_actual_ms": actual[-1] if actual else None,
         "missing_expected_rows": len(missing), "unexpected_rows": len(unexpected),
