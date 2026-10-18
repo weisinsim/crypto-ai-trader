@@ -10,6 +10,13 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             ts_ms("2025-01-01T00:00:00")
 
+    def test_submillisecond_timestamp_rejected_instead_of_truncated(self):
+        with self.assertRaisesRegex(ValueError, "millisecond precision"):
+            ts_ms("2025-01-01T00:00:00.000001Z")
+
+    def test_millisecond_timestamp_precision_accepted(self):
+        self.assertEqual(ts_ms("2025-01-01T00:00:00.123Z") % 1000, 123)
+
     def test_invalid_ohlc_rejected(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "bad.csv"
