@@ -18,14 +18,19 @@ def build_manifest(rows: list[dict]) -> dict:
     symbols = [row.get("symbol", "").strip().upper() for row in rows]
     symbols_unique = len(symbols) == len(set(symbols))
     symbol_set_complete = len(rows) == len(EXPECTED_SYMBOLS) and set(symbols) == EXPECTED_SYMBOLS and symbols_unique
-    processing_statuses_complete = all(
-        row.get("candle_status") == "COMPLETE"
-        and row.get("funding_download_status") in {
-            "DOWNLOADED_NOT_RECONCILED",
-            "DOWNLOADED_PROXY_MARK_PRICE_NOT_RECONCILED",
-        }
-        and row.get("baseline_status") == "RESEARCH_ONLY"
-        for row in rows
+    processing_statuses_complete = (
+        len(rows) == len(EXPECTED_SYMBOLS)
+        and symbols_unique
+        and set(symbols) == EXPECTED_SYMBOLS
+        and all(
+            row.get("candle_status") == "COMPLETE"
+            and row.get("funding_download_status") in {
+                "DOWNLOADED_NOT_RECONCILED",
+                "DOWNLOADED_PROXY_MARK_PRICE_NOT_RECONCILED",
+            }
+            and row.get("baseline_status") == "RESEARCH_ONLY"
+            for row in rows
+        )
     )
     all_assets_processed = symbol_set_complete and processing_statuses_complete
     audit_statuses = [row.get("funding_audit_status", "UNKNOWN") for row in rows]
