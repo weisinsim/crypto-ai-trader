@@ -59,6 +59,15 @@ class IndicatorParityTests(unittest.TestCase):
         self.assert_close_or_both_none(replay_support, live_support)
         self.assert_close_or_both_none(replay_resistance, live_resistance)
 
+    def test_replay_vwap_uses_quote_volume_series(self):
+        replay_path = Path(__file__).resolve().parents[1] / "validation" / "replay_dashboard_signals.py"
+        tree = ast.parse(replay_path.read_text(encoding="utf-8"))
+        replay_fn = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "replay")
+        calls = [node for node in ast.walk(replay_fn) if isinstance(node, ast.Call)
+                 and isinstance(node.func, ast.Name) and node.func.id == "vwap"]
+        self.assertEqual(len(calls), 1)
+        self.assertEqual([arg.id for arg in calls[0].args if isinstance(arg, ast.Name)], ["hi", "lo", "c", "q"])
+
 
 if __name__ == "__main__":
     unittest.main()
