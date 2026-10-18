@@ -39,14 +39,34 @@ def download_bybit_funding(symbol: str, start_ms: int, end_ms: int, *,
             page = payload.get("result", {}).get("list", [])
             if not page:
                 break
-            for item in page:
-                ts = int(item["fundingRateTimestamp"])
-                rate = float(item["fundingRate"])
+            if not isinstance(page, list):
+                raise ValueError("Bybit funding response list must be a list")
+            parsed_page = []
+            for index, item in enumerate(page):
+                if not isinstance(item, dict):
+                    raise ValueError(f"Bybit funding row {index} must be a mapping")
+                missing = [key for key in ("fundingRateTimestamp", "fundingRate") if key not in item]
+                if missing:
+                    raise ValueError(f"Bybit funding row {index} missing required fields: {missing}")
+                raw_ts, raw_rate = item["fundingRateTimestamp"], item["fundingRate"]
+                if isinstance(raw_ts, bool) or not (
+                    isinstance(raw_ts, int) or
+                    (isinstance(raw_ts, str) and raw_ts.strip().isdigit())
+                ):
+                    raise ValueError(f"invalid Bybit funding timestamp in row {index}")
+                ts = int(raw_ts)
+                if isinstance(raw_rate, bool):
+                    raise ValueError(f"invalid Bybit funding rate at {ts}")
+                try:
+                    rate = float(raw_rate)
+                except (TypeError, ValueError, OverflowError) as exc:
+                    raise ValueError(f"invalid Bybit funding rate at {ts}") from exc
                 if not isfinite(rate):
                     raise ValueError(f"invalid Bybit funding rate at {ts}")
+                parsed_page.append(ts)
                 if start_ms <= ts < end_ms:
                     records.append((ts, rate))
-            oldest_ts = min(int(item["fundingRateTimestamp"]) for item in page)
+            oldest_ts = min(parsed_page)
             if len(page) < 200:
                 break
             next_end = oldest_ts - 1

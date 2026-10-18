@@ -94,3 +94,34 @@ def test_okx_funding_rejects_invalid_pause(monkeypatch, pause_seconds):
     monkeypatch.setattr(okx_funding_data.httpx, "Client", no_client)
     with pytest.raises(ValueError, match="pause_seconds"):
         okx_funding_data.download_okx_funding("BTCUSDT", 1, 2, pause_seconds=pause_seconds)
+
+
+@pytest.mark.parametrize(
+    "bad_row",
+    [None, [], "bad", {}, {"fundingTime": "1000"}, {"realizedRate": "0.1"}],
+)
+def test_okx_funding_rejects_malformed_rows(monkeypatch, bad_row):
+    fake = Client([{"code":"0","data":[bad_row]}])
+    monkeypatch.setattr(okx_funding_data.httpx, "Client", lambda timeout: fake)
+    with pytest.raises(ValueError, match="OKX funding row"):
+        okx_funding_data.download_okx_funding("BTCUSDT", 0, 2000, pause_seconds=0)
+
+
+def test_okx_funding_accepts_realized_rate_without_funding_rate(monkeypatch):
+    ts = 1_000_000
+    fake = Client([
+        {"code":"0","data":[{"fundingTime":str(ts),"realizedRate":"0.0001"}]},
+        {"code":"0","data":[]},
+        {"code":"0","data":[[str(ts),"50000","50100","49900","50050","1"]]},
+    ])
+    monkeypatch.setattr(okx_funding_data.httpx, "Client", lambda timeout: fake)
+    rows = okx_funding_data.download_okx_funding("BTCUSDT", ts-1000, ts+1000, pause_seconds=0)
+    assert rows[0]["funding_rate"] == pytest.approx(0.0001)
+
+
+@pytest.mark.parametrize("bad_rate", [True, None, "not-a-number", "nan", "inf"])
+def test_okx_funding_rejects_invalid_rate_values(monkeypatch, bad_rate):
+    fake = Client([{"code":"0","data":[{"fundingTime":"1000","realizedRate":bad_rate}]}])
+    monkeypatch.setattr(okx_funding_data.httpx, "Client", lambda timeout: fake)
+    with pytest.raises(ValueError, match="funding rate"):
+        okx_funding_data.download_okx_funding("BTCUSDT", 0, 2000, pause_seconds=0)
