@@ -599,6 +599,13 @@ def main() -> None:
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
+    output_path = Path(args.output).resolve()
+    input_paths = [Path(args.csv).resolve()]
+    if args.funding_csv:
+        input_paths.append(Path(args.funding_csv).resolve())
+    if output_path in input_paths:
+        raise ValueError("output path must not overwrite an input CSV")
+
     interval_ms = {"1h": 3_600_000, "4h": 14_400_000}[args.interval]
     rows = load_csv(args.csv, interval_ms)
     if not 0.3 <= args.train_fraction <= 0.8:
@@ -822,11 +829,10 @@ def main() -> None:
             "All report results require independent review of CSV coverage, exchange data and execution assumptions."
         ],
     }
-    output = Path(args.output)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"status=RESEARCH_ONLY symbol={args.symbol.upper()} bars={len(rows)} "
-          f"holdout_trades={len(holdout_trades)} output={output}")
+          f"holdout_trades={len(holdout_trades)} output={output_path}")
 
 
 if __name__ == "__main__":
