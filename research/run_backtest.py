@@ -101,11 +101,23 @@ def summarize_funding_data_quality(
             "interpretation": "No historical funding events supplied; no coverage or settlement claim can be made.",
         }
     candle_timestamps = {row["t"] for row in candle_rows}
-    # Prefer raw exchange event times for audit diagnostics; the normalized
-    # timestamps remain available to the backtest settlement simulator.
-    event_timestamps = sorted(
-        int(row.get("funding_time_raw", row["funding_time"])) for row in funding_rows
-    )
+    # Preserve raw timestamps for cadence diagnostics. For candle alignment only,
+    # use the already-normalized timestamp when the raw jitter is <=1s and the
+    # normalized timestamp is an actual candle open.
+    timestamp_pairs = []
+    for row in funding_rows:
+        raw_ts = int(row.get("funding_time_raw", row["funding_time"]))
+        normalized_ts = int(row["funding_time"])
+        alignment_ts = (
+            normalized_ts
+            if normalized_ts != raw_ts
+            and abs(normalized_ts - raw_ts) <= 1000
+            and normalized_ts in candle_timestamps
+            else raw_ts
+        )
+        timestamp_pairs.append((raw_ts, alignment_ts))
+    timestamp_pairs.sort(key=lambda pair: pair[0])
+    event_timestamps = [raw_ts for raw_ts, _ in timestamp_pairs]
     timestamp_counts = {}
     for timestamp in event_timestamps:
         timestamp_counts[timestamp] = timestamp_counts.get(timestamp, 0) + 1
@@ -113,19 +125,32 @@ def summarize_funding_data_quality(
         timestamp for timestamp, count in timestamp_counts.items() if count > 1
     )
     start_ts, end_ts = min(candle_timestamps), max(candle_timestamps)
-    in_range = [timestamp for timestamp in event_timestamps if start_ts <= timestamp <= end_ts]
+    in_range_pairs = [
+        (raw_ts, align_ts) for raw_ts, align_ts in timestamp_pairs
+        if start_ts <= raw_ts <= end_ts
+    ]
     deltas = [right - left for left, right in zip(event_timestamps, event_timestamps[1:])]
-    matched = sum(timestamp in candle_timestamps for timestamp in in_range)
+    raw_matched = sum(raw_ts in candle_timestamps for raw_ts, _ in in_range_pairs)
+    matched = sum(align_ts in candle_timestamps for _, align_ts in in_range_pairs)
+    jitter_normalized = sum(
+        raw_ts != align_ts for raw_ts, align_ts in in_range_pairs
+    )
+    nonmatching = len(in_range_pairs) - matched
+    out_of_range = len(event_timestamps) - len(in_range_pairs)
+    duplicate_event_records = sum(count - 1 for count in timestamp_counts.values() if count > 1)
+    needs_review = bool(duplicate_timestamps or out_of_range or nonmatching)
     return {
         "provided": True,
-        "records_in_candle_range": len(in_range),
-        "records_outside_candle_range": len(event_timestamps) - len(in_range),
-        "duplicate_event_records": sum(count - 1 for count in timestamp_counts.values() if count > 1),
+        "records_in_candle_range": len(in_range_pairs),
+        "records_outside_candle_range": out_of_range,
+        "duplicate_event_records": duplicate_event_records,
         "duplicate_event_timestamps": duplicate_timestamps,
         "first_event_ts": event_timestamps[0],
         "last_event_ts": event_timestamps[-1],
-        "exact_candle_open_matches": matched,
-        "non_candle_open_events": len(in_range) - matched,
+        "exact_candle_open_matches": raw_matched,
+        "normalized_candle_open_matches": matched,
+        "boundary_jitter_normalized_records": jitter_normalized,
+        "non_candle_open_events": nonmatching,
         "source_labels": sorted({row.get("mark_price_source", "unspecified") for row in funding_rows}),
         "venue_labels": sorted({row.get("venue", "") or "unspecified" for row in funding_rows}),
         "event_interval_ms": {
@@ -134,20 +159,18 @@ def summarize_funding_data_quality(
             "distinct_count": len(set(deltas)),
         },
         "event_completeness_verified": False,
-        "review_required": bool(
-            duplicate_timestamps
-            or len(event_timestamps) != len(in_range)
-            or len(in_range) != matched
-        ),
+        "review_required": needs_review,
         "audit_status": (
-            "REVIEW_REQUIRED"
-            if duplicate_timestamps or len(event_timestamps) != len(in_range) or len(in_range) != matched
-            else "TIMESTAMP_ALIGNMENT_PASS_NOT_RECONCILED"
+            "REVIEW_REQUIRED" if needs_review else (
+                "BOUNDARY_JITTER_NORMALIZED_ALIGNMENT_PASS_NOT_RECONCILED"
+                if jitter_normalized else "TIMESTAMP_ALIGNMENT_PASS_NOT_RECONCILED"
+            )
         ),
         "interpretation": (
-            "Raw timestamp diagnostics only. Duplicate events and events outside candle coverage require review. "
-            "Exact candle-open matches do not prove event completeness, "
-            "actual mark-price provenance, or position eligibility at settlement."
+            "Raw exchange timestamps and cadence are preserved. Alignment uses normalized timestamps only "
+            "when raw jitter is <=1 second and the normalized timestamp is an actual candle open. "
+            "Alignment does not prove event completeness, actual mark-price provenance, "
+            "or position eligibility at settlement."
         ),
     }
 
