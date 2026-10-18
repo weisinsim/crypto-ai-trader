@@ -37,8 +37,15 @@ def _integer_timestamp(value, field: str = "fundingTime") -> int:
 def normalize_funding_rows(raw_rows: list[dict], symbol: str) -> list[dict]:
     if not isinstance(symbol, str) or not symbol.strip() or not symbol.strip().isalnum():
         raise ValueError("symbol must be a non-empty alphanumeric exchange symbol")
+    if not isinstance(raw_rows, list):
+        raise ValueError("funding rows must be a list")
     rows = []
-    for raw in raw_rows:
+    for index, raw in enumerate(raw_rows):
+        if not isinstance(raw, dict):
+            raise ValueError(f"funding row {index} must be a mapping")
+        missing = [key for key in ("fundingTime", "fundingRate", "markPrice") if key not in raw]
+        if missing:
+            raise ValueError(f"funding row {index} missing required fields: {missing}")
         raw_symbol = raw.get("symbol")
         if raw_symbol is not None and str(raw_symbol).strip().upper() != symbol.upper():
             raise ValueError(
@@ -119,6 +126,15 @@ def download_funding_history(
                 break
             if not isinstance(page, list):
                 raise ValueError("funding endpoint response must be a list")
+            # Validate row shape before sorting so malformed API payloads fail
+            # with a clear ValueError rather than leaking KeyError/AttributeError.
+            for index, row in enumerate(page):
+                if not isinstance(row, dict):
+                    raise ValueError(f"funding response row {index} must be a mapping")
+                missing = [key for key in ("fundingTime", "fundingRate", "markPrice") if key not in row]
+                if missing:
+                    raise ValueError(f"funding response row {index} missing required fields: {missing}")
+                _integer_timestamp(row["fundingTime"])
             ordered = sorted(page, key=lambda row: _integer_timestamp(row["fundingTime"]))
             in_range = [
                 row for row in ordered
