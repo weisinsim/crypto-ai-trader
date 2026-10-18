@@ -169,7 +169,7 @@ def summarize_funding_data_quality(
         "interpretation": (
             "Raw exchange timestamps and cadence are preserved. Alignment uses normalized timestamps only "
             "when raw jitter is <=1 second and the normalized timestamp is an actual candle open. "
-            "Alignment does not prove event completeness, actual mark-price provenance, "
+            "Alignment results do not prove event completeness, actual mark-price provenance, "
             "or position eligibility at settlement."
         ),
     }
