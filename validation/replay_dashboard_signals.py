@@ -122,6 +122,18 @@ def closed_rows_at(rows, timestamp_ms):
     return [row for row in rows if row["ts"] <= timestamp_ms]
 
 
+def risk_levels(symbol, price, direction, atr_value, stop_mult, target_mult):
+    """Match the live dashboard's ATR fallback when calculating stop/target levels."""
+    fallback = price * (0.01 if symbol == "XRPUSDT" else 0.005)
+    distance = atr_value or fallback
+    target2_mult = 3.5 if symbol == "XRPUSDT" else target_mult * 1.5
+    return (
+        price - direction * stop_mult * distance,
+        price + direction * target_mult * distance,
+        price + direction * target2_mult * distance,
+    )
+
+
 def signal_state_for(side, reason, direction):
     """Map replay decisions to the directional signal labels used for parity review."""
     if side:
@@ -161,9 +173,12 @@ def replay(symbol, one, four, *, include_states=False):
             pull=trend and c[-2]<=c[-3] and p>e20 and r<=55
             brk=trend and res is not None and p>res and p>c[-2]
             if not kill and (mean_rev or pull or brk):
-                side="LONG"; direction=1; entry=p; sl=p-XRP["sl_atr"]*a; target=p+XRP["tp_atr"]*a; score=75; reason="XRP_LONG"
+                side="LONG"; direction=1; entry=p
+                sl,target,_=risk_levels(symbol,p,direction,a,XRP["sl_atr"],XRP["tp_atr"])
+                score=75; reason="XRP_LONG"
             elif not kill and ((r<=40) or trend):
-                direction=1; entry=p; sl=p-XRP["sl_atr"]*a; target=p+XRP["tp_atr"]*a
+                direction=1; entry=p
+                sl,target,_=risk_levels(symbol,p,direction,a,XRP["sl_atr"],XRP["tp_atr"])
                 score=43; reason="WATCH_LONG"
             else:
                 reason="XRP_KILL" if kill else "XRP_NO_ENTRY"
@@ -181,7 +196,8 @@ def replay(symbol, one, four, *, include_states=False):
             elif not direction and bear and r is not None and r>=rs[0]:
                 direction=-1; reason="WATCH_SHORT"
             if direction:
-                entry=p; sl=p-direction*sm*a; target=p+direction*tm*a
+                entry=p
+                sl,target,_=risk_levels(symbol,p,direction,a,sm,tm)
                 vr=q[-1]/(sum(q[-21:-1])/20) if len(q)>=21 and sum(q[-21:-1]) else None
                 trend_pts=30 if (direction==1 and bull) or (direction==-1 and bear) else 0
                 rsi_pts=20 if ((direction==1 and rl[0]<=r<=rl[1]) or (direction==-1 and rs[0]<=r<=rs[1])) else 0
@@ -201,7 +217,7 @@ def replay(symbol, one, four, *, include_states=False):
         if side or include_states:
             output.append({"timestamp":one[i]["timestamp"],"status":status,"signal":signal_state,"side":side,
                            "entry":entry,"atr":a,"stop":sl,"target":target,
-                           "target2":(p+direction*(tm*1.5)*a) if symbol!="XRPUSDT" and direction else (p+direction*3.5*a if symbol=="XRPUSDT" and direction else None),
+                           "target2":risk_levels(symbol,p,direction,a,(1.2 if symbol=="BTCUSDT" else 1.0 if symbol=="SOLUSDT" else 1.2 if symbol=="AVAXUSDT" else XRP["sl_atr"]), (1.5 if symbol=="BTCUSDT" else 2.0 if symbol=="SOLUSDT" else 1.2 if symbol=="AVAXUSDT" else XRP["tp_atr"]))[2] if direction else None,
                            "score":score,"model":symbol,"model_version":"app.py-replay-v2",
                            "rsi":r,"ema20_1h":e20,"ema50_1h":e50,"ema20_4h":e20_4,
                            "ema50_4h":e50_4,"adx":ad,"vwap":vw,"support":sup,
