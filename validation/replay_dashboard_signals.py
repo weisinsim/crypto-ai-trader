@@ -111,14 +111,22 @@ def adx(h, l, c, n=14):
         tr.append(max(h[i]-l[i],abs(h[i]-c[i-1]),abs(l[i]-c[i-1])))
         plus.append(up if up>dn and up>0 else 0)
         minus.append(dn if dn>up and dn>0 else 0)
-    def avg(a): return sum(a[-n:])/n if len(a)>=n else None
+    # The output only uses the last n valid DX values. Walk backwards instead
+    # of recomputing DX for every historical bar on every replay iteration.
+    # This preserves the original rolling-window calculation while avoiding
+    # needless work over the full history for each hourly signal.
     dxs=[]
-    for j in range(n,len(tr)):
-        t,p,m=avg(tr[:j+1]),avg(plus[:j+1]),avg(minus[:j+1])
-        if t and t>0:
+    for j in range(len(tr)-1, n-1, -1):
+        start=j-n+1
+        t=sum(tr[start:j+1])/n
+        if t > 0:
+            p=sum(plus[start:j+1])/n
+            m=sum(minus[start:j+1])/n
             pdi=100*p/t; mdi=100*m/t
             dxs.append(100*abs(pdi-mdi)/max(pdi+mdi,1e-9))
-    return sum(dxs[-n:])/min(n,len(dxs)) if dxs else None
+            if len(dxs) == n:
+                break
+    return sum(dxs)/len(dxs) if dxs else None
 
 
 def vwap(h,l,c,q,n=48):
