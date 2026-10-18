@@ -74,9 +74,9 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "out_of_order.csv"
             path.write_text(
-                "timestamp,open,high,low,close,volume,quote_volume\\n"
-                "2025-01-01T02:00:00Z,100,101,99,100,1,100\\n"
-                "2025-01-01T01:00:00Z,100,101,99,100,1,100\\n",
+                "timestamp,open,high,low,close,volume,quote_volume\n"
+                "2025-01-01T02:00:00Z,100,101,99,100,1,100\n"
+                "2025-01-01T01:00:00Z,100,101,99,100,1,100\n",
                 encoding="utf-8",
             )
             with self.assertRaisesRegex(ValueError, "Out-of-order candle timestamp"):
@@ -86,9 +86,9 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "duplicate.csv"
             path.write_text(
-                "timestamp,open,high,low,close,volume,quote_volume\\n"
-                "2025-01-01T01:00:00Z,100,101,99,100,1,100\\n"
-                "2025-01-01T01:00:00Z,100,101,99,100,1,100\\n",
+                "timestamp,open,high,low,close,volume,quote_volume\n"
+                "2025-01-01T01:00:00Z,100,101,99,100,1,100\n"
+                "2025-01-01T01:00:00Z,100,101,99,100,1,100\n",
                 encoding="utf-8",
             )
             with self.assertRaisesRegex(ValueError, "Duplicate candle timestamp"):
