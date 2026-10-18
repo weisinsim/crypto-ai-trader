@@ -1,7 +1,7 @@
 import asyncio
 import json
 import time
-from validation.candle_closure import filter_closed_candles, upsert_candle
+from validation.candle_closure import filter_closed_candles, upsert_candle, validate_candle_series
 from validation.dashboard_health import build_health_payload
 from validation.signal_confirmation import invalidate_stale_confirmation
 from pathlib import Path
@@ -224,7 +224,8 @@ def kline_to_obj(x):
             "c": float(x[4]), "v": float(x[5]), "q": float(x[7])}
 
 def set_series(s, interval, klines):
-    series[s][interval] = [kline_to_obj(x) for x in klines][-210:]
+    rows = [kline_to_obj(x) for x in klines]
+    series[s][interval] = validate_candle_series(rows, limit=210)
 
 def closed_series_rows(s, interval, now_ms=None):
     """Return only candles whose full interval has elapsed; kline t is open time."""
