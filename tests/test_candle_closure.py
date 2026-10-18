@@ -62,5 +62,29 @@ class ClosedCandleFilterTests(unittest.TestCase):
             filter_closed_candles(self.rows, "1h", 7_200_000.5)
 
 
+    def test_upsert_replaces_same_timestamp(self):
+        from validation.candle_closure import upsert_candle
+        rows = [{"t": 100, "c": 1}]
+        self.assertTrue(upsert_candle(rows, {"t": 100, "c": 2}))
+        self.assertEqual(rows, [{"t": 100, "c": 2}])
+
+    def test_upsert_appends_newer_timestamp(self):
+        from validation.candle_closure import upsert_candle
+        rows = [{"t": 100, "c": 1}]
+        self.assertTrue(upsert_candle(rows, {"t": 200, "c": 2}))
+        self.assertEqual([r["t"] for r in rows], [100, 200])
+
+    def test_upsert_ignores_stale_timestamp_without_mutating_series(self):
+        from validation.candle_closure import upsert_candle
+        rows = [{"t": 100, "c": 1}, {"t": 200, "c": 2}]
+        before = [dict(row) for row in rows]
+        self.assertFalse(upsert_candle(rows, {"t": 150, "c": 99}))
+        self.assertEqual(rows, before)
+
+    def test_upsert_rejects_malformed_timestamp(self):
+        from validation.candle_closure import upsert_candle
+        with self.assertRaises(ValueError):
+            upsert_candle([], {"t": 1.5, "c": 1})
+
 if __name__ == "__main__":
     unittest.main()
