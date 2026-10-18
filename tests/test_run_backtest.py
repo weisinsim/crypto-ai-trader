@@ -801,3 +801,19 @@ class DuplicateCsvHeaderTests(unittest.TestCase):
             path.write_text("symbol,funding_time,funding_rate,mark_price,mark_price\nBTCUSDT,0,0.001,100,999\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "duplicate columns.*mark_price"):
                 load_funding_csv(str(path))
+
+
+class BlankCsvHeaderTests(unittest.TestCase):
+    def test_candle_csv_rejects_blank_column_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "candles.csv"
+            path.write_text("t,o,h,l,c,\n0,100,101,99,100,ignored\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "candle CSV contains blank column names"):
+                load_csv(str(path), 3_600_000)
+
+    def test_funding_csv_rejects_blank_column_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "funding.csv"
+            path.write_text("symbol,funding_time,funding_rate,mark_price,\nBTCUSDT,0,0.001,100,ignored\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "funding CSV contains blank column names"):
+                load_funding_csv(str(path))
