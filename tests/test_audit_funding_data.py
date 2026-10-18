@@ -37,6 +37,15 @@ class FundingAuditTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "funding timestamp must be a non-negative integer"):
                     audit_funding_against_candles(self.candles, rows, "BTCUSDT")
 
+    def test_invalid_normalized_funding_timestamp_fails_closed(self):
+        for value in (True, 1.5, " 100 "):
+            with self.subTest(value=value):
+                rows = [dict(self.funding[0]), dict(self.funding[-1])]
+                rows[0]["funding_time_raw"] = 100
+                rows[0]["funding_time"] = value
+                with self.assertRaisesRegex(ValueError, "normalized funding timestamp must be a non-negative integer"):
+                    audit_funding_against_candles(self.candles, rows, "BTCUSDT")
+
     def test_requested_symbol_must_be_nonempty_text(self):
         for value in (None, 123, "", "   "):
             with self.subTest(value=value):

@@ -81,7 +81,7 @@ def audit_funding_against_candles(
     jitter_normalized = 0
     for row in funding_rows:
         raw_ts = audit_ts(row)
-        normalized_ts = int(row.get("funding_time", raw_ts))
+        normalized_ts = timestamp_ms(row.get("funding_time", raw_ts), "normalized funding timestamp")
         if (normalized_ts != raw_ts and abs(normalized_ts - raw_ts) <= 1000
                 and normalized_ts in candle_ts):
             alignment_ts = normalized_ts
