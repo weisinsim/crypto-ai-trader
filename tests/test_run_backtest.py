@@ -30,6 +30,16 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
             self.assertEqual(path.read_text(encoding="utf-8"), original)
             self.assertEqual([p.name for p in Path(tmp).iterdir()], ["report.json"])
 
+    def test_atomic_json_writer_rejects_nonfinite_numbers_without_replacing_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "report.json"
+            original = '{"status": "previous"}\\n'
+            path.write_text(original, encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Out of range float values"):
+                write_json_atomic(path, {"metric": float("nan")})
+            self.assertEqual(path.read_text(encoding="utf-8"), original)
+            self.assertEqual([p.name for p in Path(tmp).iterdir()], ["report.json"])
+
     def test_atomic_json_writer_creates_parent_directories(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "nested" / "report.json"
