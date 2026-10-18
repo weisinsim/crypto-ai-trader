@@ -58,6 +58,14 @@ class CandleValidationTests(unittest.TestCase):
             ):
                 validate_candles([{**valid, field: value}])
 
+    def test_rejects_numeric_overflow_in_ohlcv_values_as_validation_error(self):
+        valid = {"t": 0, "o": 100, "h": 101, "l": 99, "c": 100, "v": 10}
+        huge = 10 ** 10000
+        for field in ("o", "h", "l", "c", "v", "q"):
+            row = {**valid, field: huge}
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, "invalid"):
+                validate_candles([row])
+
     def test_rejects_boolean_ohlcv_values(self):
         valid = {"t": 0, "o": 100, "h": 101, "l": 99, "c": 100, "v": 10}
         for field in ("o", "h", "l", "c", "v", "q"):
