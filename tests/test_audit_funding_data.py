@@ -218,6 +218,28 @@ class FundingAuditTests(unittest.TestCase):
         self.assertEqual(report["funding"]["records_missing_or_invalid_venue_label"], 0)
         self.assertEqual(report["status"], "TIMESTAMP_ALIGNMENT_PASS_NOT_RECONCILED")
 
+    def test_cli_refuses_to_overwrite_input_csv(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            candles_path = Path(tmp) / "candles.csv"
+            funding_path = Path(tmp) / "funding.csv"
+            candles_bytes = b"t,o,h,l,c,v,q\\n0,100,101,99,100,1,100\\n3600000,100,101,99,100,1,100\\n"
+            candles_path.write_bytes(candles_bytes)
+            funding_path.write_text(
+                "symbol,funding_time,funding_rate,mark_price,mark_price_source,venue\\n"
+                "BTCUSDT,0,0.001,100,reported,binance_usdm\\n"
+                "BTCUSDT,3600000,0.001,100,reported,binance_usdm\\n",
+                encoding="utf-8",
+            )
+            argv = [
+                "audit_funding_data.py", "--candles", str(candles_path),
+                "--funding-csv", str(funding_path), "--symbol", "BTCUSDT",
+                "--interval", "1h", "--output", str(candles_path),
+            ]
+            with patch.object(sys, "argv", argv):
+                with self.assertRaisesRegex(ValueError, "must not overwrite"):
+                    main()
+            self.assertEqual(candles_path.read_bytes(), candles_bytes)
+
     def test_cli_report_fingerprints_exact_input_bytes_without_authenticity_claim(self):
         with tempfile.TemporaryDirectory() as tmp:
             candles_path = Path(tmp) / "candles.csv"
