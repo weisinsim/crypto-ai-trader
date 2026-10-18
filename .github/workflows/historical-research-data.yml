@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "validation/audit_funding_history.py"
+      - "validation/replay_dashboard_signals.py"
       - ".github/workflows/historical-research-data.yml"
   workflow_dispatch:
     inputs:
