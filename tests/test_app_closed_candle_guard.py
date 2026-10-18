@@ -37,6 +37,23 @@ class AppClosedCandleGuardTests(unittest.TestCase):
         ]
         self.assertEqual(len(calls), 1)
 
+    def test_bybit_fallback_validates_both_snapshot_series(self):
+        fn = self.functions["seed_symbol"]
+        validated_assignments = []
+        for node in ast.walk(fn):
+            if not isinstance(node, ast.Assign):
+                continue
+            if not any(isinstance(target, ast.Subscript) for target in node.targets):
+                continue
+            value = node.value
+            if (
+                isinstance(value, ast.Call)
+                and isinstance(value.func, ast.Name)
+                and value.func.id == "validate_candle_series"
+            ):
+                validated_assignments.append(value)
+        self.assertGreaterEqual(len(validated_assignments), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

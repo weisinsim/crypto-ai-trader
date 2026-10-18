@@ -315,8 +315,9 @@ async def seed_symbol(s):
                 rows = obj["list"]
                 rows.reverse()
                 return [{"t":int(x[0]),"o":float(x[1]),"h":float(x[2]),"l":float(x[3]),"c":float(x[4]),"v":float(x[5]),"q":float(x[6])} for x in rows]
-            series[s]["1h"] = bybit_rows(b1)[-210:]
-            series[s]["4h"] = bybit_rows(b4)[-210:]
+            # Apply the same fail-closed chronology checks to fallback snapshots.
+            series[s]["1h"] = validate_candle_series(bybit_rows(b1), limit=210)
+            series[s]["4h"] = validate_candle_series(bybit_rows(b4), limit=210)
             cache[s]["source"] = "Bybit fallback"
             await analyze_symbol(s)
             cache[s]["confirmed_status"] = "WAITING"
