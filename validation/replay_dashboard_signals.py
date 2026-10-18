@@ -13,6 +13,8 @@ import math
 from datetime import datetime
 from pathlib import Path
 
+from validation.xrp_model import evaluate_xrp_signal
+
 SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT", "XRPUSDT"]
 XRP = {"kill_slope": 0.0077, "atr_max": 0.0135, "shock_max": 0.025, "sl_atr": 1.7, "tp_atr": 2.8}
 
@@ -164,24 +166,15 @@ def replay(symbol, one, four, *, include_states=False):
         if symbol=="ETHUSDT":
             reason="NO_PRODUCTION"
         elif symbol=="XRPUSDT":
-            slope=(e20_4/e50_4-1) if e50_4 else 0
-            shock=abs(c[-1]/c[-2]-1) if len(c)>1 else 0
-            kill=abs(slope)>XRP["kill_slope"] or a/p>XRP["atr_max"] or shock>XRP["shock_max"]
-            dev=(p-e20)/a if a else 0
-            mean_rev=r<=35 and dev<=-0.5 and p>c[-2]
-            trend=e20_4>e50_4 and e20>e50
-            pull=trend and c[-2]<=c[-3] and p>e20 and r<=55
-            brk=trend and res is not None and p>res and p>c[-2]
-            if not kill and (mean_rev or pull or brk):
-                side="LONG"; direction=1; entry=p
-                sl,target,_=risk_levels(symbol,p,direction,a,XRP["sl_atr"],XRP["tp_atr"])
-                score=75; reason="XRP_LONG"
-            elif not kill and ((r<=40) or trend):
-                direction=1; entry=p
-                sl,target,_=risk_levels(symbol,p,direction,a,XRP["sl_atr"],XRP["tp_atr"])
-                score=43; reason="WATCH_LONG"
-            else:
-                reason="XRP_KILL" if kill else "XRP_NO_ENTRY"
+            xrp = evaluate_xrp_signal(c, e20, e20_4, e50_4, r, a, res, XRP)
+            signal = xrp["signal"]
+            side = "LONG" if signal == "LONG" else ""
+            direction = xrp["direction"]
+            entry = xrp["entry"]
+            sl = xrp["stop"]
+            target = xrp["target1"]
+            score = xrp["score"]
+            reason = "XRP_LONG" if signal == "LONG" else "WATCH_LONG" if signal == "WATCH-LONG" else "XRP_KILL" if xrp["kill"] else "XRP_NO_ENTRY"
         else:
             bull=e20_4>e50_4 and p>e20_4
             bear=e20_4<e50_4 and p<e20_4
