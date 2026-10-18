@@ -2,7 +2,7 @@ import unittest
 import tempfile
 from pathlib import Path
 
-from validation.replay_dashboard_signals import ema, rsi, atr, replay, ts_ms, read_rows, closed_rows_at, signal_state_for, risk_levels
+from validation.replay_dashboard_signals import ema, rsi, atr, replay, ts_ms, read_rows, closed_rows_at, signal_state_for, risk_levels, validate_candle_cadence
 
 
 class ReplayDashboardSignalsTests(unittest.TestCase):
@@ -16,6 +16,19 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
         self.assertAlmostEqual(xrp_stop, 98.3)
         self.assertAlmostEqual(xrp_target, 102.8)
         self.assertAlmostEqual(xrp_target2, 103.5)
+
+    def test_candle_cadence_accepts_consecutive_bars(self):
+        rows = [{"ts": 1000}, {"ts": 4600}, {"ts": 8200}]
+        self.assertEqual(validate_candle_cadence(rows, 3600), rows)
+
+    def test_candle_cadence_rejects_missing_bar(self):
+        rows = [{"ts": 1000}, {"ts": 4600}, {"ts": 11800}]
+        with self.assertRaisesRegex(ValueError, "missing or duplicate bars"):
+            validate_candle_cadence(rows, 3600, "fixture.csv")
+
+    def test_candle_cadence_rejects_invalid_interval(self):
+        with self.assertRaisesRegex(ValueError, "positive integer"):
+            validate_candle_cadence([], 0)
 
     def test_signal_state_mapping_preserves_direction(self):
         self.assertEqual(signal_state_for("", "WATCH_LONG", 1), "WATCH-LONG")

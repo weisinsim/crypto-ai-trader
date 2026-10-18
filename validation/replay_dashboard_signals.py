@@ -62,6 +62,20 @@ def read_rows(path):
     return rows
 
 
+def validate_candle_cadence(rows, interval_ms, source="candle series"):
+    """Reject missing intervals instead of treating nonconsecutive bars as adjacent."""
+    if not isinstance(interval_ms, int) or isinstance(interval_ms, bool) or interval_ms <= 0:
+        raise ValueError("interval_ms must be a positive integer")
+    for index in range(1, len(rows)):
+        delta = rows[index]["ts"] - rows[index - 1]["ts"]
+        if delta != interval_ms:
+            raise ValueError(
+                f"Unexpected candle spacing in {source} at row {index}: "
+                f"expected {interval_ms} ms, got {delta} ms; check for missing or duplicate bars"
+            )
+    return rows
+
+
 def ema(v, n):
     if len(v) < n: return None
     k = 2 / (n + 1)
@@ -235,7 +249,9 @@ def main():
     data=Path(a.data_dir); out=Path(a.out_dir); out.mkdir(parents=True,exist_ok=True)
     manifest=[]
     for s in a.symbols:
-        one=read_rows(data/f"{s}_1h.csv"); four=read_rows(data/f"{s}_4h.csv")
+        one_path=data/f"{s}_1h.csv"; four_path=data/f"{s}_4h.csv"
+        one=validate_candle_cadence(read_rows(one_path), 3_600_000, str(one_path))
+        four=validate_candle_cadence(read_rows(four_path), 14_400_000, str(four_path))
         trades=replay(s,one,four)
         fields=["timestamp","status","signal","side","entry","atr","stop","target","target2","score","model","model_version","rsi","ema20_1h","ema50_1h","ema20_4h","ema50_4h","adx","vwap","support","resistance","reason"]
         if a.include_states:
