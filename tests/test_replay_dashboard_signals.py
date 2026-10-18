@@ -82,6 +82,7 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
         states = replay("ETHUSDT", one, four, include_states=True)
         self.assertTrue(states)
         self.assertTrue(all(row["status"] == "NO-TRADE" for row in states))
+        self.assertTrue(all(row["signal"] == "NO-TRADE" for row in states))
         self.assertTrue(all(row["target2"] is None for row in states))
 
 
