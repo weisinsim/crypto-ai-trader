@@ -96,6 +96,7 @@ def download_klines(
         raise ValueError("start_ms and end_ms must align to interval boundaries")
 
     client = None
+    use_live_api = fetch_page is None
     if fetch_page is None:
         client = httpx.Client(timeout=15.0)
         def fetch_page(params):
@@ -125,7 +126,7 @@ def download_klines(
             if pause_seconds:
                 time.sleep(pause_seconds)
     except httpx.HTTPStatusError as exc:
-        if exc.response.status_code != 451 or fetch_page is not None:
+        if exc.response.status_code != 451 or not use_live_api:
             raise
         # Some hosted runners are region-restricted by Binance's API edge.
         # Retry the exact requested range from the publisher's public archive.
