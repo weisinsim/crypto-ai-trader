@@ -214,7 +214,7 @@ def main():
         "files": manifest,
     }
     manifest_path = out_dir / "funding_download_manifest.json"
-    manifest_path.write_text(json.dumps(manifest_payload, indent=2) + "\\n", encoding="utf-8")
+    manifest_path.write_text(json.dumps(manifest_payload, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(manifest_payload, indent=2))
 
 
