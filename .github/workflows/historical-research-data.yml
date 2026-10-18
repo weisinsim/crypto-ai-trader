@@ -40,7 +40,7 @@ jobs:
 
           start = os.environ["START_DATE"]
           end = os.environ["END_DATE"]
-          pattern = re.compile(r"^\\d{4}-\\d{2}-\\d{2}$")
+          pattern = re.compile(r"^\d{4}-\d{2}-\d{2}$")
           if not pattern.fullmatch(start) or not pattern.fullmatch(end):
               raise SystemExit("Dates must use exact YYYY-MM-DD format")
           try:
@@ -105,8 +105,8 @@ jobs:
             data/funding/BTCUSDT_funding.csv data/funding/ETHUSDT_funding.csv \
             data/funding/SOLUSDT_funding.csv data/funding/AVAXUSDT_funding.csv \
             data/funding/XRPUSDT_funding.csv --max-gap-hours 8 \
-            --start "$START_DATET00:00:00Z" \
-            --end "$END_DATET00:00:00Z" \
+            --start "${START_DATE}T00:00:00Z" \
+            --end "${END_DATE}T00:00:00Z" \
             > research-results/funding-integrity.json
           cat research-results/funding-integrity.json
           python -c 'import json; r=json.load(open("research-results/funding-integrity.json")); assert r.get("all_basic_integrity_pass"), "Funding integrity gate failed"'
