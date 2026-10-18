@@ -173,8 +173,15 @@ def download_funding_rates(
             if not page:
                 break
             parsed = parse_funding_rows(page, symbol, start_ms, end_ms)
+            page_timestamps = [_parse_integer_timestamp(row["fundingTime"]) for row in page]
+            outside_page = [ts for ts in page_timestamps if ts < cursor or ts >= end_ms]
+            if outside_page:
+                raise ValueError(
+                    f"funding API returned timestamps outside requested page range "
+                    f"[{cursor}, {end_ms}): {outside_page[:5]}"
+                )
             records.extend(parsed)
-            last_ts = max(int(row["fundingTime"]) for row in page)
+            last_ts = max(page_timestamps)
             next_cursor = last_ts + 1
             if next_cursor <= cursor:
                 raise RuntimeError("funding pagination did not advance")
