@@ -203,3 +203,12 @@ class FundingDataTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FundingRowShapeValidationTests(unittest.TestCase):
+    def test_parse_funding_rows_rejects_non_mapping_rows(self):
+        for raw in (None, [], "not-a-row", 123, True):
+            with self.subTest(raw=raw), self.assertRaisesRegex(
+                ValueError, "funding row 0 must be a mapping"
+            ):
+                parse_funding_rows([raw], "BTCUSDT", 0, 200)

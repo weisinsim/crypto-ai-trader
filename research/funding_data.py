@@ -73,7 +73,9 @@ def parse_funding_rows(raw_rows: list[dict], symbol: str, start_ms: int, end_ms:
             or start_ms < 0 or end_ms <= start_ms):
         raise ValueError("require integer timestamps with 0 <= start_ms < end_ms")
     rows = []
-    for raw in raw_rows:
+    for index, raw in enumerate(raw_rows):
+        if not isinstance(raw, dict):
+            raise ValueError(f"funding row {index} must be a mapping")
         raw_symbol = raw.get("symbol")
         if raw_symbol is not None and str(raw_symbol).strip().upper() != symbol.upper():
             raise ValueError(
