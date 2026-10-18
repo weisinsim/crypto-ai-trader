@@ -129,3 +129,24 @@ def test_bybit_funding_rejects_invalid_pause(monkeypatch, pause_seconds):
     monkeypatch.setattr(bybit_funding_data.httpx, "Client", no_client)
     with pytest.raises(ValueError, match="pause_seconds"):
         bybit_funding_data.download_bybit_funding("BTCUSDT", 1, 2, pause_seconds=pause_seconds)
+
+
+@pytest.mark.parametrize(
+    "bad_row",
+    [None, [], "bad", {}, {"fundingRateTimestamp": "1000"}, {"fundingRate": "0.1"}],
+)
+def test_bybit_funding_rejects_malformed_rows(monkeypatch, bad_row):
+    fake = FakeClient([{"retCode": 0, "result": {"list": [bad_row]}}])
+    monkeypatch.setattr(bybit_funding_data.httpx, "Client", lambda timeout: fake)
+    with pytest.raises(ValueError, match="Bybit funding row"):
+        bybit_funding_data.download_bybit_funding("BTCUSDT", 0, 2000, pause_seconds=0)
+
+
+@pytest.mark.parametrize("bad_rate", [True, None, "not-a-number", "nan", "inf"])
+def test_bybit_funding_rejects_invalid_rate_values(monkeypatch, bad_rate):
+    fake = FakeClient([{"retCode": 0, "result": {"list": [
+        {"fundingRateTimestamp": "1000", "fundingRate": bad_rate}
+    ]}}])
+    monkeypatch.setattr(bybit_funding_data.httpx, "Client", lambda timeout: fake)
+    with pytest.raises(ValueError, match="funding rate"):
+        bybit_funding_data.download_bybit_funding("BTCUSDT", 0, 2000, pause_seconds=0)
