@@ -248,6 +248,12 @@ class FundingDataTests(unittest.TestCase):
             [valid, {**valid, "funding_time": 101, "symbol": "ETHUSDT"}],
             [valid, {**valid, "funding_time": 101, "venue": "okx"}],
             [{**valid, "symbol": "ＢＴＣＵＳＤＴ"}],
+            [{**valid, "funding_time": " 100"}],
+            [{**valid, "funding_time": "100 "}],
+            [{**valid, "funding_time": "+100"}],
+            [{**valid, "funding_time": "١٠٠"}],
+            [{**valid, "funding_time": -1}],
+            [{**valid, "funding_time": True}],
         ]
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "funding.csv"
