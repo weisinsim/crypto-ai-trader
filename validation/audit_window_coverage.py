@@ -3,6 +3,7 @@
 import argparse
 import csv
 import json
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -35,13 +36,24 @@ def audit_file(path, interval, start_ms, end_ms):
     expected_set, actual_set = set(expected), set(actual_in_window)
     missing = sorted(expected_set - actual_set)
     unexpected = sorted(actual_set - expected_set)
+    duplicate_counts = Counter(actual_in_window)
+    duplicates = sorted(ts for ts, count in duplicate_counts.items() if count > 1)
+    out_of_order_rows = sum(
+        1 for previous, current in zip(actual, actual[1:]) if current <= previous
+    )
     return {
         "file": str(path), "interval": interval,
         "expected_rows": len(expected), "actual_rows_in_window": len(actual_in_window),
         "first_actual_ms": actual[0] if actual else None, "last_actual_ms": actual[-1] if actual else None,
         "missing_expected_rows": len(missing), "unexpected_rows": len(unexpected),
+        "duplicate_timestamps_in_window": len(duplicates),
+        "duplicate_examples_ms": duplicates[:10],
+        "out_of_order_or_duplicate_adjacent_pairs": out_of_order_rows,
         "missing_examples_ms": missing[:10], "unexpected_examples_ms": unexpected[:10],
-        "pass_window_coverage": bool(expected) and not missing and not unexpected and len(actual) == len(actual_in_window),
+        "pass_window_coverage": (
+            bool(expected) and not missing and not unexpected and not duplicates
+            and out_of_order_rows == 0 and len(actual) == len(actual_in_window)
+        ),
         "notice": "Exact expected candle coverage only applies to symbols listed throughout the full requested window."
     }
 
