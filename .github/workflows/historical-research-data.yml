@@ -1,6 +1,11 @@
 name: Historical multi-asset research
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "validation/audit_funding_history.py"
+      - ".github/workflows/historical-research-data.yml"
   workflow_dispatch:
     inputs:
       start_date:
@@ -22,8 +27,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      START_DATE: ${{ inputs.start_date }}
-      END_DATE: ${{ inputs.end_date }}
+      START_DATE: ${{ inputs.start_date || '2026-04-10' }}
+      END_DATE: ${{ inputs.end_date || '2026-10-01' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -137,7 +142,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: historical-research-${{ inputs.start_date }}-to-${{ inputs.end_date }}
+          name: historical-research-${{ env.START_DATE }}-to-${{ env.END_DATE }}
           path: |
             data/historical/
             data/funding/
