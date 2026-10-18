@@ -114,6 +114,24 @@ class CostStressTests(unittest.TestCase):
                                 [{"t": 1}], base_fee_rate=0.001, base_slippage_rate=0.001
                             )
 
+    def test_infinite_profit_factor_sentinel_passes_cost_robustness_screen(self):
+        result = {
+            "status": "COMPLETED",
+            "trade_log": [{"pnl_equity": 0.02, "funding_cashflow": 0.0,
+                           "funding_settlement_count": 0}],
+            "net_return_pct": 2.0,
+            "max_drawdown_pct": 1.0,
+            "profit_factor": "INF",
+            "equity_final": 1.02,
+            "equity_floor_hit": False,
+        }
+        with patch("research.cost_stress.run_ema_cross_backtest", return_value=result):
+            report = run_cost_stress_scenarios(
+                [{"t": 1}], base_fee_rate=0.001, base_slippage_rate=0.001
+            )
+        self.assertTrue(report["robustness_screen"]["pass"])
+        self.assertEqual(report["scenarios"]["base"]["profit_factor"], "INF")
+
     def test_rejects_non_boolean_equity_floor_flag(self):
         result = {
             "status": "COMPLETED", "trade_log": [], "net_return_pct": 1.0,
