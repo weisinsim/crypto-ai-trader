@@ -251,6 +251,7 @@ def summarize_funding_data_quality(
     needs_review = bool(
         duplicate_timestamps or out_of_range or nonmatching
         or missing_source_labels or missing_venue_labels
+        or proxy_mark_price_review_required
     )
     return {
         "provided": True,
