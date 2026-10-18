@@ -39,8 +39,7 @@ class ResearchInputInventoryTests(unittest.TestCase):
         path = self.candles / "BTCUSDT_1h.csv"
         path.write_text(
             "timestamp,open,high,low,close\\n"
-            "2025-01-01T01:59:59.999Z,100,102,99,101\\n"
-            "2025-01-01T02:59:59.999Z,101,103,100,102\\n",
+            "2025-01-01T01:59:59.999Z,100,102,99,101\\n",
             encoding="utf-8")
         # Window begins at 00:30, so the 00:59 close is expected; this input
         # starts too late and must not be incorrectly accepted as complete.
