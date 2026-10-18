@@ -64,7 +64,7 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
         self.assertIn("PROXY", summary["source_labels"][0].upper())
 
     def test_funding_pnl_authority_is_explicitly_blocked(self):
-        candles = [{"t": i * 3_600_000, "o": 100, "h": 101, "l": 99, "c": 100, "v": 1, "q": 100} for i in range(400)]
+        candles = [{"t": i * 3_600_000, "o": 100, "h": 101, "l": 99, "c": 100, "v": 1, "q": 100} for i in range(1400)]
         with tempfile.TemporaryDirectory() as tmp:
             csv_path = Path(tmp) / "candles.csv"
             output_path = Path(tmp) / "report.json"
