@@ -98,7 +98,7 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
                 main()
             report = json.loads(output_path.read_text(encoding="utf-8"))
             self.assertEqual(report["funding_interpretation_gate"], "FUNDING_DATA_REVIEW_REQUIRED")
-            self.assertTrue(report["funding_data"]["quality"]["proxy_mark_price_review_required"])
+            self.assertTrue(report["funding_data"]["proxy_mark_price_review_required"])
             self.assertFalse(report["data_lineage"]["funding_pnl_authoritative"])
 
     def test_missing_funding_is_explicitly_unverified(self):
