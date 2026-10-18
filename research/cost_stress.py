@@ -180,8 +180,15 @@ def run_cost_stress_scenarios(
             and item.get("equity_floor_hit") is False
             and isinstance(item.get("net_return_pct"), (int, float))
             and math.isfinite(item["net_return_pct"]) and item["net_return_pct"] > 0
-            and isinstance(item.get("profit_factor"), (int, float))
-            and math.isfinite(item["profit_factor"]) and item["profit_factor"] > 1.15
+            and (
+                item.get("profit_factor") == "INF"
+                or (
+                    isinstance(item.get("profit_factor"), (int, float))
+                    and not isinstance(item.get("profit_factor"), bool)
+                    and math.isfinite(item["profit_factor"])
+                    and item["profit_factor"] > 1.15
+                )
+            )
             for item in scenarios.values()
         ),
         "production_approval": False,
