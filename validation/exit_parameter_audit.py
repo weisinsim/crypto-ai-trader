@@ -134,6 +134,16 @@ def validate_funding_coverage(funding_rows, candles, expected_interval_seconds, 
         )
 
 
+def research_gate_flags():
+    """Conservative release gates until exchange settlement reconciliation exists."""
+    return {
+        "funding_settlement_reconciliation_complete": False,
+        "profitability_claim_eligible": False,
+        "strategy_approval": False,
+        "live_trading_enabled": False,
+    }
+
+
 def funding_cost_r(funding_rows, entry_ts, exit_ts, side, entry, risk):
     """Sum side-aware funding cashflows at events within (entry, exit]."""
     direction = 1 if side == "LONG" else -1
@@ -348,6 +358,8 @@ def main():
     }
     output = {
         "notice": "Exit comparison only; not a validated strategy or investment recommendation.",
+        # Entry-price proxy is not exchange settlement reconciliation.
+        **research_gate_flags(),
         "inputs": {"candle_rows": len(candles), "signal_rows": len(signals),
                    "matched_signal_rows": matched_count,
                    "unmatched_signal_rows": unmatched_count,
