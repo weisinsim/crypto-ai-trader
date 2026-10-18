@@ -29,8 +29,8 @@ def validate_candles(rows: Iterable[dict], interval_ms: int | None = None) -> li
             ts = raw_ts
         elif isinstance(raw_ts, float) and isfinite(raw_ts) and raw_ts.is_integer():
             ts = int(raw_ts)
-        elif isinstance(raw_ts, str) and raw_ts.strip().isdigit():
-            ts = int(raw_ts.strip())
+        elif isinstance(raw_ts, str) and raw_ts.isdigit():
+            ts = int(raw_ts)
         else:
             raise ValueError(f"row {i} timestamp must be an integer millisecond value")
         if ts < 0:
@@ -151,8 +151,8 @@ def run_ema_cross_backtest(
                 raw_funding_ts = raw_ts
             elif isinstance(raw_ts, float) and isfinite(raw_ts) and raw_ts.is_integer():
                 raw_funding_ts = int(raw_ts)
-            elif isinstance(raw_ts, str) and raw_ts.strip().isdigit():
-                raw_funding_ts = int(raw_ts.strip())
+            elif isinstance(raw_ts, str) and raw_ts.isdigit():
+                raw_funding_ts = int(raw_ts)
             else:
                 raise ValueError(f"funding event {index} timestamp must be an integer millisecond value")
             if raw_funding_ts < 0:
