@@ -33,14 +33,34 @@ def source_file_manifest(path: str | None) -> dict:
 
 
 def load_csv(path: str, interval_ms: int) -> list[dict]:
+    """Load OHLCV candles with explicit schema and row-level validation errors."""
+    required_columns = {"t", "o", "h", "l", "c"}
     with open(path, newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        headers = set(reader.fieldnames or [])
+        missing_columns = sorted(required_columns - headers)
+        if missing_columns:
+            raise ValueError(f"candle CSV missing required columns: {missing_columns}")
         rows = []
-        for row in csv.DictReader(handle):
-            rows.append({
-                "t": int(row["t"]), "o": float(row["o"]), "h": float(row["h"]),
-                "l": float(row["l"]), "c": float(row["c"]),
-                "v": float(row.get("v", 0) or 0), "q": float(row.get("q", 0) or 0),
-            })
+        for line_number, row in enumerate(reader, start=2):
+            if not row or any(value is None for value in row.values()):
+                raise ValueError(f"candle CSV contains malformed row at line {line_number}")
+            try:
+                parsed = {
+                    "t": int(row["t"]), "o": float(row["o"]), "h": float(row["h"]),
+                    "l": float(row["l"]), "c": float(row["c"]),
+                    "v": float(row.get("v", 0) or 0), "q": float(row.get("q", 0) or 0),
+                }
+            except (OverflowError, TypeError, ValueError) as exc:
+                raise ValueError(f"candle CSV contains invalid numeric value at line {line_number}") from exc
+            numeric_fields = ("o", "h", "l", "c", "v", "q")
+            if any(not math.isfinite(parsed[field]) for field in numeric_fields):
+                raise ValueError(f"candle CSV contains non-finite numeric value at line {line_number}")
+            if parsed["v"] < 0 or parsed["q"] < 0:
+                raise ValueError(f"candle CSV contains negative volume at line {line_number}")
+            rows.append(parsed)
+    if not rows:
+        raise ValueError("candle CSV contains no data rows")
     return validate_candles(rows, interval_ms=interval_ms)
 
 
