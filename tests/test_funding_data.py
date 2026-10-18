@@ -78,6 +78,11 @@ class FundingDataTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "fundingTime must be an integer timestamp"):
                     parse_funding_rows([record(ts)], "BTCUSDT", 0, 1000)
 
+    def test_parse_funding_rows_rejects_noncanonical_timestamp_strings(self):
+        for ts in (" 100", "100 ", "+100", "100.0", "١٠٠", "²"):
+            with self.subTest(ts=ts), self.assertRaisesRegex(ValueError, "fundingTime must be an integer timestamp"):
+                parse_funding_rows([record(ts)], "BTCUSDT", 0, 1000)
+
     def test_parse_funding_rows_accepts_integer_timestamp_strings(self):
         rows = parse_funding_rows([record("100")], "BTCUSDT", 0, 1000)
         self.assertEqual(rows[0]["funding_time"], 100)
