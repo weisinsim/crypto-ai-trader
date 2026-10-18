@@ -1,7 +1,7 @@
 import asyncio
 import json
 import time
-from validation.candle_closure import filter_closed_candles, upsert_candle, validate_candle_series
+from validation.candle_closure import filter_closed_candles, normalize_timestamp_ms, upsert_candle, validate_candle_series
 from validation.dashboard_health import build_health_payload
 from validation.signal_confirmation import invalidate_stale_confirmation
 from pathlib import Path
@@ -220,7 +220,7 @@ def round_price(x):
     return round(x, 6)
 
 def kline_to_obj(x):
-    return {"t": int(x[0]), "o": float(x[1]), "h": float(x[2]), "l": float(x[3]),
+    return {"t": normalize_timestamp_ms(x[0]), "o": float(x[1]), "h": float(x[2]), "l": float(x[3]),
             "c": float(x[4]), "v": float(x[5]), "q": float(x[7])}
 
 def set_series(s, interval, klines):
