@@ -2,10 +2,21 @@ import unittest
 import tempfile
 from pathlib import Path
 
-from validation.replay_dashboard_signals import ema, rsi, atr, replay, ts_ms, read_rows, closed_rows_at, signal_state_for
+from validation.replay_dashboard_signals import ema, rsi, atr, replay, ts_ms, read_rows, closed_rows_at, signal_state_for, risk_levels
 
 
 class ReplayDashboardSignalsTests(unittest.TestCase):
+    def test_zero_atr_uses_live_model_fallback_for_risk_levels(self):
+        btc_stop, btc_target, btc_target2 = risk_levels("BTCUSDT", 100, 1, 0, 1.2, 1.5)
+        self.assertAlmostEqual(btc_stop, 99.4)
+        self.assertAlmostEqual(btc_target, 100.75)
+        self.assertAlmostEqual(btc_target2, 101.125)
+
+        xrp_stop, xrp_target, xrp_target2 = risk_levels("XRPUSDT", 100, 1, 0, 1.7, 2.8)
+        self.assertAlmostEqual(xrp_stop, 98.3)
+        self.assertAlmostEqual(xrp_target, 102.8)
+        self.assertAlmostEqual(xrp_target2, 103.5)
+
     def test_signal_state_mapping_preserves_direction(self):
         self.assertEqual(signal_state_for("", "WATCH_LONG", 1), "WATCH-LONG")
         self.assertEqual(signal_state_for("", "WATCH_SHORT", -1), "WATCH-SHORT")
