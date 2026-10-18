@@ -2,10 +2,18 @@ import unittest
 import tempfile
 from pathlib import Path
 
-from validation.replay_dashboard_signals import ema, rsi, atr, replay, ts_ms, read_rows, closed_rows_at
+from validation.replay_dashboard_signals import ema, rsi, atr, replay, ts_ms, read_rows, closed_rows_at, signal_state_for
 
 
 class ReplayDashboardSignalsTests(unittest.TestCase):
+    def test_signal_state_mapping_preserves_direction(self):
+        self.assertEqual(signal_state_for("", "WATCH_LONG", 1), "WATCH-LONG")
+        self.assertEqual(signal_state_for("", "WATCH_SHORT", -1), "WATCH-SHORT")
+        self.assertEqual(signal_state_for("", "WATCH_SCORE_BELOW_75", 1), "WATCH-LONG")
+        self.assertEqual(signal_state_for("", "WATCH_SCORE_BELOW_75", -1), "WATCH-SHORT")
+        self.assertEqual(signal_state_for("LONG", "ENTRY", 1), "LONG")
+        self.assertEqual(signal_state_for("", "XRP_KILL", 0), "NO-TRADE")
+
     def test_timezone_naive_timestamp_rejected(self):
         with self.assertRaises(ValueError):
             ts_ms("2025-01-01T00:00:00")
@@ -65,8 +73,8 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
     def test_xrp_watch_state_matches_live_watch_score(self):
         source = (Path(__file__).resolve().parents[1] / "validation" / "replay_dashboard_signals.py").read_text(encoding="utf-8")
         self.assertIn('score=43; reason="WATCH_LONG"', source)
-        self.assertIn('signal_state = "WATCH-LONG"', source)
-        self.assertIn('signal_state = "WATCH-SHORT"', source)
+        self.assertIn('return "WATCH-LONG"', source)
+        self.assertIn('return "WATCH-SHORT"', source)
 
     def test_eth_is_suppressed(self):
         one = []
