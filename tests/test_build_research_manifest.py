@@ -62,6 +62,20 @@ class ResearchManifestTests(unittest.TestCase):
                 self.assertEqual(result["batch_completion_status"], "PARTIAL_OR_FAILED")
                 self.assertFalse(result["processing_statuses_complete"])
 
+    def test_malformed_null_or_non_text_fields_fail_closed_without_crashing(self):
+        rows = [dict(row) for row in self.rows]
+        rows[0]["symbol"] = None
+        rows[1]["candle_status"] = None
+        rows[2]["funding_download_status"] = None
+        rows[3]["funding_audit_status"] = None
+        rows[4]["baseline_status"] = 123
+        result = build_manifest(rows)
+        self.assertEqual(result["batch_completion_status"], "PARTIAL_OR_FAILED")
+        self.assertEqual(result["funding_data_quality_status"], "BATCH_INCOMPLETE_REVIEW_REQUIRED")
+        self.assertTrue(result["funding_audit_review_required"])
+        self.assertFalse(result["profitability_claim_eligible"])
+        self.assertFalse(result["live_trading_enabled"])
+
     def test_missing_rows_is_partial_and_not_live(self):
         result = build_manifest([])
         self.assertEqual(result["batch_completion_status"], "PARTIAL_OR_FAILED")
