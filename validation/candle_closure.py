@@ -63,3 +63,22 @@ def upsert_candle(series, candle, *, limit=210):
     series.append(candle)
     del series[:-limit]
     return True
+
+
+def validate_candle_series(rows, *, limit=210):
+    """Validate a REST snapshot is strictly chronological with no duplicate opens."""
+    if not isinstance(rows, (list, tuple)):
+        raise ValueError("candle series must be a list or tuple")
+    result = []
+    previous = None
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict) or "t" not in row:
+            raise ValueError(f"candle row {index} must be a mapping with timestamp 't'")
+        timestamp = _timestamp_ms(row["t"], field=f"candle row {index} timestamp")
+        if previous is not None and timestamp <= previous:
+            raise ValueError("candle series timestamps must be strictly increasing")
+        result.append(row)
+        previous = timestamp
+    if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+        raise ValueError("limit must be a positive integer")
+    return result[-limit:]
