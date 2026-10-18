@@ -38,6 +38,8 @@ def load_csv(path: str, interval_ms: int) -> list[dict]:
     with open(path, newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         fieldnames = reader.fieldnames or []
+        if any(not isinstance(name, str) or not name.strip() for name in fieldnames):
+            raise ValueError("candle CSV contains blank column names")
         duplicate_columns = sorted({name for name in fieldnames if fieldnames.count(name) > 1})
         if duplicate_columns:
             raise ValueError(f"candle CSV contains duplicate columns: {duplicate_columns}")
@@ -85,6 +87,8 @@ def load_funding_csv(path: str) -> list[dict]:
     with open(path, newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         fieldnames = reader.fieldnames or []
+        if any(not isinstance(name, str) or not name.strip() for name in fieldnames):
+            raise ValueError("funding CSV contains blank column names")
         duplicate_columns = sorted({name for name in fieldnames if fieldnames.count(name) > 1})
         if duplicate_columns:
             raise ValueError(f"funding CSV contains duplicate columns: {duplicate_columns}")
