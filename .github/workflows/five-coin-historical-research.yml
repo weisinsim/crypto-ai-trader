@@ -107,7 +107,9 @@ jobs:
           symbol, interval = sys.argv[1:]
           audit = json.load(open(f"reports/{symbol}_funding_audit.json", encoding="utf-8"))
           report = json.load(open(f"reports/{symbol}_{interval}_baseline.json", encoding="utf-8"))
-          funding_status = "DOWNLOADED_NOT_RECONCILED"
+          sources = audit.get("funding", {}).get("source_labels", [])
+          proxy_used = any("proxy" in source.lower() for source in sources)
+          funding_status = "DOWNLOADED_PROXY_MARK_PRICE_NOT_RECONCILED" if proxy_used else "DOWNLOADED_NOT_RECONCILED"
           audit_status = audit.get("status", "UNKNOWN")
           backtest_status = report.get("status", "UNKNOWN")
           print(f"{symbol},{interval},COMPLETE,{funding_status},{audit_status},{backtest_status}")
@@ -131,7 +133,8 @@ jobs:
               "live_trading_enabled": False,
               "interpretation": (
                   "EMA baseline is a data-pipeline smoke test, not the asset-adaptive dashboard model. "
-                  "Funding download is not cashflow reconciliation; audit alignment is not proof of complete coverage."
+                  "Funding download is not cashflow reconciliation; audit alignment is not proof of complete coverage. "
+              "If API access returns HTTP 451, archive fallback funding uses the last fully closed hourly mark-price candle as a proxy, not the actual settlement mark; those results are exploratory only."
               ),
               "rows_completed": len(rows),
               "assets": rows,
