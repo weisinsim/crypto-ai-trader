@@ -17,6 +17,7 @@ class XRPSharedModelTests(unittest.TestCase):
         result = evaluate_xrp_signal(
             [99.8, 99.9, 100.0],
             e20_1h=99.7,
+            e50_1h=99.5,
             e20_4h=100.5,
             e50_4h=100.0,
             rsi_1h=50.0,
@@ -37,6 +38,7 @@ class XRPSharedModelTests(unittest.TestCase):
         result = evaluate_xrp_signal(
             [99.0, 99.5, 99.4, 100.0],
             e20_1h=99.8,
+            e50_1h=99.6,
             e20_4h=100.5,
             e50_4h=100.0,
             rsi_1h=50.0,
@@ -52,6 +54,7 @@ class XRPSharedModelTests(unittest.TestCase):
         result = evaluate_xrp_signal(
             [99.0, 100.0, 103.0],
             e20_1h=100.0,
+            e50_1h=99.5,
             e20_4h=100.5,
             e50_4h=100.0,
             rsi_1h=50.0,
@@ -72,6 +75,7 @@ class XRPSharedModelTests(unittest.TestCase):
         result = evaluate_xrp_signal(
             [99.8, 99.9, 100.0],
             e20_1h=99.7,
+            e50_1h=99.5,
             e20_4h=100.5,
             e50_4h=100.0,
             rsi_1h=50.0,
