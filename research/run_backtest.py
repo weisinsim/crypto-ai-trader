@@ -101,6 +101,8 @@ def summarize_funding_data_quality(
             "interpretation": "No historical funding events supplied; no coverage or settlement claim can be made.",
         }
     candle_timestamps = {row["t"] for row in candle_rows}
+    source_labels = sorted({str(row.get("mark_price_source", "unspecified") or "unspecified") for row in funding_rows})
+    proxy_mark_price_review_required = any("PROXY" in label.upper() for label in source_labels)
     # Preserve raw timestamps for cadence diagnostics. For candle alignment only,
     # use the already-normalized timestamp when the raw jitter is <=1s and the
     # normalized timestamp is an actual candle open.
@@ -151,7 +153,8 @@ def summarize_funding_data_quality(
         "normalized_candle_open_matches": matched,
         "boundary_jitter_normalized_records": jitter_normalized,
         "non_candle_open_events": nonmatching,
-        "source_labels": sorted({row.get("mark_price_source", "unspecified") for row in funding_rows}),
+        "source_labels": source_labels,
+        "proxy_mark_price_review_required": proxy_mark_price_review_required,
         "venue_labels": sorted({row.get("venue", "") or "unspecified" for row in funding_rows}),
         "event_interval_ms": {
             "min": min(deltas) if deltas else None,
@@ -680,7 +683,7 @@ def main() -> None:
         "status": "RESEARCH_ONLY",
         "funding_interpretation_gate": (
             "FUNDING_DATA_REVIEW_REQUIRED"
-            if funding_quality["review_required"]
+            if funding_quality["review_required"] or funding_quality.get("proxy_mark_price_review_required", False)
             else "TIMESTAMP_ALIGNMENT_ONLY_NOT_RECONCILED"
         ),
         "symbol": args.symbol.upper(),

@@ -48,6 +48,17 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
         )
         self.assertFalse(summary["event_completeness_verified"])
 
+    def test_proxy_mark_price_requires_review_even_when_timestamps_align(self):
+        candles = [{"t": 100}, {"t": 200}, {"t": 300}]
+        funding = [
+            {"funding_time": 100, "mark_price_source": "archive_prior_closed_mark_price_1h_proxy_NOT_SETTLEMENT_MARK", "venue": "binance_usdm"},
+            {"funding_time": 300, "mark_price_source": "archive_prior_closed_mark_price_1h_proxy_NOT_SETTLEMENT_MARK", "venue": "binance_usdm"},
+        ]
+        summary = summarize_funding_data_quality(funding, candles)
+        self.assertFalse(summary["review_required"])
+        self.assertTrue(summary["proxy_mark_price_review_required"])
+        self.assertIn("PROXY", summary["source_labels"][0].upper())
+
     def test_missing_funding_is_explicitly_unverified(self):
         summary = summarize_funding_data_quality(None, [{"t": 100}])
         self.assertFalse(summary["provided"])
