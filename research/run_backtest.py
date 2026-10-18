@@ -240,6 +240,26 @@ def summarize_funding_data_quality(
         if start_ts <= raw_ts <= end_ts
     ]
     deltas = [right - left for left, right in zip(event_timestamps, event_timestamps[1:])]
+    # Cadence is diagnostic only: do not assume every venue uses a fixed interval.
+    # With enough observations, flag unusually large gaps relative to the dataset's
+    # own median interval so a reviewer can inspect possible missing settlements.
+    median_interval_ms = None
+    cadence_gap_intervals = []
+    if len(deltas) >= 3:
+        ordered_deltas = sorted(deltas)
+        middle = len(ordered_deltas) // 2
+        median_interval_ms = (
+            ordered_deltas[middle] if len(ordered_deltas) % 2
+            else (ordered_deltas[middle - 1] + ordered_deltas[middle]) / 2
+        )
+        if median_interval_ms > 0:
+            cadence_gap_intervals = [
+                {"from_ts": event_timestamps[index], "to_ts": event_timestamps[index + 1],
+                 "interval_ms": delta}
+                for index, delta in enumerate(deltas)
+                if delta > 3 * median_interval_ms
+            ]
+    cadence_gap_review_required = bool(cadence_gap_intervals)
     raw_matched = sum(raw_ts in candle_timestamps for raw_ts, _ in in_range_pairs)
     matched = sum(align_ts in candle_timestamps for _, align_ts in in_range_pairs)
     jitter_normalized = sum(
@@ -251,7 +271,7 @@ def summarize_funding_data_quality(
     needs_review = bool(
         duplicate_timestamps or out_of_range or nonmatching
         or missing_source_labels or missing_venue_labels
-        or proxy_mark_price_review_required
+        or proxy_mark_price_review_required or cadence_gap_review_required
     )
     return {
         "provided": True,
@@ -276,7 +296,10 @@ def summarize_funding_data_quality(
             "min": min(deltas) if deltas else None,
             "max": max(deltas) if deltas else None,
             "distinct_count": len(set(deltas)),
+            "median": median_interval_ms,
         },
+        "cadence_gap_intervals": cadence_gap_intervals,
+        "cadence_gap_review_required": cadence_gap_review_required,
         "event_completeness_verified": False,
         "review_required": needs_review,
         "audit_status": (
