@@ -122,6 +122,17 @@ def closed_rows_at(rows, timestamp_ms):
     return [row for row in rows if row["ts"] <= timestamp_ms]
 
 
+def signal_state_for(side, reason, direction):
+    """Map replay decisions to the directional signal labels used for parity review."""
+    if side:
+        return side
+    if reason == "WATCH_LONG" or (reason == "WATCH_SCORE_BELOW_75" and direction == 1):
+        return "WATCH-LONG"
+    if reason == "WATCH_SHORT" or (reason == "WATCH_SCORE_BELOW_75" and direction == -1):
+        return "WATCH-SHORT"
+    return "NO-TRADE"
+
+
 def replay(symbol, one, four, *, include_states=False):
     output=[]
     # For each hourly close, use hourly candles through that close and 4h candles
@@ -185,14 +196,7 @@ def replay(symbol, one, four, *, include_states=False):
                     else: reason="WATCH_SCORE_BELOW_75"
                 elif reason=="NO-TRADE":
                     reason="WATCH_LONG" if direction==1 else "WATCH_SHORT"
-        if side:
-            signal_state = side
-        elif reason == "WATCH_LONG" or (reason == "WATCH_SCORE_BELOW_75" and direction == 1):
-            signal_state = "WATCH-LONG"
-        elif reason == "WATCH_SHORT" or (reason == "WATCH_SCORE_BELOW_75" and direction == -1):
-            signal_state = "WATCH-SHORT"
-        else:
-            signal_state = "NO-TRADE"
+        signal_state = signal_state_for(side, reason, direction)
         status = side if side else ("WATCH" if signal_state.startswith("WATCH-") else "NO-TRADE")
         if side or include_states:
             output.append({"timestamp":one[i]["timestamp"],"status":status,"signal":signal_state,"side":side,
