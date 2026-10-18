@@ -351,6 +351,19 @@ def summarize_uncensored_holdout_trade_metrics(trades: list[dict]) -> dict:
     }
 
 
+def summarize_same_bar_exit_ambiguity(trades: list[dict]) -> dict:
+    """Count closed trades whose OHLC candle touched both stop and target barriers."""
+    closed = [trade for trade in trades if trade.get("reason") in ("STOP", "TARGET")]
+    ambiguous = [trade for trade in closed if trade.get("same_bar_stop_target_ambiguous") is True]
+    return {
+        "closed_trade_count": len(closed),
+        "ambiguous_trade_count": len(ambiguous),
+        "ambiguous_trade_pct": round(len(ambiguous) / len(closed) * 100, 2) if closed else None,
+        "ambiguous_net_pnl_equity": round(sum(float(trade["pnl_equity"]) for trade in ambiguous), 8),
+        "interpretation": "diagnostic_only_stop_first_assumption_used_for_ambiguous_candles",
+    }
+
+
 def summarize_holdout_trade_quality(trades: list[dict]) -> dict:
     """Summarize holdout trade outcomes by side, exit reason and holding duration.
 
@@ -916,6 +929,7 @@ def main() -> None:
             "profit_factor": round(holdout_profit / holdout_loss, 4) if holdout_loss else (None if not holdout_profit else "INF"),
             "expectancy_equity_pct": round(mean(holdout_pnls) * 100, 4) if holdout_pnls else None,
             "trade_quality_diagnostics": summarize_holdout_trade_quality(holdout_trades),
+            "same_bar_exit_ambiguity_diagnostic": summarize_same_bar_exit_ambiguity(holdout_trades),
             "uncensored_trade_metrics_diagnostic": summarize_uncensored_holdout_trade_metrics(holdout_trades),
             "trade_log": holdout_trades,
             "funding_sensitivity": summarize_funding_scenarios({
