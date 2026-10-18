@@ -63,6 +63,16 @@ class WalkForwardCostStressTests(unittest.TestCase):
         self.assertFalse(report["walk_forward_candidate_gate"]["pass"])
         self.assertEqual(report["folds_passing_all_three_cost_scenarios"], 0)
 
+    def test_incomplete_fold_does_not_inflate_positive_return_or_pf_counts(self):
+        fold = self._passing_fold()
+        fold["status"] = "INSUFFICIENT_DATA"
+        report = summarize_walk_forward_cost_stress([fold])
+        for scenario in ("base", "stress", "severe_stress"):
+            with self.subTest(scenario=scenario):
+                summary = report["scenario_summary"][scenario]
+                self.assertEqual(summary["folds_positive_return"], 0)
+                self.assertEqual(summary["folds_pf_above_1_15"], 0)
+
     def test_scenario_summary_does_not_count_incomplete_underlying_fold(self):
         fold = self._passing_fold()
         fold["status"] = "INSUFFICIENT_DATA"
