@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -155,13 +157,26 @@ def download_klines(
 
 
 def save_csv(rows: list[dict], path: str | Path) -> None:
-    """Write stable, timestamp-sorted OHLCV CSV."""
+    """Write stable OHLCV CSV via a same-directory temporary file and atomic replace."""
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with destination.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=FIELDS)
-        writer.writeheader()
-        writer.writerows(rows)
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent
+    )
+    try:
+        with os.fdopen(fd, "w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=FIELDS)
+            writer.writeheader()
+            writer.writerows(rows)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, destination)
+    except BaseException:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+        raise
 
 
 def utc_ms(date_text: str) -> int:

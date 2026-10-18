@@ -1,6 +1,9 @@
 import unittest
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
 
-from research.binance_data import download_klines, parse_klines
+from research.binance_data import download_klines, parse_klines, save_csv
 
 
 def raw_kline(ts, close="100"):
@@ -63,6 +66,25 @@ class BinanceDataTests(unittest.TestCase):
             raw[field_index] = value
             with self.subTest(field_index=field_index, value=value), self.assertRaises(ValueError):
                 parse_klines([raw], 3_600_000, 3_600_000)
+
+    def test_save_csv_replaces_output_atomically(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "nested" / "candles.csv"
+            save_csv([{"t": 0, "o": 99, "h": 101, "l": 98, "c": 100, "v": 12, "q": 1200}], path)
+            self.assertEqual(path.read_text(encoding="utf-8").splitlines()[0], "t,o,h,l,c,v,q")
+            self.assertEqual([item.name for item in path.parent.iterdir()], ["candles.csv"])
+
+    def test_save_csv_preserves_previous_file_on_write_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "candles.csv"
+            original = "previous,csv\\n"
+            path.write_text(original, encoding="utf-8")
+            rows = [{"t": 0, "o": 99, "h": 101, "l": 98, "c": 100, "v": 12, "q": 1200}]
+            with patch("research.binance_data.csv.DictWriter.writerows", side_effect=OSError("simulated disk error")):
+                with self.assertRaisesRegex(OSError, "simulated disk error"):
+                    save_csv(rows, path)
+            self.assertEqual(path.read_text(encoding="utf-8"), original)
+            self.assertEqual([item.name for item in Path(tmp).iterdir()], ["candles.csv"])
 
     def test_parse_rejects_inconsistent_ohlc(self):
         raw = raw_kline(0)
