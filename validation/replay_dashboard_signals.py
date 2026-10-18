@@ -164,9 +164,12 @@ def levels(h,l,c,n=48):
     return min(l[-m:-1]),max(h[-m:-1])
 
 
-def closed_rows_at(rows, timestamp_ms):
-    """Return only bars whose close timestamp is no later than the decision time."""
-    return [row for row in rows if row["ts"] <= timestamp_ms]
+def closed_rows_at(rows, decision_close_ms, interval_ms=14_400_000):
+    """Return only bars whose close time is no later than the decision time.
+
+    Input timestamps are candle OPEN times; interval_ms must match the series.
+    """
+    return [row for row in rows if row["ts"] + interval_ms <= decision_close_ms]
 
 
 def closed_four_count_at(rows, decision_close_ms, start_index=0):
