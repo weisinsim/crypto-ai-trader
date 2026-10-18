@@ -320,12 +320,12 @@ class WalkForwardCostStressSummaryTests(unittest.TestCase):
 
     def test_infinite_pf_is_excluded_from_numeric_minimum(self):
         folds = [
-            {"cost_stress": {"scenarios": {
+            {"status": "COMPLETED", "cost_stress": {"scenarios": {
                 "base": {"status": "COMPLETED", "net_return_pct": 1.0,
                          "max_drawdown_pct": 2.0, "profit_factor": "INF"},
                 "stress": {}, "severe_stress": {},
             }}},
-            {"cost_stress": {"scenarios": {
+            {"status": "COMPLETED", "cost_stress": {"scenarios": {
                 "base": {"status": "COMPLETED", "net_return_pct": -1.0,
                          "max_drawdown_pct": 6.0, "profit_factor": 1.25},
                 "stress": {}, "severe_stress": {},
