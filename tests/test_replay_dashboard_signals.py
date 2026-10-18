@@ -125,7 +125,9 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
 
     def test_only_closed_higher_timeframe_bars_are_used(self):
         bars = [{"ts": 100, "c": 1}, {"ts": 200, "c": 2}, {"ts": 300, "c": 3}]
-        self.assertEqual(closed_rows_at(bars, 200), bars[:2])
+        # Timestamps are candle opens; with a 100ms interval, only candles
+        # whose close time is <= 300ms are eligible.
+        self.assertEqual(closed_rows_at(bars, 300, interval_ms=100), bars[:2])
 
     def test_ema_seed_and_trend(self):
         self.assertEqual(ema([1, 2, 3], 2), 2.5)
