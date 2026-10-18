@@ -10,6 +10,23 @@ from research.run_backtest import load_csv, load_funding_csv, main, max_drawdown
 
 
 class FundingDataQualitySummaryTests(unittest.TestCase):
+    def test_cli_refuses_to_overwrite_candle_input(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            candles_path = Path(tmp) / "candles.csv"
+            candles_bytes = (
+                "t,o,h,l,c,v,q\\n"
+                + "".join(f"{i * 3600000},100,101,99,100,1,100\\n" for i in range(180))
+            ).encode("utf-8")
+            candles_path.write_bytes(candles_bytes)
+            argv = [
+                "run_backtest.py", "--csv", str(candles_path), "--symbol", "BTCUSDT",
+                "--interval", "1h", "--output", str(candles_path),
+            ]
+            with patch.object(sys, "argv", argv):
+                with self.assertRaisesRegex(ValueError, "must not overwrite"):
+                    main()
+            self.assertEqual(candles_path.read_bytes(), candles_bytes)
+
     def test_reports_timestamp_alignment_without_claiming_completeness(self):
         candles = [{"t": 100}, {"t": 200}, {"t": 300}, {"t": 400}]
         funding = [
