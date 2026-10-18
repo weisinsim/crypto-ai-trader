@@ -40,7 +40,9 @@ def build_manifest(rows: list[dict]) -> dict:
         completion = "ALL_ASSETS_PROCESSED_REVIEW_REQUIRED"
     else:
         completion = "ALL_ASSETS_PROCESSED_NOT_RECONCILED"
-    if any_proxy:
+    if not all_assets_processed:
+        quality = "BATCH_INCOMPLETE_REVIEW_REQUIRED"
+    elif any_proxy:
         quality = "PROXY_MARKS_NOT_SETTLEMENT_REVIEW_REQUIRED"
     elif audit_review:
         quality = "FUNDING_AUDIT_REVIEW_REQUIRED"

@@ -65,6 +65,7 @@ class ResearchManifestTests(unittest.TestCase):
     def test_missing_rows_is_partial_and_not_live(self):
         result = build_manifest([])
         self.assertEqual(result["batch_completion_status"], "PARTIAL_OR_FAILED")
+        self.assertEqual(result["funding_data_quality_status"], "BATCH_INCOMPLETE_REVIEW_REQUIRED")
         self.assertFalse(result["live_trading_enabled"])
 
 
