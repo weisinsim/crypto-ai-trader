@@ -39,6 +39,21 @@ def canonical_settlement_timestamp(ts: int, tolerance_ms: int = 1000) -> int:
         raise ValueError(f"funding timestamp is off the canonical 8-hour grid: {ts}")
     return canonical
 
+def _parse_archive_timestamp(value, field: str = "archive timestamp") -> int:
+    """Parse an archive timestamp without float rounding or truncation."""
+    if isinstance(value, bool):
+        raise ValueError(f"{field} must be an integer timestamp")
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, str) and value.strip().isdigit():
+        parsed = int(value.strip())
+    else:
+        raise ValueError(f"{field} must be an integer timestamp")
+    if parsed < 0:
+        raise ValueError(f"{field} cannot be negative")
+    return parsed
+
+
 def _parse_integer_timestamp(value, field: str = "fundingTime") -> int:
     """Parse an exchange timestamp without silently truncating malformed values."""
     if isinstance(value, bool):
@@ -287,9 +302,9 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                 # Fetch daily 1m official mark-price archives for current-month
                 # settlement dates. Later fallback logic verifies each timestamp.
                 for date_str in sorted({
-                    datetime.fromtimestamp(int(float(row[0])) / 1000, timezone.utc).strftime("%Y-%m-%d")
+                    datetime.fromtimestamp(_parse_archive_timestamp(row[0]) / 1000, timezone.utc).strftime("%Y-%m-%d")
                     for row in rate_rows if row and row[0].strip().replace(".", "", 1).isdigit()
-                    and start_ms <= int(float(row[0])) < end_ms
+                    and start_ms <= _parse_archive_timestamp(row[0]) < end_ms
                 }):
                     daily_url = (
                         f"https://data.binance.vision/data/futures/um/daily/markPriceKlines/"
@@ -307,7 +322,7 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
             marks = {}
             for row in mark_rows:
                 try:
-                    ts, mark_open = int(float(row[0])), float(row[1])
+                    ts, mark_open = _parse_archive_timestamp(row[0]), float(row[1])
                 except (ValueError, IndexError):
                     continue
                 # Use the mark-price candle OPEN at settlement time, not its
@@ -321,7 +336,7 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
             missing_8h_times = set()
             for funding_row in rate_rows:
                 try:
-                    funding_ts = canonical_settlement_timestamp(int(float(funding_row[0])))
+                    funding_ts = canonical_settlement_timestamp(_parse_archive_timestamp(funding_row[0]))
                 except (ValueError, IndexError):
                     continue
                 if not (start_ms <= funding_ts < end_ms):
@@ -348,7 +363,7 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                     mark_1m_rows = csv.reader(io.TextIOWrapper(zf.open(mark_1m_name), encoding="utf-8"))
                     for item in mark_1m_rows:
                         try:
-                            minute_open_ts = int(float(item[0]))
+                            minute_open_ts = _parse_archive_timestamp(item[0])
                             mark_open, mark_close = float(item[1]), float(item[4])
                         except (ValueError, IndexError):
                             continue
@@ -379,7 +394,7 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                         daily_rows = csv.reader(io.TextIOWrapper(zf.open(daily_name), encoding="utf-8"))
                         for item in daily_rows:
                             try:
-                                minute_open_ts = int(float(item[0]))
+                                minute_open_ts = _parse_archive_timestamp(item[0])
                                 mark_open, mark_close = float(item[1]), float(item[4])
                             except (ValueError, IndexError):
                                 continue
@@ -389,7 +404,7 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                 mark_1m_closes.sort()
             for row in rate_rows:
                 try:
-                    ts = canonical_settlement_timestamp(int(float(row[0])))
+                    ts = canonical_settlement_timestamp(_parse_archive_timestamp(row[0]))
                     rate = float(row[-1])
                 except (ValueError, IndexError):
                     continue
