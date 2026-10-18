@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from research.run_backtest import load_funding_csv, main, max_drawdown_pct, summarize_funding_data_quality, summarize_holdout_trade_quality, summarize_walk_forward_cost_stress
+from research.run_backtest import load_csv, load_funding_csv, main, max_drawdown_pct, summarize_funding_data_quality, summarize_holdout_trade_quality, summarize_walk_forward_cost_stress
 
 
 class FundingDataQualitySummaryTests(unittest.TestCase):
@@ -719,3 +719,37 @@ class FundingAuditPreservationIntegrationTests(unittest.TestCase):
             self.assertEqual(funding_quality["records_outside_candle_range"], 1)
             self.assertTrue(funding_quality["review_required"])
             self.assertEqual(report["funding_interpretation_gate"], "FUNDING_DATA_REVIEW_REQUIRED")
+
+
+class CandleCsvSchemaValidationTests(unittest.TestCase):
+    def _write_csv(self, path, headers, rows):
+        with path.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=headers)
+            writer.writeheader()
+            writer.writerows(rows)
+
+    def test_missing_required_column_has_clear_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "candles.csv"
+            self._write_csv(path, ["t", "o", "h", "l"], [])
+            with self.assertRaisesRegex(ValueError, "missing required columns.*c"):
+                load_csv(str(path), 3_600_000)
+
+    def test_invalid_and_non_finite_values_fail_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for row, message in [
+                ({"t": "0", "o": "bad", "h": "2", "l": "1", "c": "1.5"}, "invalid numeric"),
+                ({"t": "0", "o": "1", "h": "inf", "l": "1", "c": "1.5"}, "non-finite"),
+                ({"t": "0", "o": "1", "h": "2", "l": "1", "c": "1.5", "v": "-1"}, "negative volume"),
+            ]:
+                path = Path(tmp) / "candles.csv"
+                self._write_csv(path, ["t", "o", "h", "l", "c", "v"], [row])
+                with self.subTest(message=message), self.assertRaisesRegex(ValueError, message):
+                    load_csv(str(path), 3_600_000)
+
+    def test_empty_csv_data_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "candles.csv"
+            self._write_csv(path, ["t", "o", "h", "l", "c"], [])
+            with self.assertRaisesRegex(ValueError, "no data rows"):
+                load_csv(str(path), 3_600_000)
