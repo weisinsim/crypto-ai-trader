@@ -174,8 +174,9 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
             {"funding_time": 300, "mark_price_source": "archive_prior_closed_mark_price_1h_proxy_NOT_SETTLEMENT_MARK", "venue": "binance_usdm"},
         ]
         summary = summarize_funding_data_quality(funding, candles)
-        self.assertFalse(summary["review_required"])
+        self.assertTrue(summary["review_required"])
         self.assertTrue(summary["proxy_mark_price_review_required"])
+        self.assertEqual(summary["audit_status"], "REVIEW_REQUIRED")
         self.assertEqual(summary["proxy_mark_price_records"], 2)
         self.assertEqual(summary["source_record_counts"], {
             "archive_prior_closed_mark_price_1h_proxy_NOT_SETTLEMENT_MARK": 2
