@@ -773,6 +773,28 @@ def main() -> None:
     )
     holdout_trades = [t for t in holdout_result["trade_log"] if boundary_ts <= t["entry_time"] <= rows[-1]["t"]]
     holdout_curve = [p for p in holdout_result["equity_curve"] if boundary_ts <= p["t"] <= rows[-1]["t"]]
+    # Report trades whose entry is in the holdout but whose exit falls outside
+    # the evaluated interval. Such trades can make endpoint-based metrics hard
+    # to interpret if their final PnL is included before the exit is observed.
+    holdout_end_ts = rows[-1]["t"]
+    holdout_boundary_trade_diagnostics = {
+        "holdout_start_ts": boundary_ts,
+        "holdout_end_ts": holdout_end_ts,
+        "entries_in_holdout": len(holdout_trades),
+        "exits_after_holdout_end": sum(
+            1 for trade in holdout_trades
+            if trade.get("exit_time") is not None and trade["exit_time"] > holdout_end_ts
+        ),
+        "missing_exit_time": sum(
+            1 for trade in holdout_trades if trade.get("exit_time") is None
+        ),
+        "interpretation": (
+            "review_required" if any(
+                trade.get("exit_time") is None or trade["exit_time"] > holdout_end_ts
+                for trade in holdout_trades
+            ) else "all_holdout_trades_closed_within_window"
+        ),
+    }
     # Convert fixed-notional trade PnL to the starting-equity basis used by the runner.
     holdout_pnls = [t["pnl_equity"] for t in holdout_trades]
     holdout_profit = sum(p for p in holdout_pnls if p > 0)
@@ -867,6 +889,7 @@ def main() -> None:
         "funding_boundary_policy_sensitivity": boundary_sensitivity,
         "holdout": {
             "bars": len(holdout), "trades": len(holdout_trades),
+            "boundary_trade_diagnostics": holdout_boundary_trade_diagnostics,
             "net_return_pct": round((holdout_result["equity_final"] - 1.0) * 100, 4),
             "max_drawdown_pct": max_drawdown_pct(holdout_curve),
             "equity_final": holdout_result["equity_final"],
