@@ -706,6 +706,12 @@ def main() -> None:
             "timestamp_alignment": "exact candle-open timestamp required for funding settlements",
             "event_completeness_verified": False,
             "source_authenticity_verified": False,
+            "funding_pnl_authoritative": False,
+            "funding_pnl_authority_blockers": [
+                "event completeness has not been verified",
+                "source authenticity and mark-price provenance have not been independently verified",
+                "funding cashflows have not been reconciled to an exchange account ledger",
+            ],
             "note": "SHA-256 fingerprints identify the exact local input bytes; they do not authenticate the venue or prove complete coverage.",
         },
         "funding_data": {
