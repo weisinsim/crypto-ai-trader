@@ -37,6 +37,12 @@ class FundingAuditTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "funding timestamp must be a non-negative integer"):
                     audit_funding_against_candles(self.candles, rows, "BTCUSDT")
 
+    def test_requested_symbol_must_be_nonempty_text(self):
+        for value in (None, 123, "", "   "):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "symbol must be a non-empty string"):
+                    audit_funding_against_candles(self.candles, self.funding, value)
+
     def test_nonchronological_candle_rows_require_review(self):
         candles = [self.candles[0], self.candles[2], self.candles[1], self.candles[3]]
         report = audit_funding_against_candles(candles, self.funding, "BTCUSDT")
