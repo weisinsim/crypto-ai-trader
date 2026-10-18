@@ -125,7 +125,7 @@ class FundingDownloaderTests(unittest.TestCase):
             with patch.object(sys, "argv", argv):
                 main()
             output = Path(tmp) / "BTCUSDT_funding.csv"
-            manifest = json.loads((Path(tmp) / "funding_manifest.json").read_text(encoding="utf-8"))
+            manifest = json.loads((Path(tmp) / "funding_download_manifest.json").read_text(encoding="utf-8"))
             # Manifest filename follows the downloader's stable output contract.
             entry = manifest["files"][0]
             source_bytes = output.read_bytes()
