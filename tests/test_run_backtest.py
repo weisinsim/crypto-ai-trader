@@ -90,9 +90,9 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
                 writer.writeheader()
                 writer.writerows(candles)
             with funding_path.open("w", newline="", encoding="utf-8") as handle:
-                writer = csv.DictWriter(handle, fieldnames=["funding_time", "funding_rate", "mark_price", "mark_price_source", "venue"])
+                writer = csv.DictWriter(handle, fieldnames=["symbol", "funding_time", "funding_rate", "mark_price", "mark_price_source", "venue"])
                 writer.writeheader()
-                writer.writerow({"funding_time": 0, "funding_rate": 0.0001, "mark_price": 100, "mark_price_source": "archive_prior_closed_mark_price_1h_proxy_NOT_SETTLEMENT_MARK", "venue": "binance_usdm"})
+                writer.writerow({"symbol": "BTCUSDT", "funding_time": 0, "funding_rate": 0.0001, "mark_price": 100, "mark_price_source": "archive_prior_closed_mark_price_1h_proxy_NOT_SETTLEMENT_MARK", "venue": "binance_usdm"})
             argv = ["run_backtest.py", "--csv", str(csv_path), "--funding-csv", str(funding_path), "--symbol", "BTCUSDT", "--interval", "1h", "--output", str(output_path)]
             with patch.object(sys, "argv", argv):
                 main()
