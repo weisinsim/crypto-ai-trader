@@ -1,4 +1,9 @@
+import hashlib
+import json
+import sys
+import tempfile
 import unittest
+from pathlib import Path
 
 from research.audit_funding_data import audit_funding_against_candles, main
 
@@ -192,7 +197,6 @@ class FundingAuditTests(unittest.TestCase):
             with patch.object(sys, "argv", argv):
                 main()
             report = json.loads(output_path.read_text(encoding="utf-8"))
-            import hashlib
             self.assertEqual(
                 report["input_manifest"]["candles"]["sha256"],
                 hashlib.sha256(candles_path.read_bytes()).hexdigest(),
