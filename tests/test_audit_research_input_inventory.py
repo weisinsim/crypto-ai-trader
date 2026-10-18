@@ -38,8 +38,8 @@ class ResearchInputInventoryTests(unittest.TestCase):
     def test_non_aligned_window_uses_epoch_anchored_candle_closes(self):
         path = self.candles / "BTCUSDT_1h.csv"
         path.write_text(
-            "timestamp,open,high,low,close\\n"
-            "2025-01-01T01:59:59.999Z,100,102,99,101\\n",
+            "timestamp,open,high,low,close\n"
+            "2025-01-01T01:59:59.999Z,100,102,99,101\n",
             encoding="utf-8")
         # Window begins at 00:30, so the 00:59 close is expected; this input
         # starts too late and must not be incorrectly accepted as complete.
@@ -52,9 +52,9 @@ class ResearchInputInventoryTests(unittest.TestCase):
     def test_non_aligned_window_accepts_all_closes_inside_range(self):
         path = self.candles / "BTCUSDT_1h.csv"
         path.write_text(
-            "timestamp,open,high,low,close\\n"
-            "2025-01-01T00:59:59.999Z,100,102,99,101\\n"
-            "2025-01-01T01:59:59.999Z,101,103,100,102\\n",
+            "timestamp,open,high,low,close\n"
+            "2025-01-01T00:59:59.999Z,100,102,99,101\n"
+            "2025-01-01T01:59:59.999Z,101,103,100,102\n",
             encoding="utf-8")
         result = inspect_csv(path, "candle", 1735691400000, 1735698600000, "1h")
         self.assertTrue(result["pass"])
