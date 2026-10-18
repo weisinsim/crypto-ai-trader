@@ -27,6 +27,22 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
                     main()
             self.assertEqual(candles_path.read_bytes(), candles_bytes)
 
+    def test_cli_refuses_to_overwrite_funding_input(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            candles_path = Path(tmp) / "candles.csv"
+            funding_path = Path(tmp) / "funding.csv"
+            candles_path.write_text("not loaded before path collision check\\n", encoding="utf-8")
+            funding_bytes = b"symbol,funding_time,funding_rate,mark_price\\nBTCUSDT,0,0.001,100\\n"
+            funding_path.write_bytes(funding_bytes)
+            argv = [
+                "run_backtest.py", "--csv", str(candles_path), "--funding-csv", str(funding_path),
+                "--symbol", "BTCUSDT", "--interval", "1h", "--output", str(funding_path),
+            ]
+            with patch.object(sys, "argv", argv):
+                with self.assertRaisesRegex(ValueError, "must not overwrite"):
+                    main()
+            self.assertEqual(funding_path.read_bytes(), funding_bytes)
+
     def test_reports_timestamp_alignment_without_claiming_completeness(self):
         candles = [{"t": 100}, {"t": 200}, {"t": 300}, {"t": 400}]
         funding = [
