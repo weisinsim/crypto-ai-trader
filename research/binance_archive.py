@@ -1,9 +1,9 @@
-"""Fallback reader for Binance's public USD-M historical archive.
+"""Fallback reader for Binance public USD-M archives.
 
-The archive's funding files contain rates/timestamps but not the settlement mark
-price. For research continuity only, this module uses the last fully closed
-archived mark-price candle as an explicitly labelled proxy; it is not an
-exchange settlement mark and must not be described as reconciled cashflow.
+Funding archives contain rates/timestamps, not settlement mark prices. Research
+fallbacks use a prior closed mark-price candle when available, then a prior
+closed regular-price candle as a lower-quality proxy. Neither is the actual
+settlement mark; source labels must be retained and cashflows are not reconciled.
 """
 from __future__ import annotations
 
@@ -107,10 +107,16 @@ def download_archive_klines(symbol: str, interval: str, start_ms: int,
 def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[dict]:
     """Download funding-rate archive; attach a clearly labelled prior mark-candle proxy."""
     symbol = symbol.upper()
+    # Include the month containing the preceding candle. Archive URLs are monthly,
+    # so requesting start_ms - 1h is sufficient even when start is month boundary.
     with httpx.Client(follow_redirects=True) as client:
         funding_raw = _archive_rows(client, symbol, "fundingRate", None, start_ms, end_ms)
         mark_raw = _archive_rows(client, symbol, "markPriceKlines", "1h",
                                  max(0, start_ms - HOUR_MS), end_ms)
+        # Some symbols/months have no published markPriceKlines archive. Keep a
+        # distinct regular-price fallback rather than failing immediately.
+        regular_raw = _archive_rows(client, symbol, "klines", "1h",
+                                    max(0, start_ms - HOUR_MS), end_ms)
 
     mark_closes: dict[int, float] = {}
     for index, row in enumerate(mark_raw):
@@ -118,6 +124,11 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
             raise ValueError(f"archive mark-price kline row {index} has fewer than 8 fields")
         ts = int(row[0])
         mark_closes[ts] = float(row[4])
+    regular_closes: dict[int, float] = {}
+    for index, row in enumerate(regular_raw):
+        if len(row) < 8:
+            raise ValueError(f"archive regular-price kline row {index} has fewer than 8 fields")
+        regular_closes[int(row[0])] = float(row[4])
 
     output = []
     for index, row in enumerate(funding_raw):
@@ -129,9 +140,14 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
         # Only use a fully closed candle ending at/before the funding timestamp.
         prior_open = (ts // HOUR_MS) * HOUR_MS - HOUR_MS
         mark_price = mark_closes.get(prior_open)
+        if mark_price is not None and mark_price > 0:
+            price_source = "binance_archive_prior_closed_mark_price_1h_proxy_NOT_SETTLEMENT_MARK"
+        else:
+            mark_price = regular_closes.get(prior_open)
+            price_source = "binance_archive_prior_closed_regular_price_1h_proxy_NOT_SETTLEMENT_MARK"
         if mark_price is None or mark_price <= 0:
             raise ValueError(
-                f"no prior closed mark-price candle for {symbol} funding timestamp {ts}; "
+                f"no prior closed mark or regular-price candle for {symbol} funding timestamp {ts}; "
                 "refusing to fabricate settlement mark"
             )
         rate = float(row[-1])
@@ -140,7 +156,7 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
             "funding_rate": rate,
             "mark_price": mark_price,
             "symbol": symbol,
-            "mark_price_source": "binance_archive_prior_closed_mark_price_1h_proxy_NOT_SETTLEMENT_MARK",
+            "mark_price_source": price_source,
             "venue": "binance_usdm_archive",
         })
     output.sort(key=lambda r: r["funding_time"])
