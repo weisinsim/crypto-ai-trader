@@ -6,10 +6,10 @@ Asset-adaptive cryptocurrency market monitoring and strategy research.
 
 ```bash
 python -m unittest discover -s tests -v
-python -m compileall -q app.py validation tests
+python -m compileall -q app.py research validation tests
 ```
 
-GitHub Actions runs the checks on pushes, pull requests, and manual dispatch.
+The compile check includes the research pipeline as well as the application and validation modules. GitHub Actions runs the checks on pushes, pull requests, and manual dispatch.
 
 ## Historical data and baseline backtest
 
