@@ -214,7 +214,13 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
     REST funding endpoints can be jurisdiction-blocked. The public archive
     provides rates; markPriceKlines supplies the 8h settlement-price proxy.
     """
-    symbol = symbol.upper()
+    if not isinstance(symbol, str) or not symbol.strip() or not symbol.strip().isalnum():
+        raise ValueError("symbol must be a non-empty alphanumeric exchange symbol")
+    if (isinstance(start_ms, bool) or not isinstance(start_ms, int)
+            or isinstance(end_ms, bool) or not isinstance(end_ms, int)
+            or start_ms < 0 or end_ms <= start_ms):
+        raise ValueError("require integer timestamps with 0 <= start_ms < end_ms")
+    symbol = symbol.strip().upper()
     rows = []
     with httpx.Client(timeout=30.0, follow_redirects=True) as client:
         for month in _month_starts(start_ms, end_ms):
