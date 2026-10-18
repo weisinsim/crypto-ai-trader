@@ -629,7 +629,10 @@ def main() -> None:
     input_paths = [Path(args.csv).resolve()]
     if args.funding_csv:
         input_paths.append(Path(args.funding_csv).resolve())
-    if output_path in input_paths:
+    if output_path in input_paths or any(
+        output_path.exists() and input_path.exists() and os.path.samefile(output_path, input_path)
+        for input_path in input_paths
+    ):
         raise ValueError("output path must not overwrite an input CSV")
 
     interval_ms = {"1h": 3_600_000, "4h": 14_400_000}[args.interval]

@@ -250,6 +250,34 @@ class FundingAuditTests(unittest.TestCase):
                     main()
             self.assertEqual(candles_path.read_bytes(), candles_bytes)
 
+    def test_cli_refuses_to_overwrite_candle_input_through_hardlink(self):
+        import os
+        with tempfile.TemporaryDirectory() as tmp:
+            candles_path = Path(tmp) / "candles.csv"
+            alias_path = Path(tmp) / "alias.csv"
+            candles_bytes = b"t,o,h,l,c,v,q\\n0,100,101,99,100,1,100\\n3600000,100,101,99,100,1,100\\n"
+            candles_path.write_bytes(candles_bytes)
+            funding_path = Path(tmp) / "funding.csv"
+            funding_path.write_text(
+                "symbol,funding_time,funding_rate,mark_price,mark_price_source,venue\\n"
+                "BTCUSDT,0,0.001,100,reported,binance_usdm\\n",
+                encoding="utf-8",
+            )
+            try:
+                os.link(candles_path, alias_path)
+            except (AttributeError, NotImplementedError, OSError):
+                self.skipTest("hard links are not supported in this environment")
+            argv = [
+                "audit_funding_data.py", "--candles", str(candles_path),
+                "--funding-csv", str(funding_path), "--symbol", "BTCUSDT",
+                "--interval", "1h", "--output", str(alias_path),
+            ]
+            with patch.object(sys, "argv", argv):
+                with self.assertRaisesRegex(ValueError, "must not overwrite"):
+                    main()
+            self.assertEqual(candles_path.read_bytes(), candles_bytes)
+            self.assertEqual(alias_path.read_bytes(), candles_bytes)
+
     def test_cli_report_fingerprints_exact_input_bytes_without_authenticity_claim(self):
         with tempfile.TemporaryDirectory() as tmp:
             candles_path = Path(tmp) / "candles.csv"
