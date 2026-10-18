@@ -303,7 +303,7 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                 # settlement dates. Later fallback logic verifies each timestamp.
                 for date_str in sorted({
                     datetime.fromtimestamp(_parse_archive_timestamp(row[0]) / 1000, timezone.utc).strftime("%Y-%m-%d")
-                    for row in rate_rows if row and row[0].strip().replace(".", "", 1).isdigit()
+                    for row in rate_rows if row and row[0].strip().isdigit()
                     and start_ms <= _parse_archive_timestamp(row[0]) < end_ms
                 }):
                     daily_url = (
