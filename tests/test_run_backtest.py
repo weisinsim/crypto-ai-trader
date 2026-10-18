@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from research.run_backtest import write_json_atomic, load_csv, load_funding_csv, main, max_drawdown_pct, summarize_funding_data_quality, summarize_holdout_trade_quality, summarize_holdout_boundary_trade_diagnostics, summarize_walk_forward_cost_stress
+from research.run_backtest import write_json_atomic, load_csv, load_funding_csv, main, max_drawdown_pct, summarize_funding_data_quality, summarize_holdout_trade_quality, summarize_holdout_boundary_trade_diagnostics, summarize_uncensored_holdout_trade_metrics, summarize_walk_forward_cost_stress
 
 
 class FundingDataQualitySummaryTests(unittest.TestCase):
