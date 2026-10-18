@@ -39,7 +39,12 @@ def audit_funding_against_candles(
     ):
         raise ValueError("max_gap_hours must be a finite positive number when provided")
 
-    candle_ts = {int(row["t"]) for row in candle_rows}
+    candle_timestamps = [int(row["t"]) for row in candle_rows]
+    candle_timestamp_counts = Counter(candle_timestamps)
+    duplicate_candle_timestamps = sorted(
+        ts for ts, count in candle_timestamp_counts.items() if count > 1
+    )
+    candle_ts = set(candle_timestamps)
     start_ts, end_ts = min(candle_ts), max(candle_ts)
     # Audit the exchange-reported timestamp when available. The backtest loader
     # may separately normalize tiny boundary jitter for settlement calculations.
@@ -91,7 +96,7 @@ def audit_funding_against_candles(
         )
     )
     needs_review = bool(
-        out_of_range or nonmatching or large_gaps or duplicate_event_records
+        duplicate_candle_timestamps or out_of_range or nonmatching or large_gaps or duplicate_event_records
         or edge_gaps_exceeding_threshold
     )
     def label_values(field: str, default: str) -> list[str]:
@@ -116,6 +121,10 @@ def audit_funding_against_candles(
         ),
         "gap_threshold_hours": max_gap_hours,
         "intervals_exceeding_gap_threshold": len(large_gaps),
+        "duplicate_candle_timestamps": duplicate_candle_timestamps,
+        "duplicate_candle_records": sum(
+            count - 1 for count in candle_timestamp_counts.values() if count > 1
+        ),
         "duplicate_event_records": duplicate_event_records,
         "duplicate_event_timestamps": duplicate_timestamps,
         "symbol": symbol,

@@ -15,6 +15,14 @@ class FundingAuditTests(unittest.TestCase):
              "symbol": "BTCUSDT", "mark_price_source": "reported", "venue": "binance_usdm"},
         ]
 
+    def test_duplicate_candle_timestamps_require_review(self):
+        candles = self.candles + [{"t": 200}]
+        report = audit_funding_against_candles(candles, self.funding, "BTCUSDT")
+        self.assertEqual(report["duplicate_candle_timestamps"], [200])
+        self.assertEqual(report["duplicate_candle_records"], 1)
+        self.assertEqual(report["status"], "REVIEW_REQUIRED")
+        self.assertEqual(report["candle_range"]["count"], 5)
+
     def test_reports_nonmatching_timestamp_without_snapping(self):
         report = audit_funding_against_candles(self.candles, self.funding, "btcusdt")
         self.assertEqual(report["status"], "REVIEW_REQUIRED")
