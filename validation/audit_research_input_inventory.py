@@ -83,7 +83,10 @@ def inspect_csv(path: Path, kind: str, start_ms: int, end_ms: int,
         return {**base, "status": "TIMESTAMP_INTEGRITY_FAILED", "pass": False}
     if kind == "candle":
         step = INTERVALS[interval]
-        expected = list(range(start_ms + step - 1, end_ms, step))
+        # Candle timestamps are close times: k * step - 1 ms. Anchor to the UTC epoch,
+        # not to the requested start, which may fall mid-candle.
+        first_close = ((start_ms + 1 + step - 1) // step) * step - 1
+        expected = list(range(first_close, end_ms, step))
         missing = sorted(set(expected) - set(in_window))
         unexpected = sorted(set(in_window) - set(expected))
         return {
