@@ -1,6 +1,6 @@
 import unittest
 
-from research.funding_data import canonical_settlement_timestamp, download_archive_funding, download_funding_rates, parse_funding_rows, save_funding_csv
+from research.funding_data import _parse_archive_timestamp, canonical_settlement_timestamp, download_archive_funding, download_funding_rates, parse_funding_rows, save_funding_csv
 
 
 def record(ts, rate="0.0001"):
@@ -8,6 +8,16 @@ def record(ts, rate="0.0001"):
 
 
 class FundingDataTests(unittest.TestCase):
+    def test_archive_timestamp_parser_rejects_fractional_and_malformed_values(self):
+        for value in (100.5, "100.5", "1e3", "nan", "inf", True, False, -1, "-1"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "integer timestamp|cannot be negative"):
+                    _parse_archive_timestamp(value)
+
+    def test_archive_timestamp_parser_accepts_integer_timestamp_strings(self):
+        self.assertEqual(_parse_archive_timestamp(" 1700000000000 "), 1700000000000)
+        self.assertEqual(_parse_archive_timestamp(1700000000000), 1700000000000)
+
     def test_canonicalizes_only_small_settlement_timestamp_jitter(self):
         boundary = 1783180800000
         self.assertEqual(canonical_settlement_timestamp(boundary + 7), boundary)
