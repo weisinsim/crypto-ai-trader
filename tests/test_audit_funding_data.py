@@ -22,7 +22,7 @@ class FundingAuditTests(unittest.TestCase):
         self.assertEqual(report["funding"]["nonmatching_in_range"], 1)
         self.assertEqual(report["funding"]["records_outside_candle_range"], 0)
         self.assertFalse(report["event_completeness_verified"])
-        self.assertIn("without snapping", report["note"])
+        self.assertIn("without snapping arbitrary times", report["note"])
 
     def test_audit_reports_raw_jitter_and_normalized_alignment_separately(self):
         rows = [dict(self.funding[0]), dict(self.funding[-1])]
