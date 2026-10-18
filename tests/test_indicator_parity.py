@@ -59,6 +59,29 @@ class IndicatorParityTests(unittest.TestCase):
         self.assert_close_or_both_none(replay_support, live_support)
         self.assert_close_or_both_none(replay_resistance, live_resistance)
 
+    def test_precomputed_ema_and_rsi_match_each_prefix(self):
+        ema_values = replay.ema_series(self.close, 20)
+        rsi_values = replay.rsi_series(self.close)
+        for end in range(1, len(self.close) + 1):
+            expected_ema = replay.ema(self.close[:end], 20)
+            self.assert_close_or_both_none(ema_values[end - 1], expected_ema)
+            expected_rsi = replay.rsi(self.close[:end])
+            self.assert_close_or_both_none(rsi_values[end - 1], expected_rsi)
+
+    def test_four_hour_candle_must_be_closed_at_hourly_decision(self):
+        # Hourly candle opens at 10:00 and the decision is made at 11:00.
+        # A 4h candle opened at 08:00 closes at 12:00 and must not be used;
+        # one opened at 04:00 closes at 08:00 and is already closed.
+        hourly_open = 10 * 3_600_000
+        decision_close = hourly_open + 3_600_000
+        four = [
+            {"ts": 4 * 3_600_000},
+            {"ts": 8 * 3_600_000},
+        ]
+        count = replay.closed_four_count_at(four, decision_close)
+        self.assertEqual(count, 1)
+        self.assertEqual([row["ts"] for row in four[:count]], [4 * 3_600_000])
+
     def test_replay_vwap_uses_quote_volume_series(self):
         replay_path = Path(__file__).resolve().parents[1] / "validation" / "replay_dashboard_signals.py"
         tree = ast.parse(replay_path.read_text(encoding="utf-8"))
@@ -66,7 +89,7 @@ class IndicatorParityTests(unittest.TestCase):
         calls = [node for node in ast.walk(replay_fn) if isinstance(node, ast.Call)
                  and isinstance(node.func, ast.Name) and node.func.id == "vwap"]
         self.assertEqual(len(calls), 1)
-        self.assertEqual([arg.id for arg in calls[0].args if isinstance(arg, ast.Name)], ["hi", "lo", "c", "q"])
+        self.assertEqual([arg.id for arg in calls[0].args if isinstance(arg, ast.Name)], ["h48", "l48", "c48", "q"])
 
 
 if __name__ == "__main__":

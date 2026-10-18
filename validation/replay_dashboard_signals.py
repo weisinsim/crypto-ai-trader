@@ -97,6 +97,29 @@ def rsi(v, n=14):
     return 100.0 if al == 0 else 100 - 100/(1+ag/al)
 
 
+
+def ema_series(v, n):
+    out=[None]*len(v)
+    if len(v)<n: return out
+    k=2/(n+1); e=sum(v[:n])/n; out[n-1]=e
+    for i in range(n,len(v)):
+        e=v[i]*k+e*(1-k); out[i]=e
+    return out
+
+
+def rsi_series(v, n=14):
+    out=[None]*len(v)
+    if len(v)<n+1: return out
+    gains=[0.0]*len(v); losses=[0.0]*len(v)
+    for i in range(1,len(v)):
+        d=v[i]-v[i-1]; gains[i]=max(d,0); losses[i]=max(-d,0)
+    ag=sum(gains[1:n+1])/n; al=sum(losses[1:n+1])/n
+    out[n]=100.0 if al==0 else 100-100/(1+ag/al)
+    for i in range(n+1,len(v)):
+        ag=(ag*(n-1)+gains[i])/n; al=(al*(n-1)+losses[i])/n
+        out[i]=100.0 if al==0 else 100-100/(1+ag/al)
+    return out
+
 def atr(h, l, c, n=14):
     if len(c) < n+1: return None
     tr = [max(h[i]-l[i], abs(h[i]-c[i-1]), abs(l[i]-c[i-1])) for i in range(1, len(c))]
@@ -141,9 +164,24 @@ def levels(h,l,c,n=48):
     return min(l[-m:-1]),max(h[-m:-1])
 
 
-def closed_rows_at(rows, timestamp_ms):
-    """Return only bars whose close timestamp is no later than the decision time."""
-    return [row for row in rows if row["ts"] <= timestamp_ms]
+def closed_rows_at(rows, decision_close_ms, interval_ms=14_400_000):
+    """Return only bars whose close time is no later than the decision time.
+
+    Input timestamps are candle OPEN times; interval_ms must match the series.
+    """
+    return [row for row in rows if row["ts"] + interval_ms <= decision_close_ms]
+
+
+def closed_four_count_at(rows, decision_close_ms, start_index=0):
+    """Advance to the count of 4h candles whose close time is at/before decision time.
+
+    Historical CSV timestamps are candle OPEN times. The returned index is the
+    first row not yet closed, so rows[:index] are safe to use without lookahead.
+    """
+    index = start_index
+    while index < len(rows) and rows[index]["ts"] + 14_400_000 <= decision_close_ms:
+        index += 1
+    return index
 
 
 def risk_levels(symbol, price, direction, atr_value, stop_mult, target_mult):
@@ -171,18 +209,28 @@ def signal_state_for(side, reason, direction):
 
 def replay(symbol, one, four, *, include_states=False):
     output=[]
-    # For each hourly close, use hourly candles through that close and 4h candles
-    # whose close timestamp is no later than this hourly close.
-    for i in range(199, len(one)):
-        now=one[i]["ts"]
-        h1=one[:i+1]
-        h4=closed_rows_at(four, now)
-        if len(h4)<50: continue
-        c=[x["c"] for x in h1]; hi=[x["h"] for x in h1]; lo=[x["l"] for x in h1]; v=[x["v"] for x in h1]; q=[x["q"] for x in h1]
-        c4=[x["c"] for x in h4]
-        p=c[-1]; e20=ema(c,20); e50=ema(c,50); e200=ema(c,200)
-        e20_4=ema(c4,20); e50_4=ema(c4,50)
-        a=atr(hi,lo,c); r=rsi(c); ad=adx(hi,lo,c); vw=vwap(hi,lo,c,q); sup,res=levels(hi,lo,c)
+    c_all=[x["c"] for x in one]; hi_all=[x["h"] for x in one]
+    lo_all=[x["l"] for x in one]; q_all=[x["q"] for x in one]
+    ema20_all=ema_series(c_all,20); ema50_all=ema_series(c_all,50); ema200_all=ema_series(c_all,200)
+    rsi_all=rsi_series(c_all)
+    c4_all=[x["c"] for x in four]
+    ema20_4_all=ema_series(c4_all,20); ema50_4_all=ema_series(c4_all,50)
+    four_index=0
+    for i in range(199,len(one)):
+        # CSV timestamps are candle OPEN times. The hourly decision occurs at
+        # the end of that 1h candle, and a 4h candle is usable only after its
+        # own close. Comparing open timestamps directly leaks an unfinished
+        # 4h candle into the replay.
+        decision_close_ms=one[i]["ts"] + 3_600_000
+        four_index=closed_four_count_at(four, decision_close_ms, four_index)
+        if four_index<50: continue
+        p=c_all[i]; e20=ema20_all[i]; e50=ema50_all[i]; e200=ema200_all[i]
+        e20_4=ema20_4_all[four_index-1]; e50_4=ema50_4_all[four_index-1]
+        c=c_all[max(0,i-29):i+1]; hi=hi_all[max(0,i-29):i+1]; lo=lo_all[max(0,i-29):i+1]
+        h48=hi_all[max(0,i-47):i+1]; l48=lo_all[max(0,i-47):i+1]; c48=c_all[max(0,i-47):i+1]
+        q=q_all[max(0,i-47):i+1]
+        a=atr(hi,lo,c); r=rsi_all[i]; ad=adx(hi,lo,c)
+        vw=vwap(h48,l48,c48,q); sup,res=levels(h48,l48,c48)
         if None in (e20,e50,e200,e20_4,e50_4,a,r): continue
         side=""; entry=sl=target=None; score=0; direction=0; reason="NO-TRADE"
         if symbol=="ETHUSDT":
