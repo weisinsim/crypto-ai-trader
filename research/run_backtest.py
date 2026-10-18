@@ -282,16 +282,29 @@ def summarize_walk_forward_cost_stress(walk_results: list[dict]) -> dict:
             scenarios = stress.get("scenarios") if isinstance(stress, dict) else None
             row = scenarios.get(name, {}) if isinstance(scenarios, dict) else {}
             rows.append(row if isinstance(row, dict) else {})
+        # Aggregate performance extrema only from folds and scenario runs that
+        # both completed. Incomplete rows remain visible in folds_reported but
+        # must not distort completed-fold performance summaries.
+        completed_rows = [
+            fold["cost_stress"]["scenarios"][name]
+            for fold in walk_results
+            if isinstance(fold, dict)
+            and fold.get("status") == "COMPLETED"
+            and isinstance(fold.get("cost_stress"), dict)
+            and isinstance(fold["cost_stress"].get("scenarios"), dict)
+            and isinstance(fold["cost_stress"]["scenarios"].get(name), dict)
+            and fold["cost_stress"]["scenarios"][name].get("status") == "COMPLETED"
+        ]
         valid_returns = [
-            row["net_return_pct"] for row in rows
+            row["net_return_pct"] for row in completed_rows
             if _finite_metric(row.get("net_return_pct"))
         ]
         valid_drawdowns = [
-            row["max_drawdown_pct"] for row in rows
+            row["max_drawdown_pct"] for row in completed_rows
             if _finite_metric(row.get("max_drawdown_pct"))
         ]
         numeric_pf = [
-            row["profit_factor"] for row in rows
+            row["profit_factor"] for row in completed_rows
             if _finite_metric(row.get("profit_factor"))
         ]
         per_scenario[name] = {
