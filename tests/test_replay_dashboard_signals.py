@@ -69,5 +69,31 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
         self.assertEqual(replay("ETHUSDT", one, four), [])
 
 
+
+    def test_out_of_order_candles_are_rejected_instead_of_sorted(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "out_of_order.csv"
+            path.write_text(
+                "timestamp,open,high,low,close,volume,quote_volume\\n"
+                "2025-01-01T02:00:00Z,100,101,99,100,1,100\\n"
+                "2025-01-01T01:00:00Z,100,101,99,100,1,100\\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "Out-of-order candle timestamp"):
+                read_rows(path)
+
+    def test_duplicate_candles_are_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "duplicate.csv"
+            path.write_text(
+                "timestamp,open,high,low,close,volume,quote_volume\\n"
+                "2025-01-01T01:00:00Z,100,101,99,100,1,100\\n"
+                "2025-01-01T01:00:00Z,100,101,99,100,1,100\\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "Duplicate candle timestamp"):
+                read_rows(path)
+
+
 if __name__ == "__main__":
     unittest.main()
