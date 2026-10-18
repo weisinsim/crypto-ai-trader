@@ -1,6 +1,6 @@
 import unittest
 
-from research.audit_funding_data import audit_funding_against_candles
+from research.audit_funding_data import audit_funding_against_candles, main
 
 
 class FundingAuditTests(unittest.TestCase):
@@ -168,6 +168,41 @@ class FundingAuditTests(unittest.TestCase):
         self.assertEqual(report["funding"]["records_missing_or_invalid_source_label"], 0)
         self.assertEqual(report["funding"]["records_missing_or_invalid_venue_label"], 0)
         self.assertEqual(report["status"], "TIMESTAMP_ALIGNMENT_PASS_NOT_RECONCILED")
+
+    def test_cli_report_fingerprints_exact_input_bytes_without_authenticity_claim(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            candles_path = Path(tmp) / "candles.csv"
+            funding_path = Path(tmp) / "funding.csv"
+            output_path = Path(tmp) / "audit.json"
+            candles_path.write_text(
+                "t,o,h,l,c,v,q\\n100,100,101,99,100,1,100\\n200,100,101,99,100,1,100\\n",
+                encoding="utf-8",
+            )
+            funding_path.write_text(
+                "symbol,funding_time,funding_rate,mark_price,mark_price_source,venue\\n"
+                "BTCUSDT,100,0.001,100,reported,binance_usdm\\n"
+                "BTCUSDT,200,0.001,100,reported,binance_usdm\\n",
+                encoding="utf-8",
+            )
+            argv = [
+                "audit_funding_data.py", "--candles", str(candles_path),
+                "--funding-csv", str(funding_path), "--symbol", "BTCUSDT",
+                "--interval", "1h", "--output", str(output_path),
+            ]
+            with patch.object(sys, "argv", argv):
+                main()
+            report = json.loads(output_path.read_text(encoding="utf-8"))
+            import hashlib
+            self.assertEqual(
+                report["input_manifest"]["candles"]["sha256"],
+                hashlib.sha256(candles_path.read_bytes()).hexdigest(),
+            )
+            self.assertEqual(
+                report["input_manifest"]["funding"]["sha256"],
+                hashlib.sha256(funding_path.read_bytes()).hexdigest(),
+            )
+            self.assertFalse(report["input_manifest"]["source_authenticity_verified"])
+            self.assertFalse(report["input_manifest"]["candles"]["source_authenticity_verified"])
 
     def test_symbol_mismatch_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "do not match"):
