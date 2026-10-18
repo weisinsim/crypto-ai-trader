@@ -107,6 +107,8 @@ def audit_funding_against_candles(
     deltas = [right - left for left, right in zip(event_timestamps, event_timestamps[1:])]
     interval_counts = Counter(deltas)
     max_gap_ms = max_gap_hours * 3_600_000 if max_gap_hours is not None else None
+    if max_gap_ms is not None and not math.isfinite(max_gap_ms):
+        raise ValueError("max_gap_hours is too large to represent in milliseconds")
     large_gaps = [delta for delta in deltas if max_gap_ms is not None and delta > max_gap_ms]
     in_range_event_ts = [raw_ts for raw_ts, _ in in_range_pairs]
     leading_gap_ms = in_range_event_ts[0] - start_ts if in_range_event_ts else None
