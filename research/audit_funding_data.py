@@ -44,18 +44,44 @@ def audit_funding_against_candles(
     timestamp_counts = Counter(event_timestamps)
     duplicate_timestamps = sorted(ts for ts, count in timestamp_counts.items() if count > 1)
     duplicate_event_records = sum(count - 1 for count in timestamp_counts.values() if count > 1)
-    in_range = [ts for ts in event_timestamps if start_ts <= ts <= end_ts]
-    out_of_range = len(event_timestamps) - len(in_range)
-    matched = sum(ts in candle_ts for ts in in_range)
+
+    # Raw exchange timestamps are retained for audit and cadence diagnostics.
+    # A separate alignment timestamp may use the loader's canonicalized value
+    # only when the raw value is within 1 second and the canonical timestamp is
+    # an actual candle open. This reports documented boundary jitter without
+    # silently rounding arbitrary event times onto candles.
+    alignment_timestamps = []
+    jitter_normalized = 0
+    for row in funding_rows:
+        raw_ts = audit_ts(row)
+        normalized_ts = int(row.get("funding_time", raw_ts))
+        if (normalized_ts != raw_ts and abs(normalized_ts - raw_ts) <= 1000
+                and normalized_ts in candle_ts):
+            alignment_timestamps.append(normalized_ts)
+            jitter_normalized += 1
+        else:
+            alignment_timestamps.append(raw_ts)
+    in_range_pairs = [
+        (raw_ts, align_ts) for raw_ts, align_ts in zip(
+            [audit_ts(row) for row in funding_rows], alignment_timestamps
+        ) if start_ts <= raw_ts <= end_ts
+    ]
+    out_of_range = len(event_timestamps) - len(in_range_pairs)
+    raw_matched = sum(raw_ts in candle_ts for raw_ts, _ in in_range_pairs)
+    matched = sum(align_ts in candle_ts for _, align_ts in in_range_pairs)
+    nonmatching = len(in_range_pairs) - matched
     deltas = [right - left for left, right in zip(event_timestamps, event_timestamps[1:])]
     interval_counts = Counter(deltas)
     max_gap_ms = max_gap_hours * 3_600_000 if max_gap_hours is not None else None
     large_gaps = [delta for delta in deltas if max_gap_ms is not None and delta > max_gap_ms]
     needs_review = bool(
-        out_of_range or matched != len(in_range) or large_gaps or duplicate_event_records
+        out_of_range or nonmatching or large_gaps or duplicate_event_records
     )
     return {
-        "status": "REVIEW_REQUIRED" if needs_review else "TIMESTAMP_ALIGNMENT_PASS_NOT_RECONCILED",
+        "status": "REVIEW_REQUIRED" if needs_review else (
+            "BOUNDARY_JITTER_NORMALIZED_ALIGNMENT_PASS_NOT_RECONCILED"
+            if jitter_normalized else "TIMESTAMP_ALIGNMENT_PASS_NOT_RECONCILED"
+        ),
         "gap_threshold_hours": max_gap_hours,
         "intervals_exceeding_gap_threshold": len(large_gaps),
         "duplicate_event_records": duplicate_event_records,
@@ -66,8 +92,10 @@ def audit_funding_against_candles(
             "total_records": len(funding_rows),
             "records_in_candle_range": len(in_range),
             "records_outside_candle_range": out_of_range,
-            "exact_candle_open_matches": matched,
-            "nonmatching_in_range": len(in_range) - matched,
+            "exact_candle_open_matches": raw_matched,
+            "normalized_candle_open_matches": matched,
+            "boundary_jitter_normalized_records": jitter_normalized,
+            "nonmatching_in_range": nonmatching,
             "first_event_ts": event_timestamps[0],
             "last_event_ts": event_timestamps[-1],
             "source_labels": sorted({row.get("mark_price_source", "unspecified") for row in funding_rows}),
@@ -84,9 +112,11 @@ def audit_funding_against_candles(
         "source_authenticity_verified": False,
         "account_cashflows_reconciled": False,
         "note": (
-            "Timestamp alignment uses the raw exchange-reported event time when available and is not proof "
-            "of complete event coverage, authenticated mark prices, settlement eligibility, or agreement "
-            "with account cashflows. Nonmatching events are reported without snapping in this audit."
+            "Raw exchange timestamps and event cadence are preserved. For alignment only, a timestamp may use "
+            "the loader's normalized value when it differs by at most 1 second and that normalized value is "
+            "an actual candle open. This handles known boundary jitter without snapping arbitrary times. "
+            "Alignment is not proof of complete event coverage, authenticated mark prices, settlement eligibility, "
+            "or agreement with account cashflows."
         ),
     }
 
