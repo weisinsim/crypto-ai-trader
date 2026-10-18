@@ -216,6 +216,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-gap-hours", type=float, default=None,
                         help="Optional review threshold for unusually long funding-event gaps; does not prove missing events")
     args = parser.parse_args(argv)
+    output_path = Path(args.output).resolve()
+    input_paths = (Path(args.candles).resolve(), Path(args.funding_csv).resolve())
+    if output_path in input_paths:
+        raise ValueError("output path must not overwrite either input CSV")
     interval_ms = {
         "1m": 60_000, "5m": 300_000, "15m": 900_000, "30m": 1_800_000,
         "1h": 3_600_000, "2h": 7_200_000, "4h": 14_400_000, "1d": 86_400_000,
@@ -230,10 +234,9 @@ def main(argv: list[str] | None = None) -> int:
         "hash_algorithm": "sha256",
         "source_authenticity_verified": False,
     }
-    path = Path(args.output)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(json.dumps({"status": report["status"], "output": str(path), "symbol": report["symbol"]}))
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(json.dumps({"status": report["status"], "output": str(output_path), "symbol": report["symbol"]}))
     return 0
 
 
