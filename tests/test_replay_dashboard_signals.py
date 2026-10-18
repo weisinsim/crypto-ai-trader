@@ -74,6 +74,10 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
             c = 100 + i * 0.8
             four.append({"timestamp": "2023-11-14T00:00:00Z", "ts": t, "o": c, "h": c+2, "l": c-1, "c": c, "v": 40, "q": 4000})
         self.assertEqual(replay("ETHUSDT", one, four), [])
+        states = replay("ETHUSDT", one, four, include_states=True)
+        self.assertTrue(states)
+        self.assertTrue(all(row["status"] == "NO-TRADE" for row in states))
+        self.assertTrue(all(row["target2"] is None for row in states))
 
 
 
