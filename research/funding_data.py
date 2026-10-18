@@ -66,8 +66,13 @@ def parse_funding_rows(raw_rows: list[dict], symbol: str, start_ms: int, end_ms:
                 f"expected {symbol.upper()}, got {str(raw_symbol).strip().upper()}"
             )
         ts = _parse_integer_timestamp(raw["fundingTime"])
-        rate = float(raw["fundingRate"])
-        mark_price = float(raw["markPrice"])
+        if isinstance(raw.get("fundingRate"), bool) or isinstance(raw.get("markPrice"), bool):
+            raise ValueError(f"invalid funding rate or mark price at {ts}")
+        try:
+            rate = float(raw["fundingRate"])
+            mark_price = float(raw["markPrice"])
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(f"invalid funding rate or mark price at {ts}") from exc
         if not isfinite(rate) or not isfinite(mark_price) or mark_price <= 0:
             raise ValueError(f"invalid funding rate or mark price at {ts}")
         if start_ms <= ts < end_ms:
