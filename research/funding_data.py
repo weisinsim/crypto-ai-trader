@@ -81,6 +81,20 @@ def _parse_integer_timestamp(value, field: str = "fundingTime") -> int:
     raise ValueError(f"{field} must be an integer timestamp")
 
 
+def _parse_finite_number(value, field: str = "numeric value", *, positive: bool = False) -> float:
+    """Parse finite archive numerics and optionally require a strictly positive value."""
+    if isinstance(value, bool):
+        raise ValueError(f"{field} must be a finite number")
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{field} must be a finite number") from exc
+    if not isfinite(parsed) or (positive and parsed <= 0):
+        qualifier = "finite and positive" if positive else "finite"
+        raise ValueError(f"{field} must be {qualifier}")
+    return parsed
+
+
 def parse_funding_rows(raw_rows: list[dict], symbol: str, start_ms: int, end_ms: int) -> list[dict]:
     if not isinstance(symbol, str) or not symbol.strip() or not symbol.strip().isalnum():
         raise ValueError("symbol must be a non-empty alphanumeric exchange symbol")
@@ -370,7 +384,7 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
             marks = {}
             for row in mark_rows:
                 try:
-                    ts, mark_open = _parse_archive_timestamp(row[0]), float(row[1])
+                    ts, mark_open = _parse_archive_timestamp(row[0]), _parse_finite_number(row[1], "archive mark price", positive=True)
                 except (ValueError, IndexError):
                     continue
                 # Use the mark-price candle OPEN at settlement time, not its
@@ -412,7 +426,8 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                     for item in mark_1m_rows:
                         try:
                             minute_open_ts = _parse_archive_timestamp(item[0])
-                            mark_open, mark_close = float(item[1]), float(item[4])
+                            mark_open = _parse_finite_number(item[1], "1m archive mark open", positive=True)
+                            mark_close = _parse_finite_number(item[4], "1m archive mark close", positive=True)
                         except (ValueError, IndexError):
                             continue
                         mark_1m_opens[minute_open_ts] = mark_open
@@ -452,7 +467,7 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
             for row in rate_rows:
                 try:
                     ts = canonical_settlement_timestamp(_parse_archive_timestamp(row[0]))
-                    rate = float(row[-1])
+                    rate = _parse_finite_number(row[-1], "archive funding rate")
                 except (ValueError, IndexError):
                     continue
                 if start_ms <= ts < end_ms:
