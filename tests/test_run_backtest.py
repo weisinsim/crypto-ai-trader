@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from research.run_backtest import main, max_drawdown_pct, summarize_funding_data_quality, summarize_holdout_trade_quality, summarize_walk_forward_cost_stress
+from research.run_backtest import load_funding_csv, main, max_drawdown_pct, summarize_funding_data_quality, summarize_holdout_trade_quality, summarize_walk_forward_cost_stress
 
 
 class FundingDataQualitySummaryTests(unittest.TestCase):
@@ -62,6 +62,35 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
             "archive_prior_closed_mark_price_1h_proxy_NOT_SETTLEMENT_MARK": 2
         })
         self.assertIn("PROXY", summary["source_labels"][0].upper())
+
+    def test_missing_or_blank_provenance_labels_require_review(self):
+        candles = [{"t": 100}, {"t": 200}, {"t": 300}]
+        funding = [
+            {"funding_time": 100, "funding_rate": 0.001, "mark_price": 100,
+             "mark_price_source": "", "venue": "binance_usdm"},
+            {"funding_time": 300, "funding_rate": 0.001, "mark_price": 100,
+             "mark_price_source": "reported", "venue": ""},
+        ]
+        summary = summarize_funding_data_quality(funding, candles)
+        self.assertEqual(summary["records_missing_or_invalid_source_label"], 1)
+        self.assertEqual(summary["records_missing_or_invalid_venue_label"], 1)
+        self.assertTrue(summary["review_required"])
+        self.assertEqual(summary["audit_status"], "REVIEW_REQUIRED")
+
+    def test_funding_csv_loader_preserves_missing_provenance_instead_of_inventing_labels(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "funding.csv"
+            with path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=["symbol", "funding_time", "funding_rate", "mark_price"])
+                writer.writeheader()
+                writer.writerow({"symbol": "BTCUSDT", "funding_time": 0, "funding_rate": 0.001, "mark_price": 100})
+            loaded = load_funding_csv(str(path))
+            self.assertEqual(loaded[0]["mark_price_source"], "")
+            self.assertEqual(loaded[0]["venue"], "")
+            summary = summarize_funding_data_quality(loaded, [{"t": 0}, {"t": 1}])
+            self.assertEqual(summary["records_missing_or_invalid_source_label"], 1)
+            self.assertEqual(summary["records_missing_or_invalid_venue_label"], 1)
+            self.assertTrue(summary["review_required"])
 
     def test_funding_pnl_authority_is_explicitly_blocked(self):
         candles = [{"t": i * 3_600_000, "o": 100, "h": 101, "l": 99, "c": 100, "v": 1, "q": 100} for i in range(1400)]
