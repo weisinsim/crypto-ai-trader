@@ -42,7 +42,7 @@ def validate_candles(rows: Iterable[dict], interval_ms: int | None = None) -> li
                 raise ValueError(f"row {i} has invalid OHLC values")
             try:
                 vals[field] = float(raw_value)
-            except (TypeError, ValueError) as exc:
+            except (TypeError, ValueError, OverflowError) as exc:
                 raise ValueError(f"row {i} has invalid OHLC values") from exc
         for field in ("v", "q"):
             if field in row:
@@ -50,7 +50,7 @@ def validate_candles(rows: Iterable[dict], interval_ms: int | None = None) -> li
                     raise ValueError(f"row {i} has invalid {field}")
                 try:
                     metric = float(row[field])
-                except (TypeError, ValueError) as exc:
+                except (TypeError, ValueError, OverflowError) as exc:
                     raise ValueError(f"row {i} has invalid {field}") from exc
                 if not isfinite(metric) or metric < 0:
                     raise ValueError(f"row {i} has invalid {field}")
