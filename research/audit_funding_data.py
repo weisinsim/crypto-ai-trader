@@ -21,7 +21,13 @@ def audit_funding_against_candles(
         raise ValueError("symbol must be non-empty")
     if not funding_rows:
         raise ValueError("funding data is empty")
-    symbols = {row.get("symbol", "").strip().upper() for row in funding_rows}
+    def normalized_symbol(row: dict) -> str:
+        value = row.get("symbol", "")
+        if not isinstance(value, str):
+            return ""
+        return value.strip().upper()
+
+    symbols = {normalized_symbol(row) for row in funding_rows}
     if symbols != {symbol}:
         raise ValueError(f"funding symbols {sorted(symbols)} do not match requested symbol {symbol}")
 
@@ -88,6 +94,21 @@ def audit_funding_against_candles(
         out_of_range or nonmatching or large_gaps or duplicate_event_records
         or edge_gaps_exceeding_threshold
     )
+    def label_values(field: str, default: str) -> list[str]:
+        # CSV-loaded rows normally contain strings, but this public audit helper
+        # also accepts direct callers. Keep malformed/null labels serializable and
+        # deterministic instead of letting mixed types crash sorted().
+        values = set()
+        for row in funding_rows:
+            value = row.get(field)
+            if value is None or value == "":
+                values.add(default)
+            elif isinstance(value, str):
+                values.add(value)
+            else:
+                values.add(f"invalid:{type(value).__name__}")
+        return sorted(values)
+
     return {
         "status": "REVIEW_REQUIRED" if needs_review else (
             "BOUNDARY_JITTER_NORMALIZED_ALIGNMENT_PASS_NOT_RECONCILED"
@@ -109,8 +130,8 @@ def audit_funding_against_candles(
             "nonmatching_in_range": nonmatching,
             "first_event_ts": event_timestamps[0],
             "last_event_ts": event_timestamps[-1],
-            "source_labels": sorted({row.get("mark_price_source", "unspecified") for row in funding_rows}),
-            "venue_labels": sorted({row.get("venue", "") or "unspecified" for row in funding_rows}),
+            "source_labels": label_values("mark_price_source", "unspecified"),
+            "venue_labels": label_values("venue", "unspecified"),
             "event_interval_ms": {
                 "min": min(deltas) if deltas else None,
                 "max": max(deltas) if deltas else None,
