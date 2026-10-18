@@ -37,7 +37,11 @@ def load_csv(path: str, interval_ms: int) -> list[dict]:
     required_columns = {"t", "o", "h", "l", "c"}
     with open(path, newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
-        headers = set(reader.fieldnames or [])
+        fieldnames = reader.fieldnames or []
+        duplicate_columns = sorted({name for name in fieldnames if fieldnames.count(name) > 1})
+        if duplicate_columns:
+            raise ValueError(f"candle CSV contains duplicate columns: {duplicate_columns}")
+        headers = set(fieldnames)
         missing_columns = sorted(required_columns - headers)
         if missing_columns:
             raise ValueError(f"candle CSV missing required columns: {missing_columns}")
@@ -80,7 +84,11 @@ def load_funding_csv(path: str) -> list[dict]:
     required_columns = {"symbol", "funding_time", "funding_rate", "mark_price"}
     with open(path, newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
-        headers = set(reader.fieldnames or [])
+        fieldnames = reader.fieldnames or []
+        duplicate_columns = sorted({name for name in fieldnames if fieldnames.count(name) > 1})
+        if duplicate_columns:
+            raise ValueError(f"funding CSV contains duplicate columns: {duplicate_columns}")
+        headers = set(fieldnames)
         missing_columns = sorted(required_columns - headers)
         if missing_columns:
             raise ValueError(f"funding CSV missing required columns: {missing_columns}")
