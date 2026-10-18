@@ -1,4 +1,9 @@
+import hashlib
+import json
+import sys
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from validation.download_funding_rates import download, parse_archive_row, utc_ms
@@ -103,6 +108,29 @@ class FundingDownloaderTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "Pagination did not advance"):
             download("BTCUSDT", start, start + 100_000_000)
 
+
+    @patch("validation.download_funding_rates.download")
+    def test_download_manifest_fingerprints_exact_output_bytes(self, download_mock):
+        from validation.download_funding_rates import main
+        download_mock.return_value = [
+            {"timestamp": "2025-01-01T00:00:00Z", "funding_rate": "0.0001"},
+            {"timestamp": "2025-01-01T08:00:00Z", "funding_rate": "-0.0001"},
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            argv = [
+                "download_funding_rates.py", "--symbols", "BTCUSDT",
+                "--start", "2025-01-01", "--end", "2025-01-02",
+                "--out-dir", tmp,
+            ]
+            with patch.object(sys, "argv", argv):
+                main()
+            output = Path(tmp) / "BTCUSDT_funding.csv"
+            manifest = json.loads((Path(tmp) / "funding_manifest.json").read_text(encoding="utf-8"))
+            # Manifest filename follows the downloader's stable output contract.
+            entry = manifest["files"][0]
+            source_bytes = output.read_bytes()
+            self.assertEqual(entry["sha256"], hashlib.sha256(source_bytes).hexdigest())
+            self.assertEqual(entry["size_bytes"], len(source_bytes))
 
 if __name__ == "__main__":
     unittest.main()
