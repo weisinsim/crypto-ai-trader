@@ -43,3 +43,23 @@ def filter_closed_candles(rows, interval, now_ms):
         if timestamp + duration_ms <= now_ms:
             closed.append(row)
     return closed
+
+
+def upsert_candle(series, candle, *, limit=210):
+    """Append a newer candle, replace the current candle, and ignore stale events.
+
+    Returns False for an out-of-order candle without mutating the series.
+    """
+    if not isinstance(candle, dict) or "t" not in candle:
+        raise ValueError("candle must be a mapping with timestamp 't'")
+    timestamp = _timestamp_ms(candle["t"], field="candle timestamp")
+    if series:
+        previous = _timestamp_ms(series[-1].get("t"), field="last candle timestamp")
+        if timestamp < previous:
+            return False
+        if timestamp == previous:
+            series[-1] = candle
+            return True
+    series.append(candle)
+    del series[:-limit]
+    return True
