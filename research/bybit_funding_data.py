@@ -15,10 +15,15 @@ BASE_URL = "https://api.bytick.com"
 def download_bybit_funding(symbol: str, start_ms: int, end_ms: int, *,
                            base_url: str = BASE_URL, pause_seconds: float = 0.05) -> list[dict]:
     """Return verified Bybit funding events in [start_ms, end_ms), with mark-kline open provenance."""
-    if not symbol or not symbol.strip().isalnum():
-        raise ValueError("symbol must be an alphanumeric Bybit symbol")
-    if start_ms < 0 or end_ms <= start_ms:
-        raise ValueError("require 0 <= start_ms < end_ms")
+    if not isinstance(symbol, str) or not symbol.strip() or not symbol.strip().isalnum():
+        raise ValueError("symbol must be a non-empty alphanumeric Bybit symbol")
+    if (isinstance(start_ms, bool) or not isinstance(start_ms, int)
+            or isinstance(end_ms, bool) or not isinstance(end_ms, int)
+            or start_ms < 0 or end_ms <= start_ms):
+        raise ValueError("require integer timestamps with 0 <= start_ms < end_ms")
+    if (isinstance(pause_seconds, bool) or not isinstance(pause_seconds, (int, float))
+            or not isfinite(pause_seconds) or pause_seconds < 0):
+        raise ValueError("pause_seconds must be a finite non-negative number")
     records = []
     with httpx.Client(timeout=20.0) as client:
         page_end = end_ms - 1
