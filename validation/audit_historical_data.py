@@ -2,6 +2,7 @@
 """Audit historical candle CSV completeness before replay/backtesting."""
 import argparse
 import csv
+import hashlib
 import json
 import math
 from datetime import datetime
@@ -42,9 +43,21 @@ def _valid_timestamp(row):
         return False
 
 
+def file_provenance(path):
+    """Fingerprint exact source bytes for reproducible candle audits."""
+    digest = hashlib.sha256()
+    size_bytes = 0
+    with open(path, "rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+            size_bytes += len(chunk)
+    return {"sha256": digest.hexdigest(), "size_bytes": size_bytes}
+
+
 def audit(path, interval):
     if interval not in INTERVAL_MS:
         raise ValueError(f"Unsupported interval: {interval}")
+    provenance = file_provenance(path)
     with open(path, newline="", encoding="utf-8-sig") as f:
         rows = list(csv.DictReader(f))
     try:
@@ -54,10 +67,10 @@ def audit(path, interval):
         timestamp_errors = sum(1 for r in rows if not _valid_timestamp(r))
         ts = []
     if timestamp_errors:
-        return {"file": str(path), "rows": len(rows), "timestamp_errors": timestamp_errors,
+        return {"file": str(path), **provenance, "rows": len(rows), "timestamp_errors": timestamp_errors,
                 "pass_basic_integrity": False, "error": "INVALID_OR_TIMEZONE_NAIVE_TIMESTAMP"}
     if not rows:
-        return {"file": str(path), "rows": 0, "timestamp_errors": 0,
+        return {"file": str(path), **provenance, "rows": 0, "timestamp_errors": 0,
                 "pass_basic_integrity": False, "error": "EMPTY_FILE"}
     duplicates = len(ts) - len(set(ts))
     non_increasing = sum(1 for a, b in zip(ts, ts[1:]) if b <= a)
@@ -97,7 +110,7 @@ def audit(path, interval):
             volume_valid = False
         if not volume_valid:
             invalid_volume += 1
-    return {"file": str(path), "rows": len(rows), "first_close_ms": ts[0] if ts else None,
+    return {"file": str(path), **provenance, "rows": len(rows), "first_close_ms": ts[0] if ts else None,
             "last_close_ms": ts[-1] if ts else None, "duplicates": duplicates,
             "non_increasing_pairs": non_increasing, "gap_count": len(gaps),
             "cadence_anomaly_count": len(cadence_anomalies), "cadence_anomalies_sample": cadence_anomalies[:10],
