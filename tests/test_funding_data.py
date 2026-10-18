@@ -66,6 +66,14 @@ class FundingDataTests(unittest.TestCase):
         self.assertEqual(rows[0]["mark_price"], 100.0)
         self.assertEqual(rows[0]["venue"], "binance")
 
+    def test_download_rejects_api_rows_outside_requested_range(self):
+        def fake_fetch(params):
+            return [record(params["startTime"] - 1)]
+
+        with self.assertRaisesRegex(ValueError, "outside requested page range"):
+            download_funding_rates(
+                "BTCUSDT", 100, 301, fetch_page=fake_fetch, limit=10, pause_seconds=0
+            )
     def test_download_paginates_without_timestamp_duplicates(self):
         def fake_fetch(params):
             cursor = params["startTime"]
