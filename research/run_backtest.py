@@ -306,13 +306,27 @@ def summarize_walk_forward_cost_stress(walk_results: list[dict]) -> dict:
                 for fold in walk_results
             ),
             "folds_positive_return": sum(
-                _finite_metric(row.get("net_return_pct"))
-                and row["net_return_pct"] > 0
-                for row in rows
+                isinstance(fold, dict)
+                and fold.get("status") == "COMPLETED"
+                and isinstance(fold.get("cost_stress"), dict)
+                and isinstance(fold["cost_stress"].get("scenarios"), dict)
+                and isinstance(fold["cost_stress"]["scenarios"].get(name), dict)
+                and fold["cost_stress"]["scenarios"][name].get("status") == "COMPLETED"
+                and _finite_metric(fold["cost_stress"]["scenarios"][name].get("net_return_pct"))
+                and fold["cost_stress"]["scenarios"][name]["net_return_pct"] > 0
+                for fold in walk_results
             ),
             "folds_pf_above_1_15": sum(
-                _profit_factor_above_threshold(row.get("profit_factor"), 1.15)
-                for row in rows
+                isinstance(fold, dict)
+                and fold.get("status") == "COMPLETED"
+                and isinstance(fold.get("cost_stress"), dict)
+                and isinstance(fold["cost_stress"].get("scenarios"), dict)
+                and isinstance(fold["cost_stress"]["scenarios"].get(name), dict)
+                and fold["cost_stress"]["scenarios"][name].get("status") == "COMPLETED"
+                and _profit_factor_above_threshold(
+                    fold["cost_stress"]["scenarios"][name].get("profit_factor"), 1.15
+                )
+                for fold in walk_results
             ),
             "worst_net_return_pct": round(min(valid_returns), 4) if valid_returns else None,
             "worst_max_drawdown_pct": round(max(valid_drawdowns), 4) if valid_drawdowns else None,
