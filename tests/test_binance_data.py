@@ -7,7 +7,7 @@ from research.binance_data import download_klines, parse_klines, save_csv
 
 
 def raw_kline(ts, close="100"):
-    return [ts, "99", "101", "98", close, "12", ts + 3_600_000 - 1, "1200",
+    return [ts, "99", "101", "98", close, "12", int(ts) + 3_600_000 - 1, "1200",
             5, "6", "600", "0"]
 
 
