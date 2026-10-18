@@ -35,6 +35,7 @@ def build_manifest(rows: list[dict]) -> dict:
                 "DOWNLOADED_PROXY_MARK_PRICE_NOT_RECONCILED",
             }
             and _text(row, "baseline_status") == "RESEARCH_ONLY"
+            and _text(row, "funding_audit_status", "UNKNOWN").upper() not in {"FAILED", "ERROR", "UNKNOWN", ""}
             for row in rows
         )
     )
