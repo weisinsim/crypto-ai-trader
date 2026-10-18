@@ -7,7 +7,7 @@ import math
 from collections import Counter
 from pathlib import Path
 
-from research.run_backtest import load_csv, load_funding_csv, source_file_manifest
+from research.run_backtest import load_csv, load_funding_csv, source_file_manifest, write_json_atomic
 
 
 def audit_funding_against_candles(
