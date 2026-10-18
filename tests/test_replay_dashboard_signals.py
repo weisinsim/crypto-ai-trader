@@ -62,6 +62,11 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
         low = [x - 1 for x in close]
         self.assertGreater(atr(high, low, close), 0)
 
+    def test_xrp_watch_state_matches_live_watch_score(self):
+        source = (Path(__file__).resolve().parents[1] / "validation" / "replay_dashboard_signals.py").read_text(encoding="utf-8")
+        self.assertIn('score=43; reason="WATCH_LONG"', source)
+        self.assertIn('"WATCH" if reason.startswith("WATCH")', source)
+
     def test_eth_is_suppressed(self):
         one = []
         four = []

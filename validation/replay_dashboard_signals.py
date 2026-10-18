@@ -150,8 +150,12 @@ def replay(symbol, one, four, *, include_states=False):
             pull=trend and c[-2]<=c[-3] and p>e20 and r<=55
             brk=trend and res is not None and p>res and p>c[-2]
             if not kill and (mean_rev or pull or brk):
-                side="LONG"; entry=p; sl=p-XRP["sl_atr"]*a; target=p+XRP["tp_atr"]*a; score=75; reason="XRP_LONG"
-            else: reason="XRP_KILL" if kill else "XRP_NO_ENTRY"
+                side="LONG"; direction=1; entry=p; sl=p-XRP["sl_atr"]*a; target=p+XRP["tp_atr"]*a; score=75; reason="XRP_LONG"
+            elif not kill and ((r<=40) or trend):
+                direction=1; entry=p; sl=p-XRP["sl_atr"]*a; target=p+XRP["tp_atr"]*a
+                score=43; reason="WATCH_LONG"
+            else:
+                reason="XRP_KILL" if kill else "XRP_NO_ENTRY"
         else:
             bull=e20_4>e50_4 and p>e20_4
             bear=e20_4<e50_4 and p<e20_4
