@@ -43,6 +43,16 @@ class ClosedCandleFilterTests(unittest.TestCase):
         rows = [{"t": "3600000", "c": 101}]
         self.assertEqual(filter_closed_candles(rows, "1h", "7200000"), rows)
 
+    def test_rejects_out_of_order_candle_timestamps(self):
+        rows = [{"t": 3_600_000}, {"t": 0}]
+        with self.assertRaisesRegex(ValueError, "strictly increasing"):
+            filter_closed_candles(rows, "1h", 10_000_000)
+
+    def test_rejects_duplicate_candle_timestamps(self):
+        rows = [{"t": 0}, {"t": 0}]
+        with self.assertRaisesRegex(ValueError, "strictly increasing"):
+            filter_closed_candles(rows, "1h", 10_000_000)
+
     def test_rejects_missing_timestamp_row(self):
         with self.assertRaisesRegex(ValueError, "mapping with timestamp"):
             filter_closed_candles([{"c": 100}], "1h", 7_200_000)

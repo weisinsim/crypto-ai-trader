@@ -29,10 +29,17 @@ def filter_closed_candles(rows, interval, now_ms):
         raise ValueError(f"Unsupported interval: {interval}")
     now_ms = _timestamp_ms(now_ms, field="now_ms")
     closed = []
+    previous_timestamp = None
     for index, row in enumerate(rows):
         if not isinstance(row, dict) or "t" not in row:
             raise ValueError(f"candle row {index} must be a mapping with timestamp 't'")
         timestamp = _timestamp_ms(row["t"], field=f"candle row {index} timestamp")
+        if previous_timestamp is not None and timestamp <= previous_timestamp:
+            raise ValueError(
+                f"candle timestamps must be strictly increasing: row {index} timestamp {timestamp} "
+                f"is not after {previous_timestamp}"
+            )
+        previous_timestamp = timestamp
         if timestamp + duration_ms <= now_ms:
             closed.append(row)
     return closed
