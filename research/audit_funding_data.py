@@ -16,9 +16,9 @@ def audit_funding_against_candles(
 ) -> dict:
     if not candle_rows:
         raise ValueError("candle data is empty")
+    if not isinstance(symbol, str) or not symbol.strip():
+        raise ValueError("symbol must be a non-empty string")
     symbol = symbol.strip().upper()
-    if not symbol:
-        raise ValueError("symbol must be non-empty")
     if not funding_rows:
         raise ValueError("funding data is empty")
 
