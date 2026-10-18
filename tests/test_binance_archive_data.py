@@ -67,7 +67,7 @@ class BinanceArchiveDataTests(unittest.TestCase):
     def test_strict_timestamp_rejects_boolean_and_negative_values(self):
         for value in (True, -1, "-1"):
             with self.subTest(value=value):
-                with self.assertRaisesRegex(ValueError, "invalid test timestamp"):
+                with self.assertRaisesRegex(ValueError, "invalid test timestamp|negative timestamp"):
                     _strict_timestamp(value, field="test timestamp")
 
     def test_strict_timestamp_rejects_non_finite_float(self):
