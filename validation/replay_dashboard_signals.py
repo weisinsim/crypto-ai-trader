@@ -122,7 +122,7 @@ def closed_rows_at(rows, timestamp_ms):
     return [row for row in rows if row["ts"] <= timestamp_ms]
 
 
-def replay(symbol, one, four):
+def replay(symbol, one, four, *, include_states=False):
     output=[]
     # For each hourly close, use hourly candles through that close and 4h candles
     # whose close timestamp is no later than this hourly close.
@@ -137,7 +137,7 @@ def replay(symbol, one, four):
         e20_4=ema(c4,20); e50_4=ema(c4,50)
         a=atr(hi,lo,c); r=rsi(c); ad=adx(hi,lo,c); vw=vwap(hi,lo,c,q); sup,res=levels(hi,lo,c)
         if None in (e20,e50,e200,e20_4,e50_4,a,r): continue
-        side=""; entry=sl=target=None; score=0; reason="NO-TRADE"
+        side=""; entry=sl=target=None; score=0; direction=0; reason="NO-TRADE"
         if symbol=="ETHUSDT":
             reason="NO_PRODUCTION"
         elif symbol=="XRPUSDT":
@@ -158,28 +158,38 @@ def replay(symbol, one, four):
             if symbol=="SOLUSDT": rl=(40,52); rs=(48,60); sm=1.0; tm=2.0
             elif symbol=="AVAXUSDT": rl=(40,52); rs=(48,60); sm=1.2; tm=1.2
             else: rl=(45,55); rs=(45,55); sm=1.2; tm=1.5
-            long_ok=bull and rl[0]<=r<=rl[1] and p>e20 and p>c[-2]
-            short_ok=bear and rs[0]<=r<=rs[1] and p<e20 and p<c[-2]
+            long_ok=bull and r is not None and rl[0]<=r<=rl[1] and p>e20 and p>c[-2]
+            short_ok=bear and r is not None and rs[0]<=r<=rs[1] and p<e20 and p<c[-2]
             direction=1 if long_ok else -1 if short_ok else 0
+            if not direction and bull and r is not None and r<=rl[1]:
+                direction=1; reason="WATCH_LONG"
+            elif not direction and bear and r is not None and r>=rs[0]:
+                direction=-1; reason="WATCH_SHORT"
             if direction:
                 entry=p; sl=p-direction*sm*a; target=p+direction*tm*a
                 vr=q[-1]/(sum(q[-21:-1])/20) if len(q)>=21 and sum(q[-21:-1]) else None
-                trend_pts=30; rsi_pts=20; adx_pts=15 if ad and ad>=20 else 8 if ad and ad>=15 else 0
+                trend_pts=30 if (direction==1 and bull) or (direction==-1 and bear) else 0
+                rsi_pts=20 if ((direction==1 and rl[0]<=r<=rl[1]) or (direction==-1 and rs[0]<=r<=rs[1])) else 0
+                adx_pts=15 if ad and ad>=20 else 8 if ad and ad>=15 else 0
                 vol_pts=15 if vr and vr>=1.1 else 8 if vr and vr>=0.8 else 0
                 dist_support=max(0,p-sup) if sup else None
                 dist_res=max(0,res-p) if res else None
                 optimal=((direction==1 and dist_support is not None and dist_support/a<=2.5) or (direction==-1 and dist_res is not None and dist_res/a<=2.5))
-                score=min(100,trend_pts+rsi_pts+adx_pts+vol_pts+(10 if optimal else 5))
-                if score>=75: side="LONG" if direction==1 else "SHORT"; reason="ENTRY"
-                else: entry=sl=target=None; reason="WATCH_SCORE_BELOW_75"
-            elif bull and r<=rl[1]: reason="WATCH_LONG"
-            elif bear and r>=rs[0]: reason="WATCH_SHORT"
-        if side:
-            output.append({"timestamp":one[i]["timestamp"],"side":side,"entry":entry,"atr":a,
-                           "stop":sl,"target":target,"score":score,"model":symbol,
-                           "model_version":"app.py-replay-v1","rsi":r,"ema20_1h":e20,"ema50_1h":e50,
-                           "ema20_4h":e20_4,"ema50_4h":e50_4,"adx":ad,"vwap":vw,
-                           "support":sup,"resistance":res,"reason":reason})
+                score=min(100,int(trend_pts+rsi_pts+adx_pts+vol_pts+(10 if optimal else 5)))
+                if long_ok or short_ok:
+                    if score>=75: side="LONG" if direction==1 else "SHORT"; reason="ENTRY"
+                    else: reason="WATCH_SCORE_BELOW_75"
+                elif reason=="NO-TRADE":
+                    reason="WATCH_LONG" if direction==1 else "WATCH_SHORT"
+        status = side if side else ("WATCH" if reason.startswith("WATCH") else "NO-TRADE")
+        if side or include_states:
+            output.append({"timestamp":one[i]["timestamp"],"status":status,"side":side,
+                           "entry":entry,"atr":a,"stop":sl,"target":target,
+                           "target2":(p+direction*(tm*1.5)*a) if symbol!="XRPUSDT" and direction else (p+direction*3.5*a if symbol=="XRPUSDT" and direction else None),
+                           "score":score,"model":symbol,"model_version":"app.py-replay-v2",
+                           "rsi":r,"ema20_1h":e20,"ema50_1h":e50,"ema20_4h":e20_4,
+                           "ema50_4h":e50_4,"adx":ad,"vwap":vw,"support":sup,
+                           "resistance":res,"reason":reason})
     return output
 
 
@@ -188,13 +198,18 @@ def main():
     p.add_argument("--data-dir",default="data/historical")
     p.add_argument("--symbols",nargs="+",default=SYMBOLS)
     p.add_argument("--out-dir",default="data/replay")
+    p.add_argument("--include-states", action="store_true", help="Also export hourly WATCH/NO-TRADE states for parity review")
     a=p.parse_args()
     data=Path(a.data_dir); out=Path(a.out_dir); out.mkdir(parents=True,exist_ok=True)
     manifest=[]
     for s in a.symbols:
         one=read_rows(data/f"{s}_1h.csv"); four=read_rows(data/f"{s}_4h.csv")
         trades=replay(s,one,four)
-        fields=["timestamp","side","entry","atr","stop","target","score","model","model_version","rsi","ema20_1h","ema50_1h","ema20_4h","ema50_4h","adx","vwap","support","resistance","reason"]
+        fields=["timestamp","status","side","entry","atr","stop","target","target2","score","model","model_version","rsi","ema20_1h","ema50_1h","ema20_4h","ema50_4h","adx","vwap","support","resistance","reason"]
+        if a.include_states:
+            states=replay(s,one,four,include_states=True)
+            with (out/f"{s}_states.csv").open("w",newline="",encoding="utf-8") as sf:
+                sw=csv.DictWriter(sf,fieldnames=fields); sw.writeheader(); sw.writerows(states)
         dest=out/f"{s}_signals.csv"
         with dest.open("w",newline="",encoding="utf-8") as f:
             w=csv.DictWriter(f,fieldnames=fields); w.writeheader(); w.writerows(trades)
