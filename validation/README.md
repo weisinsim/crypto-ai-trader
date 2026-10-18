@@ -39,6 +39,24 @@ python validation/audit_historical_data.py --data-dir data/historical
 
 Review every file for missing files, duplicate timestamps, invalid OHLC values and candle gaps. A basic integrity pass does not guarantee complete history; expected row counts and the chosen date boundaries must also be checked. The automated research workflow also runs `validation/audit_window_coverage.py` against the exact requested UTC `[start, end)` window. It checks expected candle close timestamps for each symbol/interval and fails closed on missing, extra, or out-of-window rows. Use it only when the symbol existed and was listed throughout the entire window; newly listed or renamed contracts require a symbol-specific start date.
 
+## 2A. Run the strict research-input inventory gate
+
+After downloading both candle intervals and funding files, run the fixed-window inventory audit before replay or performance analysis:
+
+```bash
+python validation/audit_research_input_inventory.py \
+  --candle-dir data/historical \
+  --funding-dir data/funding \
+  --start 2024-10-01T00:00:00Z \
+  --end 2026-10-01T00:00:00Z \
+  --symbols BTCUSDT ETHUSDT SOLUSDT AVAXUSDT XRPUSDT \
+  --out research-results/input-inventory.json
+```
+
+The requested interval is UTC start-inclusive/end-exclusive. Candle files are expected as `SYMBOL_1h.csv` and `SYMBOL_4h.csv`; funding files as `SYMBOL_funding.csv`. The command returns a nonzero exit code if any required file is missing, malformed, out of range, has duplicate/non-increasing timestamps, or lacks an expected candle close timestamp. Preserve the JSON output alongside the source files and code revision.
+
+**Important:** the inventory report fingerprints each present file and checks exact candle timestamp coverage, but it does not download data itself. A funding file with rows is only marked `FUNDING_INVENTORIED_NOT_RECONCILED`; this is not proof of complete funding-event coverage or authoritative settlement reconciliation. A successful inventory is not a performance result, strategy approval, or permission to enable live trading.
+
 ## 3. Replay asset-specific signals
 
 ```bash
