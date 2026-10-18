@@ -118,5 +118,20 @@ class BinanceFundingDataTests(unittest.TestCase):
                     "BTCUSDT",
                 )
 
+    def test_rejects_malformed_funding_row_shapes(self):
+        with self.assertRaisesRegex(ValueError, "funding rows must be a list"):
+            normalize_funding_rows({"fundingTime": 100}, "BTCUSDT")
+        for row in (None, [], "bad", {"fundingTime": 100, "fundingRate": "0.001"}):
+            with self.subTest(row=row), self.assertRaises(ValueError):
+                normalize_funding_rows([row], "BTCUSDT")
+
+    def test_download_rejects_malformed_page_rows_before_sorting(self):
+        for page in ([None], [{"fundingRate": "0.001", "markPrice": "100"}]):
+            with self.subTest(page=page), self.assertRaises(ValueError):
+                download_funding_history(
+                    "BTCUSDT", 100, 200, fetch_page=lambda _: page,
+                    pause_seconds=0,
+                )
+
 if __name__ == "__main__":
     unittest.main()
