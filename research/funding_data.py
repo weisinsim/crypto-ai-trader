@@ -40,6 +40,19 @@ def canonical_settlement_timestamp(ts: int, tolerance_ms: int = 1000) -> int:
         raise ValueError(f"funding timestamp is off the canonical 8-hour grid: {ts}")
     return canonical
 
+def _find_prior_mark_close(mark_closes: list[tuple[int, float]], settlement_ts: int) -> float | None:
+    """Return the latest prior minute close only when it is at most 60 seconds old."""
+    if not mark_closes:
+        return None
+    index = bisect_right(mark_closes, (settlement_ts, float("inf"))) - 1
+    if index < 0:
+        return None
+    close_ts, close_price = mark_closes[index]
+    if 0 <= settlement_ts - close_ts <= 60_000:
+        return close_price
+    return None
+
+
 def _parse_archive_timestamp(value, field: str = "archive timestamp") -> int:
     """Parse an archive timestamp without float rounding or truncation."""
     if isinstance(value, bool):
@@ -426,15 +439,10 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                         if mark is not None:
                             mark_source = "mark_kline_1m_open"
                     if mark is None and mark_1m_closes:
-                        # Binary search avoids rescanning the entire minute-mark history
-                        # for every funding event in long archive ranges.
-                        prior_index = bisect_right(mark_1m_closes, (ts, float("inf"))) - 1
                         # Secondary fallback is historical only and limited to one minute.
-                        if prior_index >= 0:
-                            prior_close_ts, prior_close_price = mark_1m_closes[prior_index]
-                            if 0 <= ts - prior_close_ts <= 60_000:
-                                mark = prior_close_price
-                                mark_source = "mark_kline_1m_prior_close"
+                        mark = _find_prior_mark_close(mark_1m_closes, ts)
+                        if mark is not None:
+                            mark_source = "mark_kline_1m_prior_close"
                     if mark is None:
                         nearest_1m_open = (
                             min(mark_1m_opens, key=lambda mark_ts: abs(mark_ts - ts))
