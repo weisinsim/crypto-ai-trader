@@ -13,9 +13,15 @@ PASS_AUDIT_STATUSES = {
 }
 
 
+def _text(row: dict, field: str, default: str = "") -> str:
+    """Read untrusted CSV-derived values without crashing on null or non-text cells."""
+    value = row.get(field, default)
+    return value.strip() if isinstance(value, str) else default
+
+
 def build_manifest(rows: list[dict]) -> dict:
-    """Summarize batch completion while failing closed on missing/unknown audit states."""
-    symbols = [row.get("symbol", "").strip().upper() for row in rows]
+    """Summarize batch completion while failing closed on malformed/unknown states."""
+    symbols = [_text(row, "symbol").upper() for row in rows]
     symbols_unique = len(symbols) == len(set(symbols))
     symbol_set_complete = len(rows) == len(EXPECTED_SYMBOLS) and set(symbols) == EXPECTED_SYMBOLS and symbols_unique
     processing_statuses_complete = (
@@ -23,20 +29,20 @@ def build_manifest(rows: list[dict]) -> dict:
         and symbols_unique
         and set(symbols) == EXPECTED_SYMBOLS
         and all(
-            row.get("candle_status") == "COMPLETE"
-            and row.get("funding_download_status") in {
+            _text(row, "candle_status") == "COMPLETE"
+            and _text(row, "funding_download_status") in {
                 "DOWNLOADED_NOT_RECONCILED",
                 "DOWNLOADED_PROXY_MARK_PRICE_NOT_RECONCILED",
             }
-            and row.get("baseline_status") == "RESEARCH_ONLY"
+            and _text(row, "baseline_status") == "RESEARCH_ONLY"
             for row in rows
         )
     )
     all_assets_processed = symbol_set_complete and processing_statuses_complete
-    audit_statuses = [row.get("funding_audit_status", "UNKNOWN") for row in rows]
+    audit_statuses = [_text(row, "funding_audit_status", "UNKNOWN") or "UNKNOWN" for row in rows]
     audit_review = any(status not in PASS_AUDIT_STATUSES for status in audit_statuses)
     any_proxy = any(
-        "PROXY" in row.get("funding_download_status", "").upper()
+        "PROXY" in _text(row, "funding_download_status").upper()
         for row in rows
     )
     if not all_assets_processed:
