@@ -150,6 +150,14 @@ class FundingDataTests(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         download_archive_funding(symbol, start, end)
             client.assert_not_called()
+    def test_archive_downloader_rejects_out_of_datetime_range_before_network(self):
+        from unittest.mock import patch
+
+        huge = 10 ** 10000
+        with patch("research.funding_data.httpx.Client") as client:
+            with self.assertRaisesRegex(ValueError, "outside the supported UTC datetime range"):
+                download_archive_funding("BTCUSDT", huge, huge + 1)
+            client.assert_not_called()
     def test_archive_fallback_uses_official_rest_when_month_and_daily_archives_missing(self):
         from datetime import datetime, timezone
         from unittest.mock import Mock, patch
