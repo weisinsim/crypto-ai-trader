@@ -82,3 +82,8 @@ def validate_candle_series(rows, *, limit=210):
     if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
         raise ValueError("limit must be a positive integer")
     return result[-limit:]
+
+
+def normalize_timestamp_ms(value) -> int:
+    """Public strict timestamp parser for exchange adapters; never truncate fractions."""
+    return _timestamp_ms(value, field="candle timestamp")

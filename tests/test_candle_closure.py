@@ -1,6 +1,6 @@
 import unittest
 
-from validation.candle_closure import filter_closed_candles
+from validation.candle_closure import filter_closed_candles, normalize_timestamp_ms
 
 
 class ClosedCandleFilterTests(unittest.TestCase):
@@ -102,6 +102,18 @@ class ClosedCandleFilterTests(unittest.TestCase):
         from validation.candle_closure import validate_candle_series
         with self.assertRaises(ValueError):
             validate_candle_series([{"t": 100}, None])
+
+
+    def test_timestamp_parser_rejects_fractional_milliseconds_without_truncation(self):
+        with self.assertRaises(ValueError):
+            normalize_timestamp_ms(1_700_000_000_000.5)
+        with self.assertRaises(ValueError):
+            normalize_timestamp_ms("1700000000000.5")
+
+    def test_timestamp_parser_accepts_integer_milliseconds(self):
+        self.assertEqual(normalize_timestamp_ms(1_700_000_000_000), 1_700_000_000_000)
+        self.assertEqual(normalize_timestamp_ms("1700000000000"), 1_700_000_000_000)
+
 
 if __name__ == "__main__":
     unittest.main()
