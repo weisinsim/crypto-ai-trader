@@ -116,6 +116,23 @@ class FundingAuditTests(unittest.TestCase):
                         self.candles, self.funding, "BTCUSDT", max_gap_hours=value
                     )
 
+    def test_malformed_symbol_values_fail_closed_without_attribute_error(self):
+        rows = [dict(self.funding[0]), dict(self.funding[-1])]
+        rows[0]["symbol"] = None
+        with self.assertRaisesRegex(ValueError, "do not match"):
+            audit_funding_against_candles(self.candles, rows, "BTCUSDT")
+
+    def test_mixed_null_and_non_text_provenance_labels_are_safe(self):
+        rows = [dict(self.funding[0]), dict(self.funding[-1])]
+        rows[0]["mark_price_source"] = None
+        rows[1]["mark_price_source"] = 7
+        rows[0]["venue"] = None
+        rows[1]["venue"] = {"unexpected": "object"}
+        report = audit_funding_against_candles(self.candles, rows, "BTCUSDT")
+        self.assertEqual(report["funding"]["source_labels"], ["invalid:int", "unspecified"])
+        self.assertEqual(report["funding"]["venue_labels"], ["invalid:dict", "unspecified"])
+        self.assertFalse(report["source_authenticity_verified"])
+
     def test_symbol_mismatch_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "do not match"):
             audit_funding_against_candles(self.candles, self.funding, "ETHUSDT")
