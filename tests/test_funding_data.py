@@ -1,6 +1,6 @@
 import unittest
 
-from research.funding_data import _parse_archive_timestamp, canonical_settlement_timestamp, download_archive_funding, download_funding_rates, parse_funding_rows, save_funding_csv
+from research.funding_data import _find_prior_mark_close, _parse_archive_timestamp, canonical_settlement_timestamp, download_archive_funding, download_funding_rates, parse_funding_rows, save_funding_csv
 
 
 def record(ts, rate="0.0001"):
@@ -230,3 +230,22 @@ class FundingRequiredFieldsValidationTests(unittest.TestCase):
                 ValueError, "funding response must be a list of rows"
             ):
                 parse_funding_rows(raw_rows, "BTCUSDT", 0, 200)
+
+class PriorMarkCloseLookupTests(unittest.TestCase):
+    def test_returns_latest_close_at_or_before_settlement_within_sixty_seconds(self):
+        marks = [(100_000, 100.0), (160_000, 101.0), (220_000, 102.0)]
+        self.assertEqual(_find_prior_mark_close(marks, 220_000), 102.0)
+        self.assertEqual(_find_prior_mark_close(marks, 280_000), 102.0)
+
+    def test_rejects_close_older_than_sixty_seconds(self):
+        self.assertIsNone(_find_prior_mark_close([(100_000, 100.0)], 160_001))
+
+    def test_rejects_future_close_and_empty_history(self):
+        self.assertIsNone(_find_prior_mark_close([(200_000, 100.0)], 199_999))
+        self.assertIsNone(_find_prior_mark_close([], 200_000))
+
+    def test_binary_search_selects_latest_duplicate_timestamp(self):
+        marks = [(100_000, 99.0), (100_000, 100.0)]
+        self.assertEqual(_find_prior_mark_close(marks, 100_000), 100.0)
+
+
