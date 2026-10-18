@@ -135,7 +135,7 @@ def replay(symbol, one, four):
         c4=[x["c"] for x in h4]
         p=c[-1]; e20=ema(c,20); e50=ema(c,50); e200=ema(c,200)
         e20_4=ema(c4,20); e50_4=ema(c4,50)
-        a=atr(hi,lo,c); r=rsi(c); ad=adx(hi,lo,c); vw=vwap(hi,lo,c,v); sup,res=levels(hi,lo,c)
+        a=atr(hi,lo,c); r=rsi(c); ad=adx(hi,lo,c); vw=vwap(hi,lo,c,q); sup,res=levels(hi,lo,c)
         if None in (e20,e50,e200,e20_4,e50_4,a,r): continue
         side=""; entry=sl=target=None; score=0; reason="NO-TRADE"
         if symbol=="ETHUSDT":
