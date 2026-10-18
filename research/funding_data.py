@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 from bisect import bisect_right
 import csv
+import os
+import tempfile
 import io
 import time
 import zipfile
@@ -475,12 +477,26 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
 
 
 def save_funding_csv(rows: list[dict], path: str | Path) -> None:
+    """Write funding records atomically so failed writes cannot truncate prior data."""
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with destination.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=FIELDS)
-        writer.writeheader()
-        writer.writerows(rows)
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent
+    )
+    try:
+        with os.fdopen(fd, "w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=FIELDS)
+            writer.writeheader()
+            writer.writerows(rows)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, destination)
+    except BaseException:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+        raise
 
 
 def main() -> None:
