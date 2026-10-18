@@ -62,13 +62,14 @@ def _metrics(result: Mapping[str, Any], fee_rate: float, slippage_rate: float) -
 
     for metric_name in ("net_return_pct", "max_drawdown_pct", "profit_factor", "equity_final"):
         metric_value = result.get(metric_name)
+        valid_infinite_profit_factor = metric_name == "profit_factor" and metric_value == "INF"
         valid_positive_infinity_pf = (
             metric_name == "profit_factor"
             and isinstance(metric_value, (int, float))
             and not isinstance(metric_value, bool)
             and metric_value == math.inf
         )
-        if metric_value is not None and not valid_positive_infinity_pf and (
+        if metric_value is not None and not valid_infinite_profit_factor and not valid_positive_infinity_pf and (
             isinstance(metric_value, bool)
             or not isinstance(metric_value, (int, float))
             or not math.isfinite(metric_value)
