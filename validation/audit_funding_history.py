@@ -7,6 +7,7 @@ non-8-hour interval invalid.
 """
 import argparse
 import csv
+import hashlib
 import json
 import math
 from datetime import datetime
@@ -18,6 +19,17 @@ def parse_timestamp(value):
     if dt.tzinfo is None or dt.utcoffset() is None:
         raise ValueError(f"Funding timestamp must include timezone: {value!r}")
     return int(dt.timestamp() * 1000)
+
+
+def file_provenance(path):
+    """Return a reproducible fingerprint of the exact source file bytes."""
+    digest = hashlib.sha256()
+    size_bytes = 0
+    with open(path, "rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+            size_bytes += len(chunk)
+    return {"sha256": digest.hexdigest(), "size_bytes": size_bytes}
 
 
 def audit(path, max_gap_hours=24.0, max_abs_rate=0.05, start_ms=None, end_ms=None):
@@ -35,6 +47,7 @@ def audit(path, max_gap_hours=24.0, max_abs_rate=0.05, start_ms=None, end_ms=Non
         raise ValueError("end_ms must be an integer timestamp in milliseconds")
     if start_ms is not None and end_ms is not None and end_ms <= start_ms:
         raise ValueError("end_ms must be later than start_ms")
+    provenance = file_provenance(path)
     rows = []
     with open(path, newline="", encoding="utf-8-sig") as stream:
         for line_number, row in enumerate(csv.DictReader(stream), start=2):
@@ -52,7 +65,7 @@ def audit(path, max_gap_hours=24.0, max_abs_rate=0.05, start_ms=None, end_ms=Non
                 )
             rows.append({"ts": ts, "rate": rate})
     if not rows:
-        return {"file": str(path), "rows": 0, "pass_basic_integrity": False,
+        return {"file": str(path), **provenance, "rows": 0, "pass_basic_integrity": False,
                 "error": "EMPTY_FUNDING_HISTORY"}
     timestamps = [row["ts"] for row in rows]
     duplicates = len(timestamps) - len(set(timestamps))
@@ -81,7 +94,7 @@ def audit(path, max_gap_hours=24.0, max_abs_rate=0.05, start_ms=None, end_ms=Non
               and not large_gaps and boundary_gaps_valid
               and events_within_requested_window)
     return {
-        "file": str(path), "rows": len(rows),
+        "file": str(path), **provenance, "rows": len(rows),
         "first_timestamp_ms": timestamps[0], "last_timestamp_ms": timestamps[-1],
         "duplicates": duplicates, "non_increasing_pairs": non_increasing,
         "ordered": ordered, "max_gap_hours": round(max(gaps) / 3600, 4) if gaps else None,

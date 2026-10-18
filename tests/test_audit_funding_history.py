@@ -1,3 +1,4 @@
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -24,6 +25,9 @@ class FundingHistoryAuditTests(unittest.TestCase):
         result = audit(path, max_gap_hours=24)
         self.assertTrue(result["pass_basic_integrity"])
         self.assertEqual(result["rows"], 3)
+        source_bytes = path.read_bytes()
+        self.assertEqual(result["sha256"], hashlib.sha256(source_bytes).hexdigest())
+        self.assertEqual(result["size_bytes"], len(source_bytes))
 
     def test_flags_large_internal_gap(self):
         path = self.write_csv([
