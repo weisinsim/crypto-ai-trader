@@ -63,6 +63,22 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
         })
         self.assertIn("PROXY", summary["source_labels"][0].upper())
 
+    def test_funding_pnl_authority_is_explicitly_blocked(self):
+        candles = [{"t": i * 3_600_000, "o": 100, "h": 101, "l": 99, "c": 100, "v": 1, "q": 100} for i in range(180)]
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path = Path(tmp) / "candles.csv"
+            output_path = Path(tmp) / "report.json"
+            with csv_path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=["t", "o", "h", "l", "c", "v", "q"])
+                writer.writeheader()
+                writer.writerows(candles)
+            argv = ["run_backtest.py", "--csv", str(csv_path), "--symbol", "BTCUSDT", "--interval", "1h", "--output", str(output_path)]
+            with patch.object(sys, "argv", argv):
+                main()
+            report = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertFalse(report["data_lineage"]["funding_pnl_authoritative"])
+            self.assertEqual(len(report["data_lineage"]["funding_pnl_authority_blockers"]), 3)
+
     def test_missing_funding_is_explicitly_unverified(self):
         summary = summarize_funding_data_quality(None, [{"t": 100}])
         self.assertFalse(summary["provided"])
