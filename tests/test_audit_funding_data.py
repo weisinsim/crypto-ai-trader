@@ -52,6 +52,12 @@ class FundingAuditTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "funding row 1 must be a mapping"):
             audit_funding_against_candles(self.candles, [self.funding[0], None], "BTCUSDT")
 
+    def test_extreme_gap_threshold_rejected_after_unit_conversion(self):
+        with self.assertRaisesRegex(ValueError, "too large to represent in milliseconds"):
+            audit_funding_against_candles(
+                self.candles, self.funding, "BTCUSDT", max_gap_hours=1e308
+            )
+
     def test_requested_symbol_must_be_nonempty_text(self):
         for value in (None, 123, "", "   "):
             with self.subTest(value=value):
