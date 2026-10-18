@@ -299,11 +299,19 @@ def run_ema_cross_backtest(
         return_pct = (new_equity / equity_before - 1) * 100
         if not isfinite(return_pct):
             raise ValueError("trade return calculation produced a non-finite value")
+        stop_touched = (
+            float(bar["l"]) <= pos["stop"] if side == 1 else float(bar["h"]) >= pos["stop"]
+        )
+        target_touched = (
+            float(bar["h"]) >= pos["target"] if side == 1 else float(bar["l"]) <= pos["target"]
+        )
+        same_bar_stop_target_ambiguous = bool(stop_touched and target_touched)
         trade = {
             "side": "LONG" if side == 1 else "SHORT",
             "entry_time": pos["entry_time"], "exit_time": int(bar["t"]),
             "entry": round(pos["entry_fill"], 8), "exit": round(exit_fill, 8),
             "reason": reason, "bars_held": pos["bars_held"],
+            "same_bar_stop_target_ambiguous": same_bar_stop_target_ambiguous,
             "stop": round(pos["stop"], 8), "target": round(pos["target"], 8),
             "funding_cashflow": round(funding_cashflow, 8),
             "funding_settlement_count": len(settlement_timestamps),
