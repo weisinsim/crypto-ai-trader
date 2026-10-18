@@ -384,9 +384,10 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
             marks = {}
             for row in mark_rows:
                 try:
-                    ts, mark_open = _parse_archive_timestamp(row[0]), _parse_finite_number(row[1], "archive mark price", positive=True)
+                    ts = _parse_archive_timestamp(row[0])
                 except (ValueError, IndexError):
                     continue
+                mark_open = _parse_finite_number(row[1], "archive mark price", positive=True)
                 # Use the mark-price candle OPEN at settlement time, not its
                 # close eight hours later (which would introduce look-ahead).
                 marks[ts] = mark_open
@@ -426,10 +427,10 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                     for item in mark_1m_rows:
                         try:
                             minute_open_ts = _parse_archive_timestamp(item[0])
-                            mark_open = _parse_finite_number(item[1], "1m archive mark open", positive=True)
-                            mark_close = _parse_finite_number(item[4], "1m archive mark close", positive=True)
                         except (ValueError, IndexError):
                             continue
+                        mark_open = _parse_finite_number(item[1], "1m archive mark open", positive=True)
+                        mark_close = _parse_finite_number(item[4], "1m archive mark close", positive=True)
                         mark_1m_opens[minute_open_ts] = mark_open
                         mark_1m_closes.append((minute_open_ts + 60_000, mark_close))
 
@@ -458,18 +459,19 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
                         for item in daily_rows:
                             try:
                                 minute_open_ts = _parse_archive_timestamp(item[0])
-                                mark_open, mark_close = float(item[1]), float(item[4])
                             except (ValueError, IndexError):
                                 continue
+                            mark_open = _parse_finite_number(item[1], "daily 1m archive mark open", positive=True)
+                            mark_close = _parse_finite_number(item[4], "daily 1m archive mark close", positive=True)
                             mark_1m_opens[minute_open_ts] = mark_open
                             mark_1m_closes.append((minute_open_ts + 60_000, mark_close))
                 mark_1m_closes.sort()
             for row in rate_rows:
                 try:
                     ts = canonical_settlement_timestamp(_parse_archive_timestamp(row[0]))
-                    rate = _parse_finite_number(row[-1], "archive funding rate")
                 except (ValueError, IndexError):
                     continue
+                rate = _parse_finite_number(row[-1], "archive funding rate")
                 if start_ms <= ts < end_ms:
                     # Settlement records align to the open of the 8h mark-price candle.
                     mark = marks.get(ts)
