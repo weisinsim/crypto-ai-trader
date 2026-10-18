@@ -143,9 +143,18 @@ jobs:
               batch_completion_status = "ALL_ASSETS_PROCESSED_REVIEW_REQUIRED"
           else:
               batch_completion_status = "ALL_ASSETS_PROCESSED_NOT_RECONCILED"
+          if any_proxy:
+              funding_data_quality_status = "PROXY_MARKS_NOT_SETTLEMENT_REVIEW_REQUIRED"
+          elif any_audit_review:
+              funding_data_quality_status = "FUNDING_AUDIT_REVIEW_REQUIRED"
+          else:
+              funding_data_quality_status = "TIMESTAMP_ALIGNMENT_ONLY_NOT_RECONCILED"
           payload = {
               "status": "RESEARCH_ONLY",
               "batch_completion_status": batch_completion_status,
+              "funding_data_quality_status": funding_data_quality_status,
+              "funding_proxy_review_required": any_proxy,
+              "profitability_claim_eligible": False,
               "expected_assets": expected_assets,
               "strategy_approval": False,
               "live_trading_enabled": False,
@@ -154,7 +163,8 @@ jobs:
                   "EMA baseline is a data-pipeline smoke test, not the asset-adaptive dashboard model. "
                   "Funding gaps exceeding 12 hours are flagged for review; this threshold is a diagnostic, not proof of complete event coverage. "
                   "Funding download is not cashflow reconciliation; audit alignment is not proof of complete coverage. "
-                  "If API access returns HTTP 451, archive fallback funding uses the last fully closed hourly mark-price candle as a proxy, not the actual settlement mark; those results are exploratory only."
+                  "When proxy marks are used, funding_data_quality_status explicitly requires review because the proxy is not the actual settlement mark. "
+                  "These outputs are exploratory only and are not eligible for profitability claims or strategy promotion."
               ),
               "rows_completed": len(rows),
               "funding_proxy_used": any_proxy,
