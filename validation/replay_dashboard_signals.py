@@ -48,9 +48,15 @@ def read_rows(path):
                     or row["l"] > row["h"]):
                 raise ValueError(f"Invalid OHLCV values at {r['timestamp']} in {path}")
             rows.append(row)
-    rows.sort(key=lambda x: x["ts"])
-    if len({x["ts"] for x in rows}) != len(rows):
-        raise ValueError(f"Duplicate timestamps in {path}")
+    previous_ts = None
+    for index, row in enumerate(rows):
+        if previous_ts is not None and row["ts"] <= previous_ts:
+            reason = "duplicate" if row["ts"] == previous_ts else "out-of-order"
+            raise ValueError(
+                f"{reason.capitalize()} candle timestamp at row {index} in {path}; "
+                "replay input must be strictly chronological"
+            )
+        previous_ts = row["ts"]
     return rows
 
 
