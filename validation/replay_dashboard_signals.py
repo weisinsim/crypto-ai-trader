@@ -21,6 +21,8 @@ def ts_ms(v):
     dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
     if dt.tzinfo is None or dt.utcoffset() is None:
         raise ValueError(f"Timestamp must include timezone: {v!r}")
+    if dt.microsecond % 1000:
+        raise ValueError(f"Timestamp must have millisecond precision: {v!r}")
     return int(dt.timestamp() * 1000)
 
 
