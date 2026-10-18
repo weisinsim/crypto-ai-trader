@@ -178,11 +178,11 @@ def download_funding_rates(
             # across pages (including conflicting duplicates) instead of masking
             # it with the range guard. A page containing only stale timestamps
             # cannot advance pagination and must fail immediately.
-            if any(ts >= end_ms for ts in page_timestamps):
-                outside_end = [ts for ts in page_timestamps if ts >= end_ms]
+            outside_range = [ts for ts in page_timestamps if ts < start_ms or ts >= end_ms]
+            if outside_range:
                 raise ValueError(
-                    f"funding API returned timestamps outside requested range "
-                    f"[{start_ms}, {end_ms}): {outside_end[:5]}"
+                    f"funding API returned timestamps outside requested page range "
+                    f"[{start_ms}, {end_ms}): {outside_range[:5]}"
                 )
             forward_timestamps = [ts for ts in page_timestamps if ts >= cursor]
             if not forward_timestamps:
