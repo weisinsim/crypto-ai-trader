@@ -80,6 +80,23 @@ class WalkForwardCostStressTests(unittest.TestCase):
         self.assertEqual(report["scenario_summary"]["base"]["folds_reported"], 1)
         self.assertEqual(report["scenario_summary"]["base"]["folds_completed"], 0)
 
+    def test_incomplete_fold_metrics_do_not_distort_completed_fold_extrema(self):
+        complete = self._passing_fold()
+        incomplete = self._passing_fold()
+        incomplete["fold"] = 2
+        incomplete["status"] = "INSUFFICIENT_DATA"
+        for row in incomplete["cost_stress"]["scenarios"].values():
+            row["net_return_pct"] = -99.0
+            row["max_drawdown_pct"] = 99.0
+            row["profit_factor"] = 0.01
+        report = summarize_walk_forward_cost_stress([complete, incomplete])
+        summary = report["scenario_summary"]["base"]
+        self.assertEqual(summary["folds_reported"], 2)
+        self.assertEqual(summary["folds_completed"], 1)
+        self.assertEqual(summary["worst_net_return_pct"], 2.0)
+        self.assertEqual(summary["worst_max_drawdown_pct"], 5.0)
+        self.assertEqual(summary["lowest_numeric_profit_factor"], 1.3)
+
 
 if __name__ == "__main__":
     unittest.main()
