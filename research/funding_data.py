@@ -519,7 +519,28 @@ def download_archive_funding(symbol: str, start_ms: int, end_ms: int) -> list[di
 
 
 def save_funding_csv(rows: list[dict], path: str | Path) -> None:
-    """Write funding records atomically so failed writes cannot truncate prior data."""
+    """Validate and atomically write funding records without persisting invalid numerics."""
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("funding rows must be a non-empty list")
+    seen_timestamps = set()
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise ValueError(f"funding row {index} must be a mapping")
+        missing = [field for field in FIELDS if field not in row]
+        if missing:
+            raise ValueError(f"funding row {index} missing required fields: {missing}")
+        ts = _parse_archive_timestamp(row["funding_time"], "funding_time")
+        if ts in seen_timestamps:
+            raise ValueError(f"duplicate funding timestamp: {ts}")
+        seen_timestamps.add(ts)
+        _parse_finite_number(row["funding_rate"], "funding_rate")
+        _parse_finite_number(row["mark_price"], "mark_price", positive=True)
+        if not isinstance(row["symbol"], str) or not row["symbol"].strip() or not row["symbol"].strip().isalnum():
+            raise ValueError(f"funding row {index} symbol must be non-empty alphanumeric text")
+        if not isinstance(row["mark_price_source"], str) or not row["mark_price_source"].strip():
+            raise ValueError(f"funding row {index} mark_price_source must be non-empty text")
+        if not isinstance(row["venue"], str) or not row["venue"].strip():
+            raise ValueError(f"funding row {index} venue must be non-empty text")
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     fd, temp_name = tempfile.mkstemp(
