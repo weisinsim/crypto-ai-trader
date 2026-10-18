@@ -21,6 +21,9 @@ jobs:
   historical-research:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      START_DATE: ${{ inputs.start_date }}
+      END_DATE: ${{ inputs.end_date }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -28,33 +31,51 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Validate requested UTC date window
+        run: |
+          python - <<'PY'
+          from datetime import date
+          import os
+          import re
+
+          start = os.environ["START_DATE"]
+          end = os.environ["END_DATE"]
+          pattern = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+          if not pattern.fullmatch(start) or not pattern.fullmatch(end):
+              raise SystemExit("Dates must use exact YYYY-MM-DD format")
+          try:
+              start_date = date.fromisoformat(start)
+              end_date = date.fromisoformat(end)
+          except ValueError as exc:
+              raise SystemExit(f"Invalid calendar date: {exc}")
+          if end_date <= start_date:
+              raise SystemExit("END_DATE must be later than START_DATE")
+          print(f"Validated UTC window: [{start_date}, {end_date})")
+          PY
       - name: Download closed 1h candles
         run: >-
           python validation/download_futures_klines.py
           --symbols BTCUSDT ETHUSDT SOLUSDT AVAXUSDT XRPUSDT
           --interval 1h
-          --start "${{ inputs.start_date }}"
-          --end "${{ inputs.end_date }}"
+          --start "$START_DATE"
+          --end "$END_DATE"
           --out-dir data/historical
       - name: Download closed 4h candles
         run: >-
           python validation/download_futures_klines.py
           --symbols BTCUSDT ETHUSDT SOLUSDT AVAXUSDT XRPUSDT
           --interval 4h
-          --start "${{ inputs.start_date }}"
-          --end "${{ inputs.end_date }}"
+          --start "$START_DATE"
+          --end "$END_DATE"
           --out-dir data/historical
       - name: Download historical funding events
         run: >-
           python validation/download_funding_rates.py
           --symbols BTCUSDT ETHUSDT SOLUSDT AVAXUSDT XRPUSDT
-          --start "${{ inputs.start_date }}"
-          --end "${{ inputs.end_date }}"
+          --start "$START_DATE"
+          --end "$END_DATE"
           --out-dir data/funding
       - name: Enforce strict candle and funding input inventory
-        env:
-          START_DATE: ${{ inputs.start_date }}
-          END_DATE: ${{ inputs.end_date }}
         run: |
           mkdir -p research-results
           python validation/audit_research_input_inventory.py \
@@ -69,7 +90,7 @@ jobs:
         run: |
           python validation/audit_window_coverage.py \
             --data-dir data/historical \
-            --start "${{ inputs.start_date }}" --end "${{ inputs.end_date }}" \
+            --start "$START_DATE" --end "$END_DATE" \
             --out research-results/window-coverage.json
           cat research-results/window-coverage.json
       - name: Audit candle integrity
@@ -84,8 +105,8 @@ jobs:
             data/funding/BTCUSDT_funding.csv data/funding/ETHUSDT_funding.csv \
             data/funding/SOLUSDT_funding.csv data/funding/AVAXUSDT_funding.csv \
             data/funding/XRPUSDT_funding.csv --max-gap-hours 8 \
-            --start "${{ inputs.start_date }}T00:00:00Z" \
-            --end "${{ inputs.end_date }}T00:00:00Z" \
+            --start "${START_DATE}T00:00:00Z" \
+            --end "${END_DATE}T00:00:00Z" \
             > research-results/funding-integrity.json
           cat research-results/funding-integrity.json
           python -c 'import json; r=json.load(open("research-results/funding-integrity.json")); assert r.get("all_basic_integrity_pass"), "Funding integrity gate failed"'
