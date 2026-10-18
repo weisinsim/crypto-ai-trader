@@ -91,6 +91,7 @@ jobs:
               --candles "data/research_batch/${symbol}_${INTERVAL}.csv" \
               --funding-csv "data/research_batch/${symbol}_funding.csv" \
               --symbol "${symbol}" --interval "${INTERVAL}" \
+              --max-gap-hours 12 \
               --output "reports/${symbol}_funding_audit.json"
             echo "::endgroup::"
 
@@ -131,10 +132,12 @@ jobs:
               "status": "RESEARCH_ONLY",
               "strategy_approval": False,
               "live_trading_enabled": False,
+              "funding_gap_review_threshold_hours": 12,
               "interpretation": (
                   "EMA baseline is a data-pipeline smoke test, not the asset-adaptive dashboard model. "
+                  "Funding gaps exceeding 12 hours are flagged for review; this threshold is a diagnostic, not proof of complete event coverage. "
                   "Funding download is not cashflow reconciliation; audit alignment is not proof of complete coverage. "
-              "If API access returns HTTP 451, archive fallback funding uses the last fully closed hourly mark-price candle as a proxy, not the actual settlement mark; those results are exploratory only."
+                  "If API access returns HTTP 451, archive fallback funding uses the last fully closed hourly mark-price candle as a proxy, not the actual settlement mark; those results are exploratory only."
               ),
               "rows_completed": len(rows),
               "assets": rows,
