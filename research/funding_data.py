@@ -523,6 +523,9 @@ def save_funding_csv(rows: list[dict], path: str | Path) -> None:
     if not isinstance(rows, list) or not rows:
         raise ValueError("funding rows must be a non-empty list")
     seen_timestamps = set()
+    expected_symbol = None
+    expected_venue = None
+    previous_timestamp = None
     for index, row in enumerate(rows):
         if not isinstance(row, dict):
             raise ValueError(f"funding row {index} must be a mapping")
@@ -532,15 +535,26 @@ def save_funding_csv(rows: list[dict], path: str | Path) -> None:
         ts = _parse_archive_timestamp(row["funding_time"], "funding_time")
         if ts in seen_timestamps:
             raise ValueError(f"duplicate funding timestamp: {ts}")
+        if previous_timestamp is not None and ts <= previous_timestamp:
+            raise ValueError("funding timestamps must be strictly increasing")
+        previous_timestamp = ts
         seen_timestamps.add(ts)
         _parse_finite_number(row["funding_rate"], "funding_rate")
         _parse_finite_number(row["mark_price"], "mark_price", positive=True)
-        if not isinstance(row["symbol"], str) or not row["symbol"].strip() or not row["symbol"].strip().isalnum():
-            raise ValueError(f"funding row {index} symbol must be non-empty alphanumeric text")
+        if not isinstance(row["symbol"], str) or not row["symbol"].strip() or not row["symbol"].strip().isascii() or not row["symbol"].strip().isalnum():
+            raise ValueError(f"funding row {index} symbol must be non-empty ASCII alphanumeric text")
+        if expected_symbol is None:
+            expected_symbol = row["symbol"].strip().upper()
+        elif row["symbol"].strip().upper() != expected_symbol:
+            raise ValueError("funding rows must contain a single symbol")
         if not isinstance(row["mark_price_source"], str) or not row["mark_price_source"].strip():
             raise ValueError(f"funding row {index} mark_price_source must be non-empty text")
         if not isinstance(row["venue"], str) or not row["venue"].strip():
             raise ValueError(f"funding row {index} venue must be non-empty text")
+        if expected_venue is None:
+            expected_venue = row["venue"].strip().lower()
+        elif row["venue"].strip().lower() != expected_venue:
+            raise ValueError("funding rows must contain a single venue")
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     fd, temp_name = tempfile.mkstemp(
