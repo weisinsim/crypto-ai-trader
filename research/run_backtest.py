@@ -57,7 +57,13 @@ def load_funding_csv(path: str) -> list[dict]:
         except ValueError:
             return raw_ts
 
+    required_columns = {"symbol", "funding_time", "funding_rate", "mark_price"}
     with open(path, newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        headers = set(reader.fieldnames or [])
+        missing_columns = sorted(required_columns - headers)
+        if missing_columns:
+            raise ValueError(f"funding CSV missing required columns: {missing_columns}")
         rows = [{"funding_time_raw": int(row["funding_time"]),
                  "funding_time": normalize_settlement_timestamp(int(row["funding_time"])),
                  "funding_rate": float(row["funding_rate"]),
@@ -65,7 +71,7 @@ def load_funding_csv(path: str) -> list[dict]:
                  "symbol": row.get("symbol", "").strip().upper(),
                  "mark_price_source": row.get("mark_price_source", "").strip(),
                  "venue": row.get("venue", "").strip().lower()}
-                for row in csv.DictReader(handle)]
+                for row in reader]
     symbols = {row["symbol"] for row in rows}
     if not rows or "" in symbols or len(symbols) != 1:
         raise ValueError("funding CSV must contain rows for exactly one non-empty symbol")
