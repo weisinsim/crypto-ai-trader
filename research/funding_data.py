@@ -532,7 +532,9 @@ def save_funding_csv(rows: list[dict], path: str | Path) -> None:
         missing = [field for field in FIELDS if field not in row]
         if missing:
             raise ValueError(f"funding row {index} missing required fields: {missing}")
-        ts = _parse_archive_timestamp(row["funding_time"], "funding_time")
+        ts = _parse_integer_timestamp(row["funding_time"], "funding_time")
+        if ts < 0:
+            raise ValueError("funding_time cannot be negative")
         if ts in seen_timestamps:
             raise ValueError(f"duplicate funding timestamp: {ts}")
         if previous_timestamp is not None and ts <= previous_timestamp:
