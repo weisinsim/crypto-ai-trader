@@ -48,7 +48,7 @@ class CandleValidationTests(unittest.TestCase):
 
     def test_rejects_noncanonical_timestamp_strings(self):
         valid = {"o": 100, "h": 101, "l": 99, "c": 100}
-        for timestamp in (" 1000", "1000 ", "+1000", "1_000", "1.0", "-0"):
+        for timestamp in (" 1000", "1000 ", "+1000", "1_000", "1.0", "-0", "١٠٠٠", "²"):
             with self.subTest(timestamp=timestamp), self.assertRaisesRegex(ValueError, "timestamp"):
                 validate_candles([{"t": timestamp, **valid}])
 
@@ -215,7 +215,7 @@ class BacktestTests(unittest.TestCase):
 
     def test_rejects_noncanonical_funding_timestamp_strings(self):
         rows = candles_from_closes([100 + i * 0.1 for i in range(80)])
-        for timestamp in (" 3600000", "3600000 ", "+3600000", "3600000.0"):
+        for timestamp in (" 3600000", "3600000 ", "+3600000", "3600000.0", "٣٦٠٠٠٠٠", "²"):
             with self.subTest(timestamp=timestamp), self.assertRaisesRegex(ValueError, "timestamp"):
                 run_ema_cross_backtest(
                     rows, fast=3, slow=7, atr_period=3,
