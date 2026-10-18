@@ -21,6 +21,9 @@ jobs:
   historical-research:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      START_DATE: ${{ inputs.start_date }}
+      END_DATE: ${{ inputs.end_date }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -73,9 +76,6 @@ jobs:
           --end "$END_DATE"
           --out-dir data/funding
       - name: Enforce strict candle and funding input inventory
-        env:
-          START_DATE: $START_DATE
-          END_DATE: $END_DATE
         run: |
           mkdir -p research-results
           python validation/audit_research_input_inventory.py \
@@ -137,7 +137,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: historical-research-$START_DATE-to-$END_DATE
+          name: historical-research-${{ inputs.start_date }}-to-${{ inputs.end_date }}
           path: |
             data/historical/
             data/funding/
