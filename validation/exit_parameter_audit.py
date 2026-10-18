@@ -348,6 +348,12 @@ def main():
     }
     output = {
         "notice": "Exit comparison only; not a validated strategy or investment recommendation.",
+        # Funding rates use entry price as a proxy for settlement mark price;
+        # this is modeled cashflow, not exchange settlement reconciliation.
+        "funding_settlement_reconciliation_complete": False,
+        "profitability_claim_eligible": False,
+        "strategy_approval": False,
+        "live_trading_enabled": False,
         "inputs": {"candle_rows": len(candles), "signal_rows": len(signals),
                    "matched_signal_rows": matched_count,
                    "unmatched_signal_rows": unmatched_count,
