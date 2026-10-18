@@ -244,6 +244,10 @@ class FundingDataTests(unittest.TestCase):
             [{**valid, "mark_price": float("nan")}],
             [valid, {**valid, "funding_time": 100}],
             [{key: value for key, value in valid.items() if key != "venue"}],
+            [valid, {**valid, "funding_time": 99}],
+            [valid, {**valid, "funding_time": 101, "symbol": "ETHUSDT"}],
+            [valid, {**valid, "funding_time": 101, "venue": "okx"}],
+            [{**valid, "symbol": "ＢＴＣＵＳＤＴ"}],
         ]
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "funding.csv"
@@ -271,6 +275,20 @@ class FundingDataTests(unittest.TestCase):
             with path.open(newline="", encoding="utf-8") as handle:
                 saved = next(csv.DictReader(handle))
         self.assertEqual(saved["venue"], "okx")
+
+    def test_save_funding_csv_accepts_multiple_mark_price_sources_for_same_symbol_and_venue(self):
+        import tempfile
+        from pathlib import Path
+        rows = [
+            {"funding_time": 100, "funding_rate": 0.0001, "mark_price": 100.0,
+             "symbol": "BTCUSDT", "mark_price_source": "archive_8h_open", "venue": "binance"},
+            {"funding_time": 200, "funding_rate": -0.0001, "mark_price": 101.0,
+             "symbol": "btcusdt", "mark_price_source": "archive_1m_open", "venue": "BINANCE"},
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "funding.csv"
+            save_funding_csv(rows, path)
+            self.assertTrue(path.exists())
 
     def test_rejects_duplicate_funding_event_across_pages_even_if_identical(self):
         def fake_fetch(params):
