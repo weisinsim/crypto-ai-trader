@@ -59,6 +59,28 @@ class IndicatorParityTests(unittest.TestCase):
         self.assert_close_or_both_none(replay_support, live_support)
         self.assert_close_or_both_none(replay_resistance, live_resistance)
 
+    def test_precomputed_ema_and_rsi_match_each_prefix(self):
+        for end in range(1, len(self.close) + 1):
+            expected_ema = replay.ema(self.close[:end], 20)
+            actual_ema = replay.ema_series(self.close, 20)[end - 1]
+            self.assert_close_or_both_none(actual_ema, expected_ema)
+            expected_rsi = replay.rsi(self.close[:end])
+            actual_rsi = replay.rsi_series(self.close)[end - 1]
+            self.assert_close_or_both_none(actual_rsi, expected_rsi)
+
+    def test_four_hour_candle_must_be_closed_at_hourly_decision(self):
+        # Hourly candle opens at 10:00 and the decision is made at 11:00.
+        # A 4h candle opened at 08:00 closes at 12:00 and must not be used;
+        # one opened at 04:00 closes at 08:00 and is already closed.
+        hourly_open = 10 * 3_600_000
+        decision_close = hourly_open + 3_600_000
+        four = [
+            {"ts": 4 * 3_600_000},
+            {"ts": 8 * 3_600_000},
+        ]
+        closed = [row for row in four if row["ts"] + 4 * 3_600_000 <= decision_close]
+        self.assertEqual([row["ts"] for row in closed], [4 * 3_600_000])
+
     def test_replay_vwap_uses_quote_volume_series(self):
         replay_path = Path(__file__).resolve().parents[1] / "validation" / "replay_dashboard_signals.py"
         tree = ast.parse(replay_path.read_text(encoding="utf-8"))
