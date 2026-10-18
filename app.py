@@ -353,7 +353,7 @@ async def analyze_symbol(s):
         score_breakdown={}
         # XRP V27.2 remains frozen; shared rules keep live and replay outputs aligned.
         if s=="XRPUSDT":
-            xrp = evaluate_xrp_signal(c1, e20, e20_4, e50_4, r, a, resistance, XRP_PARAMS)
+            xrp = evaluate_xrp_signal(c1, e20, e50, e20_4, e50_4, r, a, resistance, XRP_PARAMS)
             signal=xrp["signal"]; direction=xrp["direction"]
             entry=xrp["entry"]; sl=xrp["stop"]; tp1=xrp["target1"]; tp2=xrp["target2"]
             score=xrp["score"]
