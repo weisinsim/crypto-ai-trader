@@ -17,7 +17,17 @@ def build_manifest(rows: list[dict]) -> dict:
     """Summarize batch completion while failing closed on missing/unknown audit states."""
     symbols = [row.get("symbol", "").strip().upper() for row in rows]
     symbols_unique = len(symbols) == len(set(symbols))
-    all_assets_processed = len(rows) == len(EXPECTED_SYMBOLS) and set(symbols) == EXPECTED_SYMBOLS and symbols_unique
+    symbol_set_complete = len(rows) == len(EXPECTED_SYMBOLS) and set(symbols) == EXPECTED_SYMBOLS and symbols_unique
+    processing_statuses_complete = all(
+        row.get("candle_status") == "COMPLETE"
+        and row.get("funding_download_status") in {
+            "DOWNLOADED_NOT_RECONCILED",
+            "DOWNLOADED_PROXY_MARK_PRICE_NOT_RECONCILED",
+        }
+        and row.get("baseline_status") == "RESEARCH_ONLY"
+        for row in rows
+    )
+    all_assets_processed = symbol_set_complete and processing_statuses_complete
     audit_statuses = [row.get("funding_audit_status", "UNKNOWN") for row in rows]
     audit_review = any(status not in PASS_AUDIT_STATUSES for status in audit_statuses)
     any_proxy = any(
@@ -45,7 +55,8 @@ def build_manifest(rows: list[dict]) -> dict:
         "expected_assets": len(EXPECTED_SYMBOLS),
         "expected_symbols": sorted(EXPECTED_SYMBOLS),
         "unique_symbols_observed": sorted(set(symbols)),
-        "symbol_set_complete": all_assets_processed,
+        "symbol_set_complete": symbol_set_complete,
+        "processing_statuses_complete": processing_statuses_complete,
         "strategy_approval": False,
         "live_trading_enabled": False,
         "funding_gap_review_threshold_hours": 12,
