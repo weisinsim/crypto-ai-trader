@@ -51,6 +51,20 @@ jobs:
           --start "${{ inputs.start_date }}"
           --end "${{ inputs.end_date }}"
           --out-dir data/funding
+      - name: Enforce strict candle and funding input inventory
+        env:
+          START_DATE: ${{ inputs.start_date }}
+          END_DATE: ${{ inputs.end_date }}
+        run: |
+          mkdir -p research-results
+          python validation/audit_research_input_inventory.py \\
+            --candle-dir data/historical \\
+            --funding-dir data/funding \\
+            --start "${START_DATE}T00:00:00Z" \\
+            --end "${END_DATE}T00:00:00Z" \\
+            --symbols BTCUSDT ETHUSDT SOLUSDT AVAXUSDT XRPUSDT \\
+            --out research-results/input-inventory.json
+          cat research-results/input-inventory.json
       - name: Audit exact requested candle window
         run: |
           python validation/audit_window_coverage.py \
