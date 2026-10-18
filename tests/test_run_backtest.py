@@ -6,10 +6,26 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from research.run_backtest import load_csv, load_funding_csv, main, max_drawdown_pct, summarize_funding_data_quality, summarize_holdout_trade_quality, summarize_walk_forward_cost_stress
+from research.run_backtest import write_json_atomic, load_csv, load_funding_csv, main, max_drawdown_pct, summarize_funding_data_quality, summarize_holdout_trade_quality, summarize_walk_forward_cost_stress
 
 
 class FundingDataQualitySummaryTests(unittest.TestCase):
+    def test_atomic_json_writer_replaces_existing_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "report.json"
+            path.write_text('{"old": true}\n', encoding="utf-8")
+            write_json_atomic(path, {"new": True})
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"new": True})
+            self.assertTrue(path.read_text(encoding="utf-8").endswith("\n"))
+            self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["report.json"])
+
+    def test_atomic_json_writer_creates_parent_directories(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "nested" / "report.json"
+            write_json_atomic(path, {"status": "RESEARCH_ONLY"})
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"status": "RESEARCH_ONLY"})
+            self.assertEqual([p.name for p in path.parent.iterdir()], ["report.json"])
+
     def test_cli_refuses_to_overwrite_candle_input(self):
         with tempfile.TemporaryDirectory() as tmp:
             candles_path = Path(tmp) / "candles.csv"
