@@ -25,12 +25,12 @@ def audit_funding_against_candles(
     def timestamp_ms(value, field: str) -> int:
         # Reject timestamps that would be silently truncated or treated as booleans.
         if isinstance(value, bool) or not isinstance(value, (int, str)):
-            raise ValueError(f"{field} must be a positive integer timestamp in milliseconds")
+            raise ValueError(f"{field} must be a non-negative integer timestamp in milliseconds")
         try:
             parsed = int(value)
         except (TypeError, ValueError, OverflowError) as exc:
             raise ValueError(f"{field} must be a positive integer timestamp in milliseconds") from exc
-        if parsed <= 0 or (isinstance(value, str) and value.strip() != str(parsed)):
+        if parsed < 0 or (isinstance(value, str) and value != str(parsed)):
             raise ValueError(f"{field} must be a positive integer timestamp in milliseconds")
         return parsed
 
