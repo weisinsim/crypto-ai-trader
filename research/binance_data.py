@@ -124,6 +124,15 @@ def download_klines(
                 break
             if pause_seconds:
                 time.sleep(pause_seconds)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code != 451 or fetch_page is not None:
+            raise
+        # Some hosted runners are region-restricted by Binance's API edge.
+        # Retry the exact requested range from the publisher's public archive.
+        from research.binance_archive import download_archive_klines
+        return download_archive_klines(
+            symbol, interval, start_ms, end_ms, duration
+        )
     finally:
         if client is not None:
             client.close()
