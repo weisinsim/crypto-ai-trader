@@ -6,6 +6,7 @@ messages, execute trades, or treat an unapproved strategy as production-ready.
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 import time
 from pathlib import Path
@@ -59,6 +60,8 @@ class EntryAlertStore:
             return False
         payload = json.dumps(event, sort_keys=True, separators=(",", ":"), allow_nan=False)
         created_at = time.time() if now is None else float(now)
+        if not math.isfinite(created_at) or created_at <= 0:
+            return False
         with self._connect() as conn:
             cursor = conn.execute(
                 """INSERT OR IGNORE INTO entry_alert_outbox
