@@ -9,7 +9,12 @@ import argparse
 import json
 import math
 import random
+import sys
 import time
+from pathlib import Path
+
+# Running this file directly puts validation/ on sys.path, not the repository root.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from validation.replay_dashboard_signals import (
     atr, ema, ema_series, levels, rsi, rsi_series, vwap,
