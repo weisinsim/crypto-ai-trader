@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import signal
+import threading
 import time
 from urllib.request import Request, urlopen
 
@@ -99,7 +100,7 @@ def main():
         "ALERT_SYMBOLS", "BTCUSDT,ETHUSDT,SOLUSDT,AVAXUSDT,XRPUSDT"
     ).split(",") if item.strip()]
     poll_seconds = int(os.environ.get("ALERT_POLL_SECONDS", "30"))
-    stop = _StopEvent()
+    stop = threading.Event()
 
     def request_stop(signum, frame):
         stop.set()
