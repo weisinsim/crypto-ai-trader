@@ -17,7 +17,7 @@ from execution.safety import ExecutionConfig, OrderIntent, validate_order_intent
 TESTNET_BASE_URL = "https://testnet.binancefuture.com"
 
 
-class BinanceBinanceTestnetConfigurationError(RuntimeError):
+class BinanceTestnetConfigurationError(RuntimeError):
     pass
 
 
