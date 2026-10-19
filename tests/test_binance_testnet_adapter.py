@@ -230,6 +230,51 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(result["reason"], "invalid_symbol")
         self.assertEqual(client.get_calls, [])
 
+    def test_protective_stop_submits_reduce_only_exit_for_existing_testnet_position(self):
+        class PositionClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"canTrade": True, "positions": [
+                        {"symbol": "BTCUSDT", "positionAmt": "0.5", "entryPrice": "100"},
+                    ]})
+                return super().get(path, params)
+        client = PositionClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5009", "99.8", "stop-btc-0001"
+        )
+        self.assertTrue(result["accepted"])
+        self.assertEqual(result["type"], "STOP_MARKET")
+        self.assertEqual(result["side"], "SELL")
+        self.assertTrue(result["reduce_only"])
+        self.assertEqual(result["quantity"], "0.5")
+        order_call = next(call for call in client.calls if call[0] == "/fapi/v1/order")
+        self.assertEqual(order_call[1]["reduceOnly"], "true")
+        self.assertEqual(order_call[1]["workingType"], "MARK_PRICE")
+        self.assertEqual(order_call[1]["newClientOrderId"], "stop-btc-0001")
+
+    def test_protective_exit_rejects_trigger_geometry_and_oversized_quantity(self):
+        class PositionClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"canTrade": True, "positions": [
+                        {"symbol": "BTCUSDT", "positionAmt": "0.5", "entryPrice": "100"},
+                    ]})
+                return super().get(path, params)
+        client = PositionClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        wrong_trigger = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "100.2", "stop-btc-0002"
+        )
+        too_large = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "take_profit", "0.6", "101", "take-btc-0001"
+        )
+        self.assertEqual(wrong_trigger["reason"], "invalid_protective_trigger_geometry")
+        self.assertEqual(too_large["reason"], "exit_quantity_exceeds_position")
+        self.assertEqual(client.calls, [])
+
     def test_signed_request_uses_hmac_sha256(self):
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=FakeClient())
         params = adapter._signed_params({"symbol": "BTCUSDT", "side": "BUY"})
