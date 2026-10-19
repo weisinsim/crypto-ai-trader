@@ -39,6 +39,11 @@ All three GitHub Actions checks passed on that latest code-bearing commit:
 - Python validation: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39202148997
 - Validation audit tests: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39202149009
 
+The report-only follow-up commit `d1086d4db6ba508fbf871fb2836c2e23f0aa8b31` also passed all three pull-request workflows:
+- Python validation: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39209635073
+- Validation audit tests: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39209635096
+- Research test suite: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39209635107
+
 These checks establish code-level validation only; they do not satisfy the separate historical-market-data differential replay requirement. PR #188 remains open and draft, and has not been merged.
 
 ## Required next steps
