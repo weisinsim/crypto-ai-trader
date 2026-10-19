@@ -27,9 +27,9 @@ The adaptive sweep considered 72 candidates per symbol. Current outputs:
 
 The job logs explicitly reject comparable adaptive results unless historical funding is included. The frozen-stability diagnostic is not a substitute for funding reconciliation.
 
-## Engineering gate: historical replay optimization PR #187
+## Engineering gate: historical replay optimization PR #188
 
-PR #187 remains open/draft and GitHub reports it is not mergeable. Its head is `933fbe9142b36a89f84d59d560030335e7baeb89`; the base branch has advanced. Do not merge until the branch is rebased/updated safely and CI passes against current main. Preserve the main-branch fix that excludes unfinished 4h candles using candle open timestamp + 4h interval <= hourly decision close. Validate both indicator and signal parity before accepting the optimization.
+PR #187 is the superseded, conflict-prone draft. The active candidate is PR #188, rebased onto current `main` at `1924aaaa906c9ae941164910932eb43e4d2d34d5`. Keep the closed-4h-candle guard (candle open timestamp + 4h interval <= hourly decision close), and require indicator/signal parity before accepting the optimization. PR #188 is still draft and requires human review before merge.
 
 ## Required next steps
 
@@ -49,10 +49,10 @@ PR #187 remains open/draft and GitHub reports it is not mergeable. Its head is `
 The original PR #187 conflict was addressed on a separate rebased branch and superseded by draft PR #188:
 https://github.com/weisinsim/crypto-ai-trader/pull/188
 
-Current replay-optimization head: `1198a300b0832965e1c29d03f4a83d1a82783e2c`.
-The branch preserves closed-4h-candle filtering and adds prefix EMA/RSI parity, candle-boundary, and bounded-window indicator regression coverage. GitHub reports the PR is open, draft, and mergeable. Automated checks on the current head (`1198a300...`) passed:
-- Research test suite: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39200249628
-- Python validation: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39200249579
-- Validation audit tests: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39200249603
+Current replay-optimization head: `b7957edee2cbee192de0da90b4dc5ba90e7ed222`.
+The branch preserves closed-4h-candle filtering and adds prefix EMA/RSI parity, candle-boundary, and bounded-window indicator regression coverage. GitHub reports the PR is open, draft, and mergeable. Automated checks on the current head (`b7957ed...`) passed:
+- Research test suite: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39201063964
+- Python validation: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39201063986
+- Validation audit tests: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39201063969
 
 These tests establish code-level validation only; they do not satisfy the separate historical-market-data differential replay requirement above. No verified funding settlement cashflow dataset has been reconciled in this update. Strategy selection remains blocked by cost/funding/out-of-sample gates, and live execution remains disabled. PR #188 requires human review before merge.
