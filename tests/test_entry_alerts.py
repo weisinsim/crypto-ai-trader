@@ -18,6 +18,7 @@ class EntryAlertTests(unittest.TestCase):
     def test_builds_candidate_alert_for_valid_closed_candle(self):
         event = build_entry_alert(self.base(), now_ms=1_800_000_100_000)
         self.assertTrue(event["eligible"])
+        self.assertTrue(event["research_only"])
         self.assertEqual(event["side"], "LONG")
         self.assertEqual(event["symbol"], "BTCUSDT")
         self.assertEqual(event["risk_reward"], 2.0)
@@ -28,12 +29,12 @@ class EntryAlertTests(unittest.TestCase):
         data["signal"] = "WATCH-LONG"
         self.assertFalse(build_entry_alert(data, now_ms=1_800_000_100_000)["eligible"])
 
-    def test_unvalidated_research_model_is_watch_only(self):
+    def test_no_production_model_is_blocked(self):
         data = self.base()
         data["model_status"] = "NO-PRODUCTION"
         event = build_entry_alert(data, now_ms=1_800_000_100_000)
         self.assertFalse(event["eligible"])
-        self.assertIn("model_not_approved", event["blockers"])
+        self.assertIn("model_not_approved_for_alerts", event["blockers"])
 
     def test_stale_signal_fails_closed(self):
         event = build_entry_alert(self.base(), now_ms=1_800_010_000_000, max_age_ms=60_000)
