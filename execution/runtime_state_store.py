@@ -60,6 +60,13 @@ class RuntimeStateStore:
                     created_at REAL NOT NULL
                 )
             """)
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS entry_lock (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    token TEXT NOT NULL,
+                    acquired_at REAL NOT NULL
+                )
+            """)
             db.execute(
                 "INSERT OR IGNORE INTO runtime_control(id, emergency_stop, consecutive_errors, updated_at) VALUES(1, 0, 0, ?)",
                 (datetime.now(timezone.utc).timestamp(),),
@@ -129,6 +136,31 @@ class RuntimeStateStore:
             db.execute("UPDATE runtime_control SET emergency_stop=?, updated_at=? WHERE id=1",
                        (int(enabled), datetime.now(timezone.utc).timestamp()))
 
+
+
+    def claim_entry_lock(self, token):
+        """Acquire a single-host SQLite entry lock; a crashed holder fails closed."""
+        if not isinstance(token, str) or not token or len(token) > 36:
+            raise ValueError("invalid_entry_lock_token")
+        with self._connect() as db:
+            cursor = db.execute(
+                "INSERT OR IGNORE INTO entry_lock(id, token, acquired_at) VALUES(1, ?, ?)",
+                (token, datetime.now(timezone.utc).timestamp()),
+            )
+            return cursor.rowcount == 1
+
+    def release_entry_lock(self, token):
+        """Release only the lock held by this exact token; never clear another holder."""
+        if not isinstance(token, str) or not token:
+            raise ValueError("invalid_entry_lock_token")
+        with self._connect() as db:
+            cursor = db.execute("DELETE FROM entry_lock WHERE id=1 AND token=?", (token,))
+            return cursor.rowcount == 1
+
+    def get_entry_lock(self):
+        with self._connect() as db:
+            row = db.execute("SELECT token, acquired_at FROM entry_lock WHERE id=1").fetchone()
+        return None if row is None else {"token": row[0], "acquired_at": row[1]}
 
     def claim_order_attempt(self, client_order_id, intent_fingerprint):
         """Atomically reserve an order ID once; never auto-reuse after restart/ambiguity."""
