@@ -150,6 +150,17 @@ async def chatgpt_alert_feed():
     now = time.time()
     max_age_seconds = 90 * 60
     alerts = []
+    # Fail closed: a signal is not eligible for notification while market data is
+    # starting, delayed, or disconnected, even if cached signal fields look fresh.
+    if market_status.get("status") != "LIVE":
+        return {
+            "generated_at": now,
+            "feed": "crypto-ai-trader-chatgpt-alerts-v1",
+            "status": market_status.get("status", "UNKNOWN"),
+            "alerts": [],
+            "count": 0,
+            "note": "Market feed is not LIVE; cached candidates are suppressed. No orders are placed.",
+        }
     for symbol in SYMBOLS:
         item = cache[symbol]
         side = item.get("confirmed_signal")
