@@ -31,7 +31,7 @@ class MarketDataTests(unittest.TestCase):
         ]
         client = BinanceUsdMMarketData(opener=lambda *a, **k: Response(rows))
         self.assertEqual(
-            client.last_closed_candle_ms("BTCUSDT", "1h", now_ms=NOW),
+            client.last_closed_candle_ms("BTCUSDT", "1h", now_ms=CANDLE_CLOSE_BOUNDARY + 1_000),
             CANDLE_CLOSE_BOUNDARY,
         )
 
@@ -56,7 +56,8 @@ class ScanOnceTests(unittest.TestCase):
 
     def test_queues_valid_candle_aligned_signal(self):
         class Store:
-            events = []
+            def __init__(self):
+                self.events = []
             def enqueue(self, event, now=None):
                 self.events.append(event)
                 return True
