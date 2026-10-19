@@ -62,6 +62,18 @@ class ExecutionSafetyTests(unittest.TestCase):
         self.assertFalse(result.allowed)
         self.assertEqual(result.reason, "leverage_limit_exceeded")
 
+
+    def test_non_finite_values_are_rejected(self):
+        for value in (float("nan"), float("inf"), float("-inf")):
+            result = validate_order_intent(self.intent(entry=value), ExecutionConfig())
+            self.assertFalse(result.allowed)
+            self.assertEqual(result.reason, "non_positive_price_quantity_or_limit")
+
+    def test_invalid_risk_configuration_is_rejected(self):
+        result = validate_order_intent(self.intent(), ExecutionConfig(max_risk_fraction=1.5))
+        self.assertFalse(result.allowed)
+        self.assertEqual(result.reason, "invalid_risk_configuration")
+
     def test_unsupported_mode_fails_closed(self):
         result = validate_order_intent(self.intent(), ExecutionConfig(mode="live"))
         self.assertFalse(result.allowed)
