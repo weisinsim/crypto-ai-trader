@@ -4,6 +4,14 @@ The dashboard exposes a read-only JSON endpoint at `/api/chatgpt/alerts`.
 
 It returns a JSON object with `status`, `count`, and an `alerts` array containing only fresh, confirmed directional candidates with valid entry/stop/target geometry. Each alert includes `event_id`, `symbol`, `side`, `signal_candle_ms`, `analysis_ts`, `entry`, `stop_loss`, `take_profit_1`, `take_profit_2`, score/model metadata, `research_only`, `notification_only: true`, and `auto_trade_authorized: false`. The feed fails closed unless market status is `LIVE` and its heartbeat was updated within the last 120 seconds; stale, future, or malformed heartbeat timestamps suppress all alerts. It does not send push notifications and does not place orders. An empty `alerts` array means no eligible fresh candidate was found or the market-health gate suppressed candidates. The dashboard independently hides alerts unless the feed status is `LIVE` and each item explicitly passes the notification-only/no-trade authorization checks.
 
+
+
+## SQLite outbox projection
+
+The worker's pending SQLite queue is also exposed by the read-only `/api/chatgpt/outbox-alerts` endpoint. It uses the same `ALERT_OUTBOX_DB` path as the worker (default `data/entry-alerts.sqlite3`); configure both processes to share the same durable database file on the same host. The endpoint returns only eligible, fresh events with valid LONG/SHORT price geometry and the explicit notification-only/no-auto-trade flags. It fails closed when market status is not LIVE, its heartbeat is stale, or the database cannot be read. Query parameter `limit` is clamped to 1–100 (default 50).
+
+Polling this endpoint does not mark outbox records delivered. This is deliberate: a GET request alone cannot prove a ChatGPT notification was delivered or acknowledged. Queue retention/acknowledgement and authenticated deployment remain operational concerns; do not expose an unauthenticated private dashboard or SQLite file to the public internet.
+
 ## Make it available to a ChatGPT scheduled task
 
 1. Deploy the dashboard so the endpoint is reachable over HTTPS from the environment in which the ChatGPT task runs.
