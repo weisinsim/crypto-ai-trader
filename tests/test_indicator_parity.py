@@ -54,6 +54,16 @@ class IndicatorParityTests(unittest.TestCase):
         for end in range(1, len(self.close) + 1):
             self.assert_close_or_both_none(series[end - 1], replay.rsi(self.close[:end]))
 
+    def test_series_parity_on_flat_and_short_inputs(self):
+        for values in ([], [100.0] * 10, [100.0] * 30):
+            ema_values = replay.ema_series(values, 20)
+            rsi_values = replay.rsi_series(values)
+            self.assertEqual(len(ema_values), len(values))
+            self.assertEqual(len(rsi_values), len(values))
+            for end in range(1, len(values) + 1):
+                self.assert_close_or_both_none(ema_values[end - 1], replay.ema(values[:end], 20))
+                self.assert_close_or_both_none(rsi_values[end - 1], replay.rsi(values[:end]))
+
     def test_atr_matches_live(self):
         self.assert_close_or_both_none(replay.atr(self.high, self.low, self.close), self.live["atr"](self.high, self.low, self.close))
 
