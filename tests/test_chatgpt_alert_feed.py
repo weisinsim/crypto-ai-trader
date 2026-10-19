@@ -9,6 +9,7 @@ import app as dashboard
 class ChatGPTAlertFeedTests(unittest.TestCase):
     def setUp(self):
         self.original_cache = {key: dict(value) for key, value in dashboard.cache.items()}
+        self.original_market_status = dict(dashboard.market_status)
         now = time.time()
         for symbol, item in dashboard.cache.items():
             item.update({
@@ -24,7 +25,7 @@ class ChatGPTAlertFeedTests(unittest.TestCase):
                 "model_name": "test-model",
                 "model_status": "RESEARCH",
             })
-        dashboard.market_status["status"] = "LIVE"
+        dashboard.market_status.update(status="LIVE", updated=now, error=None)
         dashboard.cache["BTCUSDT"].update({
             "confirmed_signal": "LONG",
             "confirmed_signal_time": int(now * 1000) - 60_000,
@@ -41,6 +42,8 @@ class ChatGPTAlertFeedTests(unittest.TestCase):
         for key, value in self.original_cache.items():
             dashboard.cache[key].clear()
             dashboard.cache[key].update(value)
+        dashboard.market_status.clear()
+        dashboard.market_status.update(self.original_market_status)
 
     def test_includes_fresh_confirmed_candidate_without_trade_authorization(self):
         payload = asyncio.run(dashboard.chatgpt_alert_feed())
@@ -86,6 +89,20 @@ class ChatGPTAlertFeedTests(unittest.TestCase):
         self.assertEqual(payload["count"], 0)
         self.assertEqual(payload["alerts"], [])
         self.assertIn("not LIVE", payload["note"])
+
+    def test_suppresses_candidates_when_market_status_heartbeat_is_stale_or_invalid(self):
+        dashboard.market_status["updated"] = time.time() - 121
+        payload = asyncio.run(dashboard.chatgpt_alert_feed())
+        self.assertEqual(payload["alerts"], [])
+        self.assertIn("heartbeat is stale", payload["note"])
+
+        dashboard.market_status["updated"] = float("nan")
+        payload = asyncio.run(dashboard.chatgpt_alert_feed())
+        self.assertEqual(payload["count"], 0)
+
+        dashboard.market_status["updated"] = time.time() + 60
+        payload = asyncio.run(dashboard.chatgpt_alert_feed())
+        self.assertEqual(payload["count"], 0)
 
     def test_excludes_non_directional_signals(self):
         dashboard.cache["BTCUSDT"]["confirmed_signal"] = "NO-TRADE"
