@@ -177,3 +177,10 @@ The supervisor now acquires a persistent SQLite entry lock before its final risk
 ### Idempotent realized-PnL event ingestion
 
 `RuntimeStateStore.record_realized_pnl(amount_usdt, now=..., event_id=...)` accepts a stable exchange fill/trade event ID and records that event only once, including across process restarts. It returns `False` when the ID was already recorded. Any future fill importer must use the exchange's stable unique trade/fill identifier; calls without `event_id` remain legacy append-only and are not safe for retrying an exchange fill feed. This ledger is local SQLite state, not a substitute for reconciling exchange income/trade history.
+
+
+## Production-account readiness (read-only; TESTNET may be skipped)
+
+`execution.binance_live_readiness.BinanceLiveReadiness` is a production-host **read-only** preflight. It uses `BINANCE_LIVE_API_KEY` and `BINANCE_LIVE_API_SECRET` from a secure deployment secret store to read the USD-M Futures account, current positions, position mode, and symbol filters. It deliberately exposes no order-submission method and cannot place trades. Use an API key with read-only permissions for this phase. Do not enable withdrawals; do not paste secrets into chat, source files, logs, or issue comments.
+
+This is not live trading readiness approval. Before any production order path is implemented, the remaining blockers include a verified signal source, full replay parity, realistic fee/slippage/funding evaluation, order/fill reconciliation, protective-order lifecycle and recovery, deployment monitoring/kill-switch drills, and explicit operator approval of a separately reviewed live execution change. Skipping TESTNET does not waive these production safeguards.
