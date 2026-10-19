@@ -97,6 +97,29 @@ class IndicatorParityTests(unittest.TestCase):
         self.assert_close_or_both_none(replay_support, live_support)
         self.assert_close_or_both_none(replay_resistance, live_resistance)
 
+    def test_rolling_window_indicators_match_full_prefix(self):
+        # The optimized replay slices bounded windows for ATR, VWAP and
+        # support/resistance. Compare those slices with the original full
+        # prefix at each decision point after warm-up.
+        for end in range(60, len(self.close) + 1):
+            high = self.high[:end]
+            low = self.low[:end]
+            close = self.close[:end]
+            volume = self.volume[:end]
+            with self.subTest(end=end):
+                self.assert_close_or_both_none(
+                    replay.atr(high[-30:], low[-30:], close[-30:]),
+                    replay.atr(high, low, close),
+                )
+                self.assert_close_or_both_none(
+                    replay.vwap(high[-48:], low[-48:], close[-48:], volume[-48:]),
+                    replay.vwap(high, low, close, volume),
+                )
+                sliced_levels = replay.levels(high[-48:], low[-48:], close[-48:])
+                full_levels = replay.levels(high, low, close)
+                self.assert_close_or_both_none(sliced_levels[0], full_levels[0])
+                self.assert_close_or_both_none(sliced_levels[1], full_levels[1])
+
     def test_replay_vwap_uses_quote_volume_series(self):
         replay_path = Path(__file__).resolve().parents[1] / "validation" / "replay_dashboard_signals.py"
         tree = ast.parse(replay_path.read_text(encoding="utf-8"))
