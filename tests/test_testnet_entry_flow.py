@@ -27,11 +27,13 @@ class FakeAdapter:
         return {"accepted": True, "status": "FILLED", "client_order_id": client_order_id}
 
     def query_testnet_order(self, symbol, client_order_id):
+        if self.submit_error:
+            return {"found": False, "reason": "order_not_found"}
         return {"found": True, "status": "FILLED", "executed_quantity": "0.5", "average_price": "100"}
 
     def testnet_position_snapshot(self, symbol):
         return {
-            "ok": True, "position_amount": "0.5", "entry_price": "100",
+            "ok": True, "position_amount": "0" if self.submit_error else "0.5", "entry_price": "0" if self.submit_error else "100",
             "open_orders": [dict(order) for order in self.orders],
         }
 
@@ -105,6 +107,7 @@ class TestnetEntryFlowTests(unittest.TestCase):
         self.assertEqual(result["reason"], "market_order_outcome_ambiguous")
         self.assertTrue(result["requires_reconciliation"])
         self.assertEqual(len(adapter.market_submissions), 1)
+        self.assertEqual(adapter.protective_submissions, [])
 
     def test_protection_failure_surfaces_open_exposure_for_reconciliation(self):
         adapter = FakeAdapter(protection_failure=True)
