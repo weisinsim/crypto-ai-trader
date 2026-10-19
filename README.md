@@ -119,3 +119,5 @@ Before any real-money adapter can be considered, complete and archive all of the
 6. Require an explicit operator decision before any live mode is implemented or enabled.
 
 Current state: `RESEARCH_ONLY`; real-money order placement is intentionally unavailable.
+
+The Binance USD-M TESTNET adapter now includes `submit_testnet_market_order(..., client_order_id, config)`, which can submit a market order only to the hard-coded testnet host after safety and exchange-filter checks. It uses Binance's `newClientOrderId` for exchange-side request identity, but this alone is not a durable idempotency/reconciliation system: ambiguous network outcomes must be reconciled against exchange order history before retrying. This function does **not** attach protective stop-loss/take-profit orders, set leverage, or manage fills/positions. Do not use it as a standalone trading bot; it is for controlled testnet integration only.
