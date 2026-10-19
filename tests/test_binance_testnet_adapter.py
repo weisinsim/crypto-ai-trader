@@ -242,7 +242,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         client = PositionClient()
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
         result = adapter.submit_testnet_protective_exit(
-            "BTCUSDT", "stop_loss", "0.5009", "99.8", "stop-btc-0001"
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "stop-btc-0001"
         )
         self.assertTrue(result["accepted"])
         self.assertEqual(result["type"], "STOP_MARKET")
