@@ -13,6 +13,7 @@ from execution.testnet_recovery import recover_testnet_position
 
 
 class TestnetSupervisor:
+    __test__ = False  # Prevent pytest from treating this runtime class as a test case.
     def __init__(self, adapter, state_store: RuntimeStateStore,
                  runtime_config=RuntimeRiskConfig(),
                  execution_config=ExecutionConfig(mode="testnet"),
@@ -49,15 +50,15 @@ class TestnetSupervisor:
                     "error_type": type(exc).__name__, "entry_submitted": False}
 
         snapshot = self.state_store.load_snapshot()
-        decision = validate_runtime_state(snapshot, self.runtime_config,
-                                          self.max_snapshot_age_seconds)
-        if not decision.allowed:
+        # Protection/recovery for already-open exposure takes precedence over the
+        # new-entry position-count gate and emergency stop. Never open new risk here.
+        try:
+            position = self.adapter.testnet_position_snapshot(symbol)
+        except Exception as exc:
             self.state_store.record_execution_result(False)
-            return {"ok": False, "reason": decision.reason, "stage": "runtime_gate",
-                    "entry_submitted": False}
-
-        # Existing exposure must be protected/reconciled before considering a new entry.
-        position = self.adapter.testnet_position_snapshot(symbol)
+            return {"ok": False, "reason": "position_snapshot_unavailable",
+                    "error_type": type(exc).__name__, "entry_submitted": False,
+                    "requires_manual_reconciliation": True}
         if not isinstance(position, dict) or not position.get("ok"):
             self.state_store.record_execution_result(False)
             return {"ok": False, "reason": "position_snapshot_unavailable",
@@ -80,6 +81,13 @@ class TestnetSupervisor:
             self.state_store.record_execution_result(bool(recovery.get("ok")))
             return {"ok": bool(recovery.get("ok")), "mode": "testnet_supervisor_recovery",
                     "recovery": recovery, "entry_submitted": False}
+
+        decision = validate_runtime_state(snapshot, self.runtime_config,
+                                          self.max_snapshot_age_seconds)
+        if not decision.allowed:
+            self.state_store.record_execution_result(False)
+            return {"ok": False, "reason": decision.reason, "stage": "runtime_gate",
+                    "entry_submitted": False}
 
         if intent is None:
             self.state_store.record_execution_result(True)
