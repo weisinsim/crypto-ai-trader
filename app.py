@@ -194,7 +194,16 @@ async def chatgpt_alert_feed():
         stop = item.get("confirmed_sl")
         tp1 = item.get("confirmed_tp1")
         tp2 = item.get("confirmed_tp2")
-        if not all(isinstance(v, (int, float)) and v > 0 for v in (entry, stop, tp1, tp2)):
+        # Reject bools, NaN, and infinities explicitly. Python treats bool as
+        # int, and infinity can otherwise slip through positive-price checks.
+        prices = (entry, stop, tp1, tp2)
+        if not all(
+            isinstance(v, (int, float))
+            and not isinstance(v, bool)
+            and math.isfinite(v)
+            and v > 0
+            for v in prices
+        ):
             continue
         if side == "LONG" and not (stop < entry < tp1 <= tp2):
             continue
