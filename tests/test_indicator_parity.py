@@ -59,6 +59,48 @@ class IndicatorParityTests(unittest.TestCase):
         self.assert_close_or_both_none(replay_support, live_support)
         self.assert_close_or_both_none(replay_resistance, live_resistance)
 
+    def test_precomputed_ema_and_rsi_match_each_prefix(self):
+        ema_values = replay.ema_series(self.close, 20)
+        rsi_values = replay.rsi_series(self.close)
+        for end in range(1, len(self.close) + 1):
+            expected_ema = replay.ema(self.close[:end], 20)
+            self.assert_close_or_both_none(ema_values[end - 1], expected_ema)
+            expected_rsi = replay.rsi(self.close[:end])
+            self.assert_close_or_both_none(rsi_values[end - 1], expected_rsi)
+
+    def test_four_hour_candle_must_be_closed_at_hourly_decision(self):
+        # Input timestamps are Binance candle close times (close is inclusive at :59.999).
+        # At 11:00, 4h candles closing at 04:00 and 08:00 are usable; the 12:00 close is not.
+        decision_close = 11 * 3_600_000
+        four = [
+            {"ts": 4 * 3_600_000 - 1},
+            {"ts": 8 * 3_600_000 - 1},
+            {"ts": 12 * 3_600_000 - 1},
+        ]
+        count = replay.closed_four_count_at(four, decision_close)
+        expected = replay.closed_rows_at(four, decision_close)
+        self.assertEqual(four[:count], expected)
+        self.assertEqual([row["ts"] for row in expected], [4 * 3_600_000 - 1, 8 * 3_600_000 - 1])
+
+    def test_incremental_four_hour_cursor_matches_filter_at_boundaries(self):
+        # Exercise just-before, exact-close, and just-after boundaries for a
+        # monotonically advancing cursor, comparing it with the simple filter.
+        four = [{"ts": i * 14_400_000} for i in range(12)]
+        decision_times = [
+            14_400_000 - 1,
+            14_400_000,
+            14_400_000 + 1,
+            4 * 14_400_000 - 1,
+            4 * 14_400_000,
+            7 * 14_400_000,
+            12 * 14_400_000,
+        ]
+        cursor = 0
+        for decision_close in decision_times:
+            cursor = replay.closed_four_count_at(four, decision_close, cursor)
+            expected = replay.closed_rows_at(four, decision_close, interval_ms=14_400_000)
+            self.assertEqual(four[:cursor], expected)
+
     def test_replay_vwap_uses_quote_volume_series(self):
         replay_path = Path(__file__).resolve().parents[1] / "validation" / "replay_dashboard_signals.py"
         tree = ast.parse(replay_path.read_text(encoding="utf-8"))
@@ -66,7 +108,7 @@ class IndicatorParityTests(unittest.TestCase):
         calls = [node for node in ast.walk(replay_fn) if isinstance(node, ast.Call)
                  and isinstance(node.func, ast.Name) and node.func.id == "vwap"]
         self.assertEqual(len(calls), 1)
-        self.assertEqual([arg.id for arg in calls[0].args if isinstance(arg, ast.Name)], ["hi", "lo", "c", "q"])
+        self.assertEqual([arg.id for arg in calls[0].args if isinstance(arg, ast.Name)], ["h48", "l48", "c48", "q"])
 
 
 if __name__ == "__main__":
