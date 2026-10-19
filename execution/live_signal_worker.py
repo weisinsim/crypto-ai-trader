@@ -37,19 +37,21 @@ def fetch_snapshot(base_url, *, timeout=8):
 
 
 def run_worker(*, base_url, db_path, symbols, interval="1h", poll_seconds=30,
-               max_age_ms=90 * 60 * 1000, stop_event=None, emit=print):
+               max_age_ms=90 * 60 * 1000, stop_event=None, emit=print,
+               snapshot_fetcher=None, market_data=None, store_factory=None):
     """Poll until stop_event is set; dependencies are injectable for testing."""
     if not isinstance(poll_seconds, (int, float)) or isinstance(poll_seconds, bool) or poll_seconds < 5:
         raise ValueError("poll_seconds must be at least 5")
     stop_event = stop_event or _StopEvent()
-    store = EntryAlertStore(db_path)
-    market_data = BinanceUsdMMarketData()
+    store = (store_factory or EntryAlertStore)(db_path)
+    market_data = market_data or BinanceUsdMMarketData()
+    snapshot_fetcher = snapshot_fetcher or fetch_snapshot
     last_result = {"status": "STARTING"}
     try:
         while not stop_event.is_set():
             cycle_started = time.time()
             try:
-                snapshots = fetch_snapshot(base_url)
+                snapshots = snapshot_fetcher(base_url)
                 result = scan_once(
                     symbols=symbols,
                     interval=interval,
