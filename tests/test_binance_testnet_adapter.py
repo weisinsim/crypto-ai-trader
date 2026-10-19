@@ -19,7 +19,11 @@ class FakeResponse:
 
 
 class FakeClient:
-    def __init__(self):
+    def __init__(self, exchange_payload=None):
+        self.exchange_payload = exchange_payload or {"symbols": [{"symbol": "BTCUSDT", "status": "TRADING", "filters": [
+            {"filterType": "MARKET_LOT_SIZE", "stepSize": "0.001", "minQty": "0.001", "maxQty": "100"},
+            {"filterType": "MIN_NOTIONAL", "notional": "5"},
+        ]}]}
         self.base_url = TESTNET_BASE_URL
         self.headers = {}
         self.calls = []
@@ -27,10 +31,7 @@ class FakeClient:
 
     def get(self, path, params):
         self.get_calls.append((path, params))
-        return FakeResponse({"symbols": [{"symbol": "BTCUSDT", "status": "TRADING", "filters": [
-            {"filterType": "MARKET_LOT_SIZE", "stepSize": "0.001", "minQty": "0.001", "maxQty": "100"},
-            {"filterType": "MIN_NOTIONAL", "notional": "5"},
-        ]}]})
+        return FakeResponse(self.exchange_payload)
 
     def post(self, path, params):
         self.calls.append((path, params))
@@ -80,6 +81,26 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=FakeClient())
         with self.assertRaises(ValueError):
             adapter.symbol_rules("../BTCUSDT")
+
+    def test_non_trading_symbol_is_rejected_before_order_validation(self):
+        payload = {"symbols": [{"symbol": "BTCUSDT", "status": "BREAK", "filters": [
+            {"filterType": "MARKET_LOT_SIZE", "stepSize": "0.001", "minQty": "0.001", "maxQty": "100"},
+            {"filterType": "MIN_NOTIONAL", "notional": "5"},
+        ]}]}
+        client = FakeClient(exchange_payload=payload)
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.validate_order(self.intent(), ExecutionConfig(mode="testnet"))
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "symbol_not_trading")
+        self.assertEqual(client.calls, [])
+
+    def test_missing_quantity_filter_fails_closed(self):
+        client = FakeClient(exchange_payload={"symbols": [{"symbol": "BTCUSDT", "status": "TRADING", "filters": []}]})
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.validate_order(self.intent(), ExecutionConfig(mode="testnet"))
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "exchange_preflight_failed")
+        self.assertEqual(client.calls, [])
 
     def test_quantity_is_rounded_down_to_exchange_step(self):
         client = FakeClient()
