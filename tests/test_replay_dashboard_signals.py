@@ -124,10 +124,13 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
                 read_rows(path)
 
     def test_only_closed_higher_timeframe_bars_are_used(self):
-        bars = [{"ts": 0, "c": 1}, {"ts": 14_400_000, "c": 2}, {"ts": 28_800_000, "c": 3}]
-        # At 11:00, the 08:00 4h candle is still open; only the 04:00
-        # candle has closed. Candle timestamps represent OPEN times.
-        self.assertEqual(closed_rows_at(bars, 11 * 3_600_000), bars[:1])
+        bars = [
+            {"ts": 0, "c": 1},                 # 00:00-04:00, closed
+            {"ts": 14_400_000, "c": 2},         # 04:00-08:00, closed
+            {"ts": 28_800_000, "c": 3},         # 08:00-12:00, still open
+        ]
+        # At 11:00, only candles whose OPEN + 4h <= decision time are usable.
+        self.assertEqual(closed_rows_at(bars, 11 * 3_600_000), bars[:2])
 
     def test_closed_higher_timeframe_bar_is_included_at_exact_close(self):
         bars = [{"ts": 4 * 3_600_000, "c": 1}, {"ts": 8 * 3_600_000, "c": 2}]
