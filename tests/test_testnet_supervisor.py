@@ -89,6 +89,18 @@ class TestnetSupervisorTests(unittest.TestCase):
         self.assertFalse(result["live_trading_enabled"])
 
 
+
+    def test_entry_lock_is_released_after_confirmed_entry(self):
+        result = self.supervisor.run_once("BTCUSDT", self.intent(), "entry-lock-ok", "run-lock")
+        self.assertTrue(result["ok"], result)
+        self.assertIsNone(self.store.get_entry_lock())
+
+    def test_existing_lock_blocks_new_entry_and_fails_closed(self):
+        self.assertTrue(self.store.claim_entry_lock("stale-process"))
+        result = self.supervisor.run_once("BTCUSDT", self.intent(), "entry-lock-blocked", "run-lock")
+        self.assertEqual(result["reason"], "entry_lock_held")
+        self.assertEqual(self.adapter.submissions, [])
+
     def test_reused_client_order_id_is_blocked_across_calls(self):
         first = self.supervisor.run_once("BTCUSDT", self.intent(), "entry-duplicate", "run-2")
         self.assertTrue(first["ok"], first)
