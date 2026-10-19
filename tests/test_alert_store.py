@@ -49,11 +49,19 @@ class EntryAlertStoreTests(unittest.TestCase):
             self.assertFalse(store.enqueue(event, now=stamp))
         self.assertEqual(store.pending(), [])
 
+    def test_rejects_invalid_delivery_timestamps(self):
+        store = EntryAlertStore(":memory:")
+        event = {"event_id": "delivery-time", "eligible": True, "symbol": "BTCUSDT", "side": "LONG", "notification_only": True, "auto_trade_authorized": False}
+        self.assertTrue(store.enqueue(event, now=10))
+        for stamp in (float("nan"), float("inf"), 0, -1, True, "bad"):
+            self.assertFalse(store.mark_delivered("delivery-time", now=stamp))
+        self.assertEqual(len(store.pending()), 1)
+
     def test_rejects_non_json_numeric_payload(self):
         store = EntryAlertStore(":memory:")
         event = {"event_id": "abc", "eligible": True, "symbol": "BTCUSDT", "side": "LONG", "notification_only": True, "auto_trade_authorized": False, "bad": float("nan")}
-        with self.assertRaises(ValueError):
-            store.enqueue(event)
+        self.assertFalse(store.enqueue(event))
+        self.assertEqual(store.pending(), [])
 
 
 if __name__ == "__main__":
