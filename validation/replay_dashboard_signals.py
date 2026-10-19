@@ -169,6 +169,8 @@ def closed_rows_at(rows, decision_close_ms, interval_ms=14_400_000):
 
     Input timestamps are candle OPEN times; interval_ms must match the series.
     """
+    if not isinstance(interval_ms, int) or isinstance(interval_ms, bool) or interval_ms <= 0:
+        raise ValueError("interval_ms must be a positive integer")
     return [row for row in rows if row["ts"] + interval_ms <= decision_close_ms]
 
 
