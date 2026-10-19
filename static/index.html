@@ -139,10 +139,16 @@ async function refreshChatGPTAlerts(){
   const r=await fetch("/api/chatgpt/alerts",{cache:"no-store",headers:{"Accept":"application/json"}});
   if(!r.ok) throw new Error("HTTP "+r.status);
   const payload=await r.json();
-  const alerts=Array.isArray(payload)?payload:(Array.isArray(payload.alerts)?payload.alerts:[]);
-  statusEl.className="alertIntro alertLive";
-  statusEl.textContent="只读接口可访问 · 当前有效候选 "+alerts.length+" · 检查时间 "+new Date().toLocaleTimeString();
-  if(!alerts.length){listEl.replaceChildren();const empty=document.createElement("div");empty.className="alertItem alertMuted";empty.textContent="目前没有符合安全门槛的有效进场提醒。";listEl.appendChild(empty);return;}
+  const rawAlerts=Array.isArray(payload)?payload:(Array.isArray(payload.alerts)?payload.alerts:[]);
+  // Fail closed in the browser too: only render explicit notification-only,
+  // non-trading events. A malformed or unexpectedly authorized event is hidden.
+  const alerts=rawAlerts.filter(a=>a&&a.notification_only===true&&a.auto_trade_authorized===false&&
+   typeof a.symbol==="string"&&typeof a.side==="string"&&["LONG","SHORT"].includes(a.side));
+  const feedLive=payload.status==="LIVE";
+  statusEl.className="alertIntro "+(feedLive?"alertLive":"alertFail");
+  statusEl.textContent=(feedLive?"行情状态 LIVE":"行情状态 "+String(payload.status||"UNKNOWN")+" · 已阻止展示候选信号")+
+   " · 安全有效候选 "+(feedLive?alerts.length:0)+" · 检查时间 "+new Date().toLocaleTimeString();
+  if(!feedLive||!alerts.length){listEl.replaceChildren();const empty=document.createElement("div");empty.className="alertItem alertMuted";empty.textContent=!feedLive?"行情未通过 LIVE 安全门槛；当前不显示进场提醒。":"目前没有符合安全门槛的有效进场提醒。";listEl.appendChild(empty);return;}
   listEl.replaceChildren();
   alerts.slice(0,10).forEach(a=>{
    const item=document.createElement("div");item.className="alertItem";
