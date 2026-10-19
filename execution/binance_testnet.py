@@ -206,5 +206,35 @@ class BinanceFuturesTestnet:
             "status": payload.get("status", "UNKNOWN"),
         }
 
+    def query_testnet_order(self, symbol: str, client_order_id: str):
+        """Reconcile an existing TESTNET order by its client ID; never retries or submits."""
+        if not symbol.endswith("USDT") or not symbol[:-4].isalnum():
+            return {"found": False, "reason": "invalid_symbol"}
+        if not isinstance(client_order_id, str) or not client_order_id or len(client_order_id) > 36:
+            return {"found": False, "reason": "invalid_client_order_id"}
+        if not client_order_id.replace("-", "").replace("_", "").isalnum():
+            return {"found": False, "reason": "invalid_client_order_id"}
+        response = self._client.get(
+            "/fapi/v1/order",
+            params=self._signed_params({
+                "symbol": symbol,
+                "origClientOrderId": client_order_id,
+            }),
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict) or "orderId" not in payload:
+            return {"found": False, "reason": "unexpected_testnet_order_response"}
+        return {
+            "found": True,
+            "mode": "testnet_order_reconciliation",
+            "symbol": payload.get("symbol", symbol),
+            "client_order_id": payload.get("clientOrderId", client_order_id),
+            "exchange_order_id": str(payload["orderId"]),
+            "status": payload.get("status", "UNKNOWN"),
+            "executed_quantity": payload.get("executedQty", "0"),
+            "average_price": payload.get("avgPrice", "0"),
+        }
+
     def close(self):
         self._client.close()
