@@ -4,7 +4,6 @@ Runs risk gates before submitting one explicitly identified market order, then
 reconciles the order and position and attempts protective exits for any exposure.
 Network ambiguity returns a reconciliation-required state and never auto-retries.
 """
-from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 
 from execution.runtime_guard import RuntimeRiskConfig, RuntimeSnapshot, validate_runtime_state
@@ -40,41 +39,46 @@ def execute_guarded_testnet_entry(
     if not intent_decision.allowed:
         return {"ok": False, "reason": intent_decision.reason, "stage": "intent_gate"}
 
-    preflight = adapter.account_preflight()
-    if not preflight.get("ok") or not preflight.get("can_trade"):
+    try:
+        preflight = adapter.account_preflight()
+    except Exception as exc:
+        return {
+            "ok": False, "reason": "testnet_account_preflight_error",
+            "error_type": type(exc).__name__, "stage": "account_preflight",
+        }
+    if not isinstance(preflight, dict) or not preflight.get("ok") or not preflight.get("can_trade"):
         return {"ok": False, "reason": "testnet_account_preflight_failed", "detail": preflight}
 
     # Never retry this call automatically: an HTTP timeout may occur after acceptance.
+    submission = None
+    submission_error = None
     try:
         submission = adapter.submit_testnet_market_order(intent, client_order_id, execution_config)
     except Exception as exc:
-        return {
-            "ok": False,
-            "reason": "market_order_outcome_ambiguous",
-            "error_type": type(exc).__name__,
-            "client_order_id": client_order_id,
-            "requires_reconciliation": True,
-        }
-    if not submission.get("accepted"):
+        submission_error = type(exc).__name__
+    if submission is not None and (not isinstance(submission, dict) or not submission.get("accepted")):
         return {"ok": False, "reason": "market_order_rejected", "detail": submission}
 
+    # Even after a timeout, reconcile by the same client ID; never issue a second POST.
     try:
         order = adapter.query_testnet_order(intent.symbol, client_order_id)
         snapshot = adapter.testnet_position_snapshot(intent.symbol)
     except Exception as exc:
         return {
             "ok": False,
-            "reason": "post_entry_reconciliation_failed",
-            "error_type": type(exc).__name__,
-            "submission": submission,
+            "reason": "market_order_outcome_ambiguous" if submission_error else "post_entry_reconciliation_failed",
+            "error_type": submission_error or type(exc).__name__,
+            "client_order_id": client_order_id,
             "requires_reconciliation": True,
         }
-    if not order.get("found") or not snapshot.get("ok"):
+    if not isinstance(order, dict) or not order.get("found") or not isinstance(snapshot, dict) or not snapshot.get("ok"):
         return {
             "ok": False,
-            "reason": "post_entry_reconciliation_incomplete",
+            "reason": "market_order_outcome_ambiguous" if submission_error else "post_entry_reconciliation_incomplete",
+            "submission_error": submission_error,
             "order": order,
             "snapshot": snapshot,
+            "client_order_id": client_order_id,
             "requires_reconciliation": True,
         }
     try:
@@ -92,12 +96,13 @@ def execute_guarded_testnet_entry(
         }
 
     if position == 0:
+        terminal_no_fill = order.get("status") in {"CANCELED", "EXPIRED", "REJECTED"} and executed == 0
         return {
-            "ok": order.get("status") in {"CANCELED", "EXPIRED", "REJECTED"},
-            "reason": "no_open_position_after_entry",
+            "ok": bool(terminal_no_fill and submission_error is None),
+            "reason": "no_open_position_after_entry" if terminal_no_fill else "order_state_requires_reconciliation",
             "order_status": order.get("status"),
             "executed_quantity": str(executed),
-            "requires_reconciliation": order.get("status") not in {"CANCELED", "EXPIRED", "REJECTED", "FILLED"},
+            "requires_reconciliation": not terminal_no_fill or submission_error is not None,
         }
     if entry <= 0 or (position > 0) != (intent.side == "BUY"):
         return {
@@ -143,5 +148,6 @@ def execute_guarded_testnet_entry(
         "actual_entry": str(entry),
         "protection": protection,
         "live_trading_enabled": False,
+        "submission_outcome_was_ambiguous": submission_error is not None,
         "note": "Single-pass reconciliation only; partial fills, races, and process restarts require a persistent supervisor.",
     }
