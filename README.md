@@ -147,3 +147,8 @@ The testnet adapter now supports cancelling one explicitly identified order by `
 ### TESTNET restart recovery
 
 `execution/testnet_recovery.py` adds an explicit recovery entry point for a process restart: it reads the authoritative TESTNET position snapshot, refuses invalid/stale-unavailable state and invalid stop/target geometry, and verifies or installs protective exits for an existing position. It never submits a new entry order. It is a callable recovery primitive, not a continuously running supervisor or durable event ledger; the operator must supply the intended stop/target levels and manually reconcile ambiguous states. Production trading remains disabled.
+
+
+### Durable runtime risk state
+
+`execution/runtime_state_store.py` persists UTC-day realized-PnL events, exchange-derived exposure metrics, consecutive execution errors, and the emergency stop flag in SQLite. State survives process restarts; missing account metrics return no snapshot and therefore must block entries. Callers must refresh exposure from an authoritative exchange snapshot, deduplicate realized-PnL fill events, and check snapshot freshness before entry. This local database is not distributed coordination and does not replace a live supervisor, fill stream, reconciliation loop, or independent account-level risk checks.
