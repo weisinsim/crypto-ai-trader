@@ -38,5 +38,37 @@ class SnapshotFetchTests(unittest.TestCase):
         self.assertEqual(result, {"BTCUSDT": {"symbol": "BTCUSDT", "confirmed_signal": "LONG"}})
 
 
+class WorkerCycleTests(unittest.TestCase):
+    def test_failed_snapshot_cycle_reports_degraded_and_stops_cleanly(self):
+        class StopAfterEmit:
+            def __init__(self):
+                self.stopped = False
+            def is_set(self):
+                return self.stopped
+            def set(self):
+                self.stopped = True
+            def wait(self, seconds):
+                self.stopped = True
+                return True
+
+        emitted = []
+        stop = StopAfterEmit()
+        result = live_signal_worker.run_worker(
+            base_url="https://example.invalid",
+            db_path=":memory:",
+            symbols=["BTCUSDT"],
+            poll_seconds=5,
+            stop_event=stop,
+            snapshot_fetcher=lambda _url: (_ for _ in ()).throw(RuntimeError("offline")),
+            store_factory=lambda _path: type("Store", (), {
+                "_memory_conn": None,
+                "pending": lambda self: [],
+            })(),
+            emit=lambda line: emitted.append(json.loads(line)),
+        )
+        self.assertEqual(result["status"], "DEGRADED")
+        self.assertEqual(emitted[0]["reason"], "RuntimeError")
+        self.assertEqual(emitted[0]["worker"], "entry-alert-scan")
+
 if __name__ == "__main__":
     unittest.main()
