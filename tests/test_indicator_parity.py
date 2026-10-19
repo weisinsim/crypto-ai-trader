@@ -69,18 +69,36 @@ class IndicatorParityTests(unittest.TestCase):
             self.assert_close_or_both_none(rsi_values[end - 1], expected_rsi)
 
     def test_four_hour_candle_must_be_closed_at_hourly_decision(self):
-        # Hourly candle opens at 10:00 and the decision is made at 11:00.
-        # A 4h candle opened at 08:00 closes at 12:00 and must not be used;
-        # one opened at 04:00 closes at 08:00 and is already closed.
-        hourly_open = 10 * 3_600_000
-        decision_close = hourly_open + 3_600_000
+        # At the 11:00 decision close, the 08:00-open 4h candle is unfinished.
+        decision_close = 11 * 3_600_000
         four = [
             {"ts": 4 * 3_600_000},
             {"ts": 8 * 3_600_000},
+            {"ts": 12 * 3_600_000},
         ]
         count = replay.closed_four_count_at(four, decision_close)
-        self.assertEqual(count, 1)
-        self.assertEqual([row["ts"] for row in four[:count]], [4 * 3_600_000])
+        expected = replay.closed_rows_at(four, decision_close)
+        self.assertEqual(four[:count], expected)
+        self.assertEqual([row["ts"] for row in expected], [4 * 3_600_000])
+
+    def test_incremental_four_hour_cursor_matches_filter_at_boundaries(self):
+        # Exercise just-before, exact-close, and just-after boundaries for a
+        # monotonically advancing cursor, comparing it with the simple filter.
+        four = [{"ts": i * 14_400_000} for i in range(12)]
+        decision_times = [
+            14_400_000 - 1,
+            14_400_000,
+            14_400_000 + 1,
+            4 * 14_400_000 - 1,
+            4 * 14_400_000,
+            7 * 14_400_000,
+            12 * 14_400_000,
+        ]
+        cursor = 0
+        for decision_close in decision_times:
+            cursor = replay.closed_four_count_at(four, decision_close, cursor)
+            expected = replay.closed_rows_at(four, decision_close, interval_ms=14_400_000)
+            self.assertEqual(four[:cursor], expected)
 
     def test_replay_vwap_uses_quote_volume_series(self):
         replay_path = Path(__file__).resolve().parents[1] / "validation" / "replay_dashboard_signals.py"
