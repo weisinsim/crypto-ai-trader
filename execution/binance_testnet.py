@@ -236,5 +236,57 @@ class BinanceFuturesTestnet:
             "average_price": payload.get("avgPrice", "0"),
         }
 
+    def testnet_position_snapshot(self, symbol: str):
+        """Read authoritative TESTNET position and open orders; no mutations."""
+        if not isinstance(symbol, str) or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
+            return {"ok": False, "reason": "invalid_symbol"}
+        account_response = self._client.get(
+            "/fapi/v2/account",
+            params=self._signed_params({}),
+        )
+        account_response.raise_for_status()
+        account = account_response.json()
+        if not isinstance(account, dict) or not isinstance(account.get("positions"), list):
+            return {"ok": False, "reason": "invalid_testnet_account_response"}
+        matching = [p for p in account["positions"] if p.get("symbol") == symbol]
+        if len(matching) != 1:
+            return {"ok": False, "reason": "position_not_found_or_ambiguous"}
+        position = matching[0]
+        try:
+            amount = Decimal(str(position.get("positionAmt", "0")))
+            entry_price = Decimal(str(position.get("entryPrice", "0")))
+        except (InvalidOperation, TypeError, ValueError):
+            return {"ok": False, "reason": "invalid_testnet_position_values"}
+        orders_response = self._client.get(
+            "/fapi/v1/openOrders",
+            params=self._signed_params({"symbol": symbol}),
+        )
+        orders_response.raise_for_status()
+        orders = orders_response.json()
+        if not isinstance(orders, list):
+            return {"ok": False, "reason": "invalid_testnet_open_orders_response"}
+        return {
+            "ok": True,
+            "mode": "testnet_read_only_snapshot",
+            "symbol": symbol,
+            "position_amount": str(amount),
+            "entry_price": str(entry_price),
+            "open_orders": [
+                {
+                    "order_id": str(order.get("orderId", "")),
+                    "client_order_id": order.get("clientOrderId", ""),
+                    "side": order.get("side", ""),
+                    "type": order.get("type", ""),
+                    "status": order.get("status", ""),
+                    "reduce_only": bool(order.get("reduceOnly", False)),
+                    "stop_price": order.get("stopPrice", "0"),
+                    "orig_quantity": order.get("origQty", "0"),
+                    "executed_quantity": order.get("executedQty", "0"),
+                }
+                for order in orders
+                if isinstance(order, dict)
+            ],
+        }
+
     def close(self):
         self._client.close()
