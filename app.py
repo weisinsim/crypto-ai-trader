@@ -1,5 +1,6 @@
 import asyncio
 import json
+import hashlib
 import time
 from validation.candle_closure import filter_closed_candles, normalize_timestamp_ms, upsert_candle, validate_candle_series
 from validation.dashboard_health import build_health_payload
@@ -175,7 +176,10 @@ async def chatgpt_alert_feed():
             continue
         if side == "SHORT" and not (tp2 <= tp1 < entry < stop):
             continue
+        event_material = f"{symbol}|{side}|{int(candle_time)}|{item.get('model_name', '')}"
+        event_id = hashlib.sha256(event_material.encode("utf-8")).hexdigest()[:24]
         alerts.append({
+            "event_id": event_id,
             "symbol": symbol,
             "side": side,
             "signal_candle_ms": candle_time,
