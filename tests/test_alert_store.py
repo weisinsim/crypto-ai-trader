@@ -42,6 +42,13 @@ class EntryAlertStoreTests(unittest.TestCase):
         self.assertFalse(store.mark_delivered("abc", now=12))
         self.assertEqual(store.pending(), [])
 
+    def test_rejects_invalid_creation_timestamps(self):
+        store = EntryAlertStore(":memory:")
+        event = {"event_id": "timestamp-case", "eligible": True, "symbol": "BTCUSDT", "side": "LONG", "notification_only": True, "auto_trade_authorized": False}
+        for stamp in (float("nan"), float("inf"), 0, -1):
+            self.assertFalse(store.enqueue(event, now=stamp))
+        self.assertEqual(store.pending(), [])
+
     def test_rejects_non_json_numeric_payload(self):
         store = EntryAlertStore(":memory:")
         event = {"event_id": "abc", "eligible": True, "symbol": "BTCUSDT", "side": "LONG", "notification_only": True, "auto_trade_authorized": False, "bad": float("nan")}
