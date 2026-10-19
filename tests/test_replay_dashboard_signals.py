@@ -2,7 +2,7 @@ import unittest
 import tempfile
 from pathlib import Path
 
-from validation.replay_dashboard_signals import ema, rsi, atr, adx, replay, ts_ms, read_rows, closed_rows_at, signal_state_for, risk_levels, validate_candle_cadence
+from validation.replay_dashboard_signals import ema, rsi, atr, adx, replay, ts_ms, read_rows, closed_rows_at, closed_four_count_at, signal_state_for, risk_levels, validate_candle_cadence
 
 
 class ReplayDashboardSignalsTests(unittest.TestCase):
@@ -135,6 +135,30 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
     def test_closed_higher_timeframe_bar_is_included_at_exact_close(self):
         bars = [{"ts": 4 * 3_600_000, "c": 1}, {"ts": 8 * 3_600_000, "c": 2}]
         self.assertEqual(closed_rows_at(bars, 8 * 3_600_000), bars[:1])
+
+    def test_incremental_four_hour_index_matches_closed_row_filter(self):
+        bars = [{"ts": i * 14_400_000, "c": i} for i in range(12)]
+        decisions = [
+            2 * 3_600_000,
+            4 * 3_600_000,
+            7 * 3_600_000,
+            12 * 3_600_000,
+            20 * 3_600_000,
+            40 * 3_600_000,
+        ]
+        index = 0
+        for decision_close_ms in decisions:
+            index = closed_four_count_at(bars, decision_close_ms, index)
+            expected = len(closed_rows_at(bars, decision_close_ms, 14_400_000))
+            self.assertEqual(index, expected)
+            self.assertTrue(all(bars[j]["ts"] + 14_400_000 <= decision_close_ms for j in range(index)))
+            if index < len(bars):
+                self.assertGreater(bars[index]["ts"] + 14_400_000, decision_close_ms)
+
+    def test_incremental_four_hour_index_rejects_no_closed_rows_without_advancing(self):
+        bars = [{"ts": 14_400_000, "c": 1}, {"ts": 28_800_000, "c": 2}]
+        self.assertEqual(closed_four_count_at(bars, 14_400_000, 0), 0)
+        self.assertEqual(closed_four_count_at(bars, 14_400_000, 0), 0)
 
     def test_closed_rows_rejects_invalid_interval(self):
         with self.assertRaisesRegex(ValueError, "positive integer"):

@@ -95,3 +95,37 @@ A model's FROZEN status means its parameters are preserved; it does not imply th
 
 
 The pre-trade screening helpers reject non-mapping inputs, boolean-as-number values, negative market age/spread metrics, and negative daily-loss fractions. Candidate screening is only a preliminary filter: positive development/holdout metrics and a sufficient trade count do not establish statistical significance or authorize production use. Portfolio consistency checks operate only on paper-ledger records and must never replace exchange-side position/order reconciliation.
+
+
+## Execution status and safety gates
+
+The dashboard currently generates monitoring/research signals; it does not place orders. The
+`execution.safety` module is a fail-closed validation layer for proposed intents, not an
+exchange connector. Its default mode is paper, and it rejects any request that attempts to
+enable live trading. Do not add exchange API keys to source control or expose keys with
+withdrawal permissions.
+
+Before any real-money adapter can be considered, complete and archive all of these gates:
+
+1. Full historical replay parity against the frozen baseline, including signal time, direction,
+   entry, stop, and targets for each supported symbol.
+2. Benchmark the full replay on identical data and environment; record runtime and memory.
+3. Verify order sizing, tick/step-size rounding, minimum notional, partial fills, duplicate-order
+   protection, reduce-only exits, reconnect/retry handling, and idempotency on exchange testnet.
+4. Exercise kill-switch, stale-signal rejection, daily loss limits, max position/notional limits,
+   and restart recovery in testnet/paper mode.
+5. Review chronological holdout results after fees and historical funding. A completed pipeline
+   is not evidence of profitability.
+6. Require an explicit operator decision before any live mode is implemented or enabled.
+
+Current state: `RESEARCH_ONLY`; real-money order placement is intentionally unavailable.
+
+The Binance USD-M TESTNET adapter now includes `submit_testnet_market_order(..., client_order_id, config)`, which can submit a market order only to the hard-coded testnet host after safety and exchange-filter checks. It uses Binance's `newClientOrderId` for exchange-side request identity, but this alone is not a durable idempotency/reconciliation system: ambiguous network outcomes must be reconciled against exchange order history before retrying. This function does **not** attach protective stop-loss/take-profit orders, set leverage, or manage fills/positions. Do not use it as a standalone trading bot; it is for controlled testnet integration only. The adapter also has `query_testnet_order(symbol, client_order_id)`, a signed read-only lookup to reconcile an order's status and executed quantity without resubmitting it. A production-quality retry/recovery worker and protective-exit lifecycle remain outstanding. The adapter now also exposes `testnet_position_snapshot(symbol)` to read the signed account position and open orders for one symbol in a single diagnostic result; it is read-only and does not itself reconcile, cancel, or repair mismatches.
+
+
+### Testnet protective-exit orchestration
+
+`execution/testnet_lifecycle.py` provides `ensure_testnet_protective_exits(...)`: it reads the current testnet position and open orders, validates stop/target geometry, reuses visible matching reduce-only conditional orders, rejects duplicates or price mismatches, and requests the stop-loss before the take-profit. If the target request fails after the stop succeeds, it returns an explicit partial-state result requiring reconciliation. This is still not a complete live-safe lifecycle: exchange responses can be ambiguous, position size can change between requests, sibling exits are not cancelled after a fill, and a post-submit snapshot is mandatory. The function is TESTNET orchestration only; it cannot enable production endpoints.
+
+
+The protective-exit orchestrator now performs a second authoritative testnet snapshot after both requests and verifies that the position and entry price did not change, exactly one active reduce-only stop and target exist, and both orders have the expected side, trigger, and full current position quantity. Any mismatch fails closed and requires manual/external reconciliation. This narrows race and silent-rejection risk but does not solve partial fills, atomic OCO/sibling cancellation, or ambiguous network outcomes.
