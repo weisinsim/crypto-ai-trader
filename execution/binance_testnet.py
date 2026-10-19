@@ -5,6 +5,7 @@ or select a production endpoint. API credentials must be supplied through
 environment variables and must never be committed to the repository.
 """
 import hashlib
+from decimal import Decimal, InvalidOperation, ROUND_DOWN
 import hmac
 import os
 import time
@@ -81,12 +82,35 @@ class BinanceFuturesTestnet:
             return {"accepted": False, "reason": decision.reason}
         if config.mode != "testnet":
             return {"accepted": False, "reason": "testnet_mode_required"}
-        params = {
-            "symbol": intent.symbol,
-            "side": intent.side,
-            "type": "MARKET",
-            "quantity": format(intent.quantity, ".8f").rstrip("0").rstrip("."),
-        }
+        try:
+            rules = self.symbol_rules(intent.symbol)
+            if rules["status"] != "TRADING":
+                return {"accepted": False, "reason": "symbol_not_trading"}
+            quantity = Decimal(str(intent.quantity))
+            step = Decimal(str(rules["quantity_step"]))
+            minimum = Decimal(str(rules["min_quantity"]))
+            maximum = Decimal(str(rules["max_quantity"]))
+            if step <= 0 or minimum <= 0 or maximum < minimum:
+                return {"accepted": False, "reason": "invalid_exchange_quantity_filters"}
+            quantity = (quantity / step).to_integral_value(rounding=ROUND_DOWN) * step
+            if quantity < minimum:
+                return {"accepted": False, "reason": "quantity_below_exchange_minimum"}
+            if quantity > maximum:
+                return {"accepted": False, "reason": "quantity_above_exchange_maximum"}
+            min_notional = rules["min_notional"]
+            if min_notional is not None and Decimal(str(intent.entry)) * quantity < Decimal(str(min_notional)):
+                return {"accepted": False, "reason": "notional_below_exchange_minimum"}
+            quantity_text = format(quantity, "f")
+            if "." in quantity_text:
+                quantity_text = quantity_text.rstrip("0").rstrip(".")
+            params = {
+                "symbol": intent.symbol,
+                "side": intent.side,
+                "type": "MARKET",
+                "quantity": quantity_text,
+            }
+        except (ValueError, InvalidOperation, TypeError, KeyError):
+            return {"accepted": False, "reason": "exchange_preflight_failed"}
         response = self._client.post("/fapi/v1/order/test", params=self._signed_params(params))
         response.raise_for_status()
         return {
