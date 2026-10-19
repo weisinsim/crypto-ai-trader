@@ -138,6 +138,69 @@ async def models():
 async def signals():
     return {"server_ts": time.time(), "history": signal_history, "confirmed": {s: {k: cache[s].get(k) for k in ("confirmed_signal","confirmed_signal_time","confirmed_entry","confirmed_sl","confirmed_tp1","confirmed_tp2","confirmed_score","confirmed_score_label","confirmed_status")} for s in SYMBOLS}}
 
+@app.get("/api/chatgpt/alerts")
+async def chatgpt_alert_feed():
+    """Read-only feed for a ChatGPT task or other authorized polling client.
+
+    This endpoint reports confirmed candidates only. It never sends a push
+    notification and never authorizes a trade. The deployment must expose this
+    endpoint over HTTPS for a scheduled task to read it.
+    """
+    now = time.time()
+    max_age_seconds = 90 * 60
+    alerts = []
+    for symbol in SYMBOLS:
+        item = cache[symbol]
+        side = item.get("confirmed_signal")
+        candle_time = item.get("confirmed_signal_time")
+        analysis_time = item.get("analysis_ts")
+        model_status = item.get("model_status", "UNKNOWN")
+        if side not in ("LONG", "SHORT"):
+            continue
+        if model_status not in ("RESEARCH", "FROZEN", "PRODUCTION"):
+            continue
+        if not isinstance(candle_time, (int, float)) or candle_time <= 0 or candle_time > now * 1000:
+            continue
+        if now * 1000 - candle_time > max_age_seconds * 1000:
+            continue
+        if not isinstance(analysis_time, (int, float)) or analysis_time <= 0 or now - analysis_time > max_age_seconds:
+            continue
+        entry = item.get("confirmed_entry")
+        stop = item.get("confirmed_sl")
+        tp1 = item.get("confirmed_tp1")
+        tp2 = item.get("confirmed_tp2")
+        if not all(isinstance(v, (int, float)) and v > 0 for v in (entry, stop, tp1, tp2)):
+            continue
+        if side == "LONG" and not (stop < entry < tp1 <= tp2):
+            continue
+        if side == "SHORT" and not (tp2 <= tp1 < entry < stop):
+            continue
+        alerts.append({
+            "symbol": symbol,
+            "side": side,
+            "signal_candle_ms": candle_time,
+            "analysis_ts": analysis_time,
+            "entry": entry,
+            "stop_loss": stop,
+            "take_profit_1": tp1,
+            "take_profit_2": tp2,
+            "score": item.get("confirmed_score"),
+            "score_label": item.get("confirmed_score_label"),
+            "model_name": item.get("model_name"),
+            "model_status": model_status,
+            "research_only": model_status != "PRODUCTION",
+            "notification_only": True,
+            "auto_trade_authorized": False,
+        })
+    return {
+        "generated_at": now,
+        "feed": "crypto-ai-trader-chatgpt-alerts-v1",
+        "status": market_status.get("status", "UNKNOWN"),
+        "alerts": alerts,
+        "count": len(alerts),
+        "note": "Read-only signal feed; empty alerts means no fresh confirmed candidate. No orders are placed.",
+    }
+
 def ema(values, period):
     if len(values) < period:
         return None
