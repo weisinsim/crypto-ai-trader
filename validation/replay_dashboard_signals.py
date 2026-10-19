@@ -313,7 +313,9 @@ def main():
         dest=out/f"{s}_signals.csv"
         with dest.open("w",newline="",encoding="utf-8") as f:
             w=csv.DictWriter(f,fieldnames=fields); w.writeheader(); w.writerows(trades)
-        manifest.append({"symbol":s,"hourly_candles":len(one),"four_hour_candles":len(four),"signals":len(trades),"file":str(dest),
+        model_status = "BLOCKED_NO_PRODUCTION" if s == "ETHUSDT" else "RESEARCH_ONLY_NOT_PARITY_VALIDATED"
+        manifest.append({"symbol":s,"hourly_candles":len(one),"four_hour_candles":len(four),"signals":len(trades),
+                         "model_status":model_status,"file":str(dest),
                          "notice":"Historical code replay only; verify parity and data gaps before interpreting results."})
         print(json.dumps(manifest[-1]))
     (out/"replay_manifest.json").write_text(json.dumps(manifest,indent=2),encoding="utf-8")
