@@ -207,5 +207,38 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
                 read_rows(path)
 
 
+    def test_bounded_indicator_windows_match_full_history(self):
+        import validation.replay_dashboard_signals as replay_module
+
+        close = [100 + i * 0.07 + ((i % 9) - 4) * 0.31 for i in range(160)]
+        high = [v + 0.6 + (i % 4) * 0.05 for i, v in enumerate(close)]
+        low = [v - 0.5 - (i % 5) * 0.04 for i, v in enumerate(close)]
+        quote_volume = [1000 + (i % 13) * 37 for i in range(len(close))]
+
+        for end in range(60, len(close) + 1):
+            c, h, l, q = close[:end], high[:end], low[:end], quote_volume[:end]
+            # replay() uses 30 bars for ATR/ADX and 48 bars for VWAP/SR.
+            self.assertAlmostEqual(
+                replay_module.atr(h, l, c),
+                replay_module.atr(h[-30:], l[-30:], c[-30:]),
+                places=10,
+            )
+            self.assertAlmostEqual(
+                replay_module.adx(h, l, c),
+                replay_module.adx(h[-30:], l[-30:], c[-30:]),
+                places=10,
+            )
+            self.assertAlmostEqual(
+                replay_module.vwap(h, l, c, q),
+                replay_module.vwap(h[-48:], l[-48:], c[-48:], q[-48:]),
+                places=10,
+            )
+            self.assertEqual(
+                replay_module.levels(h, l, c),
+                replay_module.levels(h[-48:], l[-48:], c[-48:]),
+            )
+
+
+
 if __name__ == "__main__":
     unittest.main()
