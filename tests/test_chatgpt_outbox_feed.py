@@ -15,7 +15,9 @@ from execution.live_signal_scanner import scan_once
 class ChatGPTOutboxFeedTests(unittest.TestCase):
     def setUp(self):
         self.original_status = dict(dashboard.market_status)
+        self.original_cache = {key: dict(value) for key, value in dashboard.cache.items()}
         dashboard.market_status.update(status="LIVE", updated=time.time(), error=None)
+        dashboard.cache["BTCUSDT"].update(ts=time.time(), price=100.0)
         self.tmp = tempfile.TemporaryDirectory()
         self.db = str(Path(self.tmp.name) / "alerts.sqlite3")
         now = time.time()
@@ -31,6 +33,9 @@ class ChatGPTOutboxFeedTests(unittest.TestCase):
     def tearDown(self):
         dashboard.market_status.clear()
         dashboard.market_status.update(self.original_status)
+        for key, value in self.original_cache.items():
+            dashboard.cache[key].clear()
+            dashboard.cache[key].update(value)
         self.tmp.cleanup()
 
     def test_scanner_to_sqlite_to_chatgpt_feed_end_to_end(self):
@@ -78,6 +83,13 @@ class ChatGPTOutboxFeedTests(unittest.TestCase):
         self.assertTrue(payload["alerts"][0]["notification_only"])
         self.assertFalse(payload["alerts"][0]["auto_trade_authorized"])
         self.assertEqual(len(EntryAlertStore(self.db).pending()), 1)
+
+    def test_fails_closed_when_alert_symbol_market_data_is_stale(self):
+        EntryAlertStore(self.db).enqueue(self.event, now=time.time())
+        dashboard.cache["BTCUSDT"].update(ts=time.time() - 121, price=100.0)
+        with patch.dict(os.environ, {"ALERT_OUTBOX_DB": self.db}):
+            payload = asyncio.run(dashboard.chatgpt_outbox_alert_feed())
+        self.assertEqual(payload["alerts"], [])
 
     def test_fails_closed_on_non_live_or_stale_heartbeat(self):
         EntryAlertStore(self.db).enqueue(self.event, now=time.time())
