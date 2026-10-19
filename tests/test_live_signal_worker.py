@@ -1,5 +1,6 @@
 """Tests for the standalone read-only alert worker."""
 import json
+import time
 import unittest
 from unittest.mock import patch
 
@@ -29,9 +30,19 @@ class SnapshotFetchTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "dashboard_not_live"):
                 live_signal_worker.fetch_snapshot("https://example.invalid")
 
+    def test_fetch_snapshot_rejects_stale_or_invalid_heartbeat(self):
+        for updated in (time.time() - 121, time.time() + 10, float("nan"), None):
+            with self.subTest(updated=updated):
+                with patch.object(live_signal_worker, "urlopen", return_value=Response({
+                    "status": {"status": "LIVE", "updated": updated},
+                    "data": [{"symbol": "BTCUSDT"}],
+                })):
+                    with self.assertRaisesRegex(RuntimeError, "dashboard_heartbeat_stale"):
+                        live_signal_worker.fetch_snapshot("https://example.invalid")
+
     def test_fetch_snapshot_indexes_valid_symbol_rows(self):
         with patch.object(live_signal_worker, "urlopen", return_value=Response({
-            "status": {"status": "LIVE"},
+            "status": {"status": "LIVE", "updated": time.time()},
             "data": [{"symbol": "BTCUSDT", "confirmed_signal": "LONG"}, None, {"name": "bad"}],
         })):
             result = live_signal_worker.fetch_snapshot("https://example.invalid/")
