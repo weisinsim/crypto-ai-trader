@@ -166,3 +166,9 @@ The supervisor depends on authoritative account-position `notional` fields and f
 ### Durable one-shot order reservation
 
 The TESTNET supervisor now reserves each supplied `client_order_id` in SQLite before handing it to the guarded entry workflow. The unique key survives process restarts and prevents accidental second submission under the same ID; outcome metadata records completed, rejected, submitted, or reconciliation-required states. A reserved ID is intentionally never released automatically, including when the outcome is uncertain. Operators must reconcile an uncertain attempt against the exchange before creating a new, explicitly reviewed attempt. This local journal is not a distributed lock and does not prevent another process or a different client ID from submitting an economically duplicate order.
+
+
+
+### Exclusive TESTNET entry gate
+
+The supervisor now acquires a persistent SQLite entry lock before its final risk and position refresh, and repeats those checks while holding the lock. This serializes entry attempts among processes that share the same local database and narrows the race where two supervisors both see a flat account. Confirmed outcomes release the lock; ambiguous outcomes, exceptions after lock acquisition, and process crashes leave it in place and fail closed. After checking the exchange order history and current position/protective orders, an operator can explicitly clear a stale lock using `RuntimeStateStore.release_entry_lock(the_exact_lock_token)`; the token is the client order ID shown by `get_entry_lock()`. Never clear it until reconciliation confirms the exchange state. This does not coordinate separate hosts/databases or eliminate exchange-side race conditions.
