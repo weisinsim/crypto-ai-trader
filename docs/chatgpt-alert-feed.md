@@ -2,7 +2,7 @@
 
 The dashboard exposes a read-only JSON endpoint at `/api/chatgpt/alerts`.
 
-It returns only fresh, confirmed directional candidates with valid entry/stop/target geometry. It does not send push notifications and does not place orders. An empty `alerts` array means no eligible fresh candidate was found.
+It returns only fresh, confirmed directional candidates with valid entry/stop/target geometry. The feed fails closed unless market status is `LIVE` and its heartbeat was updated within the last 120 seconds; stale, future, or malformed heartbeat timestamps suppress all alerts. It does not send push notifications and does not place orders. An empty `alerts` array means no eligible fresh candidate was found or the market-health gate suppressed candidates.
 
 ## Make it available to a ChatGPT scheduled task
 
