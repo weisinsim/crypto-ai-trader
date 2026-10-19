@@ -48,7 +48,7 @@ class ExecutionSafetyTests(unittest.TestCase):
 
     def test_short_geometry_is_checked(self):
         result = validate_order_intent(
-            self.intent(side="SELL", stop_loss=100.2, take_profit=99.5),
+            self.intent(side="SELL", stop_loss=99.8, take_profit=99.5),
             ExecutionConfig(),
         )
         self.assertFalse(result.allowed)
