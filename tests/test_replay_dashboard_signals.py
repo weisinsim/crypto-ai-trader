@@ -2,7 +2,7 @@ import unittest
 import tempfile
 from pathlib import Path
 
-from validation.replay_dashboard_signals import ema, rsi, atr, adx, replay, ts_ms, read_rows, closed_rows_at, signal_state_for, risk_levels, validate_candle_cadence
+from validation.replay_dashboard_signals import ema, rsi, atr, adx, replay, ts_ms, read_rows, closed_rows_at, closed_four_count_at, signal_state_for, risk_levels, validate_candle_cadence
 
 
 class ReplayDashboardSignalsTests(unittest.TestCase):
