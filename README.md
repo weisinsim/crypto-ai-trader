@@ -152,3 +152,11 @@ The testnet adapter now supports cancelling one explicitly identified order by `
 ### Durable runtime risk state
 
 `execution/runtime_state_store.py` persists UTC-day realized-PnL events, exchange-derived exposure metrics, consecutive execution errors, and the emergency stop flag in SQLite. State survives process restarts; missing account metrics return no snapshot and therefore must block entries. Callers must refresh exposure from an authoritative exchange snapshot, deduplicate realized-PnL fill events, and check snapshot freshness before entry. This local database is not distributed coordination and does not replace a live supervisor, fill stream, reconciliation loop, or independent account-level risk checks.
+
+
+
+### Single-tick TESTNET supervisor
+
+`execution/testnet_supervisor.py` now composes signed account preflight, fresh gross exposure metrics from the TESTNET account, SQLite risk-state refresh, the fail-closed runtime gate, existing-position protection recovery, and the guarded entry workflow. Call `TestnetSupervisor.run_once(...)` from an externally supervised process; this module intentionally does not run an unattended loop or generate signals. It never submits an entry if account metrics are missing, account preflight fails, the persisted kill switch/risk gate blocks, or an existing position lacks explicit recovery stop/target metadata. A supplied entry is submitted at most once by the guarded flow; ambiguous outcomes are not retried.
+
+The supervisor depends on authoritative account-position `notional` fields and fails closed when an open position lacks them. Its local SQLite store is single-host state, not distributed locking. Exchange refresh and order submission are still separate operations with race windows; this is a TESTNET integration milestone, not production approval. Keep keys restricted to TESTNET and do not configure production credentials. Real-money execution remains disabled.
