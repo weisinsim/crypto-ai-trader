@@ -59,7 +59,12 @@ class EntryAlertStore:
         ):
             return False
         payload = json.dumps(event, sort_keys=True, separators=(",", ":"), allow_nan=False)
-        created_at = time.time() if now is None else float(now)
+        try:
+            if isinstance(now, bool):
+                return False
+            created_at = time.time() if now is None else float(now)
+        except (TypeError, ValueError, OverflowError):
+            return False
         if not math.isfinite(created_at) or created_at <= 0:
             return False
         with self._connect() as conn:
