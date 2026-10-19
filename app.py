@@ -1,6 +1,7 @@
 import asyncio
 import json
 import hashlib
+import math
 import time
 from validation.candle_closure import filter_closed_candles, normalize_timestamp_ms, upsert_candle, validate_candle_series
 from validation.dashboard_health import build_health_payload
@@ -171,11 +172,11 @@ async def chatgpt_alert_feed():
             continue
         if model_status not in ("RESEARCH", "FROZEN", "PRODUCTION"):
             continue
-        if not isinstance(candle_time, (int, float)) or candle_time <= 0 or candle_time > now * 1000:
+        if not isinstance(candle_time, (int, float)) or not math.isfinite(candle_time) or candle_time <= 0 or candle_time > now * 1000:
             continue
         if now * 1000 - candle_time > max_age_seconds * 1000:
             continue
-        if not isinstance(analysis_time, (int, float)) or analysis_time <= 0 or now - analysis_time > max_age_seconds:
+        if not isinstance(analysis_time, (int, float)) or not math.isfinite(analysis_time) or analysis_time <= 0 or analysis_time > now or now - analysis_time > max_age_seconds:
             continue
         entry = item.get("confirmed_entry")
         stop = item.get("confirmed_sl")
