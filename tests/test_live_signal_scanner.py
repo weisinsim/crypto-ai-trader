@@ -71,6 +71,33 @@ class ScanOnceTests(unittest.TestCase):
         self.assertTrue(store.events[0]["research_only"])
         self.assertFalse(store.events[0]["auto_trade_authorized"])
 
+    def test_normalizes_raw_dashboard_confirmed_fields(self):
+        snapshot = dict(self.snapshot)
+        for key in ("entry", "sl", "tp1", "tp2", "score"):
+            snapshot.pop(key, None)
+        snapshot.update({
+            "confirmed_signal": "LONG",
+            "confirmed_entry": 65000.0,
+            "confirmed_sl": 64500.0,
+            "confirmed_tp1": 66000.0,
+            "confirmed_tp2": 66500.0,
+            "confirmed_score": 82,
+        })
+        class Store:
+            def __init__(self):
+                self.events = []
+            def enqueue(self, event, now=None):
+                self.events.append(event)
+                return True
+        store = Store()
+        result = scan_once(
+            symbols=["BTCUSDT"], interval="1h", market_data=self.market,
+            snapshot_provider=lambda symbol: dict(snapshot), store=store, now_ms=NOW,
+        )
+        self.assertEqual(result["queued"], 1)
+        self.assertEqual(store.events[0]["entry"], 65000.0)
+        self.assertEqual(store.events[0]["score"], 82)
+
     def test_rejects_signal_not_for_latest_closed_candle(self):
         self.snapshot["confirmed_signal_time"] -= 3_600_000
         class Store:
