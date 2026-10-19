@@ -66,5 +66,19 @@ class RuntimeStateStoreTests(unittest.TestCase):
         self.assertFalse(validate_runtime_state(snapshot, max_snapshot_age_seconds=30).allowed)
 
 
+
+    def test_order_attempt_claim_is_atomic_and_survives_reopen(self):
+        fingerprint = "a" * 64
+        self.assertTrue(self.store.claim_order_attempt("order-1", fingerprint))
+        self.assertFalse(self.store.claim_order_attempt("order-1", fingerprint))
+        self.store.update_order_attempt("order-1", "RECONCILIATION_REQUIRED")
+        self.assertEqual(self.store.get_order_attempt("order-1")["status"], "RECONCILIATION_REQUIRED")
+        reopened = RuntimeStateStore(str(Path(self.temp.name) / "risk.sqlite"))
+        self.assertFalse(reopened.claim_order_attempt("order-1", fingerprint))
+
+    def test_order_attempt_rejects_invalid_fingerprint(self):
+        with self.assertRaises(ValueError):
+            self.store.claim_order_attempt("order-2", "not-a-sha256")
+
 if __name__ == "__main__":
     unittest.main()
