@@ -5,6 +5,10 @@ It never chooses a signal, never enables live trading, and never retries an
 ambiguous entry. Existing exposure is recovered only when explicit protective
 levels are supplied; otherwise it fails closed.
 """
+import hashlib
+import json
+from dataclasses import asdict, is_dataclass
+
 from execution.runtime_guard import RuntimeRiskConfig, validate_runtime_state
 from execution.runtime_state_store import RuntimeStateStore
 from execution.safety import ExecutionConfig
@@ -97,10 +101,35 @@ class TestnetSupervisor:
             self.state_store.record_execution_result(False)
             return {"ok": False, "reason": "entry_metadata_missing_or_symbol_mismatch",
                     "entry_submitted": False}
-        # The runtime snapshot has just been populated from exchange account data.
+        # Durable one-shot reservation prevents accidental ID reuse after restart
+        # or an ambiguous network outcome.
+        try:
+            intent_payload = asdict(intent) if is_dataclass(intent) else vars(intent)
+            fingerprint = hashlib.sha256(json.dumps(
+                intent_payload, sort_keys=True, separators=(",", ":"), default=str
+            ).encode("utf-8")).hexdigest()
+            claimed = self.state_store.claim_order_attempt(client_order_id, fingerprint)
+        except Exception as exc:
+            self.state_store.record_execution_result(False)
+            return {"ok": False, "reason": "order_attempt_reservation_failed",
+                    "error_type": type(exc).__name__, "entry_submitted": False}
+        if not claimed:
+            previous = self.state_store.get_order_attempt(client_order_id)
+            return {"ok": False, "reason": "client_order_id_already_reserved",
+                    "previous_attempt": previous, "entry_submitted": False,
+                    "requires_reconciliation": True}
         result = execute_guarded_testnet_entry(
             self.adapter, intent, client_order_id, client_order_prefix, snapshot,
             runtime_config=self.runtime_config, execution_config=self.execution_config
         )
+        if result.get("ok"):
+            status = "COMPLETED"
+        elif result.get("requires_reconciliation") or "ambiguous" in str(result.get("reason", "")):
+            status = "RECONCILIATION_REQUIRED"
+        elif result.get("reason") == "market_order_rejected":
+            status = "REJECTED"
+        else:
+            status = "SUBMITTED" if result.get("entry_submitted") else "REJECTED"
+        self.state_store.update_order_attempt(client_order_id, status)
         self.state_store.record_execution_result(bool(result.get("ok")))
         return result
