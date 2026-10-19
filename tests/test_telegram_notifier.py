@@ -1,6 +1,7 @@
 """Tests for Telegram delivery adapter with a mocked transport."""
 import json
 import unittest
+from urllib.parse import parse_qs
 
 from execution.telegram_notifier import (
     NotificationDeliveryError,
@@ -46,7 +47,7 @@ class TelegramNotifierTests(unittest.TestCase):
         self.assertTrue(result["delivered"])
         self.assertEqual(result["message_id"], 123)
         self.assertIn("api.telegram.org", captured["url"])
-        self.assertIn("NOT LIVE-APPROVED", captured["body"])
+        self.assertIn("NOT LIVE-APPROVED", parse_qs(captured["body"])["text"][0])
 
     def test_missing_credentials_fail_without_network(self):
         called = []
