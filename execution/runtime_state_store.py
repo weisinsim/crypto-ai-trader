@@ -52,6 +52,14 @@ class RuntimeStateStore:
                     updated_at REAL NOT NULL
                 )
             """)
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS order_attempts (
+                    client_order_id TEXT PRIMARY KEY,
+                    intent_fingerprint TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at REAL NOT NULL
+                )
+            """)
             db.execute(
                 "INSERT OR IGNORE INTO runtime_control(id, emergency_stop, consecutive_errors, updated_at) VALUES(1, 0, 0, ?)",
                 (datetime.now(timezone.utc).timestamp(),),
@@ -120,6 +128,48 @@ class RuntimeStateStore:
         with self._connect() as db:
             db.execute("UPDATE runtime_control SET emergency_stop=?, updated_at=? WHERE id=1",
                        (int(enabled), datetime.now(timezone.utc).timestamp()))
+
+
+    def claim_order_attempt(self, client_order_id, intent_fingerprint):
+        """Atomically reserve an order ID once; never auto-reuse after restart/ambiguity."""
+        if not isinstance(client_order_id, str) or not client_order_id or len(client_order_id) > 36:
+            raise ValueError("invalid_client_order_id")
+        if not isinstance(intent_fingerprint, str) or len(intent_fingerprint) != 64:
+            raise ValueError("invalid_intent_fingerprint")
+        try:
+            int(intent_fingerprint, 16)
+        except ValueError as exc:
+            raise ValueError("invalid_intent_fingerprint") from exc
+        with self._connect() as db:
+            cursor = db.execute(
+                "INSERT OR IGNORE INTO order_attempts(client_order_id, intent_fingerprint, status, created_at) VALUES(?, ?, 'CLAIMED', ?)",
+                (client_order_id, intent_fingerprint, datetime.now(timezone.utc).timestamp()),
+            )
+            return cursor.rowcount == 1
+
+    def update_order_attempt(self, client_order_id, status):
+        """Record outcome metadata; status changes never release the unique client ID."""
+        if not isinstance(client_order_id, str) or not client_order_id:
+            raise ValueError("invalid_client_order_id")
+        if status not in {"CLAIMED", "REJECTED", "SUBMITTED", "RECONCILIATION_REQUIRED", "COMPLETED"}:
+            raise ValueError("invalid_order_attempt_status")
+        with self._connect() as db:
+            cursor = db.execute(
+                "UPDATE order_attempts SET status=? WHERE client_order_id=?",
+                (status, client_order_id),
+            )
+            return cursor.rowcount == 1
+
+    def get_order_attempt(self, client_order_id):
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT client_order_id, intent_fingerprint, status, created_at FROM order_attempts WHERE client_order_id=?",
+                (client_order_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return {"client_order_id": row[0], "intent_fingerprint": row[1],
+                "status": row[2], "created_at": row[3]}
 
     def load_snapshot(self, now_epoch=None) -> Optional[RuntimeSnapshot]:
         now = self._finite_number(
