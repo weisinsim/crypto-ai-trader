@@ -137,3 +137,8 @@ The testnet adapter now supports cancelling one explicitly identified order by `
 ### Runtime risk gate (paper/testnet only)
 
 `execution/runtime_guard.py` adds a fail-closed runtime gate for an execution worker to call before each new entry. It blocks missing/stale account snapshots, an emergency-stop flag, daily realized-loss threshold, concurrent-position and notional limits, and repeated execution errors. The defaults are conservative placeholders (10 USDT daily realized loss, one open position, 100 USDT symbol/total notional, three consecutive execution errors). A production runner must provide authoritative and freshly reconciled state and persist the daily loss/error counters; this module does not itself persist state, calculate unrealized PnL, or submit/cancel orders. It is not yet wired into a continuously running order worker and is not live-trading approval.
+
+
+### Guarded TESTNET entry flow
+
+`execution/testnet_entry_flow.py` connects the intent gate, runtime kill-switch/risk gate, signed account preflight, a single explicitly identified TESTNET market-order submission, order/position reconciliation, and protective-exit verification. It never targets production and never automatically retries an ambiguous market-order request. If an entry appears to have opened exposure but protection cannot be verified, it returns an explicit reconciliation-required result. This is still a single-pass callable workflow, not a persistent supervisor: exchange-state races, partial fills, process restarts, daily-PnL persistence, and ongoing protective-order monitoring remain unresolved. Do not run against real funds or treat testnet success as evidence of strategy profitability.
