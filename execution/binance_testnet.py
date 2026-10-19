@@ -143,5 +143,68 @@ class BinanceFuturesTestnet:
             "risk_usdt_estimate": round(decision.risk_usdt, 8),
         }
 
+    def submit_testnet_market_order(self, intent: OrderIntent, client_order_id: str, config=None):
+        """Submit a MARKET order to TESTNET only; production trading is not supported.
+
+        This is deliberately a low-level testnet integration step, not a complete
+        trading lifecycle: callers must not use it until position reconciliation,
+        protective exits, kill-switch enforcement and restart recovery are integrated.
+        """
+        config = config or ExecutionConfig(mode="testnet")
+        if config.mode != "testnet" or config.live_trading_enabled:
+            return {"accepted": False, "reason": "testnet_mode_required"}
+        if not isinstance(client_order_id, str) or not client_order_id or len(client_order_id) > 36:
+            return {"accepted": False, "reason": "invalid_client_order_id"}
+        if not client_order_id.replace("-", "").replace("_", "").isalnum():
+            return {"accepted": False, "reason": "invalid_client_order_id"}
+        decision = validate_order_intent(intent, config)
+        if not decision.allowed:
+            return {"accepted": False, "reason": decision.reason}
+        try:
+            rules = self.symbol_rules(intent.symbol)
+            if rules["status"] != "TRADING":
+                return {"accepted": False, "reason": "symbol_not_trading"}
+            quantity = Decimal(str(intent.quantity))
+            step = Decimal(str(rules["quantity_step"]))
+            minimum = Decimal(str(rules["min_quantity"]))
+            maximum = Decimal(str(rules["max_quantity"]))
+            if step <= 0 or minimum <= 0 or maximum < minimum:
+                return {"accepted": False, "reason": "invalid_exchange_quantity_filters"}
+            quantity = (quantity / step).to_integral_value(rounding=ROUND_DOWN) * step
+            if quantity < minimum:
+                return {"accepted": False, "reason": "quantity_below_exchange_minimum"}
+            if quantity > maximum:
+                return {"accepted": False, "reason": "quantity_above_exchange_maximum"}
+            min_notional = rules["min_notional"]
+            if min_notional is not None and Decimal(str(intent.entry)) * quantity < Decimal(str(min_notional)):
+                return {"accepted": False, "reason": "notional_below_exchange_minimum"}
+            quantity_text = format(quantity, "f")
+            if "." in quantity_text:
+                quantity_text = quantity_text.rstrip("0").rstrip(".")
+        except (ValueError, InvalidOperation, TypeError, KeyError):
+            return {"accepted": False, "reason": "exchange_preflight_failed"}
+        params = self._signed_params({
+            "symbol": intent.symbol,
+            "side": intent.side,
+            "type": "MARKET",
+            "quantity": quantity_text,
+            "newClientOrderId": client_order_id,
+        })
+        response = self._client.post("/fapi/v1/order", params=params)
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict) or "orderId" not in payload:
+            return {"accepted": False, "reason": "unexpected_testnet_order_response"}
+        return {
+            "accepted": True,
+            "mode": "testnet_order_submitted",
+            "symbol": intent.symbol,
+            "side": intent.side,
+            "quantity": quantity_text,
+            "client_order_id": client_order_id,
+            "exchange_order_id": str(payload["orderId"]),
+            "status": payload.get("status", "UNKNOWN"),
+        }
+
     def close(self):
         self._client.close()
