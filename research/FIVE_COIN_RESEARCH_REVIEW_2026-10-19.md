@@ -29,30 +29,26 @@ The job logs explicitly reject comparable adaptive results unless historical fun
 
 ## Engineering gate: historical replay optimization PR #188
 
-PR #187 is the superseded, conflict-prone draft. The active candidate is PR #188, rebased onto current `main` at `1924aaaa906c9ae941164910932eb43e4d2d34d5`. Keep the closed-4h-candle guard (candle open timestamp + 4h interval <= hourly decision close), and require indicator/signal parity before accepting the optimization. PR #188 is still draft and requires human review before merge.
+PR #187 is the superseded, conflict-prone draft. The active candidate is PR #188, rebased onto current `main` at `1924aaaa906c9ae941164910932eb43e4d2d34d5`:
+https://github.com/weisinsim/crypto-ai-trader/pull/188
+
+The active branch preserves the closed-4h-candle guard (candle open timestamp + 4h interval <= hourly decision close) and adds prefix EMA/RSI parity, candle-boundary, and bounded-window indicator regression tests. PR #188 remains open and draft, and has not been merged.
+
+The following GitHub Actions checks passed on the current PR head `b6c29b349d3c5106b2a1b5cfe03a2ad7148789e7`:
+- Research test suite: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39201532803
+- Python validation: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39201532811
+- Validation audit tests: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39201532709
+
+These tests establish code-level validation only; they do not satisfy the separate historical-market-data differential replay requirement below.
 
 ## Required next steps
 
-1. Resolve PR #187 base conflict on a dedicated branch without overwriting current main fixes.
-2. Add/execute differential replay tests on representative BTC, ETH, SOL, AVAX, and XRP history; compare signals and indicator values, not only unit-level calculations.
-3. Reconcile funding cashflows against verified exchange settlement/mark-price records, plus fees and slippage. Current proxy alignment alone is not reconciliation.
-4. Run independent walk-forward/holdout tests after candidate selection is frozen; report all costs and drawdowns.
-5. Keep live order execution disabled until all gates pass and a separate explicit authorization is given.
+1. Run differential replay on representative BTC, ETH, SOL, AVAX, and XRP history; compare timestamp-by-timestamp signals and indicator values between baseline and optimized replay, including closed-candle boundaries.
+2. Reconcile funding cashflows against verified exchange settlement/mark-price records, plus fees and slippage. Current proxy alignment alone is not reconciliation.
+3. Run independent walk-forward/holdout tests after candidate selection is frozen; report all costs and drawdowns.
+4. Have a human review PR #188 and explicitly decide whether to merge. Do not merge automatically.
+5. Keep live order execution disabled until all research gates pass and a separate explicit authorization is given.
 
 ## Decision
 
-**NO LIVE TRADING APPROVAL.** Current diagnostics do not establish robust, cost-resilient, funding-reconciled out-of-sample profitability.
-
-
-## Engineering update — 2026-10-19
-
-The original PR #187 conflict was addressed on a separate rebased branch and superseded by draft PR #188:
-https://github.com/weisinsim/crypto-ai-trader/pull/188
-
-Current replay-optimization head: `b7957edee2cbee192de0da90b4dc5ba90e7ed222`.
-The branch preserves closed-4h-candle filtering and adds prefix EMA/RSI parity, candle-boundary, and bounded-window indicator regression coverage. GitHub reports the PR is open, draft, and mergeable. Automated checks on the current head (`b7957ed...`) passed:
-- Research test suite: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39201063964
-- Python validation: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39201063986
-- Validation audit tests: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39201063969
-
-These tests establish code-level validation only; they do not satisfy the separate historical-market-data differential replay requirement above. No verified funding settlement cashflow dataset has been reconciled in this update. Strategy selection remains blocked by cost/funding/out-of-sample gates, and live execution remains disabled. PR #188 requires human review before merge.
+**NO LIVE TRADING APPROVAL.** Current diagnostics do not establish robust, cost-resilient, funding-reconciled out-of-sample profitability. No verified funding settlement cashflow dataset has been reconciled in this update. Strategy selection remains blocked by cost/funding/out-of-sample gates, and live execution remains disabled.
