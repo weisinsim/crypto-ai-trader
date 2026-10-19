@@ -2,6 +2,7 @@
 import json
 import unittest
 
+from execution.alert_store import EntryAlertStore
 from execution.live_signal_scanner import BinanceUsdMMarketData, MarketDataError, scan_once
 
 
@@ -97,6 +98,28 @@ class ScanOnceTests(unittest.TestCase):
         self.assertEqual(result["queued"], 1)
         self.assertEqual(store.events[0]["entry"], 65000.0)
         self.assertEqual(store.events[0]["score"], 82)
+
+    def test_real_outbox_deduplicates_repeated_scan(self):
+        store = EntryAlertStore(":memory:")
+        try:
+            first = scan_once(
+                symbols=["BTCUSDT"], interval="1h", market_data=self.market,
+                snapshot_provider=lambda symbol: dict(self.snapshot), store=store, now_ms=NOW,
+            )
+            second = scan_once(
+                symbols=["BTCUSDT"], interval="1h", market_data=self.market,
+                snapshot_provider=lambda symbol: dict(self.snapshot), store=store, now_ms=NOW,
+            )
+            self.assertEqual(first["queued"], 1)
+            self.assertEqual(second["queued"], 0)
+            self.assertEqual(second["duplicates"], 1)
+            pending = store.pending()
+            self.assertEqual(len(pending), 1)
+            self.assertTrue(pending[0]["event"]["notification_only"])
+            self.assertFalse(pending[0]["event"]["auto_trade_authorized"])
+        finally:
+            if store._memory_conn is not None:
+                store._memory_conn.close()
 
     def test_rejects_signal_not_for_latest_closed_candle(self):
         self.snapshot["confirmed_signal_time"] -= 3_600_000
