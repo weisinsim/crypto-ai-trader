@@ -129,3 +129,6 @@ The Binance USD-M TESTNET adapter now includes `submit_testnet_market_order(...,
 
 
 The protective-exit orchestrator now performs a second authoritative testnet snapshot after both requests and verifies that the position and entry price did not change, exactly one active reduce-only stop and target exist, and both orders have the expected side, trigger, and full current position quantity. Any mismatch fails closed and requires manual/external reconciliation. This narrows race and silent-rejection risk but does not solve partial fills, atomic OCO/sibling cancellation, or ambiguous network outcomes.
+
+
+The testnet adapter now supports cancelling one explicitly identified order by `origClientOrderId` (not bulk symbol cancellation). `cancel_testnet_sibling_after_flatten(...)` only requests sibling cancellation after the primary exit is confirmed `FILLED` with positive executed quantity and a fresh snapshot confirms the position is flat; partial fills and non-flat positions leave the sibling in place. It then checks cancellation acknowledgement and takes another position snapshot. This is a callable recovery primitive, not a continuous fill monitor; it cannot eliminate exchange/network races and must be exercised on testnet before operational use.
