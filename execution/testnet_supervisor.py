@@ -101,35 +101,98 @@ class TestnetSupervisor:
             self.state_store.record_execution_result(False)
             return {"ok": False, "reason": "entry_metadata_missing_or_symbol_mismatch",
                     "entry_submitted": False}
-        # Durable one-shot reservation prevents accidental ID reuse after restart
-        # or an ambiguous network outcome.
+        # Serialize entry decisions across processes sharing this SQLite database.
+        # If this process crashes or sees an ambiguous result, keep the lock so that
+        # a human must reconcile the exchange before any later entry can proceed.
         try:
-            intent_payload = asdict(intent) if is_dataclass(intent) else vars(intent)
-            fingerprint = hashlib.sha256(json.dumps(
-                intent_payload, sort_keys=True, separators=(",", ":"), default=str
-            ).encode("utf-8")).hexdigest()
-            claimed = self.state_store.claim_order_attempt(client_order_id, fingerprint)
+            lock_claimed = self.state_store.claim_entry_lock(client_order_id)
         except Exception as exc:
             self.state_store.record_execution_result(False)
-            return {"ok": False, "reason": "order_attempt_reservation_failed",
+            return {"ok": False, "reason": "entry_lock_error",
                     "error_type": type(exc).__name__, "entry_submitted": False}
-        if not claimed:
-            previous = self.state_store.get_order_attempt(client_order_id)
-            return {"ok": False, "reason": "client_order_id_already_reserved",
-                    "previous_attempt": previous, "entry_submitted": False,
-                    "requires_reconciliation": True}
-        result = execute_guarded_testnet_entry(
-            self.adapter, intent, client_order_id, client_order_prefix, snapshot,
-            runtime_config=self.runtime_config, execution_config=self.execution_config
-        )
-        if result.get("ok"):
-            status = "COMPLETED"
-        elif result.get("requires_reconciliation") or "ambiguous" in str(result.get("reason", "")):
-            status = "RECONCILIATION_REQUIRED"
-        elif result.get("reason") == "market_order_rejected":
-            status = "REJECTED"
-        else:
-            status = "SUBMITTED" if result.get("entry_submitted") else "REJECTED"
-        self.state_store.update_order_attempt(client_order_id, status)
-        self.state_store.record_execution_result(bool(result.get("ok")))
-        return result
+        if not lock_claimed:
+            return {"ok": False, "reason": "entry_lock_held",
+                    "active_lock": self.state_store.get_entry_lock(),
+                    "entry_submitted": False, "requires_reconciliation": True}
+
+        release_lock = False
+        try:
+            # Re-read exchange risk and position only after taking the lock. This
+            # closes the stale-preflight race between concurrent supervisor calls.
+            metrics = self.adapter.account_risk_metrics(symbol)
+            if not isinstance(metrics, dict) or not metrics.get("ok"):
+                self.state_store.record_execution_result(False)
+                release_lock = True
+                return {"ok": False, "reason": "exchange_risk_metrics_unavailable_under_lock",
+                        "entry_submitted": False}
+            self.state_store.update_exchange_metrics(
+                metrics["open_positions"], metrics["symbol_notional_usdt"],
+                metrics["total_notional_usdt"]
+            )
+            snapshot = self.state_store.load_snapshot()
+            decision = validate_runtime_state(snapshot, self.runtime_config,
+                                              self.max_snapshot_age_seconds)
+            if not decision.allowed:
+                self.state_store.record_execution_result(False)
+                release_lock = True
+                return {"ok": False, "reason": decision.reason, "stage": "runtime_gate_under_lock",
+                        "entry_submitted": False}
+            position = self.adapter.testnet_position_snapshot(symbol)
+            if not isinstance(position, dict) or not position.get("ok"):
+                self.state_store.record_execution_result(False)
+                return {"ok": False, "reason": "position_recheck_failed_under_lock",
+                        "entry_submitted": False, "requires_reconciliation": True}
+            try:
+                current_amount = float(position["position_amount"])
+            except (KeyError, TypeError, ValueError, OverflowError):
+                current_amount = float("nan")
+            if not __import__("math").isfinite(current_amount):
+                self.state_store.record_execution_result(False)
+                return {"ok": False, "reason": "position_amount_invalid_under_lock",
+                        "entry_submitted": False, "requires_reconciliation": True}
+            if current_amount != 0:
+                self.state_store.record_execution_result(False)
+                return {"ok": False, "reason": "position_opened_by_concurrent_activity",
+                        "entry_submitted": False, "requires_reconciliation": True}
+
+            try:
+                intent_payload = asdict(intent) if is_dataclass(intent) else vars(intent)
+                fingerprint = hashlib.sha256(json.dumps(
+                    intent_payload, sort_keys=True, separators=(",", ":"), default=str
+                ).encode("utf-8")).hexdigest()
+                claimed = self.state_store.claim_order_attempt(client_order_id, fingerprint)
+            except Exception as exc:
+                self.state_store.record_execution_result(False)
+                release_lock = True
+                return {"ok": False, "reason": "order_attempt_reservation_failed",
+                        "error_type": type(exc).__name__, "entry_submitted": False}
+            if not claimed:
+                previous = self.state_store.get_order_attempt(client_order_id)
+                self.state_store.record_execution_result(False)
+                release_lock = previous is not None and previous.get("status") in {"COMPLETED", "REJECTED"}
+                return {"ok": False, "reason": "client_order_id_already_reserved",
+                        "previous_attempt": previous, "entry_submitted": False,
+                        "requires_reconciliation": not release_lock}
+
+            result = execute_guarded_testnet_entry(
+                self.adapter, intent, client_order_id, client_order_prefix, snapshot,
+                runtime_config=self.runtime_config, execution_config=self.execution_config
+            )
+            if result.get("ok"):
+                status = "COMPLETED"
+            elif result.get("requires_reconciliation") or "ambiguous" in str(result.get("reason", "")):
+                status = "RECONCILIATION_REQUIRED"
+            elif result.get("reason") == "market_order_rejected":
+                status = "REJECTED"
+            else:
+                status = "SUBMITTED" if result.get("entry_submitted") else "REJECTED"
+            self.state_store.update_order_attempt(client_order_id, status)
+            self.state_store.record_execution_result(bool(result.get("ok")))
+            release_lock = not (
+                result.get("requires_reconciliation")
+                or "ambiguous" in str(result.get("reason", ""))
+            )
+            return result
+        finally:
+            if release_lock:
+                self.state_store.release_entry_lock(client_order_id)
