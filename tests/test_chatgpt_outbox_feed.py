@@ -55,6 +55,29 @@ class ChatGPTOutboxFeedTests(unittest.TestCase):
         self.assertEqual(payload["alerts"], [])
         self.assertIn("suppressed", payload["note"])
 
+    def test_rejects_mismatched_event_identity_and_trade_authorization(self):
+        store = EntryAlertStore(self.db)
+        self.event["event_id"] = "payload-id"
+        store.enqueue(self.event, now=time.time())
+        # Simulate a corrupt/mismatched payload inside the stored row.
+        import sqlite3
+        with sqlite3.connect(self.db) as conn:
+            conn.execute(
+                "UPDATE entry_alert_outbox SET payload_json = replace(payload_json, 'payload-id', 'different-id')"
+            )
+        with patch.dict(os.environ, {"ALERT_OUTBOX_DB": self.db}):
+            payload = asyncio.run(dashboard.chatgpt_outbox_alert_feed())
+        self.assertEqual(payload["alerts"], [])
+
+    def test_rejects_unsafe_trade_authorization_flag(self):
+        self.event["auto_trade_authorized"] = True
+        # Outbox itself refuses an unsafe event, so directly assert no row is created.
+        store = EntryAlertStore(self.db)
+        self.assertFalse(store.enqueue(self.event, now=time.time()))
+        with patch.dict(os.environ, {"ALERT_OUTBOX_DB": self.db}):
+            payload = asyncio.run(dashboard.chatgpt_outbox_alert_feed())
+        self.assertEqual(payload["alerts"], [])
+
     def test_invalid_geometry_is_suppressed(self):
         self.event["stop_loss"] = 105.0
         EntryAlertStore(self.db).enqueue(self.event, now=time.time())
