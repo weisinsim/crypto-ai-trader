@@ -64,6 +64,24 @@ class IndicatorParityTests(unittest.TestCase):
                 self.assert_close_or_both_none(ema_values[end - 1], replay.ema(values[:end], 20))
                 self.assert_close_or_both_none(rsi_values[end - 1], replay.rsi(values[:end]))
 
+    def test_series_parity_across_distinct_price_regimes(self):
+        paths = [
+            [200.0 - i * 0.11 + ((i * 7) % 9) * 0.08 for i in range(180)],
+            [80.0 + ((-1) ** i) * (i % 13) * 0.35 for i in range(180)],
+            [100.0 + (0.4 if i % 17 < 8 else -0.3) * i / 10 for i in range(180)],
+        ]
+        for values in paths:
+            ema_values = replay.ema_series(values, 20)
+            rsi_values = replay.rsi_series(values)
+            for end in range(1, len(values) + 1):
+                with self.subTest(end=end):
+                    self.assert_close_or_both_none(
+                        ema_values[end - 1], replay.ema(values[:end], 20)
+                    )
+                    self.assert_close_or_both_none(
+                        rsi_values[end - 1], replay.rsi(values[:end])
+                    )
+
     def test_atr_matches_live(self):
         self.assert_close_or_both_none(replay.atr(self.high, self.low, self.close), self.live["atr"](self.high, self.low, self.close))
 
