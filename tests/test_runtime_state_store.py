@@ -67,6 +67,15 @@ class RuntimeStateStoreTests(unittest.TestCase):
 
 
 
+
+    def test_entry_lock_is_exclusive_and_token_scoped(self):
+        self.assertTrue(self.store.claim_entry_lock("lock-1"))
+        self.assertFalse(self.store.claim_entry_lock("lock-2"))
+        self.assertEqual(self.store.get_entry_lock()["token"], "lock-1")
+        self.assertFalse(self.store.release_entry_lock("lock-2"))
+        self.assertTrue(self.store.release_entry_lock("lock-1"))
+        self.assertTrue(self.store.claim_entry_lock("lock-2"))
+
     def test_order_attempt_claim_is_atomic_and_survives_reopen(self):
         fingerprint = "a" * 64
         self.assertTrue(self.store.claim_order_attempt("order-1", fingerprint))
