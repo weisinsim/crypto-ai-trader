@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import app as dashboard
 from execution.alert_store import EntryAlertStore
+from execution.live_signal_scanner import scan_once
 
 
 class ChatGPTOutboxFeedTests(unittest.TestCase):
@@ -31,6 +32,40 @@ class ChatGPTOutboxFeedTests(unittest.TestCase):
         dashboard.market_status.clear()
         dashboard.market_status.update(self.original_status)
         self.tmp.cleanup()
+
+    def test_scanner_to_sqlite_to_chatgpt_feed_end_to_end(self):
+        now_ms = int(time.time() * 1000)
+        candle_boundary = (now_ms // 3_600_000) * 3_600_000
+
+        class Market:
+            def last_closed_candle_ms(self, symbol, interval, *, now_ms=None):
+                return candle_boundary
+
+        snapshot = {
+            "symbol": "BTCUSDT", "confirmed_signal": "LONG",
+            "confirmed_signal_time": candle_boundary, "analysis_ts": now_ms / 1000,
+            "confirmed_entry": 100.0, "confirmed_sl": 95.0,
+            "confirmed_tp1": 110.0, "confirmed_tp2": 115.0,
+            "confirmed_score": 80, "model_status": "RESEARCH",
+            "model_name": "test-model", "model_version": "test-v1",
+        }
+        store = EntryAlertStore(self.db)
+        result = scan_once(
+            symbols=["BTCUSDT"], interval="1h", market_data=Market(),
+            snapshot_provider=lambda _symbol: dict(snapshot), store=store, now_ms=now_ms,
+        )
+        self.assertEqual(result["queued"], 1)
+        with patch.dict(os.environ, {"ALERT_OUTBOX_DB": self.db}):
+            payload = asyncio.run(dashboard.chatgpt_outbox_alert_feed())
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["alerts"][0]["side"], "LONG")
+        self.assertFalse(payload["alerts"][0]["auto_trade_authorized"])
+        second = scan_once(
+            symbols=["BTCUSDT"], interval="1h", market_data=Market(),
+            snapshot_provider=lambda _symbol: dict(snapshot), store=store, now_ms=now_ms,
+        )
+        self.assertEqual(second["duplicates"], 1)
+        self.assertEqual(len(store.pending()), 1)
 
     def test_reads_valid_pending_event_without_marking_delivered(self):
         store = EntryAlertStore(self.db)
