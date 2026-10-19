@@ -2,7 +2,7 @@ import unittest
 import tempfile
 from pathlib import Path
 
-from validation.replay_dashboard_signals import ema, rsi, atr, adx, replay, ts_ms, read_rows, closed_rows_at, signal_state_for, risk_levels, validate_candle_cadence
+from validation.replay_dashboard_signals import ema, rsi, atr, adx, replay, ts_ms, read_rows, closed_rows_at, closed_four_count_at, signal_state_for, risk_levels, validate_candle_cadence
 
 
 class ReplayDashboardSignalsTests(unittest.TestCase):
@@ -125,16 +125,27 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
 
     def test_only_closed_higher_timeframe_bars_are_used(self):
         bars = [
-            {"ts": 0, "c": 1},                 # 00:00-04:00, closed
-            {"ts": 14_400_000, "c": 2},         # 04:00-08:00, closed
-            {"ts": 28_800_000, "c": 3},         # 08:00-12:00, still open
+            {"ts": 4 * 3_600_000 - 1, "c": 1},  # first candle close timestamp
+            {"ts": 8 * 3_600_000 - 1, "c": 2},  # second candle close timestamp
+            {"ts": 12 * 3_600_000 - 1, "c": 3}, # later candle has not closed
         ]
-        # At 11:00, only candles whose OPEN + 4h <= decision time are usable.
-        self.assertEqual(closed_rows_at(bars, 11 * 3_600_000), bars[:2])
+        # Close-time contract: a 4h candle is usable only at/after its close timestamp.
+        self.assertEqual(closed_rows_at(bars, 8 * 3_600_000 - 1), bars[:2])
+
+    def test_closed_higher_timeframe_bar_is_excluded_one_ms_before_close(self):
+        bars = [{"ts": 4 * 3_600_000 - 1, "c": 1}]
+        self.assertEqual(closed_rows_at(bars, 4 * 3_600_000 - 2), [])
 
     def test_closed_higher_timeframe_bar_is_included_at_exact_close(self):
-        bars = [{"ts": 4 * 3_600_000, "c": 1}, {"ts": 8 * 3_600_000, "c": 2}]
-        self.assertEqual(closed_rows_at(bars, 8 * 3_600_000), bars[:1])
+        bars = [{"ts": 4 * 3_600_000 - 1, "c": 1}, {"ts": 8 * 3_600_000 - 1, "c": 2}]
+        self.assertEqual(closed_rows_at(bars, 4 * 3_600_000 - 1), bars[:1])
+        self.assertEqual(closed_rows_at(bars, 8 * 3_600_000 - 1), bars)
+
+    def test_incremental_four_hour_cursor_uses_close_timestamps(self):
+        bars = [{"ts": 4 * 3_600_000 - 1}, {"ts": 8 * 3_600_000 - 1}]
+        self.assertEqual(closed_four_count_at(bars, 4 * 3_600_000 - 2), 0)
+        self.assertEqual(closed_four_count_at(bars, 4 * 3_600_000 - 1), 1)
+        self.assertEqual(closed_four_count_at(bars, 8 * 3_600_000 - 1), 2)
 
     def test_closed_rows_rejects_invalid_interval(self):
         with self.assertRaisesRegex(ValueError, "positive integer"):
