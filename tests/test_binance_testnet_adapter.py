@@ -31,6 +31,8 @@ class FakeClient:
 
     def get(self, path, params):
         self.get_calls.append((path, params))
+        if path == "/fapi/v1/openOrders":
+            return FakeResponse([{"orderId": 99, "clientOrderId": "stop-0001", "side": "SELL", "type": "STOP_MARKET", "status": "NEW", "reduceOnly": True, "stopPrice": "99.8", "origQty": "0.5", "executedQty": "0"}])
         if path == "/fapi/v1/order":
             return FakeResponse({"symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"), "orderId": 12345, "status": "PARTIALLY_FILLED", "executedQty": "0.2", "avgPrice": "100.1"})
         if path == "/fapi/v2/account":
@@ -206,6 +208,26 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         result = adapter.query_testnet_order("BTCUSDT", "invalid id")
         self.assertFalse(result["found"])
         self.assertEqual(result["reason"], "invalid_client_order_id")
+        self.assertEqual(client.get_calls, [])
+
+    def test_position_snapshot_reads_position_and_open_orders_without_mutation(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.testnet_position_snapshot("BTCUSDT")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["mode"], "testnet_read_only_snapshot")
+        self.assertEqual(result["position_amount"], "0")
+        self.assertEqual(result["open_orders"][0]["type"], "STOP_MARKET")
+        self.assertTrue(result["open_orders"][0]["reduce_only"])
+        self.assertEqual([call[0] for call in client.get_calls[:2]], ["/fapi/v2/account", "/fapi/v1/openOrders"])
+        self.assertEqual(client.calls, [])
+
+    def test_position_snapshot_rejects_invalid_symbol_without_network_call(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.testnet_position_snapshot("../BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "invalid_symbol")
         self.assertEqual(client.get_calls, [])
 
     def test_signed_request_uses_hmac_sha256(self):
