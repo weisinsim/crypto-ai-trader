@@ -17,7 +17,7 @@ from execution.safety import ExecutionConfig, OrderIntent, validate_order_intent
 TESTNET_BASE_URL = "https://testnet.binancefuture.com"
 
 
-class BinanceTestnetConfigurationError(RuntimeError):
+class BinanceBinanceTestnetConfigurationError(RuntimeError):
     pass
 
 
@@ -26,7 +26,7 @@ class BinanceFuturesTestnet:
         self.api_key = api_key if api_key is not None else os.getenv("BINANCE_TESTNET_API_KEY", "")
         self.api_secret = api_secret if api_secret is not None else os.getenv("BINANCE_TESTNET_API_SECRET", "")
         if not self.api_key or not self.api_secret:
-            raise TestnetConfigurationError(
+            raise BinanceTestnetConfigurationError(
                 "Set BINANCE_TESTNET_API_KEY and BINANCE_TESTNET_API_SECRET; never use production keys."
             )
         self._client = client or httpx.Client(
