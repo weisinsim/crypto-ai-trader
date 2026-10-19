@@ -389,5 +389,33 @@ class BinanceFuturesTestnet:
             "status": payload.get("status", "UNKNOWN"),
         }
 
+    def cancel_testnet_order(self, symbol: str, client_order_id: str):
+        """Cancel one known TESTNET order by client ID; never cancels by broad symbol."""
+        if not isinstance(symbol, str) or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
+            return {"cancelled": False, "reason": "invalid_symbol"}
+        if not isinstance(client_order_id, str) or not client_order_id or len(client_order_id) > 36:
+            return {"cancelled": False, "reason": "invalid_client_order_id"}
+        if not client_order_id.replace("-", "").replace("_", "").isalnum():
+            return {"cancelled": False, "reason": "invalid_client_order_id"}
+        response = self._client.delete(
+            "/fapi/v1/order",
+            params=self._signed_params({
+                "symbol": symbol,
+                "origClientOrderId": client_order_id,
+            }),
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict) or "orderId" not in payload:
+            return {"cancelled": False, "reason": "unexpected_testnet_cancel_response"}
+        return {
+            "cancelled": payload.get("status") == "CANCELED",
+            "mode": "testnet_order_cancelled",
+            "symbol": payload.get("symbol", symbol),
+            "client_order_id": payload.get("clientOrderId", client_order_id),
+            "exchange_order_id": str(payload["orderId"]),
+            "status": payload.get("status", "UNKNOWN"),
+        }
+
     def close(self):
         self._client.close()
