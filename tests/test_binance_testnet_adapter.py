@@ -31,6 +31,11 @@ class FakeClient:
 
     def get(self, path, params):
         self.get_calls.append((path, params))
+        if path == "/fapi/v2/account":
+            return FakeResponse({"canTrade": True, "positions": [
+                {"symbol": "BTCUSDT", "positionAmt": "0"},
+                {"symbol": "ETHUSDT", "positionAmt": "0.25"},
+            ]})
         return FakeResponse(self.exchange_payload)
 
     def post(self, path, params):
@@ -66,6 +71,25 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(client.calls[0][1]["side"], "BUY")
         self.assertEqual(client.calls[0][1]["quantity"], "0.5")
         self.assertNotIn("https://fapi.binance.com", client.base_url)
+
+    def test_account_preflight_uses_signed_testnet_read_only_endpoint(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.account_preflight()
+        self.assertEqual(result, {
+            "connected": True, "mode": "testnet", "can_trade": True, "open_position_count": 1,
+        })
+        self.assertEqual(client.get_calls[0][0], "/fapi/v2/account")
+        self.assertIn("signature", client.get_calls[0][1])
+        self.assertEqual(client.calls, [])
+
+    def test_account_preflight_rejects_unexpected_response(self):
+        class BadClient(FakeClient):
+            def get(self, path, params):
+                return FakeResponse({"unexpected": True})
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=BadClient())
+        with self.assertRaises(ValueError):
+            adapter.account_preflight()
 
     def test_symbol_rules_reads_quantity_and_notional_filters(self):
         client = FakeClient()
