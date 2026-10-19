@@ -232,7 +232,7 @@ def replay(symbol, one, four, *, include_states=False):
         c=c_all[max(0,i-29):i+1]; hi=hi_all[max(0,i-29):i+1]; lo=lo_all[max(0,i-29):i+1]
         h48=hi_all[max(0,i-47):i+1]; l48=lo_all[max(0,i-47):i+1]; c48=c_all[max(0,i-47):i+1]
         q=q_all[max(0,i-47):i+1]
-        a=atr(hi,lo,c); r=rsi_all[i]; ad=adx(hi,lo,c)
+        a=atr(hi,lo,c); r=rsi_all[i]; ad=adx(hi_all[:i+1],lo_all[:i+1],c_all[:i+1])
         vw=vwap(h48,l48,c48,q); sup,res=levels(h48,l48,c48)
         if None in (e20,e50,e200,e20_4,e50_4,a,r): continue
         side=""; entry=sl=target=None; score=0; direction=0; reason="NO-TRADE"
