@@ -3,7 +3,7 @@ import hmac
 import unittest
 from urllib.parse import urlencode
 
-from execution.binance_testnet import BinanceFuturesTestnet, TestnetConfigurationError, TESTNET_BASE_URL
+from execution.binance_testnet import BinanceFuturesTestnet, BinanceTestnetConfigurationError, TESTNET_BASE_URL
 from execution.safety import ExecutionConfig, OrderIntent
 
 
