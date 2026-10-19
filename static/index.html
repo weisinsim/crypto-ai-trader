@@ -146,9 +146,9 @@ async function refreshChatGPTAlerts(){
   listEl.replaceChildren();
   alerts.slice(0,10).forEach(a=>{
    const item=document.createElement("div");item.className="alertItem";
-   const title=document.createElement("b");title.textContent=String(a.symbol||"未知交易对")+" · "+String(a.signal||a.direction||"候选信号");
+   const title=document.createElement("b");title.textContent=String(a.symbol||"未知交易对")+" · "+String(a.side||a.signal||a.direction||"候选信号");
    const detail=document.createElement("div");detail.className="alertMuted";
-   detail.textContent="Entry "+(a.entry??"—")+" · SL "+(a.sl??a.stop_loss??"—")+" · TP1 "+(a.tp1??"—")+" · TP2 "+(a.tp2??"—");
+   detail.textContent="Entry "+(a.entry??"—")+" · SL "+(a.stop_loss??a.sl??"—")+" · TP1 "+(a.take_profit_1??a.tp1??"—")+" · TP2 "+(a.take_profit_2??a.tp2??"—");
    const safety=document.createElement("div");safety.className="alertMuted";
    safety.textContent="仅提醒："+(a.notification_only===true?"是":"待确认")+" · 自动交易授权："+(a.auto_trade_authorized===false?"关闭":"未确认");
    item.append(title,detail,safety);listEl.appendChild(item);
