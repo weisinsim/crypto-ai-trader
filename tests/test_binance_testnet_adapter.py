@@ -81,6 +81,30 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             adapter.symbol_rules("../BTCUSDT")
 
+    def test_quantity_is_rounded_down_to_exchange_step(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.validate_order(self.intent(quantity=0.5009), ExecutionConfig(mode="testnet"))
+        self.assertTrue(result["accepted"])
+        self.assertEqual(result["quantity"], "0.5")
+        self.assertEqual(client.calls[0][1]["quantity"], "0.5")
+
+    def test_quantity_below_exchange_minimum_is_rejected_without_order_request(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.validate_order(self.intent(quantity=0.0009), ExecutionConfig(mode="testnet"))
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "quantity_below_exchange_minimum")
+        self.assertEqual(client.calls, [])
+
+    def test_exchange_minimum_notional_is_enforced(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.validate_order(self.intent(quantity=0.01), ExecutionConfig(mode="testnet"))
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "notional_below_exchange_minimum")
+        self.assertEqual(client.calls, [])
+
     def test_signed_request_uses_hmac_sha256(self):
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=FakeClient())
         params = adapter._signed_params({"symbol": "BTCUSDT", "side": "BUY"})
