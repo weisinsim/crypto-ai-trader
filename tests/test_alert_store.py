@@ -22,6 +22,18 @@ class EntryAlertStoreTests(unittest.TestCase):
         self.assertFalse(store.enqueue(event))
         self.assertEqual(store.pending(), [])
 
+    def test_requires_alert_contract_fields(self):
+        store = EntryAlertStore(":memory:")
+        event = {"event_id": "candidate", "eligible": True, "symbol": "BTCUSDT", "side": "LONG"}
+        self.assertFalse(store.enqueue(event))
+        event["notification_only"] = True
+        event["auto_trade_authorized"] = True
+        self.assertFalse(store.enqueue(event))
+        event["auto_trade_authorized"] = False
+        event["side"] = "WATCH-LONG"
+        self.assertFalse(store.enqueue(event))
+        self.assertEqual(store.pending(), [])
+
     def test_mark_delivered_only_once(self):
         store = EntryAlertStore(":memory:")
         event = {"event_id": "abc", "eligible": True, "symbol": "BTCUSDT", "side": "SHORT", "notification_only": True, "auto_trade_authorized": False}
