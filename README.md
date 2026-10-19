@@ -172,3 +172,8 @@ The TESTNET supervisor now reserves each supplied `client_order_id` in SQLite be
 ### Exclusive TESTNET entry gate
 
 The supervisor now acquires a persistent SQLite entry lock before its final risk and position refresh, and repeats those checks while holding the lock. This serializes entry attempts among processes that share the same local database and narrows the race where two supervisors both see a flat account. Confirmed outcomes release the lock; ambiguous outcomes, exceptions after lock acquisition, and process crashes leave it in place and fail closed. After checking the exchange order history and current position/protective orders, an operator can explicitly clear a stale lock using `RuntimeStateStore.release_entry_lock(the_exact_lock_token)`; the token is the client order ID shown by `get_entry_lock()`. Never clear it until reconciliation confirms the exchange state. This does not coordinate separate hosts/databases or eliminate exchange-side race conditions.
+
+
+### Idempotent realized-PnL event ingestion
+
+`RuntimeStateStore.record_realized_pnl(amount_usdt, now=..., event_id=...)` accepts a stable exchange fill/trade event ID and records that event only once, including across process restarts. It returns `False` when the ID was already recorded. Any future fill importer must use the exchange's stable unique trade/fill identifier; calls without `event_id` remain legacy append-only and are not safe for retrying an exchange fill feed. This ledger is local SQLite state, not a substitute for reconciling exchange income/trade history.
