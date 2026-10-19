@@ -7,6 +7,7 @@ SQLite. It never sends messages or places orders.
 from __future__ import annotations
 
 import json
+import math
 import os
 import signal
 import threading
@@ -26,6 +27,12 @@ def fetch_snapshot(base_url, *, timeout=8):
     status = payload.get("status") or {}
     if not isinstance(status, dict) or status.get("status") != "LIVE":
         raise RuntimeError("dashboard_not_live")
+    updated = status.get("updated")
+    now = time.time()
+    if (not isinstance(updated, (int, float)) or isinstance(updated, bool)
+            or not math.isfinite(updated) or updated <= 0 or updated > now
+            or now - updated > 120):
+        raise RuntimeError("dashboard_heartbeat_stale")
     rows = payload.get("data")
     if not isinstance(rows, list):
         raise RuntimeError("dashboard_snapshot_invalid")
