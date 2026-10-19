@@ -45,6 +45,14 @@ class RuntimeStateStore:
                 )
             """)
             db.execute("""
+                CREATE TABLE IF NOT EXISTS realized_pnl_events (
+                    event_id TEXT PRIMARY KEY,
+                    day_utc TEXT NOT NULL,
+                    amount_usdt REAL NOT NULL,
+                    created_at REAL NOT NULL
+                )
+            """)
+            db.execute("""
                 CREATE TABLE IF NOT EXISTS runtime_control (
                     id INTEGER PRIMARY KEY CHECK (id = 1),
                     emergency_stop INTEGER NOT NULL,
@@ -105,18 +113,34 @@ class RuntimeStateStore:
                     updated_at=excluded.updated_at
             """, (open_positions, symbol_value, total_value, timestamp))
 
-    def record_realized_pnl(self, amount_usdt, now=None):
-        """Append one realized-PnL event; caller must deduplicate exchange fills."""
+    def record_realized_pnl(self, amount_usdt, now=None, event_id=None):
+        """Record realized PnL once per exchange fill/event when event_id is supplied.
+
+        Legacy calls without an event ID remain append-only; live/testnet fill
+        ingestion should always pass a stable exchange trade/fill identifier.
+        Returns True for a newly recorded event and False for a duplicate ID.
+        """
         amount = self._finite_number(amount_usdt, "amount_usdt")
         instant = now or datetime.now(timezone.utc)
         if instant.tzinfo is None:
             raise ValueError("now must be timezone-aware")
         instant = instant.astimezone(timezone.utc)
+        day, timestamp = instant.date().isoformat(), instant.timestamp()
+        if event_id is not None:
+            if not isinstance(event_id, str) or not event_id.strip() or len(event_id) > 200:
+                raise ValueError("invalid_realized_pnl_event_id")
+            with self._connect() as db:
+                cursor = db.execute(
+                    "INSERT OR IGNORE INTO realized_pnl_events(event_id, day_utc, amount_usdt, created_at) VALUES(?, ?, ?, ?)",
+                    (event_id, day, amount, timestamp),
+                )
+                return cursor.rowcount == 1
         with self._connect() as db:
             db.execute(
                 "INSERT INTO realized_pnl(day_utc, amount_usdt, created_at) VALUES(?, ?, ?)",
-                (instant.date().isoformat(), amount, instant.timestamp()),
+                (day, amount, timestamp),
             )
+        return True
 
     def record_execution_result(self, success):
         if not isinstance(success, bool):
@@ -217,8 +241,10 @@ class RuntimeStateStore:
                 "SELECT emergency_stop, consecutive_errors FROM runtime_control WHERE id=1"
             ).fetchone()
             pnl = db.execute(
-                "SELECT COALESCE(SUM(amount_usdt), 0) FROM realized_pnl WHERE day_utc=?",
-                (today,),
+                """SELECT
+                    (SELECT COALESCE(SUM(amount_usdt), 0) FROM realized_pnl WHERE day_utc=?) +
+                    (SELECT COALESCE(SUM(amount_usdt), 0) FROM realized_pnl_events WHERE day_utc=?)""",
+                (today, today),
             ).fetchone()[0]
         # Missing exchange state is unsafe: caller receives None and must block.
         if metrics is None or control is None:
