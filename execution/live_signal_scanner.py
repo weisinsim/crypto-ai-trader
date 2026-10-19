@@ -88,6 +88,19 @@ def scan_once(*, symbols, interval, market_data, snapshot_provider, store,
             normalized = dict(snapshot)
             normalized.setdefault("symbol", symbol)
             normalized.setdefault("source", "Binance USD-M closed-candle scan")
+            # The dashboard cache uses confirmed_* names, while the alert
+            # contract intentionally uses execution-neutral entry/sl/tp fields.
+            # Normalize here so a raw dashboard snapshot can be scanned safely.
+            field_aliases = {
+                "entry": "confirmed_entry",
+                "sl": "confirmed_sl",
+                "tp1": "confirmed_tp1",
+                "tp2": "confirmed_tp2",
+                "score": "confirmed_score",
+            }
+            for target, source in field_aliases.items():
+                if normalized.get(target) is None and normalized.get(source) is not None:
+                    normalized[target] = normalized[source]
             event = build_entry_alert(normalized, now_ms=now_ms, max_age_ms=max_age_ms)
             if not event["eligible"]:
                 result["rejected"] += 1
