@@ -295,6 +295,17 @@ async def chatgpt_outbox_alert_feed(limit: int = 50):
         symbol, side = event.get("symbol"), event.get("side")
         if not isinstance(symbol, str) or symbol not in SYMBOLS or side not in ("LONG", "SHORT"):
             continue
+        # A fresh global heartbeat is insufficient if this particular symbol's
+        # market stream has stalled. Fail closed per symbol as well.
+        symbol_ts = cache.get(symbol, {}).get("ts")
+        symbol_price = cache.get(symbol, {}).get("price")
+        if (not isinstance(symbol_ts, (int, float)) or isinstance(symbol_ts, bool)
+                or not math.isfinite(symbol_ts) or symbol_ts <= 0 or symbol_ts > now
+                or now - symbol_ts > 120):
+            continue
+        if (not isinstance(symbol_price, (int, float)) or isinstance(symbol_price, bool)
+                or not math.isfinite(symbol_price) or symbol_price <= 0):
+            continue
         candle_ms, analysis_ts = event.get("signal_candle_ms"), event.get("analysis_ts")
         if (not isinstance(candle_ms, (int, float)) or isinstance(candle_ms, bool)
                 or not math.isfinite(candle_ms) or candle_ms <= 0 or candle_ms > now * 1000
