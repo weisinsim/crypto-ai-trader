@@ -45,7 +45,7 @@ class EntryAlertStoreTests(unittest.TestCase):
     def test_rejects_invalid_creation_timestamps(self):
         store = EntryAlertStore(":memory:")
         event = {"event_id": "timestamp-case", "eligible": True, "symbol": "BTCUSDT", "side": "LONG", "notification_only": True, "auto_trade_authorized": False}
-        for stamp in (float("nan"), float("inf"), 0, -1):
+        for stamp in (float("nan"), float("inf"), 0, -1, True, "bad"):
             self.assertFalse(store.enqueue(event, now=stamp))
         self.assertEqual(store.pending(), [])
 
