@@ -39,6 +39,47 @@ class SnapshotFetchTests(unittest.TestCase):
 
 
 class WorkerCycleTests(unittest.TestCase):
+    def test_worker_runs_scan_and_reports_pending_count(self):
+        class StopAfterEmit:
+            def __init__(self):
+                self.stopped = False
+            def is_set(self):
+                return self.stopped
+            def set(self):
+                self.stopped = True
+            def wait(self, seconds):
+                self.stopped = True
+                return True
+
+        class FakeStore:
+            _memory_conn = None
+            def __init__(self):
+                self.queued = []
+            def pending(self):
+                return self.queued
+
+        store = FakeStore()
+        emitted = []
+        stop = StopAfterEmit()
+        scan_result = {"scanned": 1, "enqueued": 1, "duplicates": 0}
+        with patch.object(live_signal_worker, "scan_once", return_value=scan_result) as scan:
+            result = live_signal_worker.run_worker(
+                base_url="https://example.invalid",
+                db_path=":memory:",
+                symbols=["BTCUSDT"],
+                poll_seconds=5,
+                stop_event=stop,
+                snapshot_fetcher=lambda _url: {"BTCUSDT": {"symbol": "BTCUSDT"}},
+                market_data=object(),
+                store_factory=lambda _path: store,
+                emit=lambda line: emitted.append(json.loads(line)),
+            )
+        self.assertEqual(result["status"], "OK")
+        self.assertEqual(result["pending"], 0)
+        scan.assert_called_once()
+        self.assertEqual(emitted[0]["status"], "OK")
+        self.assertEqual(emitted[0]["enqueued"], 1)
+
     def test_failed_snapshot_cycle_reports_degraded_and_stops_cleanly(self):
         class StopAfterEmit:
             def __init__(self):
