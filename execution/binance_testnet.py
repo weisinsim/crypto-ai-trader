@@ -46,6 +46,49 @@ class BinanceFuturesTestnet:
         ).hexdigest()
         return payload
 
+    def account_risk_metrics(self, symbol):
+        """Return gross account exposure metrics from signed TESTNET account state.
+
+        Fails closed if exchange notional is missing for an open position.
+        """
+        if not isinstance(symbol, str) or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
+            return {"ok": False, "reason": "invalid_symbol"}
+        response = self._client.get("/fapi/v2/account", params=self._signed_params({}))
+        response.raise_for_status()
+        account = response.json()
+        if not isinstance(account, dict) or not isinstance(account.get("positions"), list):
+            return {"ok": False, "reason": "invalid_testnet_account_response"}
+        open_positions = 0
+        total_notional = Decimal("0")
+        symbol_notional = Decimal("0")
+        try:
+            for position in account["positions"]:
+                if not isinstance(position, dict):
+                    return {"ok": False, "reason": "invalid_position_record"}
+                amount = Decimal(str(position.get("positionAmt", "0")))
+                if not amount.is_finite():
+                    return {"ok": False, "reason": "invalid_position_amount"}
+                if amount == 0:
+                    continue
+                open_positions += 1
+                raw_notional = position.get("notional")
+                if raw_notional in (None, ""):
+                    return {"ok": False, "reason": "position_notional_missing"}
+                notional = abs(Decimal(str(raw_notional)))
+                if not notional.is_finite():
+                    return {"ok": False, "reason": "position_notional_invalid"}
+                total_notional += notional
+                if position.get("symbol") == symbol:
+                    symbol_notional += notional
+        except (InvalidOperation, TypeError, ValueError):
+            return {"ok": False, "reason": "invalid_position_risk_values"}
+        return {
+            "ok": True, "mode": "testnet_account_risk_metrics",
+            "open_positions": open_positions,
+            "symbol_notional_usdt": float(symbol_notional),
+            "total_notional_usdt": float(total_notional),
+        }
+
     def symbol_rules(self, symbol):
         """Read testnet exchange filters; does not submit or create an order."""
         if not symbol.endswith("USDT") or not symbol[:-4].isalnum():
