@@ -27,12 +27,14 @@ class FakeClient:
 
 
 class BinanceTestnetAdapterTests(unittest.TestCase):
-    def intent(self):
-        return OrderIntent(
+    def intent(self, **overrides):
+        values = dict(
             symbol="BTCUSDT", side="BUY", entry=100, stop_loss=99.8,
             take_profit=100.6, quantity=0.5, signal_timestamp=1000,
             now_timestamp=1100, leverage=1,
         )
+        values.update(overrides)
+        return OrderIntent(**values)
 
     def test_requires_testnet_credentials(self):
         with self.assertRaises(TestnetConfigurationError):
