@@ -124,8 +124,18 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
                 read_rows(path)
 
     def test_only_closed_higher_timeframe_bars_are_used(self):
-        bars = [{"ts": 100, "c": 1}, {"ts": 200, "c": 2}, {"ts": 300, "c": 3}]
-        self.assertEqual(closed_rows_at(bars, 200), bars[:2])
+        bars = [{"ts": 0, "c": 1}, {"ts": 14_400_000, "c": 2}, {"ts": 28_800_000, "c": 3}]
+        # At 11:00, the 08:00 4h candle is still open; only the 04:00
+        # candle has closed. Candle timestamps represent OPEN times.
+        self.assertEqual(closed_rows_at(bars, 11 * 3_600_000), bars[:1])
+
+    def test_closed_higher_timeframe_bar_is_included_at_exact_close(self):
+        bars = [{"ts": 4 * 3_600_000, "c": 1}, {"ts": 8 * 3_600_000, "c": 2}]
+        self.assertEqual(closed_rows_at(bars, 8 * 3_600_000), bars[:1])
+
+    def test_closed_rows_rejects_invalid_interval(self):
+        with self.assertRaisesRegex(ValueError, "positive integer"):
+            closed_rows_at([], 1000, interval_ms=0)
 
     def test_ema_seed_and_trend(self):
         self.assertEqual(ema([1, 2, 3], 2), 2.5)
