@@ -165,23 +165,25 @@ def levels(h,l,c,n=48):
 
 
 def closed_rows_at(rows, decision_close_ms, interval_ms=14_400_000):
-    """Return only bars whose close time is no later than the decision time.
+    """Return bars timestamped at candle CLOSE that closed by the decision time.
 
-    Input timestamps are candle OPEN times; interval_ms must match the series.
+    Input timestamps follow download_futures_klines.py: Binance candle close times.
+    interval_ms remains validated for callers that specify the series interval.
     """
     if not isinstance(interval_ms, int) or isinstance(interval_ms, bool) or interval_ms <= 0:
         raise ValueError("interval_ms must be a positive integer")
-    return [row for row in rows if row["ts"] + interval_ms <= decision_close_ms]
+    return [row for row in rows if row["ts"] <= decision_close_ms]
 
 
 def closed_four_count_at(rows, decision_close_ms, start_index=0):
-    """Advance to the count of 4h candles whose close time is at/before decision time.
+    """Advance to 4h candles timestamped at close and closed by decision time.
 
-    Historical CSV timestamps are candle OPEN times. The returned index is the
-    first row not yet closed, so rows[:index] are safe to use without lookahead.
+    Historical CSV timestamps are candle CLOSE times. The returned index is the
+    first row whose close timestamp is later than the decision, so rows[:index]
+    are safe to use without lookahead.
     """
     index = start_index
-    while index < len(rows) and rows[index]["ts"] + 14_400_000 <= decision_close_ms:
+    while index < len(rows) and rows[index]["ts"] <= decision_close_ms:
         index += 1
     return index
 
@@ -219,11 +221,10 @@ def replay(symbol, one, four, *, include_states=False):
     ema20_4_all=ema_series(c4_all,20); ema50_4_all=ema_series(c4_all,50)
     four_index=0
     for i in range(199,len(one)):
-        # CSV timestamps are candle OPEN times. The hourly decision occurs at
-        # the end of that 1h candle, and a 4h candle is usable only after its
-        # own close. Comparing open timestamps directly leaks an unfinished
-        # 4h candle into the replay.
-        decision_close_ms=one[i]["ts"] + 3_600_000
+        # CSV timestamps are candle CLOSE times, matching the downloader.
+        # The hourly decision occurs at this timestamp; only 4h candles whose
+        # close timestamp is at or before it may enter the replay.
+        decision_close_ms=one[i]["ts"]
         four_index=closed_four_count_at(four, decision_close_ms, four_index)
         if four_index<50: continue
         p=c_all[i]; e20=ema20_all[i]; e50=ema50_all[i]; e200=ema200_all[i]
