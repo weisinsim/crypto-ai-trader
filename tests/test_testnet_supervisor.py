@@ -108,7 +108,7 @@ class TestnetSupervisorTests(unittest.TestCase):
         second = self.supervisor.run_once("BTCUSDT", self.intent(), "entry-duplicate", "run-2")
         self.assertEqual(second["reason"], "client_order_id_already_reserved")
         self.assertEqual(self.adapter.submissions, ["entry-duplicate"])
-        self.assertTrue(second["requires_reconciliation"])
+        self.assertFalse(second["requires_reconciliation"])  # Prior attempt was confirmed and account is reconciled flat.
 
     def test_emergency_stop_blocks_entry(self):
         self.store.set_emergency_stop(True)
