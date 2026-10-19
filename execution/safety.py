@@ -6,7 +6,7 @@ execution must not be enabled until full replay parity, testnet verification,
 and an explicit operator approval are complete.
 """
 from dataclasses import dataclass
-from typing import Optional
+import math
 
 
 @dataclass(frozen=True)
@@ -55,8 +55,10 @@ def validate_order_intent(intent: OrderIntent, config: ExecutionConfig) -> Execu
         intent.entry, intent.stop_loss, intent.take_profit, intent.quantity,
         config.max_notional_usdt, config.max_risk_fraction,
     )
-    if any(value <= 0 for value in numeric):
+    if any(not math.isfinite(value) or value <= 0 for value in numeric):
         return ExecutionDecision(False, "non_positive_price_quantity_or_limit")
+    if config.max_leverage < 1 or config.max_signal_age_seconds < 0 or config.max_risk_fraction > 1:
+        return ExecutionDecision(False, "invalid_risk_configuration")
     if intent.leverage < 1 or intent.leverage > config.max_leverage:
         return ExecutionDecision(False, "leverage_limit_exceeded")
     age = intent.now_timestamp - intent.signal_timestamp
