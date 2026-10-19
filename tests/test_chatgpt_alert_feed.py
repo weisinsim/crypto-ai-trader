@@ -65,6 +65,21 @@ class ChatGPTAlertFeedTests(unittest.TestCase):
         payload = asyncio.run(dashboard.chatgpt_alert_feed())
         self.assertEqual(payload["count"], 0)
 
+    def test_excludes_non_finite_or_future_timestamps(self):
+        item = dashboard.cache["BTCUSDT"]
+        item["confirmed_signal_time"] = float("nan")
+        payload = asyncio.run(dashboard.chatgpt_alert_feed())
+        self.assertEqual(payload["count"], 0)
+
+        item["confirmed_signal_time"] = int(time.time() * 1000) - 60_000
+        item["analysis_ts"] = time.time() + 60
+        payload = asyncio.run(dashboard.chatgpt_alert_feed())
+        self.assertEqual(payload["count"], 0)
+
+        item["analysis_ts"] = float("nan")
+        payload = asyncio.run(dashboard.chatgpt_alert_feed())
+        self.assertEqual(payload["count"], 0)
+
     def test_suppresses_cached_candidates_when_market_is_not_live(self):
         dashboard.market_status["status"] = "DELAYED"
         payload = asyncio.run(dashboard.chatgpt_alert_feed())
