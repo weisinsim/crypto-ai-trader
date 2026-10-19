@@ -288,5 +288,106 @@ class BinanceFuturesTestnet:
             ],
         }
 
+    def submit_testnet_protective_exit(
+        self,
+        symbol: str,
+        exit_kind: str,
+        quantity,
+        trigger_price,
+        client_order_id: str,
+    ):
+        """Place one reduce-only conditional exit on TESTNET for an existing position.
+
+        This deliberately does not retry ambiguous requests. Query by client order ID
+        and inspect the position/open-order snapshot before taking recovery action.
+        """
+        if not isinstance(symbol, str) or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
+            return {"accepted": False, "reason": "invalid_symbol"}
+        if exit_kind not in {"stop_loss", "take_profit"}:
+            return {"accepted": False, "reason": "invalid_exit_kind"}
+        if not isinstance(client_order_id, str) or not client_order_id or len(client_order_id) > 36:
+            return {"accepted": False, "reason": "invalid_client_order_id"}
+        if not client_order_id.replace("-", "").replace("_", "").isalnum():
+            return {"accepted": False, "reason": "invalid_client_order_id"}
+        try:
+            requested_quantity = Decimal(str(quantity))
+            trigger = Decimal(str(trigger_price))
+            if not requested_quantity.is_finite() or requested_quantity <= 0:
+                raise InvalidOperation
+            if not trigger.is_finite() or trigger <= 0:
+                raise InvalidOperation
+        except (InvalidOperation, TypeError, ValueError):
+            return {"accepted": False, "reason": "invalid_quantity_or_trigger"}
+        snapshot = self.testnet_position_snapshot(symbol)
+        if not snapshot.get("ok"):
+            return {"accepted": False, "reason": "position_snapshot_failed"}
+        try:
+            position_amount = Decimal(snapshot["position_amount"])
+            entry_price = Decimal(snapshot["entry_price"])
+        except (InvalidOperation, TypeError, ValueError, KeyError):
+            return {"accepted": False, "reason": "invalid_position_snapshot"}
+        if position_amount == 0 or entry_price <= 0:
+            return {"accepted": False, "reason": "no_open_position"}
+        is_long = position_amount > 0
+        if exit_kind == "stop_loss":
+            geometry_ok = trigger < entry_price if is_long else trigger > entry_price
+            order_type = "STOP_MARKET"
+        else:
+            geometry_ok = trigger > entry_price if is_long else trigger < entry_price
+            order_type = "TAKE_PROFIT_MARKET"
+        if not geometry_ok:
+            return {"accepted": False, "reason": "invalid_protective_trigger_geometry"}
+        if requested_quantity > abs(position_amount):
+            return {"accepted": False, "reason": "exit_quantity_exceeds_position"}
+        try:
+            rules = self.symbol_rules(symbol)
+            if rules["status"] != "TRADING":
+                return {"accepted": False, "reason": "symbol_not_trading"}
+            step = Decimal(str(rules["quantity_step"]))
+            minimum = Decimal(str(rules["min_quantity"]))
+            maximum = Decimal(str(rules["max_quantity"]))
+            if step <= 0 or minimum <= 0 or maximum < minimum:
+                return {"accepted": False, "reason": "invalid_exchange_quantity_filters"}
+            rounded = (requested_quantity / step).to_integral_value(rounding=ROUND_DOWN) * step
+            if rounded < minimum:
+                return {"accepted": False, "reason": "quantity_below_exchange_minimum"}
+            if rounded > maximum or rounded > abs(position_amount):
+                return {"accepted": False, "reason": "exit_quantity_exceeds_position_or_exchange_maximum"}
+            quantity_text = format(rounded, "f")
+            if "." in quantity_text:
+                quantity_text = quantity_text.rstrip("0").rstrip(".")
+            trigger_text = format(trigger, "f")
+            params = self._signed_params({
+                "symbol": symbol,
+                "side": "SELL" if is_long else "BUY",
+                "type": order_type,
+                "quantity": quantity_text,
+                "stopPrice": trigger_text,
+                "reduceOnly": "true",
+                "workingType": "MARK_PRICE",
+                "newClientOrderId": client_order_id,
+            })
+        except (ValueError, InvalidOperation, TypeError, KeyError):
+            return {"accepted": False, "reason": "exchange_preflight_failed"}
+        response = self._client.post("/fapi/v1/order", params=params)
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict) or "orderId" not in payload:
+            return {"accepted": False, "reason": "unexpected_testnet_order_response"}
+        return {
+            "accepted": True,
+            "mode": "testnet_protective_exit_submitted",
+            "symbol": symbol,
+            "exit_kind": exit_kind,
+            "side": params["side"],
+            "type": order_type,
+            "quantity": quantity_text,
+            "trigger_price": trigger_text,
+            "reduce_only": True,
+            "client_order_id": client_order_id,
+            "exchange_order_id": str(payload["orderId"]),
+            "status": payload.get("status", "UNKNOWN"),
+        }
+
     def close(self):
         self._client.close()
