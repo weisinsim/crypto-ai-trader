@@ -32,14 +32,14 @@ The job logs explicitly reject comparable adaptive results unless historical fun
 PR #187 is the superseded, conflict-prone draft. The active candidate is PR #188, rebased onto current `main` at `1924aaaa906c9ae941164910932eb43e4d2d34d5`:
 https://github.com/weisinsim/crypto-ai-trader/pull/188
 
-The active branch preserves the closed-4h-candle guard (candle open timestamp + 4h interval <= hourly decision close) and adds prefix EMA/RSI parity, candle-boundary, and bounded-window indicator regression tests. PR #188 remains open and draft, and has not been merged.
+The active branch preserves the closed-4h-candle guard (candle open timestamp + 4h interval <= hourly decision close). Tests cover prefix EMA/RSI parity, candle-boundary behavior, incremental 4h cursor parity against the reference filter, and bounded-window indicator equivalence. The latest code-bearing commit is `969b7e40572742efb04a43662d88ef31dfee13c8`.
 
-The following GitHub Actions checks passed on the current PR head `b6c29b349d3c5106b2a1b5cfe03a2ad7148789e7`:
-- Research test suite: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39201532803
-- Python validation: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39201532811
-- Validation audit tests: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39201532709
+All three GitHub Actions checks passed on that latest code-bearing commit:
+- Research test suite: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39202148990
+- Python validation: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39202148997
+- Validation audit tests: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39202149009
 
-These tests establish code-level validation only; they do not satisfy the separate historical-market-data differential replay requirement below.
+These checks establish code-level validation only; they do not satisfy the separate historical-market-data differential replay requirement. PR #188 remains open and draft, and has not been merged.
 
 ## Required next steps
 
