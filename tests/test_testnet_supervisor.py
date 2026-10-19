@@ -92,7 +92,8 @@ class TestnetSupervisorTests(unittest.TestCase):
     def test_reused_client_order_id_is_blocked_across_calls(self):
         first = self.supervisor.run_once("BTCUSDT", self.intent(), "entry-duplicate", "run-2")
         self.assertTrue(first["ok"], first)
-        self.adapter.position_amount = "0"  # Simulate a reconciled flat state before accidental replay.\n        second = self.supervisor.run_once("BTCUSDT", self.intent(), "entry-duplicate", "run-2")
+        self.adapter.position_amount = "0"  # Simulate a reconciled flat state before accidental replay.
+        second = self.supervisor.run_once("BTCUSDT", self.intent(), "entry-duplicate", "run-2")
         self.assertEqual(second["reason"], "client_order_id_already_reserved")
         self.assertEqual(self.adapter.submissions, ["entry-duplicate"])
         self.assertTrue(second["requires_reconciliation"])
