@@ -14,7 +14,11 @@ from pathlib import Path
 class EntryAlertStore:
     def __init__(self, path):
         self.path = str(path)
-        if self.path != ":memory:":
+        self._memory_conn = None
+        if self.path == ":memory:":
+            self._memory_conn = sqlite3.connect(":memory:", timeout=10)
+            self._memory_conn.row_factory = sqlite3.Row
+        else:
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
             conn.execute("""
@@ -31,6 +35,8 @@ class EntryAlertStore:
             """)
 
     def _connect(self):
+        if self._memory_conn is not None:
+            return self._memory_conn
         conn = sqlite3.connect(self.path, timeout=10)
         conn.row_factory = sqlite3.Row
         return conn
