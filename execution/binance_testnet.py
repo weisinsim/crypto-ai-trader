@@ -45,6 +45,34 @@ class BinanceFuturesTestnet:
         ).hexdigest()
         return payload
 
+    def symbol_rules(self, symbol):
+        """Read testnet exchange filters; does not submit or create an order."""
+        if not symbol.endswith("USDT") or not symbol[:-4].isalnum():
+            raise ValueError("invalid_symbol")
+        response = self._client.get("/fapi/v1/exchangeInfo", params={"symbol": symbol})
+        response.raise_for_status()
+        payload = response.json()
+        matches = [item for item in payload.get("symbols", []) if item.get("symbol") == symbol]
+        if len(matches) != 1:
+            raise ValueError("symbol_not_found_or_ambiguous")
+        filters = {item.get("filterType"): item for item in matches[0].get("filters", [])}
+        lot = filters.get("MARKET_LOT_SIZE") or filters.get("LOT_SIZE")
+        if not lot:
+            raise ValueError("market_lot_size_filter_missing")
+        min_notional_filter = filters.get("MIN_NOTIONAL") or filters.get("NOTIONAL")
+        return {
+            "symbol": symbol,
+            "status": matches[0].get("status"),
+            "quantity_step": lot.get("stepSize"),
+            "min_quantity": lot.get("minQty"),
+            "max_quantity": lot.get("maxQty"),
+            "min_notional": (
+                min_notional_filter.get("notional")
+                or min_notional_filter.get("minNotional")
+                if min_notional_filter else None
+            ),
+        }
+
     def validate_order(self, intent: OrderIntent, config=None):
         """Submit an order to Binance's TESTNET validation-only endpoint."""
         config = config or ExecutionConfig(mode="testnet")
