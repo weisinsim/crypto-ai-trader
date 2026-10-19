@@ -76,7 +76,7 @@ class IndicatorParityTests(unittest.TestCase):
         calls = [node for node in ast.walk(replay_fn) if isinstance(node, ast.Call)
                  and isinstance(node.func, ast.Name) and node.func.id == "vwap"]
         self.assertEqual(len(calls), 1)
-        self.assertEqual([arg.id for arg in calls[0].args if isinstance(arg, ast.Name)], ["hi", "lo", "c", "q"])
+        self.assertEqual([arg.id for arg in calls[0].args if isinstance(arg, ast.Name)], ["h48", "l48", "c48", "q"])
 
 
 if __name__ == "__main__":
