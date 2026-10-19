@@ -58,7 +58,10 @@ class EntryAlertStore:
             or event.get("auto_trade_authorized") is not False
         ):
             return False
-        payload = json.dumps(event, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        try:
+            payload = json.dumps(event, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        except (TypeError, ValueError, OverflowError):
+            return False
         try:
             if isinstance(now, bool):
                 return False
