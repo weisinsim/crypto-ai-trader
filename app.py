@@ -288,6 +288,8 @@ async def chatgpt_outbox_alert_feed(limit: int = 50):
         event = row["event"]
         if event.get("eligible") is not True:
             continue
+        if event.get("event_id") != row.get("event_id"):
+            continue
         if event.get("notification_only") is not True or event.get("auto_trade_authorized") is not False:
             continue
         symbol, side = event.get("symbol"), event.get("side")
