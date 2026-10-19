@@ -65,6 +65,13 @@ class ChatGPTAlertFeedTests(unittest.TestCase):
         payload = asyncio.run(dashboard.chatgpt_alert_feed())
         self.assertEqual(payload["count"], 0)
 
+    def test_suppresses_cached_candidates_when_market_is_not_live(self):
+        dashboard.market_status["status"] = "DELAYED"
+        payload = asyncio.run(dashboard.chatgpt_alert_feed())
+        self.assertEqual(payload["count"], 0)
+        self.assertEqual(payload["alerts"], [])
+        self.assertIn("not LIVE", payload["note"])
+
     def test_excludes_non_directional_signals(self):
         dashboard.cache["BTCUSDT"]["confirmed_signal"] = "NO-TRADE"
         payload = asyncio.run(dashboard.chatgpt_alert_feed())
