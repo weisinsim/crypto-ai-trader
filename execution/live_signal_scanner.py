@@ -51,8 +51,10 @@ class BinanceUsdMMarketData:
             open_ms, close_ms = row[0], row[6]
             if not isinstance(open_ms, int) or not isinstance(close_ms, int):
                 raise MarketDataError("binance_market_data_invalid_timestamp")
-            if close_ms <= now_ms:
-                valid.append((open_ms, close_ms))
+            if close_ms < now_ms:
+                # Binance closeTime is inclusive (boundary - 1 ms); normalize
+                # to the exclusive candle-close boundary used by replay adapters.
+                valid.append((open_ms, close_ms + 1))
         if not valid:
             raise MarketDataError("no_closed_candle_available")
         return max(valid, key=lambda item: item[1])[1]
