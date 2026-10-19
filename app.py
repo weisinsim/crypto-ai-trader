@@ -209,6 +209,14 @@ async def chatgpt_alert_feed():
             continue
         if side == "SHORT" and not (tp2 <= tp1 < entry < stop):
             continue
+        score = item.get("confirmed_score")
+        if (
+            not isinstance(score, (int, float))
+            or isinstance(score, bool)
+            or not math.isfinite(score)
+            or not 0 <= score <= 100
+        ):
+            continue
         event_material = f"{symbol}|{side}|{int(candle_time)}|{item.get('model_name', '')}"
         event_id = hashlib.sha256(event_material.encode("utf-8")).hexdigest()[:24]
         alerts.append({
