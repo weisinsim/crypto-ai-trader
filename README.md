@@ -132,3 +132,8 @@ The protective-exit orchestrator now performs a second authoritative testnet sna
 
 
 The testnet adapter now supports cancelling one explicitly identified order by `origClientOrderId` (not bulk symbol cancellation). `cancel_testnet_sibling_after_flatten(...)` only requests sibling cancellation after the primary exit is confirmed `FILLED` with positive executed quantity and a fresh snapshot confirms the position is flat; partial fills and non-flat positions leave the sibling in place. It then checks cancellation acknowledgement and takes another position snapshot. This is a callable recovery primitive, not a continuous fill monitor; it cannot eliminate exchange/network races and must be exercised on testnet before operational use.
+
+
+### Runtime risk gate (paper/testnet only)
+
+`execution/runtime_guard.py` adds a fail-closed runtime gate for an execution worker to call before each new entry. It blocks missing/stale account snapshots, an emergency-stop flag, daily realized-loss threshold, concurrent-position and notional limits, and repeated execution errors. The defaults are conservative placeholders (10 USDT daily realized loss, one open position, 100 USDT symbol/total notional, three consecutive execution errors). A production runner must provide authoritative and freshly reconciled state and persist the daily loss/error counters; this module does not itself persist state, calculate unrealized PnL, or submit/cancel orders. It is not yet wired into a continuously running order worker and is not live-trading approval.
