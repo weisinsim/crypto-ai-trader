@@ -18,7 +18,7 @@ h1{font-size:22px;margin:0 0 5px}.sub{font-size:12px;color:#9aa4b2}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}.kv{background:#0d131a;border-radius:9px;padding:7px}.k{font-size:10px;color:#7f8997}.v{font-size:12px;margin-top:2px}
 .signal{margin-top:10px;border-top:1px solid #202a35;padding-top:9px}.score{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:12px}.score b{font-size:15px}.decision{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:7px 0;padding:8px 10px;border-radius:9px;background:#0d131a;border:1px solid #27313d;font-size:11px}.decision b{font-size:12px}.decision.wait{border-color:#665a2b}.decision.wait b{color:#ffe17a}.decision.ready{border-color:#245d3f}.decision.ready b{color:#67f0a4}.decision.blocked{border-color:#5b2730}.decision.blocked b{color:#ff8c98}.risk{font-size:10px;color:#8993a1;line-height:1.5}.levels{font-size:11px;color:#b6bfcb;line-height:1.65}
 .toolbar{display:flex;gap:7px;overflow:auto;margin-top:12px}.filter{border:1px solid #27313d;background:#121820;color:#cbd2dc;border-radius:9px;padding:7px 10px;font-size:11px}.filter.active{background:#26313d;color:#fff}
-.small{font-size:10px;color:#697482;margin-top:12px}.historyPanel{margin-top:14px}.researchPanel{margin-top:12px;background:#121820;border:1px solid #344151;border-radius:14px;padding:12px}.researchPanel h2{font-size:14px;margin:0 0 6px}.researchPanel .intro{font-size:11px;color:#aab4c2;line-height:1.5}.researchScroll{overflow-x:auto}.researchTable{width:100%;border-collapse:collapse;margin-top:8px;font-size:10px}.researchTable th,.researchTable td{text-align:left;padding:7px 4px;border-top:1px solid #27313d;white-space:nowrap}.researchTable th{color:#8793a3}.researchTable .fail{color:#ff8c98;font-weight:700}.researchLink{display:inline-block;margin-top:8px;color:#8ab4ff;font-size:11px;text-decoration:none}.history{background:#121820;border:1px solid #202a35;border-radius:14px;padding:12px}.history h3{margin:0 0 8px;font-size:14px}.histrow{display:grid;grid-template-columns:74px 70px 1fr 62px;gap:6px;padding:8px 0;border-top:1px solid #202a35;font-size:10px;color:#aeb7c4}.histrow:first-child{border-top:0}.histrow b{color:#eef2f7}.activeSig{color:#67f0a4}.invalidSig{color:#ff8c98}
+.small{font-size:10px;color:#697482;margin-top:12px}.historyPanel{margin-top:14px}.researchPanel{margin-top:12px;background:#121820;border:1px solid #344151;border-radius:14px;padding:12px}.researchPanel h2{font-size:14px;margin:0 0 6px}.researchPanel .intro{font-size:11px;color:#aab4c2;line-height:1.5}.researchScroll{overflow-x:auto}.researchTable{width:100%;border-collapse:collapse;margin-top:8px;font-size:10px}.researchTable th,.researchTable td{text-align:left;padding:7px 4px;border-top:1px solid #27313d;white-space:nowrap}.researchTable th{color:#8793a3}.researchTable .fail{color:#ff8c98;font-weight:700}.researchLink{display:inline-block;margin-top:8px;color:#8ab4ff;font-size:11px;text-decoration:none}.alertPanel{margin-top:12px;background:#121820;border:1px solid #344151;border-radius:14px;padding:12px}.alertPanel h2{font-size:14px;margin:0 0 6px}.alertIntro{font-size:11px;color:#aab4c2;line-height:1.5}.alertList{margin-top:8px;display:grid;gap:7px}.alertItem{padding:9px;background:#0d131a;border:1px solid #27313d;border-radius:9px;font-size:11px}.alertItem b{font-size:12px}.alertMuted{color:#8993a1}.alertLive{color:#67f0a4}.alertFail{color:#ff8c98}.history{background:#121820;border:1px solid #202a35;border-radius:14px;padding:12px}.history h3{margin:0 0 8px;font-size:14px}.histrow{display:grid;grid-template-columns:74px 70px 1fr 62px;gap:6px;padding:8px 0;border-top:1px solid #202a35;font-size:10px;color:#aeb7c4}.histrow:first-child{border-top:0}.histrow b{color:#eef2f7}.activeSig{color:#67f0a4}.invalidSig{color:#ff8c98}
 @media(min-width:760px){.cards{grid-template-columns:repeat(3,1fr)}}@media(max-width:420px){.cards{grid-template-columns:1fr}.price{font-size:18px}.card{min-width:0}.row{align-items:flex-start}.badge{font-size:10px}}
 </style>
 </head>
@@ -76,6 +76,11 @@ h1{font-size:22px;margin:0 0 5px}.sub{font-size:12px;color:#9aa4b2}
 <tr><td>覆盖完整且审计通过</td><td>五个币种报告齐全、JSON 有效、审计均 PASS</td><td>PASS_COVERAGE_ONLY</td></tr>
 </tbody></table></div>
 <div class="intro">实现记录：<a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/pull/21" target="_blank" rel="noopener">PR #21 · 无效 JSON 阻断覆盖通过</a> · <a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/pull/22" target="_blank" rel="noopener">PR #22 · 资金费率审计必须 PASS</a>。本面板说明的是已实现的判定规则，不声称最新五币种研究产物已经完整，也不虚构最新回测收益。</div>
+</section><section class="alertPanel" id="chatgptAlertPanel" aria-label="ChatGPT信号提醒状态">
+<h2>ChatGPT 进场提醒 · 只读模式</h2>
+<div id="alertFeedStatus" class="alertIntro">正在检查提醒接口…</div>
+<div id="alertFeedList" class="alertList"><div class="alertItem alertMuted">尚未取得接口状态</div></div>
+<div class="alertIntro">仅展示新鲜、已确认且风险价格结构有效的候选信号。此面板不会下单；提醒接口可用不代表 ChatGPT 定时检查任务已创建，也不代表实时通知已部署。</div>
 </section><div id="cards" class="cards"></div><div id="historyPanel" class="historyPanel"></div>
 <div class="small">V28.2：Research-Gated Dashboard。实时行情与历史回测状态分开显示；所有候选模型仍处于研究阶段，信号不保证盈利。</div>
 </div>
@@ -128,6 +133,32 @@ function render(){
  const hist=Object.values(state.data).map(x=>({symbol:x.symbol,...(state.history?.[x.symbol]?.[0]||{})})).filter(x=>x.signal);
  $("historyPanel").innerHTML=`<div class="history"><h3>最近已确认信号（1H收盘确认）</h3>${hist.length?hist.map(x=>`<div class="histrow"><b>${x.symbol.replace("USDT","")}</b><span class="${x.signal==="LONG"?"activeSig":"invalidSig"}">${x.signal}</span><span>${fmtTime(x.signal_time)} · Entry ${fmt(x.entry)} · ${x.score}/100</span><span>${x.status||"ACTIVE"}</span></div>`).join(""):"<div class='small'>等待第一根1H K线收盘确认</div>"}</div>`;
 }
+async function refreshChatGPTAlerts(){
+ const statusEl=$("alertFeedStatus"), listEl=$("alertFeedList");
+ try{
+  const r=await fetch("/api/chatgpt/alerts",{cache:"no-store",headers:{"Accept":"application/json"}});
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  const payload=await r.json();
+  const alerts=Array.isArray(payload)?payload:(Array.isArray(payload.alerts)?payload.alerts:[]);
+  statusEl.className="alertIntro alertLive";
+  statusEl.textContent="只读接口可访问 · 当前有效候选 "+alerts.length+" · 检查时间 "+new Date().toLocaleTimeString();
+  if(!alerts.length){listEl.replaceChildren();const empty=document.createElement("div");empty.className="alertItem alertMuted";empty.textContent="目前没有符合安全门槛的有效进场提醒。";listEl.appendChild(empty);return;}
+  listEl.replaceChildren();
+  alerts.slice(0,10).forEach(a=>{
+   const item=document.createElement("div");item.className="alertItem";
+   const title=document.createElement("b");title.textContent=String(a.symbol||"未知交易对")+" · "+String(a.signal||a.direction||"候选信号");
+   const detail=document.createElement("div");detail.className="alertMuted";
+   detail.textContent="Entry "+(a.entry??"—")+" · SL "+(a.sl??a.stop_loss??"—")+" · TP1 "+(a.tp1??"—")+" · TP2 "+(a.tp2??"—");
+   const safety=document.createElement("div");safety.className="alertMuted";
+   safety.textContent="仅提醒："+(a.notification_only===true?"是":"待确认")+" · 自动交易授权："+(a.auto_trade_authorized===false?"关闭":"未确认");
+   item.append(title,detail,safety);listEl.appendChild(item);
+  });
+ }catch(e){
+  statusEl.className="alertIntro alertFail";
+  statusEl.textContent="提醒接口不可用或响应格式异常；为安全起见不显示信号。";
+  listEl.replaceChildren();const item=document.createElement("div");item.className="alertItem alertMuted";item.textContent="Fail-closed：请确认服务已部署且 /api/chatgpt/alerts 可访问。";listEl.appendChild(item);
+ }
+}
 async function loadSignals(){try{const r=await fetch("/api/signals",{cache:"no-store"});const j=await r.json();state.history=j.history||{};}catch(e){}}
 async function snapshot(){
  try{
@@ -152,7 +183,7 @@ function connect(){
  }catch(e){setTimeout(connect,3000)}
 }
 document.querySelectorAll(".filter").forEach(b=>b.onclick=()=>{document.querySelectorAll(".filter").forEach(x=>x.classList.remove("active"));b.classList.add("active");state.filter=b.dataset.f;render()});
-snapshot();connect();setInterval(snapshot,5000);
+snapshot();connect();refreshChatGPTAlerts();setInterval(snapshot,5000);setInterval(refreshChatGPTAlerts,30000);
 </script>
 </body>
 </html>
