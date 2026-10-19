@@ -142,3 +142,8 @@ The testnet adapter now supports cancelling one explicitly identified order by `
 ### Guarded TESTNET entry flow
 
 `execution/testnet_entry_flow.py` connects the intent gate, runtime kill-switch/risk gate, signed account preflight, a single explicitly identified TESTNET market-order submission, order/position reconciliation, and protective-exit verification. It never targets production and never automatically retries an ambiguous market-order request. If an entry appears to have opened exposure but protection cannot be verified, it returns an explicit reconciliation-required result. This is still a single-pass callable workflow, not a persistent supervisor: exchange-state races, partial fills, process restarts, daily-PnL persistence, and ongoing protective-order monitoring remain unresolved. Do not run against real funds or treat testnet success as evidence of strategy profitability.
+
+
+### TESTNET restart recovery
+
+`execution/testnet_recovery.py` adds an explicit recovery entry point for a process restart: it reads the authoritative TESTNET position snapshot, refuses invalid/stale-unavailable state and invalid stop/target geometry, and verifies or installs protective exits for an existing position. It never submits a new entry order. It is a callable recovery primitive, not a continuously running supervisor or durable event ledger; the operator must supply the intended stop/target levels and manually reconcile ambiguous states. Production trading remains disabled.
