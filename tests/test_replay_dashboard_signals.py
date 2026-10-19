@@ -190,6 +190,7 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
         self.assertTrue(all(row["status"] == "NO-TRADE" for row in states))
         self.assertTrue(all(row["signal"] == "NO-TRADE" for row in states))
         self.assertTrue(all(row["target2"] is None for row in states))
+        self.assertTrue(all(row["reason"] == "NO_PRODUCTION" for row in states))
 
 
 
