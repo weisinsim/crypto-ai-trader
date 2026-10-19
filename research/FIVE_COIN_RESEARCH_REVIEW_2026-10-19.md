@@ -32,7 +32,10 @@ The job logs explicitly reject comparable adaptive results unless historical fun
 PR #187 is the superseded, conflict-prone draft. The active candidate is PR #188, rebased onto current `main` at `1924aaaa906c9ae941164910932eb43e4d2d34d5`:
 https://github.com/weisinsim/crypto-ai-trader/pull/188
 
-The active branch preserves the closed-4h-candle guard (candle open timestamp + 4h interval <= hourly decision close). Tests cover prefix EMA/RSI parity, candle-boundary behavior, incremental 4h cursor parity against the reference filter, and bounded-window indicator equivalence. The latest code-bearing commit is `969b7e40572742efb04a43662d88ef31dfee13c8`.
+The replay input contract now matches the downloader: CSV timestamps are Binance candle CLOSE timestamps (inclusive close millisecond, typically :59.999 UTC). At each hourly decision, only 4h rows with close timestamp <= the decision timestamp are available; the replay no longer adds an extra interval to a close timestamp. Regression tests cover exact close and one-millisecond-before-close, and the incremental 4h cursor is checked against the reference filter. The timestamp-contract fix is in `4ea9afb5ebe778b08d0d9eb9d340680e71cd20ad`; its initial test run exposed stale open-time fixtures, which were updated in `614be19630090ad21f7b804ae6f9a13620ccff5a`. All three PR workflows passed on `614be19630090ad21f7b804ae6f9a13620ccff5a`:
+- Research test suite: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39213999417
+- Python validation: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39213999564
+- Validation audit tests: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39213999500
 
 All three GitHub Actions checks passed on that latest code-bearing commit:
 - Research test suite: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39202148990
