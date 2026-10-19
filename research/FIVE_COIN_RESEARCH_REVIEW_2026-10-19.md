@@ -60,3 +60,22 @@ These checks establish code-level validation only; they do not satisfy the separ
 ## Decision
 
 **NO LIVE TRADING APPROVAL.** Current diagnostics do not establish robust, cost-resilient, funding-reconciled out-of-sample profitability. No verified funding settlement cashflow dataset has been reconciled in this update. Strategy selection remains blocked by cost/funding/out-of-sample gates, and live execution remains disabled.
+
+
+## Historical data workflow #15 audit (2026-10-19)
+
+A separate manual run completed successfully on `main` commit `1924aaaa906c9ae941164910932eb43e4d2d34d5` (workflow run #15, run ID `39215150224`). It generated artifact `historical-research-2025-10-01-to-2026-10-01` (artifact ID `12169084233`, SHA-256 `77d7af64bdffcbe50bbdc9f9f926c2a864fd775efc8a6cd8ba8337828f479bc1`). This run is on `main`, not PR #188's candidate branch; its results are useful diagnostics but do not validate the PR branch.
+
+The artifact's replay manifest reports 8,760 1h candles and 2,190 4h candles for each requested symbol. Signal counts were BTC 177, ETH 0, SOL 57, AVAX 72, XRP 150. The signal audit reports zero timestamp/price/stop/target mismatches for the nonempty signal files, but explicitly states that this is not live-strategy parity or profitability validation. ETH is marked `NO_SIGNALS`; inspection of the `main` replay source shows an explicit `reason="NO_PRODUCTION"` branch for ETH, so zero signals are an implementation/configuration block, not evidence that ETH has no market opportunities. Do not loosen thresholds or infer an ETH strategy until an independently specified model is reviewed and tested.
+
+The summary classifies BTC results as `RESEARCH_ONLY`; AVAX, SOL, and XRP are largely `INSUFFICIENT_SAMPLE`; ETH is `BLOCKED:NO_SIGNALS`. For example, BTC single-position 3.0R at 5 bps shows 40 holdout trades, PF 1.2646 and +7.7948R, but at 30 bps shows PF 0.6691 and -13.8916R. This is strongly cost-sensitive and is not a deployable edge. Funding integrity reports 1,095 ordered records per symbol and no basic duplicate/cadence errors, but the artifact itself cautions that this is a coarse integrity diagnostic; it does not reconcile funding cashflows to verified exchange settlement records.
+
+### Actions required from this audit
+
+1. Treat workflow #15 as baseline `main` research only; rerun the equivalent bounded historical workflow against the PR #188 branch after confirming that workflow supports the branch and preserves artifact provenance.
+2. Keep ETH blocked until a documented ETH signal model exists; add a regression test that catches a hard-coded `NO_PRODUCTION` path being mistaken for an empirical no-signal result.
+3. Add a parity audit that compares the replay with the intended production logic, not only self-consistency of emitted signal rows.
+4. Retain the minimum holdout trade gate and cost tiers. Do not select the 5 bps BTC result while the 10–30 bps sensitivity is materially negative.
+5. Reconcile actual funding cashflows and execution costs before any deployment decision.
+
+This audit does not change the decision: **NO LIVE TRADING APPROVAL**.
