@@ -54,6 +54,21 @@ class RuntimeStateStoreTests(unittest.TestCase):
         self.store.record_realized_pnl(1, now=day_two)
         self.assertEqual(self.store.load_snapshot(now_epoch=day_two.timestamp()).daily_realized_pnl_usdt, 1)
 
+
+    def test_realized_pnl_event_id_is_idempotent_across_restarts(self):
+        now = datetime(2026, 10, 19, 10, tzinfo=timezone.utc)
+        self.assertTrue(self.store.record_realized_pnl(-3.25, now=now, event_id="BTCUSDT-trade-100"))
+        self.assertFalse(self.store.record_realized_pnl(-3.25, now=now, event_id="BTCUSDT-trade-100"))
+        self.assertTrue(self.store.record_realized_pnl(1.25, now=now, event_id="BTCUSDT-trade-101"))
+        reopened = RuntimeStateStore(self.db_path)
+        self.assertFalse(reopened.record_realized_pnl(-3.25, now=now, event_id="BTCUSDT-trade-100"))
+        reopened.update_exchange_metrics(0, 0, 0, now_epoch=now.timestamp())
+        self.assertEqual(reopened.load_snapshot(now_epoch=now.timestamp()).daily_realized_pnl_usdt, -2.0)
+
+    def test_realized_pnl_event_id_must_be_valid(self):
+        with self.assertRaises(ValueError):
+            self.store.record_realized_pnl(1, event_id="  ")
+
     def test_invalid_metrics_rejected(self):
         with self.assertRaises(ValueError):
             self.store.update_exchange_metrics(0, float("nan"), 0, now_epoch=1000)
