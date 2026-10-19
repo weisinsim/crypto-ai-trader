@@ -155,3 +155,94 @@ def ensure_testnet_protective_exits(
         "actions": actions,
         "requires_post_fill_sibling_cancellation": True,
     }
+
+
+
+def cancel_testnet_sibling_after_flatten(
+    adapter,
+    symbol: str,
+    filled_exit_client_order_id: str,
+    sibling_exit_client_order_id: str,
+):
+    """Cancel the sibling only after the filled exit and flat position are confirmed.
+
+    Partial fills never trigger cancellation because the remaining exposure still
+    needs protection. Ambiguous reads/cancels fail closed for manual reconciliation.
+    """
+    for value in (filled_exit_client_order_id, sibling_exit_client_order_id):
+        if not isinstance(value, str) or not value or len(value) > 36:
+            return {"ok": False, "reason": "invalid_client_order_id"}
+        if not value.replace("-", "").replace("_", "").isalnum():
+            return {"ok": False, "reason": "invalid_client_order_id"}
+    filled = adapter.query_testnet_order(symbol, filled_exit_client_order_id)
+    if not filled.get("found"):
+        return {"ok": False, "reason": "filled_exit_lookup_failed", "requires_reconciliation": True}
+    if filled.get("status") != "FILLED":
+        return {
+            "ok": False,
+            "reason": "exit_not_fully_filled",
+            "status": filled.get("status"),
+            "requires_reconciliation": True,
+        }
+    try:
+        executed = Decimal(str(filled.get("executed_quantity", "0")))
+        if not executed.is_finite() or executed <= 0:
+            raise InvalidOperation
+    except (InvalidOperation, TypeError, ValueError):
+        return {"ok": False, "reason": "invalid_filled_quantity", "requires_reconciliation": True}
+
+    snapshot = adapter.testnet_position_snapshot(symbol)
+    if not snapshot.get("ok"):
+        return {"ok": False, "reason": "position_snapshot_failed", "requires_reconciliation": True}
+    try:
+        position = Decimal(str(snapshot["position_amount"]))
+    except (InvalidOperation, TypeError, ValueError, KeyError):
+        return {"ok": False, "reason": "invalid_position_snapshot", "requires_reconciliation": True}
+    if not position.is_finite() or position != 0:
+        return {
+            "ok": False,
+            "reason": "position_not_flat_sibling_must_remain",
+            "position_amount": str(position),
+            "requires_reconciliation": True,
+        }
+
+    sibling = adapter.query_testnet_order(symbol, sibling_exit_client_order_id)
+    if not sibling.get("found"):
+        return {"ok": False, "reason": "sibling_lookup_failed", "requires_reconciliation": True}
+    if sibling.get("status") in {"CANCELED", "EXPIRED", "REJECTED"}:
+        return {"ok": True, "mode": "testnet_sibling_already_inactive", "sibling_status": sibling.get("status")}
+    if sibling.get("status") == "FILLED":
+        return {
+            "ok": False,
+            "reason": "both_exits_report_filled_check_exchange_history",
+            "requires_reconciliation": True,
+        }
+    cancelled = adapter.cancel_testnet_order(symbol, sibling_exit_client_order_id)
+    if not cancelled.get("cancelled"):
+        return {
+            "ok": False,
+            "reason": "sibling_cancel_unconfirmed",
+            "cancel_result": cancelled,
+            "requires_reconciliation": True,
+        }
+    final_snapshot = adapter.testnet_position_snapshot(symbol)
+    if not final_snapshot.get("ok"):
+        return {"ok": False, "reason": "post_cancel_snapshot_failed", "requires_reconciliation": True}
+    try:
+        final_position = Decimal(str(final_snapshot["position_amount"]))
+    except (InvalidOperation, TypeError, ValueError, KeyError):
+        return {"ok": False, "reason": "post_cancel_position_invalid", "requires_reconciliation": True}
+    if final_position != 0:
+        return {
+            "ok": False,
+            "reason": "position_reopened_or_not_flat_after_cancel",
+            "position_amount": str(final_position),
+            "requires_reconciliation": True,
+        }
+    return {
+        "ok": True,
+        "mode": "testnet_sibling_cancelled_after_flatten",
+        "filled_exit_client_order_id": filled_exit_client_order_id,
+        "sibling_exit_client_order_id": sibling_exit_client_order_id,
+        "cancel_result": cancelled,
+    }
