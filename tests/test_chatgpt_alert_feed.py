@@ -48,6 +48,8 @@ class ChatGPTAlertFeedTests(unittest.TestCase):
         alert = payload["alerts"][0]
         self.assertEqual(alert["symbol"], "BTCUSDT")
         self.assertEqual(alert["side"], "LONG")
+        self.assertEqual(len(alert["event_id"]), 24)
+        self.assertEqual(alert["event_id"], asyncio.run(dashboard.chatgpt_alert_feed())["alerts"][0]["event_id"])
         self.assertTrue(alert["notification_only"])
         self.assertFalse(alert["auto_trade_authorized"])
         self.assertTrue(alert["research_only"])
