@@ -184,3 +184,24 @@ The supervisor now acquires a persistent SQLite entry lock before its final risk
 `execution.binance_live_readiness.BinanceLiveReadiness` is a production-host **read-only** preflight. It uses `BINANCE_LIVE_API_KEY` and `BINANCE_LIVE_API_SECRET` from a secure deployment secret store to read the USD-M Futures account, current positions, position mode, and symbol filters. It deliberately exposes no order-submission method and cannot place trades. Use an API key with read-only permissions for this phase. Do not enable withdrawals; do not paste secrets into chat, source files, logs, or issue comments.
 
 This is not live trading readiness approval. Before any production order path is implemented, the remaining blockers include a verified signal source, full replay parity, realistic fee/slippage/funding evaluation, order/fill reconciliation, protective-order lifecycle and recovery, deployment monitoring/kill-switch drills, and explicit operator approval of a separately reviewed live execution change. Skipping TESTNET does not waive these production safeguards.
+
+### Research replay to entry-alert contract
+
+The replay output can be adapted to the notification contract for offline parity checks. The adapter interprets replay timestamps as **1h candle-open timestamps** and advances them to candle close before building the event. The caller must provide a trustworthy analysis timestamp in Unix seconds; do not substitute an old replay timestamp as if it were a live analysis time.
+
+```python
+from execution.entry_alerts import build_entry_alert
+from execution.replay_alert_adapter import replay_row_to_snapshot
+
+snapshot = replay_row_to_snapshot(
+    replay_row,
+    analysis_ts=analysis_time_unix_seconds,
+    model_status="RESEARCH",
+)
+event = build_entry_alert(snapshot, now_ms=current_time_unix_ms)
+# Only eligible events may be enqueued. Research alerts remain labeled
+# research_only; auto_trade_authorized is always false.
+```
+
+This is an adapter and contract test, **not a running market scanner**. Historical rows may be stale by design and will fail the freshness check when appropriate. Live notification rollout still requires a trusted live snapshot producer, operator-configured Telegram credentials, and a supervised scheduler/worker. Do not use replay output to submit orders.
+
