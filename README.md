@@ -95,3 +95,27 @@ A model's FROZEN status means its parameters are preserved; it does not imply th
 
 
 The pre-trade screening helpers reject non-mapping inputs, boolean-as-number values, negative market age/spread metrics, and negative daily-loss fractions. Candidate screening is only a preliminary filter: positive development/holdout metrics and a sufficient trade count do not establish statistical significance or authorize production use. Portfolio consistency checks operate only on paper-ledger records and must never replace exchange-side position/order reconciliation.
+
+
+## Execution status and safety gates
+
+The dashboard currently generates monitoring/research signals; it does not place orders. The
+`execution.safety` module is a fail-closed validation layer for proposed intents, not an
+exchange connector. Its default mode is paper, and it rejects any request that attempts to
+enable live trading. Do not add exchange API keys to source control or expose keys with
+withdrawal permissions.
+
+Before any real-money adapter can be considered, complete and archive all of these gates:
+
+1. Full historical replay parity against the frozen baseline, including signal time, direction,
+   entry, stop, and targets for each supported symbol.
+2. Benchmark the full replay on identical data and environment; record runtime and memory.
+3. Verify order sizing, tick/step-size rounding, minimum notional, partial fills, duplicate-order
+   protection, reduce-only exits, reconnect/retry handling, and idempotency on exchange testnet.
+4. Exercise kill-switch, stale-signal rejection, daily loss limits, max position/notional limits,
+   and restart recovery in testnet/paper mode.
+5. Review chronological holdout results after fees and historical funding. A completed pipeline
+   is not evidence of profitability.
+6. Require an explicit operator decision before any live mode is implemented or enabled.
+
+Current state: `RESEARCH_ONLY`; real-money order placement is intentionally unavailable.
