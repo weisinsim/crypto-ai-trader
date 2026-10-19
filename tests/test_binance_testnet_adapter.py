@@ -8,8 +8,14 @@ from execution.safety import ExecutionConfig, OrderIntent
 
 
 class FakeResponse:
+    def __init__(self, payload=None):
+        self.payload = payload or {}
+
     def raise_for_status(self):
         return None
+
+    def json(self):
+        return self.payload
 
 
 class FakeClient:
@@ -17,6 +23,14 @@ class FakeClient:
         self.base_url = TESTNET_BASE_URL
         self.headers = {}
         self.calls = []
+        self.get_calls = []
+
+    def get(self, path, params):
+        self.get_calls.append((path, params))
+        return FakeResponse({"symbols": [{"symbol": "BTCUSDT", "status": "TRADING", "filters": [
+            {"filterType": "MARKET_LOT_SIZE", "stepSize": "0.001", "minQty": "0.001", "maxQty": "100"},
+            {"filterType": "MIN_NOTIONAL", "notional": "5"},
+        ]}]})
 
     def post(self, path, params):
         self.calls.append((path, params))
@@ -51,6 +65,21 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(client.calls[0][1]["side"], "BUY")
         self.assertEqual(client.calls[0][1]["quantity"], "0.5")
         self.assertNotIn("https://fapi.binance.com", client.base_url)
+
+    def test_symbol_rules_reads_quantity_and_notional_filters(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        rules = adapter.symbol_rules("BTCUSDT")
+        self.assertEqual(rules["quantity_step"], "0.001")
+        self.assertEqual(rules["min_quantity"], "0.001")
+        self.assertEqual(rules["min_notional"], "5")
+        self.assertEqual(client.get_calls[0][0], "/fapi/v1/exchangeInfo")
+        self.assertEqual(client.calls, [])
+
+    def test_symbol_rules_rejects_invalid_symbol(self):
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=FakeClient())
+        with self.assertRaises(ValueError):
+            adapter.symbol_rules("../BTCUSDT")
 
     def test_signed_request_uses_hmac_sha256(self):
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=FakeClient())
