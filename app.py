@@ -151,16 +151,28 @@ async def chatgpt_alert_feed():
     now = time.time()
     max_age_seconds = 90 * 60
     alerts = []
-    # Fail closed: a signal is not eligible for notification while market data is
-    # starting, delayed, or disconnected, even if cached signal fields look fresh.
-    if market_status.get("status") != "LIVE":
+    # Fail closed: status must be LIVE and the health heartbeat must itself be
+    # recent. A stale status flag can survive a stalled market-data loop.
+    status_updated = market_status.get("updated")
+    status_is_fresh = (
+        isinstance(status_updated, (int, float))
+        and math.isfinite(status_updated)
+        and 0 < status_updated <= now
+        and now - status_updated <= 120
+    )
+    if market_status.get("status") != "LIVE" or not status_is_fresh:
+        reason = (
+            "Market feed is not LIVE; cached candidates are suppressed. No orders are placed."
+            if market_status.get("status") != "LIVE"
+            else "Market status heartbeat is stale or invalid; cached candidates are suppressed. No orders are placed."
+        )
         return {
             "generated_at": now,
             "feed": "crypto-ai-trader-chatgpt-alerts-v1",
             "status": market_status.get("status", "UNKNOWN"),
             "alerts": [],
             "count": 0,
-            "note": "Market feed is not LIVE; cached candidates are suppressed. No orders are placed.",
+            "note": reason,
         }
     for symbol in SYMBOLS:
         item = cache[symbol]
