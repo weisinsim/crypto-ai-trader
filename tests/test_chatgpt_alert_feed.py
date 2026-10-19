@@ -83,6 +83,39 @@ class ChatGPTAlertFeedTests(unittest.TestCase):
         payload = asyncio.run(dashboard.chatgpt_alert_feed())
         self.assertEqual(payload["count"], 0)
 
+    def test_rejects_non_finite_and_boolean_prices(self):
+        item = dashboard.cache["BTCUSDT"]
+        item["confirmed_tp2"] = float("inf")
+        payload = asyncio.run(dashboard.chatgpt_alert_feed())
+        self.assertEqual(payload["alerts"], [])
+
+        item["confirmed_tp2"] = 115.0
+        item["confirmed_entry"] = True
+        payload = asyncio.run(dashboard.chatgpt_alert_feed())
+        self.assertEqual(payload["alerts"], [])
+
+        item["confirmed_entry"] = 100.0
+        item["confirmed_sl"] = float("nan")
+        payload = asyncio.run(dashboard.chatgpt_alert_feed())
+        self.assertEqual(payload["alerts"], [])
+
+    def test_short_candidate_requires_correct_target_and_stop_order(self):
+        item = dashboard.cache["BTCUSDT"]
+        item.update({
+            "confirmed_signal": "SHORT",
+            "confirmed_entry": 100.0,
+            "confirmed_sl": 105.0,
+            "confirmed_tp1": 95.0,
+            "confirmed_tp2": 90.0,
+        })
+        payload = asyncio.run(dashboard.chatgpt_alert_feed())
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["alerts"][0]["side"], "SHORT")
+
+        item["confirmed_tp2"] = 97.0
+        payload = asyncio.run(dashboard.chatgpt_alert_feed())
+        self.assertEqual(payload["alerts"], [])
+
     def test_suppresses_cached_candidates_when_market_is_not_live(self):
         dashboard.market_status["status"] = "DELAYED"
         payload = asyncio.run(dashboard.chatgpt_alert_feed())
