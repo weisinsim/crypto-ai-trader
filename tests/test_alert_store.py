@@ -11,20 +11,20 @@ class EntryAlertStoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "alerts.sqlite"
             store = EntryAlertStore(path)
-            event = {"event_id": "abc", "eligible": True, "symbol": "BTCUSDT", "side": "LONG"}
+            event = {"event_id": "abc", "eligible": True, "symbol": "BTCUSDT", "side": "LONG", "notification_only": True, "auto_trade_authorized": False}
             self.assertTrue(store.enqueue(event, now=10))
             self.assertFalse(store.enqueue(event, now=11))
             self.assertEqual(len(EntryAlertStore(path).pending()), 1)
 
     def test_ineligible_event_is_not_queued(self):
         store = EntryAlertStore(":memory:")
-        event = {"event_id": "abc", "eligible": False, "symbol": "BTCUSDT", "side": "LONG"}
+        event = {"event_id": "abc", "eligible": False, "symbol": "BTCUSDT", "side": "LONG", "notification_only": True, "auto_trade_authorized": False}
         self.assertFalse(store.enqueue(event))
         self.assertEqual(store.pending(), [])
 
     def test_mark_delivered_only_once(self):
         store = EntryAlertStore(":memory:")
-        event = {"event_id": "abc", "eligible": True, "symbol": "BTCUSDT", "side": "SHORT"}
+        event = {"event_id": "abc", "eligible": True, "symbol": "BTCUSDT", "side": "SHORT", "notification_only": True, "auto_trade_authorized": False}
         self.assertTrue(store.enqueue(event, now=10))
         self.assertTrue(store.mark_delivered("abc", now=11))
         self.assertFalse(store.mark_delivered("abc", now=12))
@@ -32,7 +32,7 @@ class EntryAlertStoreTests(unittest.TestCase):
 
     def test_rejects_non_json_numeric_payload(self):
         store = EntryAlertStore(":memory:")
-        event = {"event_id": "abc", "eligible": True, "symbol": "BTCUSDT", "side": "LONG", "bad": float("nan")}
+        event = {"event_id": "abc", "eligible": True, "symbol": "BTCUSDT", "side": "LONG", "notification_only": True, "auto_trade_authorized": False, "bad": float("nan")}
         with self.assertRaises(ValueError):
             store.enqueue(event)
 
