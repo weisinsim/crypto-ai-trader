@@ -137,6 +137,13 @@ class ChatGPTAlertFeedTests(unittest.TestCase):
         payload = asyncio.run(dashboard.chatgpt_alert_feed())
         self.assertEqual(payload["count"], 0)
 
+    def test_rejects_invalid_scores(self):
+        item = dashboard.cache["BTCUSDT"]
+        for score in (float("nan"), float("inf"), -1, 101, True):
+            item["confirmed_score"] = score
+            payload = asyncio.run(dashboard.chatgpt_alert_feed())
+            self.assertEqual(payload["alerts"], [], msg=f"score should be rejected: {score!r}")
+
     def test_excludes_non_directional_signals(self):
         dashboard.cache["BTCUSDT"]["confirmed_signal"] = "NO-TRADE"
         payload = asyncio.run(dashboard.chatgpt_alert_feed())
