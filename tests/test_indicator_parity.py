@@ -69,17 +69,18 @@ class IndicatorParityTests(unittest.TestCase):
             self.assert_close_or_both_none(rsi_values[end - 1], expected_rsi)
 
     def test_four_hour_candle_must_be_closed_at_hourly_decision(self):
-        # At the 11:00 decision close, the 08:00-open 4h candle is unfinished.
+        # Input timestamps are Binance candle close times (close is inclusive at :59.999).
+        # At 11:00, 4h candles closing at 04:00 and 08:00 are usable; the 12:00 close is not.
         decision_close = 11 * 3_600_000
         four = [
-            {"ts": 4 * 3_600_000},
-            {"ts": 8 * 3_600_000},
-            {"ts": 12 * 3_600_000},
+            {"ts": 4 * 3_600_000 - 1},
+            {"ts": 8 * 3_600_000 - 1},
+            {"ts": 12 * 3_600_000 - 1},
         ]
         count = replay.closed_four_count_at(four, decision_close)
         expected = replay.closed_rows_at(four, decision_close)
         self.assertEqual(four[:count], expected)
-        self.assertEqual([row["ts"] for row in expected], [4 * 3_600_000])
+        self.assertEqual([row["ts"] for row in expected], [4 * 3_600_000 - 1, 8 * 3_600_000 - 1])
 
     def test_incremental_four_hour_cursor_matches_filter_at_boundaries(self):
         # Exercise just-before, exact-close, and just-after boundaries for a
