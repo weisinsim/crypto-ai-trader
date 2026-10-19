@@ -50,6 +50,13 @@ class EntryAlertStore:
         side = event.get("side")
         if not all(isinstance(x, str) and x for x in (event_id, symbol, side)):
             return False
+        # The outbox is strictly for human-facing alerts, never an execution queue.
+        if (
+            side not in ("LONG", "SHORT")
+            or event.get("notification_only") is not True
+            or event.get("auto_trade_authorized") is not False
+        ):
+            return False
         payload = json.dumps(event, sort_keys=True, separators=(",", ":"), allow_nan=False)
         created_at = time.time() if now is None else float(now)
         with self._connect() as conn:
