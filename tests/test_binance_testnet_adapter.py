@@ -40,6 +40,8 @@ class FakeClient:
 
     def post(self, path, params):
         self.calls.append((path, params))
+        if path == "/fapi/v1/order":
+            return FakeResponse({"orderId": 12345, "status": "NEW"})
         return FakeResponse()
 
     def close(self):
@@ -148,6 +150,40 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         result = adapter.validate_order(self.intent(quantity=0.01), ExecutionConfig(mode="testnet"))
         self.assertFalse(result["accepted"])
         self.assertEqual(result["reason"], "notional_below_exchange_minimum")
+        self.assertEqual(client.calls, [])
+
+    def test_testnet_market_order_uses_client_order_id_and_testnet_endpoint(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.submit_testnet_market_order(
+            self.intent(quantity=0.5009), "paper-test-0001", ExecutionConfig(mode="testnet")
+        )
+        self.assertTrue(result["accepted"])
+        self.assertEqual(result["mode"], "testnet_order_submitted")
+        self.assertEqual(result["exchange_order_id"], "12345")
+        self.assertEqual(client.calls[0][0], "/fapi/v1/order")
+        self.assertEqual(client.calls[0][1]["newClientOrderId"], "paper-test-0001")
+        self.assertEqual(client.calls[0][1]["quantity"], "0.5")
+        self.assertNotIn("https://fapi.binance.com", client.base_url)
+
+    def test_testnet_order_rejects_paper_or_live_mode_without_submission(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "paper-test-0002", ExecutionConfig(mode="paper")
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "testnet_mode_required")
+        self.assertEqual(client.calls, [])
+
+    def test_testnet_order_requires_safe_client_order_id(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "bad id with spaces", ExecutionConfig(mode="testnet")
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "invalid_client_order_id")
         self.assertEqual(client.calls, [])
 
     def test_signed_request_uses_hmac_sha256(self):
