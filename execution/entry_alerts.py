@@ -1,8 +1,9 @@
 """Fail-closed, notification-ready entry alert contracts.
 
 This module does not send messages or place orders. It converts a dashboard
-snapshot into a deterministic, deduplicable alert event for a future delivery
-adapter. Research-only models remain ineligible for actionable entry alerts.
+snapshot into a deterministic, deduplicable candidate event. Research signals
+may be surfaced as explicitly research-only alerts; NO-PRODUCTION models are
+blocked. No alert authorizes automatic trading.
 """
 from __future__ import annotations
 
@@ -11,6 +12,7 @@ import json
 import math
 
 DIRECTIONS = {"LONG", "SHORT"}
+ALERTABLE_MODEL_STATES = {"RESEARCH", "FROZEN", "PRODUCTION"}
 
 
 def _finite_positive(value):
@@ -23,24 +25,28 @@ def _finite_positive(value):
 
 
 def build_entry_alert(snapshot, *, now_ms, max_age_ms=90 * 60 * 1000):
-    """Build an actionable alert only from a fresh, closed-candle, approved signal."""
+    """Build a candidate alert from a fresh, closed-candle directional signal."""
     blockers = []
     if not isinstance(snapshot, dict):
         snapshot = {}
         blockers.append("invalid_snapshot")
 
     symbol = snapshot.get("symbol")
-    side = snapshot.get("confirmed_signal", snapshot.get("signal"))
+    side = snapshot.get("confirmed_signal")
+    if side not in DIRECTIONS:
+        side = snapshot.get("signal")
     model_status = snapshot.get("model_status", "UNKNOWN")
-    candle_ms = snapshot.get("confirmed_signal_time", snapshot.get("last_closed_candle"))
+    candle_ms = snapshot.get("confirmed_signal_time")
+    if candle_ms is None:
+        candle_ms = snapshot.get("last_closed_candle")
     analysis_ts = snapshot.get("analysis_ts")
 
     if not isinstance(symbol, str) or not symbol.endswith("USDT"):
         blockers.append("invalid_symbol")
     if side not in DIRECTIONS:
         blockers.append("not_actionable_direction")
-    if model_status != "PRODUCTION":
-        blockers.append("model_not_approved")
+    if model_status not in ALERTABLE_MODEL_STATES:
+        blockers.append("model_not_approved_for_alerts")
 
     if not isinstance(candle_ms, (int, float)) or isinstance(candle_ms, bool) or not math.isfinite(float(candle_ms)):
         blockers.append("missing_closed_candle")
@@ -73,7 +79,6 @@ def build_entry_alert(snapshot, *, now_ms, max_age_ms=90 * 60 * 1000):
         "model_version": snapshot.get("model_version", "unknown"),
     }
     event_id = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-
     eligible = not blockers
     return {
         "event_id": event_id,
@@ -81,6 +86,8 @@ def build_entry_alert(snapshot, *, now_ms, max_age_ms=90 * 60 * 1000):
         "blockers": sorted(set(blockers)),
         "symbol": symbol,
         "side": side if side in DIRECTIONS else "NO-TRADE",
+        "model_status": model_status,
+        "research_only": model_status != "PRODUCTION",
         "score": score if isinstance(score, (int, float)) and not isinstance(score, bool) and math.isfinite(float(score)) else None,
         "entry": fields["entry"] if _finite_positive(fields["entry"]) else None,
         "stop_loss": fields["sl"] if _finite_positive(fields["sl"]) else None,
