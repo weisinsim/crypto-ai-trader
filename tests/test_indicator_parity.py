@@ -44,6 +44,16 @@ class IndicatorParityTests(unittest.TestCase):
     def test_rsi_matches_live(self):
         self.assert_close_or_both_none(replay.rsi(self.close), self.live["rsi"](self.close))
 
+    def test_ema_series_matches_every_prefix(self):
+        series = replay.ema_series(self.close, 20)
+        for end in range(1, len(self.close) + 1):
+            self.assert_close_or_both_none(series[end - 1], replay.ema(self.close[:end], 20))
+
+    def test_rsi_series_matches_every_prefix(self):
+        series = replay.rsi_series(self.close)
+        for end in range(1, len(self.close) + 1):
+            self.assert_close_or_both_none(series[end - 1], replay.rsi(self.close[:end]))
+
     def test_atr_matches_live(self):
         self.assert_close_or_both_none(replay.atr(self.high, self.low, self.close), self.live["atr"](self.high, self.low, self.close))
 
