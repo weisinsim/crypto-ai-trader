@@ -141,9 +141,15 @@ def levels(h,l,c,n=48):
     return min(l[-m:-1]),max(h[-m:-1])
 
 
-def closed_rows_at(rows, timestamp_ms):
-    """Return only bars whose close timestamp is no later than the decision time."""
-    return [row for row in rows if row["ts"] <= timestamp_ms]
+def closed_rows_at(rows, decision_close_ms, interval_ms=14_400_000):
+    """Return only bars whose close time is no later than the decision time.
+
+    Historical CSV timestamps are candle OPEN times. The interval duration is
+    explicit so an unfinished higher-timeframe candle cannot leak into replay.
+    """
+    if not isinstance(interval_ms, int) or isinstance(interval_ms, bool) or interval_ms <= 0:
+        raise ValueError("interval_ms must be a positive integer")
+    return [row for row in rows if row["ts"] + interval_ms <= decision_close_ms]
 
 
 def risk_levels(symbol, price, direction, atr_value, stop_mult, target_mult):
@@ -174,9 +180,11 @@ def replay(symbol, one, four, *, include_states=False):
     # For each hourly close, use hourly candles through that close and 4h candles
     # whose close timestamp is no later than this hourly close.
     for i in range(199, len(one)):
-        now=one[i]["ts"]
+        # Input timestamps are candle OPEN times. Evaluate at the hourly
+        # candle close and use only 4h candles already closed by that instant.
+        decision_close_ms=one[i]["ts"] + 3_600_000
         h1=one[:i+1]
-        h4=closed_rows_at(four, now)
+        h4=closed_rows_at(four, decision_close_ms)
         if len(h4)<50: continue
         c=[x["c"] for x in h1]; hi=[x["h"] for x in h1]; lo=[x["l"] for x in h1]; v=[x["v"] for x in h1]; q=[x["q"] for x in h1]
         c4=[x["c"] for x in h4]
