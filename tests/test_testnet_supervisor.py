@@ -88,6 +88,15 @@ class TestnetSupervisorTests(unittest.TestCase):
         self.assertEqual(self.adapter.submissions, ["entry-1"])
         self.assertFalse(result["live_trading_enabled"])
 
+
+    def test_reused_client_order_id_is_blocked_across_calls(self):
+        first = self.supervisor.run_once("BTCUSDT", self.intent(), "entry-duplicate", "run-2")
+        self.assertTrue(first["ok"], first)
+        second = self.supervisor.run_once("BTCUSDT", self.intent(), "entry-duplicate", "run-2")
+        self.assertEqual(second["reason"], "client_order_id_already_reserved")
+        self.assertEqual(self.adapter.submissions, ["entry-duplicate"])
+        self.assertTrue(second["requires_reconciliation"])
+
     def test_emergency_stop_blocks_entry(self):
         self.store.set_emergency_stop(True)
         result = self.supervisor.run_once("BTCUSDT", self.intent(), "entry-1", "run-1")
