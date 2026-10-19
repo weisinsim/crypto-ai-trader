@@ -42,3 +42,17 @@ PR #187 remains open/draft and GitHub reports it is not mergeable. Its head is `
 ## Decision
 
 **NO LIVE TRADING APPROVAL.** Current diagnostics do not establish robust, cost-resilient, funding-reconciled out-of-sample profitability.
+
+
+## Engineering update — 2026-10-19
+
+The original PR #187 conflict was addressed on a separate rebased branch and superseded by draft PR #188:
+https://github.com/weisinsim/crypto-ai-trader/pull/188
+
+Current replay-optimization head: `965f4a09dd22fb9ff3efb496e16f9ae9d86b5840`.
+The branch preserves closed-4h-candle filtering and adds prefix EMA/RSI parity, candle-boundary, and bounded-window indicator regression coverage. GitHub reports the PR is open, draft, and mergeable. Automated checks on this head passed:
+- Research test suite: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39198824403
+- Python validation: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39198824524
+- Validation audit tests: https://github.com/weisinsim/crypto-ai-trader/actions/runs/39198824404
+
+These tests establish code-level validation only; they do not satisfy the separate historical-market-data differential replay requirement above. No verified funding settlement cashflow dataset has been reconciled in this update. Strategy selection remains blocked by cost/funding/out-of-sample gates, and live execution remains disabled. PR #188 requires human review before merge.
