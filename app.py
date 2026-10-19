@@ -705,6 +705,7 @@ async def handle_bybit_ws(sock):
             s=topic.split(".")[-1]
             if s in cache and rows.get("lastPrice"):
                 cache[s].update(price=float(rows["lastPrice"]), change=float(rows["price24hPcnt"])*100 if rows.get("price24hPcnt") is not None else cache[s]["change"], volume=float(rows.get("turnover24h",0)), funding=float(rows["fundingRate"]) if rows.get("fundingRate") is not None else cache[s]["funding"], oi=float(rows["openInterest"]) if rows.get("openInterest") is not None else cache[s]["oi"], ts=time.time(), source="Bybit Live")
+                market_status.update(status="LIVE", updated=time.time(), error=None)
                 try:
                     ov=float(rows["openInterest"]); now=time.time(); hist=oi_history[s]; hist.append((now,ov)); del hist[:-180]
                     old=next((v for t,v in reversed(hist) if now-t>=900), hist[0][1] if hist else ov)
@@ -731,6 +732,7 @@ async def handle_bybit_ws(sock):
                             await analyze_symbol(s)
                             record_confirmed_signal(s, int(arr[-2]["t"]) + 3600000 if len(arr) >= 2 else None)
                         cache[s].update(price=item["c"], ts=time.time(), source="Bybit Live")
+                        market_status.update(status="LIVE", updated=time.time(), error=None)
                         if time.time()-last_analysis[s] >= 3:
                             last_analysis[s]=time.time()
                             await analyze_symbol(s)
@@ -757,6 +759,7 @@ async def ws_loop():
                             s=d.get("s")
                             if s in cache:
                                 cache[s].update(price=float(d["c"]), change=float(d["P"]), volume=float(d["q"]), ts=time.time(), source="Binance Futures")
+                                market_status.update(status="LIVE", updated=time.time(), error=None)
                                 diagnostics["last_success"]=time.time()
                                 await broadcast({"type":"ticker","data":cache[s]})
                         elif d.get("e")=="kline":
@@ -774,6 +777,7 @@ async def ws_loop():
                                         await analyze_symbol(s)
                                         record_confirmed_signal(s, int(arr[-2]["t"]) + 3600000 if len(arr) >= 2 else None)
                                     cache[s].update(price=float(k["c"]), ts=time.time(), source="Binance Futures")
+                                    market_status.update(status="LIVE", updated=time.time(), error=None)
                                     if time.time()-last_analysis[s] >= 3:
                                         last_analysis[s]=time.time()
                                         await analyze_symbol(s)
