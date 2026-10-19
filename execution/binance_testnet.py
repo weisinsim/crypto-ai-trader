@@ -74,6 +74,26 @@ class BinanceFuturesTestnet:
             ),
         }
 
+    def account_preflight(self):
+        """Verify signed testnet account access without placing or modifying orders."""
+        response = self._client.get(
+            "/fapi/v2/account",
+            params=self._signed_params({}),
+        )
+        response.raise_for_status()
+        account = response.json()
+        if not isinstance(account, dict) or "canTrade" not in account:
+            raise ValueError("invalid_testnet_account_response")
+        return {
+            "connected": True,
+            "mode": "testnet",
+            "can_trade": bool(account["canTrade"]),
+            "open_position_count": sum(
+                1 for position in account.get("positions", [])
+                if float(position.get("positionAmt", 0) or 0) != 0
+            ),
+        }
+
     def validate_order(self, intent: OrderIntent, config=None):
         """Submit an order to Binance's TESTNET validation-only endpoint."""
         config = config or ExecutionConfig(mode="testnet")
