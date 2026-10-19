@@ -31,6 +31,8 @@ class FakeClient:
 
     def get(self, path, params):
         self.get_calls.append((path, params))
+        if path == "/fapi/v1/order":
+            return FakeResponse({"symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"), "orderId": 12345, "status": "PARTIALLY_FILLED", "executedQty": "0.2", "avgPrice": "100.1"})
         if path == "/fapi/v2/account":
             return FakeResponse({"canTrade": True, "positions": [
                 {"symbol": "BTCUSDT", "positionAmt": "0"},
@@ -185,6 +187,26 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertFalse(result["accepted"])
         self.assertEqual(result["reason"], "invalid_client_order_id")
         self.assertEqual(client.calls, [])
+
+    def test_query_order_reconciles_by_client_order_id_without_submission(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.query_testnet_order("BTCUSDT", "paper-test-0001")
+        self.assertTrue(result["found"])
+        self.assertEqual(result["status"], "PARTIALLY_FILLED")
+        self.assertEqual(result["executed_quantity"], "0.2")
+        self.assertEqual(client.get_calls[0][0], "/fapi/v1/order")
+        self.assertEqual(client.get_calls[0][1]["origClientOrderId"], "paper-test-0001")
+        self.assertIn("signature", client.get_calls[0][1])
+        self.assertEqual(client.calls, [])
+
+    def test_query_order_rejects_invalid_client_id_without_network_call(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.query_testnet_order("BTCUSDT", "invalid id")
+        self.assertFalse(result["found"])
+        self.assertEqual(result["reason"], "invalid_client_order_id")
+        self.assertEqual(client.get_calls, [])
 
     def test_signed_request_uses_hmac_sha256(self):
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=FakeClient())
