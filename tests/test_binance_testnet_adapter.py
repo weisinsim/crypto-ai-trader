@@ -37,7 +37,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         return OrderIntent(**values)
 
     def test_requires_testnet_credentials(self):
-        with self.assertRaises(TestnetConfigurationError):
+        with self.assertRaises(BinanceTestnetConfigurationError):
             BinanceFuturesTestnet(api_key="", api_secret="")
 
     def test_posts_only_to_testnet_validation_endpoint(self):
