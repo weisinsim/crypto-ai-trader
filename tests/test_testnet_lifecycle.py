@@ -119,3 +119,64 @@ class TestnetLifecycleTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FakeCancellationAdapter:
+    def __init__(self, exit_status="FILLED", position="0", sibling_status="NEW",
+                 cancel_result=None, fail_snapshot=False):
+        self.exit_status = exit_status
+        self.position = position
+        self.sibling_status = sibling_status
+        self.cancel_result = cancel_result or {"cancelled": True}
+        self.fail_snapshot = fail_snapshot
+        self.cancel_calls = []
+        self.snapshot_calls = 0
+
+    def query_testnet_order(self, symbol, client_order_id):
+        if client_order_id == "exit-01":
+            return {"found": True, "status": self.exit_status, "executed_quantity": "0.5"}
+        return {"found": True, "status": self.sibling_status}
+
+    def testnet_position_snapshot(self, symbol):
+        self.snapshot_calls += 1
+        if self.fail_snapshot:
+            return {"ok": False}
+        return {"ok": True, "position_amount": self.position, "open_orders": []}
+
+    def cancel_testnet_order(self, symbol, client_order_id):
+        self.cancel_calls.append((symbol, client_order_id))
+        return self.cancel_result
+
+
+class TestnetSiblingCancellationTests(unittest.TestCase):
+    def test_partial_exit_does_not_cancel_sibling(self):
+        from execution.testnet_lifecycle import cancel_testnet_sibling_after_flatten
+        adapter = FakeCancellationAdapter(exit_status="PARTIALLY_FILLED", position="0.2")
+        result = cancel_testnet_sibling_after_flatten(adapter, "BTCUSDT", "exit-01", "exit-02")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "exit_not_fully_filled")
+        self.assertEqual(adapter.cancel_calls, [])
+
+    def test_non_flat_position_keeps_sibling_protection(self):
+        from execution.testnet_lifecycle import cancel_testnet_sibling_after_flatten
+        adapter = FakeCancellationAdapter(position="0.2")
+        result = cancel_testnet_sibling_after_flatten(adapter, "BTCUSDT", "exit-01", "exit-02")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "position_not_flat_sibling_must_remain")
+        self.assertEqual(adapter.cancel_calls, [])
+
+    def test_confirmed_flat_position_cancels_sibling(self):
+        from execution.testnet_lifecycle import cancel_testnet_sibling_after_flatten
+        adapter = FakeCancellationAdapter()
+        result = cancel_testnet_sibling_after_flatten(adapter, "BTCUSDT", "exit-01", "exit-02")
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(adapter.cancel_calls, [("BTCUSDT", "exit-02")])
+        self.assertEqual(adapter.snapshot_calls, 2)
+
+    def test_cancel_failure_requires_reconciliation(self):
+        from execution.testnet_lifecycle import cancel_testnet_sibling_after_flatten
+        adapter = FakeCancellationAdapter(cancel_result={"cancelled": False, "reason": "timeout"})
+        result = cancel_testnet_sibling_after_flatten(adapter, "BTCUSDT", "exit-01", "exit-02")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "sibling_cancel_unconfirmed")
+        self.assertTrue(result["requires_reconciliation"])
