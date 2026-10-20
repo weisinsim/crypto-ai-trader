@@ -9,6 +9,7 @@ import json
 import math
 import sqlite3
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 
@@ -35,12 +36,24 @@ class EntryAlertStore:
                 )
             """)
 
+    @contextmanager
     def _connect(self):
+        """Commit/rollback each operation and close file-backed connections.
+
+        The in-memory connection is intentionally kept open for the store's
+        lifetime so successive operations share the same SQLite database.
+        """
         if self._memory_conn is not None:
-            return self._memory_conn
+            with self._memory_conn:
+                yield self._memory_conn
+            return
         conn = sqlite3.connect(self.path, timeout=10)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
 
     def enqueue(self, event, *, now=None):
         """Persist one eligible alert once; returns False for duplicate/invalid events."""
