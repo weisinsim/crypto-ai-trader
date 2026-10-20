@@ -95,6 +95,20 @@ def execute_guarded_testnet_entry(
             "requires_reconciliation": True,
         }
 
+    if position != 0 and (
+        order.get("status") not in {"FILLED", "PARTIALLY_FILLED"}
+        or executed <= 0
+        or executed != abs(position)
+    ):
+        return {
+            "ok": False,
+            "reason": "order_fill_and_position_quantity_mismatch",
+            "order_status": order.get("status"),
+            "executed_quantity": str(executed),
+            "position_amount": str(position),
+            "requires_reconciliation": True,
+        }
+
     if position == 0:
         terminal_no_fill = order.get("status") in {"CANCELED", "EXPIRED", "REJECTED"} and executed == 0
         return {
