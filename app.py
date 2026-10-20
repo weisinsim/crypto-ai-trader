@@ -177,6 +177,27 @@ async def chatgpt_alert_feed():
         }
     for symbol in SYMBOLS:
         item = cache[symbol]
+        # A fresh global heartbeat can be kept alive by another symbol while
+        # this symbol's own ticker has stalled. Suppress alerts unless the
+        # symbol price snapshot is independently fresh and finite.
+        symbol_ts = item.get("ts")
+        symbol_price = item.get("price")
+        if (
+            not isinstance(symbol_ts, (int, float))
+            or isinstance(symbol_ts, bool)
+            or not math.isfinite(symbol_ts)
+            or symbol_ts <= 0
+            or symbol_ts > now
+            or now - symbol_ts > 120
+        ):
+            continue
+        if (
+            not isinstance(symbol_price, (int, float))
+            or isinstance(symbol_price, bool)
+            or not math.isfinite(symbol_price)
+            or symbol_price <= 0
+        ):
+            continue
         side = item.get("confirmed_signal")
         candle_time = item.get("confirmed_signal_time")
         analysis_time = item.get("analysis_ts")
