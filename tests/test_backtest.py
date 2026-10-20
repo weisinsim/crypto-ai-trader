@@ -646,5 +646,5 @@ class CausalBacktestRegressionTests(unittest.TestCase):
             )
         self.assertTrue(result["trade_log"])
         trade = result["trade_log"][0]
-        self.assertEqual(trade["entry_time"], rows[3]["t"])
-        self.assertEqual(trade["entry"], rows[3]["o"])
+        self.assertEqual(trade["entry_time"], rows[4]["t"])
+        self.assertEqual(trade["entry"], rows[4]["o"])
