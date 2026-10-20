@@ -175,9 +175,11 @@ class TestnetSupervisorTests(unittest.TestCase):
         result = self.supervisor.run_once(
             "BTCUSDT", self.intent(), "entry-under-lock-timeout", "run-under-lock-timeout")
         self.assertEqual(result["reason"], "position_recheck_failed_under_lock")
+        self.assertEqual(result["error_type"], "TimeoutError")
         self.assertTrue(result["requires_reconciliation"])
         self.assertFalse(result["entry_submitted"])
         self.assertEqual(self.adapter.submissions, [])
+        # Ambiguous exchange state must keep the durable lock until manual reconciliation.
         self.assertEqual(self.store.get_entry_lock()["token"], "entry-under-lock-timeout")
 
 if __name__ == "__main__":
