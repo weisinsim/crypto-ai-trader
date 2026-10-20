@@ -66,6 +66,8 @@ class PaperTradeTests(unittest.TestCase):
         self.assertTrue(update_trailing_stop(trade, candidate_stop=98))
         self.assertFalse(update_trailing_stop(trade, candidate_stop=97))
         self.assertEqual(trade["trailing_stop"], 98)
+        self.assertFalse(update_trailing_stop(trade, candidate_stop=96))
+        self.assertEqual(trade["trailing_stop"], 98)
 
     def test_funding_and_fees_are_included_in_net_pnl(self):
         trade = self.open()
@@ -77,6 +79,8 @@ class PaperTradeTests(unittest.TestCase):
         self.assertGreater(summary["fees_paid"], 0)
         self.assertAlmostEqual(summary["funding_paid"], 0.2)
         self.assertAlmostEqual(summary["net_pnl"], 15.0 - summary["fees_paid"] - 0.2)
+        with self.assertRaisesRegex(ValueError, "invalid_funding_input"):
+            apply_funding(trade, rate=0.001, mark_price=100, timestamp_ms=1_500)
 
     def test_rejects_non_notification_event(self):
         bad = event()
