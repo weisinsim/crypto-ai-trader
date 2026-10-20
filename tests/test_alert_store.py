@@ -16,6 +16,19 @@ class EntryAlertStoreTests(unittest.TestCase):
             self.assertFalse(store.enqueue(event, now=11))
             self.assertEqual(len(EntryAlertStore(path).pending()), 1)
 
+    def test_same_event_id_with_conflicting_payload_fails_closed(self):
+        store = EntryAlertStore(":memory:")
+        event = {"event_id": "stable-id", "eligible": True, "symbol": "BTCUSDT",
+                 "side": "LONG", "notification_only": True, "auto_trade_authorized": False,
+                 "entry": 100.0}
+        self.assertTrue(store.enqueue(event, now=10))
+        changed = dict(event, entry=101.0)
+        with self.assertRaisesRegex(ValueError, "entry_alert_event_id_payload_conflict"):
+            store.enqueue(changed, now=11)
+        pending = store.pending()
+        self.assertEqual(len(pending), 1)
+        self.assertEqual(pending[0]["event"]["entry"], 100.0)
+
     def test_ineligible_event_is_not_queued(self):
         store = EntryAlertStore(":memory:")
         event = {"event_id": "abc", "eligible": False, "symbol": "BTCUSDT", "side": "LONG", "notification_only": True, "auto_trade_authorized": False}
