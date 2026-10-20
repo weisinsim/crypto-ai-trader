@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import time
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -32,8 +33,8 @@ class BinanceUsdMMarketData:
         self.opener = opener
 
     def last_closed_candle_ms(self, symbol, interval, *, now_ms=None):
-        if not isinstance(symbol, str) or not symbol.endswith("USDT"):
-            raise ValueError("symbol must be a USDT pair")
+        if not isinstance(symbol, str) or re.fullmatch(r"[A-Z0-9]{2,}USDT", symbol) is None:
+            raise ValueError("symbol must be a canonical uppercase USDT pair")
         if not isinstance(interval, str) or not interval:
             raise ValueError("interval is required")
         now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
