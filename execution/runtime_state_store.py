@@ -227,7 +227,17 @@ class RuntimeStateStore:
                 "INSERT OR IGNORE INTO order_attempts(client_order_id, intent_fingerprint, status, created_at) VALUES(?, ?, 'CLAIMED', ?)",
                 (client_order_id, intent_fingerprint, datetime.now(timezone.utc).timestamp()),
             )
-            return cursor.rowcount == 1
+            if cursor.rowcount == 1:
+                return True
+            existing = db.execute(
+                "SELECT intent_fingerprint FROM order_attempts WHERE client_order_id=?",
+                (client_order_id,),
+            ).fetchone()
+            # A duplicate ID is only an idempotent replay of the same intent.
+            # Reusing it for different parameters must be surfaced as a conflict.
+            if existing is None or existing[0] != intent_fingerprint:
+                raise ValueError("client_order_id_intent_fingerprint_conflict")
+            return False
 
     def update_order_attempt(self, client_order_id, status):
         """Apply monotonic order-attempt transitions; reconciliation is terminal here."""
