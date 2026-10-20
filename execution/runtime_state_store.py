@@ -233,30 +233,46 @@ class RuntimeStateStore:
             "now_epoch",
         )
         today = datetime.fromtimestamp(now, timezone.utc).date().isoformat()
-        with self._connect() as db:
-            metrics = db.execute(
-                "SELECT open_positions, symbol_notional_usdt, total_notional_usdt, updated_at FROM runtime_metrics WHERE id=1"
-            ).fetchone()
-            control = db.execute(
-                "SELECT emergency_stop, consecutive_errors FROM runtime_control WHERE id=1"
-            ).fetchone()
-            pnl = db.execute(
-                """SELECT
-                    (SELECT COALESCE(SUM(amount_usdt), 0) FROM realized_pnl WHERE day_utc=?) +
-                    (SELECT COALESCE(SUM(amount_usdt), 0) FROM realized_pnl_events WHERE day_utc=?)""",
-                (today, today),
-            ).fetchone()[0]
-        # Missing exchange state is unsafe: caller receives None and must block.
-        if metrics is None or control is None:
+        try:
+            with self._connect() as db:
+                metrics = db.execute(
+                    "SELECT open_positions, symbol_notional_usdt, total_notional_usdt, updated_at FROM runtime_metrics WHERE id=1"
+                ).fetchone()
+                control = db.execute(
+                    "SELECT emergency_stop, consecutive_errors FROM runtime_control WHERE id=1"
+                ).fetchone()
+                pnl = db.execute(
+                    """SELECT
+                        (SELECT COALESCE(SUM(amount_usdt), 0) FROM realized_pnl WHERE day_utc=?) +
+                        (SELECT COALESCE(SUM(amount_usdt), 0) FROM realized_pnl_events WHERE day_utc=?)""",
+                    (today, today),
+                ).fetchone()[0]
+            # Missing or unreadable state must block entry, not escape as an
+            # unhandled exception or be replaced with permissive defaults.
+            if metrics is None or control is None:
+                return None
+            age = now - self._finite_number(metrics[3], "snapshot_updated_at")
+            open_positions = metrics[0]
+            consecutive_errors = control[1]
+            emergency_stop = control[0]
+            if (
+                isinstance(open_positions, bool)
+                or not isinstance(open_positions, int)
+                or open_positions < 0
+                or isinstance(consecutive_errors, bool)
+                or not isinstance(consecutive_errors, int)
+                or consecutive_errors < 0
+                or emergency_stop not in (0, 1)
+            ):
+                return None
+            return RuntimeSnapshot(
+                daily_realized_pnl_usdt=self._finite_number(pnl, "daily_realized_pnl_usdt"),
+                open_positions=open_positions,
+                symbol_notional_usdt=self._finite_number(metrics[1], "symbol_notional_usdt"),
+                total_notional_usdt=self._finite_number(metrics[2], "total_notional_usdt"),
+                consecutive_execution_errors=consecutive_errors,
+                emergency_stop=bool(emergency_stop),
+                snapshot_age_seconds=age,
+            )
+        except (sqlite3.Error, TypeError, ValueError, OverflowError, IndexError):
             return None
-        # Preserve negative age so runtime_guard rejects future-dated/corrupt snapshots.
-        age = now - float(metrics[3])
-        return RuntimeSnapshot(
-            daily_realized_pnl_usdt=float(pnl),
-            open_positions=int(metrics[0]),
-            symbol_notional_usdt=float(metrics[1]),
-            total_notional_usdt=float(metrics[2]),
-            consecutive_execution_errors=int(control[1]),
-            emergency_stop=bool(control[0]),
-            snapshot_age_seconds=age,
-        )
