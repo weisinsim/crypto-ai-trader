@@ -36,6 +36,17 @@ class MarketDataTests(unittest.TestCase):
             CANDLE_CLOSE_BOUNDARY,
         )
 
+    def test_rejects_unsupported_interval_and_invalid_now_timestamp(self):
+        client = BinanceUsdMMarketData(opener=lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("invalid inputs must be rejected before network access")
+        ))
+        with self.assertRaisesRegex(ValueError, "unsupported_binance_kline_interval"):
+            client.last_closed_candle_ms("BTCUSDT", "1h;drop", now_ms=NOW)
+        for timestamp in (True, 0, -1, 1.5, "1800000100000"):
+            with self.subTest(timestamp=timestamp):
+                with self.assertRaisesRegex(ValueError, "positive integer"):
+                    client.last_closed_candle_ms("BTCUSDT", "1h", now_ms=timestamp)
+
     def test_rejects_noncanonical_symbols_before_request(self):
         client = BinanceUsdMMarketData(opener=lambda *a, **k: (_ for _ in ()).throw(
             AssertionError("invalid symbols must be rejected before network access")
