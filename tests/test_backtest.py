@@ -116,8 +116,15 @@ class BacktestTests(unittest.TestCase):
         rows[5].update({"o": 85.0, "h": 90.0, "l": 80.0, "c": 86.0})
         fast = [None, 2.0, 4.0, 4.0, 4.0, 4.0]
         slow = [None, 3.0, 3.0, 3.0, 3.0, 3.0]
-        with patch("research.backtest._ema", side_effect=lambda values, period: fast if period == 2 else slow), \\
-             patch("research.backtest._atr", return_value=[10.0] * len(rows)):
+        with (
+            patch("research.backtest._ema", side_effect=lambda values, period: fast if period == 2 else slow),
+            patch("research.backtest._atr", return_value=[10.0] * len(rows)),
+        ):
+            result = run_ema_cross_backtest(
+                rows, fast=2, slow=3, atr_period=1, stop_atr=1.0,
+                target_atr=2.0, fee_rate=0.0, slippage_rate=0.0,
+                risk_fraction=0.01, allow_short=False,
+            )
             result = run_ema_cross_backtest(
                 rows, fast=2, slow=3, atr_period=1, stop_atr=1.0,
                 target_atr=2.0, fee_rate=0.0, slippage_rate=0.0,
