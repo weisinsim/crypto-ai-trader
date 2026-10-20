@@ -20,10 +20,17 @@ from execution.live_signal_scanner import BinanceUsdMMarketData, scan_once
 
 def fetch_snapshot(base_url, *, timeout=8):
     """Return a symbol-indexed snapshot only when the dashboard reports LIVE."""
+    if (not isinstance(timeout, (int, float)) or isinstance(timeout, bool)
+            or not math.isfinite(timeout) or timeout <= 0):
+        raise ValueError("timeout must be a finite positive number")
+    if not isinstance(base_url, str) or not base_url.startswith(("https://", "http://127.0.0.1")):
+        raise ValueError("dashboard URL must use HTTPS or loopback HTTP")
     url = base_url.rstrip("/") + "/api/snapshot"
     request = Request(url, headers={"Accept": "application/json", "User-Agent": "crypto-ai-alert-worker"})
     with urlopen(request, timeout=timeout) as response:
         payload = json.loads(response.read().decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise RuntimeError("dashboard_snapshot_invalid")
     status = payload.get("status") or {}
     if not isinstance(status, dict) or status.get("status") != "LIVE":
         raise RuntimeError("dashboard_not_live")
