@@ -53,6 +53,34 @@ class BinanceLiveReadinessTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid_mark_price"):
             adapter.account_snapshot()
 
+    def test_rejects_nonfinite_account_balances(self):
+        for field, value in (("availableBalance", "nan"), ("totalWalletBalance", "inf")):
+            with self.subTest(field=field):
+                account = {"availableBalance": "1", "totalWalletBalance": "1", "positions": []}
+                account[field] = value
+                client = Mock()
+                client.get.side_effect = [
+                    Response(account), Response([]), Response({"dualSidePosition": False})
+                ]
+                adapter = BinanceLiveReadiness("key", "secret", client)
+                with self.assertRaisesRegex(ValueError, "non_finite_account_balance"):
+                    adapter.account_snapshot()
+
+    def test_rejects_nonfinite_open_position_metrics(self):
+        account = {"availableBalance": "1", "totalWalletBalance": "1", "positions": []}
+        for field, value in (("positionAmt", "nan"), ("markPrice", "inf"),
+                             ("entryPrice", "nan"), ("unRealizedProfit", "-inf")):
+            with self.subTest(field=field):
+                client = Mock()
+                client.get.side_effect = [
+                    Response(account),
+                    Response([{"symbol": "BTCUSDT", "positionAmt": "1", "entryPrice": "2",
+                               "markPrice": "3", "unRealizedProfit": "0", field: value}]),
+                ]
+                adapter = BinanceLiveReadiness("key", "secret", client)
+                with self.assertRaisesRegex(ValueError, "non_finite_position_risk_item"):
+                    adapter.account_snapshot()
+
 
 if __name__ == "__main__":
     unittest.main()
