@@ -22,6 +22,15 @@ class Response:
 
 
 class SnapshotFetchTests(unittest.TestCase):
+    def test_fetch_snapshot_rejects_invalid_timeout_url_and_response_shape(self):
+        with self.assertRaisesRegex(ValueError, "finite positive"):
+            live_signal_worker.fetch_snapshot("https://example.invalid", timeout=float("nan"))
+        with self.assertRaisesRegex(ValueError, "HTTPS"):
+            live_signal_worker.fetch_snapshot("http://example.invalid")
+        with patch.object(live_signal_worker, "urlopen", return_value=Response([])):
+            with self.assertRaisesRegex(RuntimeError, "dashboard_snapshot_invalid"):
+                live_signal_worker.fetch_snapshot("https://example.invalid")
+
     def test_fetch_snapshot_requires_live_status(self):
         with patch.object(live_signal_worker, "urlopen", return_value=Response({
             "status": {"status": "DELAYED"},
