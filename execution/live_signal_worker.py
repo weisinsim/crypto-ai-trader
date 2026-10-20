@@ -17,6 +17,7 @@ from urllib.request import Request, urlopen
 
 from execution.alert_store import EntryAlertStore
 from execution.live_signal_scanner import BinanceUsdMMarketData, scan_once
+from execution.telegram_alert_delivery import deliver_pending
 
 
 def _valid_dashboard_url(value):
@@ -104,9 +105,29 @@ def run_worker(*, base_url, db_path, symbols, interval="1h", poll_seconds=30,
                     max_age_ms=max_age_ms,
                 )
                 cycle_status = "DEGRADED" if result.get("errors") else "OK"
-                last_result = {"status": cycle_status, **result, "pending": len(store.pending())}
+                last_result = {"status": cycle_status, **result}
+                # Telegram is explicitly opt-in: scanner-only mode remains the default.
+                # If either credential is configured, attempt delivery and report failures
+                # without ever affecting trade execution (which this worker does not do).
+                telegram_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+                telegram_chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+                if telegram_token or telegram_chat_id:
+                    try:
+                        delivery_result = deliver_pending(store, token=telegram_token,
+                                                          chat_id=telegram_chat_id, emit=emit)
+                        last_result["telegram"] = delivery_result
+                        if delivery_result.get("failed", 0):
+                            cycle_status = "DEGRADED"
+                    except Exception as delivery_exc:
+                        last_result["telegram"] = {"status": "DEGRADED",
+                                                    "reason": type(delivery_exc).__name__}
+                        cycle_status = "DEGRADED"
+                last_result["status"] = cycle_status
+                last_result["pending"] = len(store.pending())
                 if result.get("errors"):
                     last_result["reason"] = "symbol_scan_errors"
+                elif cycle_status == "DEGRADED":
+                    last_result["reason"] = "telegram_delivery_degraded"
             except Exception as exc:
                 # Keep the worker alive, but never treat a failed cycle as healthy.
                 last_result = {"status": "DEGRADED", "reason": type(exc).__name__}
