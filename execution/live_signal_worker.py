@@ -107,11 +107,12 @@ def run_worker(*, base_url, db_path, symbols, interval="1h", poll_seconds=30,
                 cycle_status = "DEGRADED" if result.get("errors") else "OK"
                 last_result = {"status": cycle_status, **result}
                 # Telegram is explicitly opt-in: scanner-only mode remains the default.
-                # If either credential is configured, attempt delivery and report failures
-                # without ever affecting trade execution (which this worker does not do).
-                telegram_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-                telegram_chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
-                if telegram_token or telegram_chat_id:
+                # Require both credentials before attempting delivery. A partial setup is
+                # surfaced as degraded instead of repeatedly calling the sender with
+                # incomplete credentials or silently pretending alerts were delivered.
+                telegram_token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+                telegram_chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+                if telegram_token and telegram_chat_id:
                     try:
                         delivery_result = deliver_pending(store, token=telegram_token,
                                                           chat_id=telegram_chat_id, emit=emit)
@@ -122,6 +123,12 @@ def run_worker(*, base_url, db_path, symbols, interval="1h", poll_seconds=30,
                         last_result["telegram"] = {"status": "DEGRADED",
                                                     "reason": type(delivery_exc).__name__}
                         cycle_status = "DEGRADED"
+                elif telegram_token or telegram_chat_id:
+                    last_result["telegram"] = {
+                        "status": "DEGRADED",
+                        "reason": "telegram_credentials_incomplete",
+                    }
+                    cycle_status = "DEGRADED"
                 last_result["status"] = cycle_status
                 last_result["pending"] = len(store.pending())
                 if result.get("errors"):
