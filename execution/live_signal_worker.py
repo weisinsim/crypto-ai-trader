@@ -82,6 +82,8 @@ def run_worker(*, base_url, db_path, symbols, interval="1h", poll_seconds=30,
         raise ValueError("symbols must be a non-empty list of USDT pairs")
     if len(set(symbols)) != len(symbols):
         raise ValueError("symbols must not contain duplicates")
+    if not isinstance(interval, str) or interval not in BinanceUsdMMarketData.SUPPORTED_INTERVALS:
+        raise ValueError("interval must be a Binance USD-M supported kline interval")
     stop_event = stop_event or _StopEvent()
     store = (store_factory or EntryAlertStore)(db_path)
     market_data = market_data or BinanceUsdMMarketData()
