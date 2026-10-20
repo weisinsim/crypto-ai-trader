@@ -48,6 +48,24 @@ def ensure_testnet_protective_exits(
     open_orders = snapshot.get("open_orders")
     if not isinstance(open_orders, list) or any(not isinstance(order, dict) for order in open_orders):
         return {"ok": False, "reason": "invalid_open_orders_snapshot"}
+    # The adapter snapshot is sourced from the exchange's openOrders endpoint.
+    # Treat malformed/unknown records and any active order that is not a recognized
+    # reduce-only protective exit as an ambiguity; never add protection on top of
+    # an unresolved entry or unexpected order.
+    for order in open_orders:
+        if (
+            not isinstance(order.get("status"), str)
+            or order.get("status") not in {"NEW", "PARTIALLY_FILLED"}
+            or not isinstance(order.get("type"), str)
+            or not isinstance(order.get("side"), str)
+            or order.get("reduce_only") not in {True, False}
+        ):
+            return {"ok": False, "reason": "unknown_or_malformed_open_order_requires_reconciliation"}
+        if not (
+            order.get("reduce_only") is True
+            and order.get("type") in {"STOP_MARKET", "TAKE_PROFIT_MARKET"}
+        ):
+            return {"ok": False, "reason": "unexpected_active_order_requires_reconciliation"}
     protective = [
         order for order in open_orders
         if order.get("status") in {"NEW", "PARTIALLY_FILLED"}
