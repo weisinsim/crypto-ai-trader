@@ -141,6 +141,14 @@ class RuntimeStateStoreTests(unittest.TestCase):
         reopened = RuntimeStateStore(self.store.database_path)
         self.assertFalse(reopened.claim_order_attempt("order-1", fingerprint))
 
+    def test_order_attempt_id_reuse_with_different_intent_fails_closed(self):
+        self.assertTrue(self.store.claim_order_attempt("order-conflict", "d" * 64))
+        with self.assertRaisesRegex(ValueError, "client_order_id_intent_fingerprint_conflict"):
+            self.store.claim_order_attempt("order-conflict", "e" * 64)
+        record = self.store.get_order_attempt("order-conflict")
+        self.assertEqual(record["intent_fingerprint"], "d" * 64)
+        self.assertEqual(record["status"], "CLAIMED")
+
     def test_order_attempt_rejects_invalid_fingerprint(self):
         with self.assertRaises(ValueError):
             self.store.claim_order_attempt("order-2", "not-a-sha256")
