@@ -300,6 +300,8 @@ class BinanceFuturesTestnet:
         try:
             amount = Decimal(str(position.get("positionAmt", "0")))
             entry_price = Decimal(str(position.get("entryPrice", "0")))
+            if not amount.is_finite() or not entry_price.is_finite() or entry_price < 0:
+                raise InvalidOperation
         except (InvalidOperation, TypeError, ValueError):
             return {"ok": False, "reason": "invalid_testnet_position_values"}
         orders_response = self._client.get(
@@ -310,6 +312,14 @@ class BinanceFuturesTestnet:
         orders = orders_response.json()
         if not isinstance(orders, list) or any(not isinstance(order, dict) for order in orders):
             return {"ok": False, "reason": "invalid_testnet_open_orders_response"}
+        required_order_fields = ("orderId", "side", "type", "status", "reduceOnly")
+        for order in orders:
+            if any(field not in order for field in required_order_fields):
+                return {"ok": False, "reason": "invalid_testnet_open_order_record"}
+            if not isinstance(order["reduceOnly"], bool):
+                return {"ok": False, "reason": "invalid_testnet_open_order_reduce_only"}
+            if not all(isinstance(order[field], str) and order[field] for field in ("side", "type", "status")):
+                return {"ok": False, "reason": "invalid_testnet_open_order_record"}
         return {
             "ok": True,
             "mode": "testnet_read_only_snapshot",
