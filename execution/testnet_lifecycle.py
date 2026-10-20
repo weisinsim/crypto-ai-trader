@@ -225,6 +225,19 @@ def cancel_testnet_sibling_after_flatten(
             "cancel_result": cancelled,
             "requires_reconciliation": True,
         }
+    # A cancel acknowledgement is not proof the sibling is inactive: it may
+    # have filled in the race between the pre-cancel lookup and cancellation.
+    sibling_after_cancel = adapter.query_testnet_order(symbol, sibling_exit_client_order_id)
+    if not sibling_after_cancel.get("found"):
+        return {"ok": False, "reason": "post_cancel_sibling_lookup_failed", "requires_reconciliation": True}
+    if sibling_after_cancel.get("status") not in {"CANCELED", "EXPIRED", "REJECTED"}:
+        return {
+            "ok": False,
+            "reason": "post_cancel_sibling_not_confirmed_inactive",
+            "sibling_status": sibling_after_cancel.get("status"),
+            "requires_reconciliation": True,
+        }
+
     final_snapshot = adapter.testnet_position_snapshot(symbol)
     if not final_snapshot.get("ok"):
         return {"ok": False, "reason": "post_cancel_snapshot_failed", "requires_reconciliation": True}
