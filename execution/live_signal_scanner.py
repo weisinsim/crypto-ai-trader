@@ -23,6 +23,11 @@ class BinanceUsdMMarketData:
     """Minimal public-only Binance USD-M closed-candle timestamp reader."""
 
     BASE_URL = "https://fapi.binance.com/fapi/v1/klines"
+    SUPPORTED_INTERVALS = frozenset({
+        "1m", "3m", "5m", "15m", "30m",
+        "1h", "2h", "4h", "6h", "8h", "12h",
+        "1d", "3d", "1w", "1M",
+    })
 
     def __init__(self, *, timeout=10, opener=urlopen):
         if (not isinstance(timeout, (int, float)) or isinstance(timeout, bool)
@@ -34,8 +39,8 @@ class BinanceUsdMMarketData:
     def last_closed_candle_ms(self, symbol, interval, *, now_ms=None):
         if not isinstance(symbol, str) or not symbol.endswith("USDT"):
             raise ValueError("symbol must be a USDT pair")
-        if not isinstance(interval, str) or not interval:
-            raise ValueError("interval is required")
+        if not isinstance(interval, str) or interval not in self.SUPPORTED_INTERVALS:
+            raise ValueError("interval must be a Binance USD-M supported kline interval")
         now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
         query = urlencode({"symbol": symbol, "interval": interval, "limit": 2})
         request = Request(f"{self.BASE_URL}?{query}", headers={"User-Agent": "crypto-ai-trader-alert-scanner"})
