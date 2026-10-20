@@ -12,10 +12,30 @@ import os
 import signal
 import threading
 import time
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from execution.alert_store import EntryAlertStore
 from execution.live_signal_scanner import BinanceUsdMMarketData, scan_once
+
+
+def _valid_dashboard_url(value):
+    """Accept HTTPS URLs or plain HTTP on the exact IPv4 loopback host only."""
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        parsed = urlsplit(value)
+        hostname = parsed.hostname
+        # Accessing .port also validates malformed port syntax.
+        parsed.port
+    except ValueError:
+        return False
+    if (not parsed.netloc or not hostname or parsed.username is not None
+            or parsed.password is not None or parsed.query or parsed.fragment):
+        return False
+    if parsed.scheme == "https":
+        return True
+    return parsed.scheme == "http" and hostname == "127.0.0.1"
 
 
 def fetch_snapshot(base_url, *, timeout=8):
@@ -23,8 +43,8 @@ def fetch_snapshot(base_url, *, timeout=8):
     if (not isinstance(timeout, (int, float)) or isinstance(timeout, bool)
             or not math.isfinite(timeout) or timeout <= 0):
         raise ValueError("timeout must be a finite positive number")
-    if not isinstance(base_url, str) or not base_url.startswith(("https://", "http://127.0.0.1")):
-        raise ValueError("dashboard URL must use HTTPS or loopback HTTP")
+    if not _valid_dashboard_url(base_url):
+        raise ValueError("dashboard URL must use HTTPS or exact 127.0.0.1 loopback HTTP")
     url = base_url.rstrip("/") + "/api/snapshot"
     request = Request(url, headers={"Accept": "application/json", "User-Agent": "crypto-ai-alert-worker"})
     with urlopen(request, timeout=timeout) as response:
@@ -118,8 +138,8 @@ class _StopEvent:
 
 def main():
     base_url = os.environ.get("ALERT_DASHBOARD_URL", "").strip()
-    if not base_url.startswith("https://") and not base_url.startswith("http://127.0.0.1"):
-        raise SystemExit("ALERT_DASHBOARD_URL must use HTTPS (or loopback HTTP for local testing)")
+    if not _valid_dashboard_url(base_url):
+        raise SystemExit("ALERT_DASHBOARD_URL must use HTTPS (or exact 127.0.0.1 loopback HTTP)")
     db_path = os.environ.get("ALERT_OUTBOX_DB", "data/entry-alerts.sqlite3")
     symbols = [item.strip().upper() for item in os.environ.get(
         "ALERT_SYMBOLS", "BTCUSDT,ETHUSDT,SOLUSDT,AVAXUSDT,XRPUSDT"
