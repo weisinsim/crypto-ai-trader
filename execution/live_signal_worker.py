@@ -57,6 +57,11 @@ def run_worker(*, base_url, db_path, symbols, interval="1h", poll_seconds=30,
     if (not isinstance(poll_seconds, (int, float)) or isinstance(poll_seconds, bool)
             or not math.isfinite(poll_seconds) or poll_seconds < 5):
         raise ValueError("poll_seconds must be a finite number of at least 5 seconds")
+    if (not isinstance(symbols, (list, tuple)) or not symbols
+            or any(not isinstance(symbol, str) or not symbol.endswith("USDT") for symbol in symbols)):
+        raise ValueError("symbols must be a non-empty list of USDT pairs")
+    if len(set(symbols)) != len(symbols):
+        raise ValueError("symbols must not contain duplicates")
     stop_event = stop_event or _StopEvent()
     store = (store_factory or EntryAlertStore)(db_path)
     market_data = market_data or BinanceUsdMMarketData()
@@ -76,7 +81,10 @@ def run_worker(*, base_url, db_path, symbols, interval="1h", poll_seconds=30,
                     now_ms=int(time.time() * 1000),
                     max_age_ms=max_age_ms,
                 )
-                last_result = {"status": "OK", **result, "pending": len(store.pending())}
+                cycle_status = "DEGRADED" if result.get("errors") else "OK"
+                last_result = {"status": cycle_status, **result, "pending": len(store.pending())}
+                if result.get("errors"):
+                    last_result["reason"] = "symbol_scan_errors"
             except Exception as exc:
                 # Keep the worker alive, but never treat a failed cycle as healthy.
                 last_result = {"status": "DEGRADED", "reason": type(exc).__name__}
