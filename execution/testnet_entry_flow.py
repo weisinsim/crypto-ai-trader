@@ -96,7 +96,7 @@ def execute_guarded_testnet_entry(
         }
 
     if position != 0 and (
-        order.get("status") not in {"FILLED", "PARTIALLY_FILLED"}
+        order.get("status") != "FILLED"
         or executed <= 0
         or executed != abs(position)
     ):
