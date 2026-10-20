@@ -75,6 +75,14 @@ class RuntimeStateStoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.store.record_realized_pnl(float("inf"))
 
+    def test_future_dated_exchange_snapshot_fails_closed(self):
+        self.store.update_exchange_metrics(0, 0, 0, now_epoch=2000)
+        snapshot = self.store.load_snapshot(now_epoch=1000)
+        self.assertEqual(snapshot.snapshot_age_seconds, -1000)
+        decision = validate_runtime_state(snapshot, max_snapshot_age_seconds=30)
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, "runtime_snapshot_invalid")
+
     def test_stale_exchange_snapshot_is_detectable(self):
         self.store.update_exchange_metrics(0, 0, 0, now_epoch=1000)
         snapshot = self.store.load_snapshot(now_epoch=1100)
