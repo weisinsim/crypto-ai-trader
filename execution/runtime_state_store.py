@@ -134,7 +134,18 @@ class RuntimeStateStore:
                     "INSERT OR IGNORE INTO realized_pnl_events(event_id, day_utc, amount_usdt, created_at) VALUES(?, ?, ?, ?)",
                     (event_id, day, amount, timestamp),
                 )
-                return cursor.rowcount == 1
+                if cursor.rowcount == 1:
+                    return True
+                existing = db.execute(
+                    "SELECT day_utc, amount_usdt FROM realized_pnl_events WHERE event_id=?",
+                    (event_id,),
+                ).fetchone()
+                # A replay is idempotent only when its economic payload matches.
+                # Silently ignoring a reused event ID with a different amount/day
+                # would hide corrupt or inconsistent exchange-fill ingestion.
+                if existing is None or existing[0] != day or existing[1] != amount:
+                    raise ValueError("realized_pnl_event_id_payload_conflict")
+                return False
         with self._connect() as db:
             db.execute(
                 "INSERT INTO realized_pnl(day_utc, amount_usdt, created_at) VALUES(?, ?, ?)",
