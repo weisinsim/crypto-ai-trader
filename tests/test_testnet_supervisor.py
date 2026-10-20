@@ -16,6 +16,8 @@ class FakeAdapter:
         self.fail_metrics = fail_metrics
         self.submissions = []
         self.orders = []
+        self.fail_position_snapshot = False
+        self.position_snapshot_calls = 0
 
     def account_preflight(self):
         return {"ok": True, "can_trade": True}
@@ -29,6 +31,9 @@ class FakeAdapter:
                 "symbol_notional_usdt": notional, "total_notional_usdt": notional}
 
     def testnet_position_snapshot(self, symbol):
+        self.position_snapshot_calls += 1
+        if self.fail_position_snapshot:
+            raise TimeoutError("position snapshot timeout")
         return {"ok": True, "position_amount": self.position_amount,
                 "entry_price": "100" if self.position_amount != "0" else "0",
                 "open_orders": list(self.orders)}
@@ -146,6 +151,34 @@ class TestnetSupervisorTests(unittest.TestCase):
         self.assertEqual(self.adapter.submissions, [])
         self.assertIsNotNone(restarted_store.get_entry_lock())
 
+
+    def test_position_snapshot_timeout_fails_closed_before_entry(self):
+        self.adapter.fail_position_snapshot = True
+        result = self.supervisor.run_once(
+            "BTCUSDT", self.intent(), "entry-snapshot-timeout", "run-snapshot-timeout")
+        self.assertEqual(result["reason"], "position_snapshot_unavailable")
+        self.assertTrue(result["requires_manual_reconciliation"])
+        self.assertFalse(result["entry_submitted"])
+        self.assertEqual(self.adapter.submissions, [])
+        self.assertIsNone(self.store.get_entry_lock())
+
+    def test_under_lock_position_recheck_timeout_keeps_lock(self):
+        # First snapshot is flat; the second, under-lock authoritative check times out.
+        original = self.adapter.testnet_position_snapshot
+        calls = {"n": 0}
+        def fail_on_second(symbol):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise TimeoutError("under-lock position snapshot timeout")
+            return original(symbol)
+        self.adapter.testnet_position_snapshot = fail_on_second
+        result = self.supervisor.run_once(
+            "BTCUSDT", self.intent(), "entry-under-lock-timeout", "run-under-lock-timeout")
+        self.assertEqual(result["reason"], "position_recheck_failed_under_lock")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertFalse(result["entry_submitted"])
+        self.assertEqual(self.adapter.submissions, [])
+        self.assertEqual(self.store.get_entry_lock()["token"], "entry-under-lock-timeout")
 
 if __name__ == "__main__":
     unittest.main()
