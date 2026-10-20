@@ -71,6 +71,48 @@ class WorkerCycleTests(unittest.TestCase):
                         store_factory=lambda _path: None,
                     )
 
+    def test_worker_rejects_empty_duplicate_or_invalid_symbols(self):
+        for symbols in ([], ["BTCUSDT", "BTCUSDT"], ["BTCUSD"], [None]):
+            with self.subTest(symbols=symbols):
+                with self.assertRaisesRegex(ValueError, "symbols"):
+                    live_signal_worker.run_worker(
+                        base_url="https://example.invalid",
+                        db_path=":memory:",
+                        symbols=symbols,
+                        poll_seconds=5,
+                        store_factory=lambda _path: None,
+                    )
+
+    def test_partial_symbol_scan_errors_report_degraded_status(self):
+        class StopAfterEmit:
+            def is_set(self):
+                return False
+            def wait(self, seconds):
+                return True
+
+        emitted = []
+        with patch.object(live_signal_worker, "scan_once", return_value={
+            "scanned": 2, "queued": 1, "duplicates": 0, "rejected": 0,
+            "errors": [{"symbol": "ETHUSDT", "reason": "MarketDataError"}],
+        }):
+            result = live_signal_worker.run_worker(
+                base_url="https://example.invalid",
+                db_path=":memory:",
+                symbols=["BTCUSDT", "ETHUSDT"],
+                poll_seconds=5,
+                stop_event=StopAfterEmit(),
+                snapshot_fetcher=lambda _url: {"BTCUSDT": {"symbol": "BTCUSDT"}},
+                market_data=object(),
+                store_factory=lambda _path: type("Store", (), {
+                    "_memory_conn": None,
+                    "pending": lambda self: [],
+                })(),
+                emit=lambda line: emitted.append(json.loads(line)),
+            )
+        self.assertEqual(result["status"], "DEGRADED")
+        self.assertEqual(result["reason"], "symbol_scan_errors")
+        self.assertEqual(emitted[0]["status"], "DEGRADED")
+
     def test_worker_runs_scan_and_reports_pending_count(self):
         class StopAfterEmit:
             def __init__(self):
