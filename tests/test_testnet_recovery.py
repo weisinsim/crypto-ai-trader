@@ -42,5 +42,24 @@ class TestnetRecoveryTests(unittest.TestCase):
         self.assertEqual(adapter.snapshot_calls, 1)
 
 
+    def test_non_finite_position_values_fail_closed(self):
+        adapter = RecoveryAdapter({
+            "ok": True, "position_amount": "NaN", "entry_price": "100", "open_orders": []
+        })
+        result = recover_testnet_position(adapter, "BTCUSDT", 99, 101, "recover-nan")
+        self.assertEqual(result["reason"], "recovery_position_values_invalid")
+        self.assertTrue(result["requires_manual_reconciliation"])
+        self.assertEqual(adapter.snapshot_calls, 1)
+
+    def test_short_position_requires_target_below_entry_below_stop(self):
+        adapter = RecoveryAdapter({
+            "ok": True, "position_amount": "-1", "entry_price": "100", "open_orders": []
+        })
+        result = recover_testnet_position(adapter, "BTCUSDT", 99, 98, "recover-short-invalid")
+        self.assertEqual(result["reason"], "recovery_protective_geometry_invalid")
+        self.assertTrue(result["requires_manual_reconciliation"])
+        self.assertEqual(adapter.snapshot_calls, 1)
+
+
 if __name__ == "__main__":
     unittest.main()
