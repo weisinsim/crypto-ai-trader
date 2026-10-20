@@ -49,6 +49,9 @@ def validate_runtime_state(
             float(config.max_total_notional_usdt),
             float(max_snapshot_age_seconds),
         )
+    except (AttributeError, TypeError, ValueError, OverflowError):
+        return RuntimeRiskDecision(False, "invalid_runtime_risk_configuration")
+    try:
         if any(not math.isfinite(value) for value in config_numbers):
             return RuntimeRiskDecision(False, "invalid_runtime_risk_configuration")
         if (
