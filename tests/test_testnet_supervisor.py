@@ -117,5 +117,35 @@ class TestnetSupervisorTests(unittest.TestCase):
         self.assertEqual(self.adapter.submissions, [])
 
 
+    def test_restart_preserves_stale_entry_lock_and_blocks_submission(self):
+        self.assertTrue(self.store.claim_entry_lock("crashed-process"))
+        restarted_store = RuntimeStateStore(str(Path(self.temp.name) / "risk.sqlite"))
+        restarted_supervisor = TestnetSupervisor(
+            self.adapter, restarted_store,
+            execution_config=ExecutionConfig(mode="testnet", max_notional_usdt=100,
+                                             max_risk_fraction=0.005))
+        result = restarted_supervisor.run_once(
+            "BTCUSDT", self.intent(), "entry-after-restart", "run-restart")
+        self.assertEqual(result["reason"], "entry_lock_held")
+        self.assertEqual(self.adapter.submissions, [])
+        self.assertEqual(restarted_store.get_entry_lock()["token"], "crashed-process")
+
+    def test_restart_with_unresolved_attempt_never_replays_order_id(self):
+        fingerprint = "a" * 64
+        self.assertTrue(self.store.claim_order_attempt("entry-unresolved", fingerprint))
+        self.assertTrue(self.store.update_order_attempt("entry-unresolved", "RECONCILIATION_REQUIRED"))
+        restarted_store = RuntimeStateStore(str(Path(self.temp.name) / "risk.sqlite"))
+        restarted_supervisor = TestnetSupervisor(
+            self.adapter, restarted_store,
+            execution_config=ExecutionConfig(mode="testnet", max_notional_usdt=100,
+                                             max_risk_fraction=0.005))
+        result = restarted_supervisor.run_once(
+            "BTCUSDT", self.intent(), "entry-unresolved", "run-restart")
+        self.assertEqual(result["reason"], "client_order_id_already_reserved")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(self.adapter.submissions, [])
+        self.assertIsNotNone(restarted_store.get_entry_lock())
+
+
 if __name__ == "__main__":
     unittest.main()
