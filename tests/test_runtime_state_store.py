@@ -75,6 +75,19 @@ class RuntimeStateStoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.store.record_realized_pnl(float("inf"))
 
+    def test_corrupt_runtime_metrics_fail_closed(self):
+        self.store.update_exchange_metrics(0, 0, 0, now_epoch=1000)
+        import sqlite3
+        with sqlite3.connect(self.db_path) as db:
+            db.execute("UPDATE runtime_metrics SET open_positions=1.5 WHERE id=1")
+        self.assertIsNone(self.store.load_snapshot(now_epoch=1001))
+
+    def test_unreadable_runtime_database_fails_closed(self):
+        broken = RuntimeStateStore(str(Path(self.tempdir.name) / "missing" / "risk.sqlite3"))
+        # Replace its database file with invalid bytes after initialization.
+        Path(broken.database_path).write_bytes(b"not a sqlite database")
+        self.assertIsNone(broken.load_snapshot(now_epoch=1000))
+
     def test_future_dated_exchange_snapshot_fails_closed(self):
         self.store.update_exchange_metrics(0, 0, 0, now_epoch=2000)
         snapshot = self.store.load_snapshot(now_epoch=1000)
