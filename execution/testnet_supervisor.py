@@ -180,20 +180,43 @@ class TestnetSupervisor:
                         "previous_attempt": previous, "entry_submitted": False,
                         "requires_reconciliation": not release_lock}
 
-            result = execute_guarded_testnet_entry(
-                self.adapter, intent, client_order_id, client_order_prefix, snapshot,
-                runtime_config=self.runtime_config, execution_config=self.execution_config
-            )
-            if result.get("ok"):
-                status = "COMPLETED"
-            elif result.get("requires_reconciliation") or "ambiguous" in str(result.get("reason", "")):
-                status = "RECONCILIATION_REQUIRED"
-            elif result.get("reason") == "market_order_rejected":
-                status = "REJECTED"
-            else:
-                status = "SUBMITTED" if result.get("entry_submitted") else "REJECTED"
-            self.state_store.update_order_attempt(client_order_id, status)
-            self.state_store.record_execution_result(bool(result.get("ok")))
+            try:
+                result = execute_guarded_testnet_entry(
+                    self.adapter, intent, client_order_id, client_order_prefix, snapshot,
+                    runtime_config=self.runtime_config, execution_config=self.execution_config
+                )
+                if result.get("ok"):
+                    status = "COMPLETED"
+                elif result.get("requires_reconciliation") or "ambiguous" in str(result.get("reason", "")):
+                    status = "RECONCILIATION_REQUIRED"
+                elif result.get("reason") == "market_order_rejected":
+                    status = "REJECTED"
+                else:
+                    status = "SUBMITTED" if result.get("entry_submitted") else "REJECTED"
+                self.state_store.update_order_attempt(client_order_id, status)
+                self.state_store.record_execution_result(bool(result.get("ok")))
+            except Exception as exc:
+                # Once an order attempt is reserved, an adapter or persistence
+                # exception is not proof that no exchange-side action occurred.
+                # Preserve the durable entry lock and make the attempt explicitly
+                # require reconciliation; never permit an automatic replay.
+                try:
+                    self.state_store.update_order_attempt(
+                        client_order_id, "RECONCILIATION_REQUIRED"
+                    )
+                except Exception:
+                    pass
+                try:
+                    self.state_store.record_execution_result(False)
+                except Exception:
+                    pass
+                return {
+                    "ok": False,
+                    "reason": "state_persistence_failed_requires_reconciliation",
+                    "error_type": type(exc).__name__,
+                    "entry_submitted": "unknown",
+                    "requires_reconciliation": True,
+                }
             release_lock = not (
                 result.get("requires_reconciliation")
                 or "ambiguous" in str(result.get("reason", ""))
