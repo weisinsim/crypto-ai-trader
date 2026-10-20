@@ -249,7 +249,8 @@ class RuntimeStateStore:
         # Missing exchange state is unsafe: caller receives None and must block.
         if metrics is None or control is None:
             return None
-        age = max(0.0, now - float(metrics[3]))
+        # Preserve negative age so runtime_guard rejects future-dated/corrupt snapshots.
+        age = now - float(metrics[3])
         return RuntimeSnapshot(
             daily_realized_pnl_usdt=float(pnl),
             open_positions=int(metrics[0]),
