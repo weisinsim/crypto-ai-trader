@@ -230,15 +230,32 @@ class RuntimeStateStore:
             return cursor.rowcount == 1
 
     def update_order_attempt(self, client_order_id, status):
-        """Record outcome metadata; status changes never release the unique client ID."""
+        """Apply monotonic order-attempt transitions; reconciliation is terminal here."""
         if not isinstance(client_order_id, str) or not client_order_id:
             raise ValueError("invalid_client_order_id")
-        if status not in {"CLAIMED", "REJECTED", "SUBMITTED", "RECONCILIATION_REQUIRED", "COMPLETED"}:
+        allowed_statuses = {"CLAIMED", "REJECTED", "SUBMITTED", "RECONCILIATION_REQUIRED", "COMPLETED"}
+        if status not in allowed_statuses:
             raise ValueError("invalid_order_attempt_status")
+        transitions = {
+            "CLAIMED": allowed_statuses,
+            "SUBMITTED": {"SUBMITTED", "REJECTED", "RECONCILIATION_REQUIRED", "COMPLETED"},
+            "RECONCILIATION_REQUIRED": {"RECONCILIATION_REQUIRED"},
+            "REJECTED": {"REJECTED"},
+            "COMPLETED": {"COMPLETED"},
+        }
         with self._connect() as db:
+            row = db.execute(
+                "SELECT status FROM order_attempts WHERE client_order_id=?",
+                (client_order_id,),
+            ).fetchone()
+            if row is None:
+                return False
+            current = row[0]
+            if status not in transitions.get(current, set()):
+                raise ValueError("invalid_order_attempt_status_transition")
             cursor = db.execute(
-                "UPDATE order_attempts SET status=? WHERE client_order_id=?",
-                (status, client_order_id),
+                "UPDATE order_attempts SET status=? WHERE client_order_id=? AND status=?",
+                (status, client_order_id, current),
             )
             return cursor.rowcount == 1
 
