@@ -162,6 +162,20 @@ class TestnetSupervisorTests(unittest.TestCase):
         self.assertEqual(self.adapter.submissions, [])
         self.assertIsNone(self.store.get_entry_lock())
 
+    def test_order_attempt_persistence_error_keeps_lock_and_requires_reconciliation(self):
+        original_update = self.store.update_order_attempt
+        def fail_persistence(client_order_id, status):
+            raise OSError("simulated SQLite write failure")
+        self.store.update_order_attempt = fail_persistence
+        result = self.supervisor.run_once(
+            "BTCUSDT", self.intent(), "entry-persistence-failure", "run-persistence-failure")
+        self.assertEqual(result["reason"], "state_persistence_failed_requires_reconciliation")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["entry_submitted"], "unknown")
+        self.assertEqual(self.adapter.submissions, ["entry-persistence-failure"])
+        self.assertEqual(self.store.get_entry_lock()["token"], "entry-persistence-failure")
+        self.store.update_order_attempt = original_update
+
     def test_under_lock_position_recheck_timeout_keeps_lock(self):
         # First snapshot is flat; the second, under-lock authoritative check times out.
         original = self.adapter.testnet_position_snapshot
