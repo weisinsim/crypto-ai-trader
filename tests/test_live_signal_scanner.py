@@ -121,6 +121,21 @@ class ScanOnceTests(unittest.TestCase):
             if store._memory_conn is not None:
                 store._memory_conn.close()
 
+    def test_rejects_snapshot_for_different_symbol(self):
+        snapshot = dict(self.snapshot)
+        snapshot["symbol"] = "ETHUSDT"
+
+        class Store:
+            def enqueue(self, event, now=None):
+                raise AssertionError("mismatched symbol must never be queued")
+
+        result = scan_once(
+            symbols=["BTCUSDT"], interval="1h", market_data=self.market,
+            snapshot_provider=lambda symbol: dict(snapshot), store=Store(), now_ms=NOW,
+        )
+        self.assertEqual(result["rejected"], 1)
+        self.assertEqual(result["queued"], 0)
+
     def test_rejects_signal_not_for_latest_closed_candle(self):
         self.snapshot["confirmed_signal_time"] -= 3_600_000
         class Store:
