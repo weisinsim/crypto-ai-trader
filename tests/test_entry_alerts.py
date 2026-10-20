@@ -24,6 +24,15 @@ class EntryAlertTests(unittest.TestCase):
         self.assertEqual(event["risk_reward"], 2.0)
         self.assertFalse(event["auto_trade_authorized"])
 
+    def test_noncanonical_symbols_are_rejected(self):
+        for symbol in ("btcusdt", "BTC/USDT", "BTC USDT", "BTCUSDT.evil", "UUSDT"):
+            with self.subTest(symbol=symbol):
+                data = self.base()
+                data["symbol"] = symbol
+                event = build_entry_alert(data, now_ms=1_800_000_100_000)
+                self.assertFalse(event["eligible"])
+                self.assertIn("invalid_symbol", event["blockers"])
+
     def test_watch_signal_is_not_actionable_alert(self):
         data = self.base()
         data["signal"] = "WATCH-LONG"
