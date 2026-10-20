@@ -42,46 +42,67 @@ def validate_runtime_state(
     """Fail closed if kill switch, daily loss, exposure, errors, or state freshness fail."""
     if snapshot is None:
         return RuntimeRiskDecision(False, "runtime_snapshot_missing")
-    if (
-        not math.isfinite(config.max_daily_loss_usdt)
-        or config.max_daily_loss_usdt <= 0
-        or config.max_open_positions < 0
-        or not math.isfinite(config.max_symbol_notional_usdt)
-        or config.max_symbol_notional_usdt <= 0
-        or not math.isfinite(config.max_total_notional_usdt)
-        or config.max_total_notional_usdt <= 0
-        or config.max_consecutive_execution_errors < 0
-        or not math.isfinite(max_snapshot_age_seconds)
-        or max_snapshot_age_seconds < 0
-    ):
-        return RuntimeRiskDecision(False, "invalid_runtime_risk_configuration")
-    numeric = (
-        snapshot.daily_realized_pnl_usdt,
-        snapshot.symbol_notional_usdt,
-        snapshot.total_notional_usdt,
-        snapshot.snapshot_age_seconds,
-    )
-    if any(not math.isfinite(v) for v in numeric):
+    try:
+        config_numbers = (
+            float(config.max_daily_loss_usdt),
+            float(config.max_symbol_notional_usdt),
+            float(config.max_total_notional_usdt),
+            float(max_snapshot_age_seconds),
+        )
+        if any(not math.isfinite(value) for value in config_numbers):
+            return RuntimeRiskDecision(False, "invalid_runtime_risk_configuration")
+        if (
+            config_numbers[0] <= 0
+            or isinstance(config.max_open_positions, bool)
+            or not isinstance(config.max_open_positions, int)
+            or config.max_open_positions < 0
+            or config_numbers[1] <= 0
+            or config_numbers[2] <= 0
+            or isinstance(config.max_consecutive_execution_errors, bool)
+            or not isinstance(config.max_consecutive_execution_errors, int)
+            or config.max_consecutive_execution_errors < 0
+            or config_numbers[3] < 0
+        ):
+            return RuntimeRiskDecision(False, "invalid_runtime_risk_configuration")
+
+        if (
+            isinstance(snapshot.open_positions, bool)
+            or not isinstance(snapshot.open_positions, int)
+            or isinstance(snapshot.consecutive_execution_errors, bool)
+            or not isinstance(snapshot.consecutive_execution_errors, int)
+            or not isinstance(snapshot.emergency_stop, bool)
+        ):
+            return RuntimeRiskDecision(False, "runtime_snapshot_invalid")
+        pnl, symbol_notional, total_notional, age = (
+            float(snapshot.daily_realized_pnl_usdt),
+            float(snapshot.symbol_notional_usdt),
+            float(snapshot.total_notional_usdt),
+            float(snapshot.snapshot_age_seconds),
+        )
+    except (AttributeError, TypeError, ValueError, OverflowError):
+        return RuntimeRiskDecision(False, "runtime_snapshot_invalid")
+
+    if any(not math.isfinite(value) for value in (pnl, symbol_notional, total_notional, age)):
         return RuntimeRiskDecision(False, "runtime_snapshot_non_finite")
     if (
         snapshot.open_positions < 0
         or snapshot.consecutive_execution_errors < 0
-        or snapshot.symbol_notional_usdt < 0
-        or snapshot.total_notional_usdt < 0
-        or snapshot.snapshot_age_seconds < 0
+        or symbol_notional < 0
+        or total_notional < 0
+        or age < 0
     ):
         return RuntimeRiskDecision(False, "runtime_snapshot_invalid")
     if snapshot.emergency_stop:
         return RuntimeRiskDecision(False, "emergency_stop_active")
-    if snapshot.snapshot_age_seconds > max_snapshot_age_seconds:
+    if age > config_numbers[3]:
         return RuntimeRiskDecision(False, "runtime_snapshot_stale")
-    if snapshot.daily_realized_pnl_usdt <= -config.max_daily_loss_usdt:
+    if pnl <= -config_numbers[0]:
         return RuntimeRiskDecision(False, "daily_loss_limit_reached")
     if snapshot.open_positions >= config.max_open_positions:
         return RuntimeRiskDecision(False, "open_position_limit_reached")
-    if snapshot.symbol_notional_usdt >= config.max_symbol_notional_usdt:
+    if symbol_notional >= config_numbers[1]:
         return RuntimeRiskDecision(False, "symbol_notional_limit_reached")
-    if snapshot.total_notional_usdt >= config.max_total_notional_usdt:
+    if total_notional >= config_numbers[2]:
         return RuntimeRiskDecision(False, "total_notional_limit_reached")
     if snapshot.consecutive_execution_errors >= config.max_consecutive_execution_errors:
         return RuntimeRiskDecision(False, "execution_error_circuit_breaker_open")
