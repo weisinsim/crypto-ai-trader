@@ -264,6 +264,41 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(result["reason"], "invalid_testnet_open_orders_response")
         self.assertEqual(client.calls, [])
 
+    def test_position_snapshot_rejects_non_boolean_reduce_only(self):
+        class MalformedOrdersClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/openOrders":
+                    self.get_calls.append((path, params))
+                    return FakeResponse([{
+                        "orderId": 99, "side": "SELL", "type": "STOP_MARKET",
+                        "status": "NEW", "reduceOnly": "false",
+                    }])
+                return super().get(path, params)
+
+        client = MalformedOrdersClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.testnet_position_snapshot("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "invalid_testnet_open_order_reduce_only")
+        self.assertEqual(client.calls, [])
+
+    def test_position_snapshot_rejects_non_finite_position_values(self):
+        class InvalidPositionClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"positions": [
+                        {"symbol": "BTCUSDT", "positionAmt": "NaN", "entryPrice": "100"},
+                    ]})
+                return super().get(path, params)
+
+        client = InvalidPositionClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.testnet_position_snapshot("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "invalid_testnet_position_values")
+        self.assertEqual(client.calls, [])
+
     def test_position_snapshot_rejects_invalid_symbol_without_network_call(self):
         client = FakeClient()
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
