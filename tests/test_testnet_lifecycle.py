@@ -260,3 +260,40 @@ class TestnetSiblingCancellationTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["reason"], "position_reopened_or_not_flat_after_cancel")
         self.assertTrue(result["requires_reconciliation"])
+
+
+class TestnetPostSubmissionSnapshotValidationTests(unittest.TestCase):
+    def test_unexpected_active_order_in_final_snapshot_fails_closed(self):
+        class UnexpectedOrderAfterSubmitAdapter(FakeAdapter):
+            def testnet_position_snapshot(self, symbol):
+                snapshot = super().testnet_position_snapshot(symbol)
+                if self.snapshot_count > 1:
+                    snapshot["open_orders"].append({
+                        "status": "NEW", "reduce_only": False, "type": "LIMIT",
+                        "side": "BUY", "orig_quantity": "0.1",
+                    })
+                return snapshot
+
+        adapter = UnexpectedOrderAfterSubmitAdapter()
+        result = ensure_testnet_protective_exits(
+            adapter, "BTCUSDT", "99", "102", "btc-run-final-order"
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "post_submission_unexpected_active_order")
+        self.assertTrue(result["requires_reconciliation"])
+
+    def test_non_boolean_reduce_only_in_final_snapshot_fails_closed(self):
+        class MalformedFinalOrderAdapter(FakeAdapter):
+            def testnet_position_snapshot(self, symbol):
+                snapshot = super().testnet_position_snapshot(symbol)
+                if self.snapshot_count > 1:
+                    snapshot["open_orders"][0]["reduce_only"] = 1
+                return snapshot
+
+        adapter = MalformedFinalOrderAdapter()
+        result = ensure_testnet_protective_exits(
+            adapter, "BTCUSDT", "99", "102", "btc-run-final-malformed"
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "post_submission_order_unknown_or_malformed")
+        self.assertTrue(result["requires_reconciliation"])
