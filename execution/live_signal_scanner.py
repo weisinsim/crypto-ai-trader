@@ -35,9 +35,17 @@ class BinanceUsdMMarketData:
     def last_closed_candle_ms(self, symbol, interval, *, now_ms=None):
         if not isinstance(symbol, str) or re.fullmatch(r"[A-Z0-9]{2,}USDT", symbol) is None:
             raise ValueError("symbol must be a canonical uppercase USDT pair")
-        if not isinstance(interval, str) or not interval:
-            raise ValueError("interval is required")
-        now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
+        supported_intervals = {
+            "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h",
+            "8h", "12h", "1d", "3d", "1w", "1M",
+        }
+        if not isinstance(interval, str) or interval not in supported_intervals:
+            raise ValueError("unsupported_binance_kline_interval")
+        if now_ms is not None and (
+            isinstance(now_ms, bool) or not isinstance(now_ms, int) or now_ms <= 0
+        ):
+            raise ValueError("now_ms must be a positive integer timestamp")
+        now_ms = int(time.time() * 1000) if now_ms is None else now_ms
         query = urlencode({"symbol": symbol, "interval": interval, "limit": 2})
         request = Request(f"{self.BASE_URL}?{query}", headers={"User-Agent": "crypto-ai-trader-alert-scanner"})
         try:
