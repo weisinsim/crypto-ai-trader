@@ -125,11 +125,6 @@ class BacktestTests(unittest.TestCase):
                 target_atr=2.0, fee_rate=0.0, slippage_rate=0.0,
                 risk_fraction=0.01, allow_short=False,
             )
-            result = run_ema_cross_backtest(
-                rows, fast=2, slow=3, atr_period=1, stop_atr=1.0,
-                target_atr=2.0, fee_rate=0.0, slippage_rate=0.0,
-                risk_fraction=0.01, allow_short=False,
-            )
         trade = next(t for t in result["trade_log"] if t["reason"] == "STOP")
         self.assertEqual(trade["exit_time"], rows[5]["t"])
         self.assertEqual(trade["exit"], 85.0)
