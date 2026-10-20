@@ -42,6 +42,13 @@ class MarketDataTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "finite positive"):
                     BinanceUsdMMarketData(timeout=timeout)
 
+    def test_rejects_unsupported_kline_intervals_before_request(self):
+        client = BinanceUsdMMarketData(opener=lambda *a, **k: self.fail("network must not be called"))
+        for interval in ("", "90m", "2w", "1H", None, 60):
+            with self.subTest(interval=interval):
+                with self.assertRaisesRegex(ValueError, "supported kline interval"):
+                    client.last_closed_candle_ms("BTCUSDT", interval, now_ms=NOW)
+
     def test_rejects_boolean_candle_timestamps(self):
         rows = [[True, 0, 0, 0, 0, 0, CANDLE_CLOSE_BOUNDARY - 1]]
         client = BinanceUsdMMarketData(opener=lambda *a, **k: Response(rows))
