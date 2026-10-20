@@ -19,6 +19,15 @@ class RuntimeStateStoreTests(unittest.TestCase):
     def tearDown(self):
         self.tempdir.cleanup()
 
+    def test_in_memory_database_persists_across_store_operations(self):
+        store = RuntimeStateStore(":memory:")
+        now = datetime(2026, 10, 19, 10, tzinfo=timezone.utc)
+        store.update_exchange_metrics(0, 0, 0, now_epoch=now.timestamp())
+        store.record_realized_pnl(-1.5, now=now)
+        snapshot = store.load_snapshot(now_epoch=now.timestamp())
+        self.assertIsNotNone(snapshot)
+        self.assertEqual(snapshot.daily_realized_pnl_usdt, -1.5)
+
     def test_missing_exchange_snapshot_fails_closed(self):
         self.assertIsNone(self.store.load_snapshot(now_epoch=1000))
 
