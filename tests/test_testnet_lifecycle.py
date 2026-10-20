@@ -123,12 +123,13 @@ if __name__ == "__main__":
 
 class FakeCancellationAdapter:
     def __init__(self, exit_status="FILLED", position="0", sibling_status="NEW",
-                 cancel_result=None, fail_snapshot=False):
+                 cancel_result=None, fail_snapshot=False, post_cancel_status=None):
         self.exit_status = exit_status
         self.position = position
         self.sibling_status = sibling_status
         self.cancel_result = cancel_result or {"cancelled": True}
         self.fail_snapshot = fail_snapshot
+        self.post_cancel_status = post_cancel_status
         self.cancel_calls = []
         self.snapshot_calls = 0
 
@@ -145,6 +146,8 @@ class FakeCancellationAdapter:
 
     def cancel_testnet_order(self, symbol, client_order_id):
         self.cancel_calls.append((symbol, client_order_id))
+        if self.cancel_result.get("cancelled"):
+            self.sibling_status = self.post_cancel_status or "CANCELED"
         return self.cancel_result
 
 
@@ -172,6 +175,14 @@ class TestnetSiblingCancellationTests(unittest.TestCase):
         self.assertTrue(result["ok"], result)
         self.assertEqual(adapter.cancel_calls, [("BTCUSDT", "exit-02")])
         self.assertEqual(adapter.snapshot_calls, 2)
+
+    def test_cancel_acknowledgement_without_inactive_order_status_fails_closed(self):
+        from execution.testnet_lifecycle import cancel_testnet_sibling_after_flatten
+        adapter = FakeCancellationAdapter(post_cancel_status="FILLED")
+        result = cancel_testnet_sibling_after_flatten(adapter, "BTCUSDT", "exit-01", "exit-02")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "post_cancel_sibling_not_confirmed_inactive")
+        self.assertTrue(result["requires_reconciliation"])
 
     def test_cancel_failure_requires_reconciliation(self):
         from execution.testnet_lifecycle import cancel_testnet_sibling_after_flatten
