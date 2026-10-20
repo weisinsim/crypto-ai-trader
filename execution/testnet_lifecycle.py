@@ -58,7 +58,7 @@ def ensure_testnet_protective_exits(
             or order.get("status") not in {"NEW", "PARTIALLY_FILLED"}
             or not isinstance(order.get("type"), str)
             or not isinstance(order.get("side"), str)
-            or order.get("reduce_only") not in {True, False}
+            or (order.get("reduce_only") is not True and order.get("reduce_only") is not False)
         ):
             return {"ok": False, "reason": "unknown_or_malformed_open_order_requires_reconciliation"}
         if not (
