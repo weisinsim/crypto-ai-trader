@@ -540,6 +540,33 @@ class BacktestTests(unittest.TestCase):
         self.assertEqual(trade["reason"], "STOP")
         self.assertEqual(trade["exit"], 90.0)
 
+
+    def test_short_entry_bar_touching_stop_and_target_exits_at_stop(self):
+        from unittest.mock import patch
+
+        rows = [
+            {"t": i * 3_600_000, "o": 100.0, "h": 101.0, "l": 99.0, "c": 100.0, "v": 10}
+            for i in range(6)
+        ]
+        # The bearish EMA cross is confirmed at bar 2; short enters at bar 3
+        # open=100. Its entry-bar range crosses stop=110 and target=80.
+        rows[3].update({"o": 100.0, "h": 115.0, "l": 75.0, "c": 95.0})
+        fast = [None, 4.0, 2.0, 2.0, 2.0, 2.0]
+        slow = [None, 3.0, 3.0, 3.0, 3.0, 3.0]
+        with (
+            patch("research.backtest._ema", side_effect=lambda values, period: fast if period == 2 else slow),
+            patch("research.backtest._atr", return_value=[10.0] * len(rows)),
+        ):
+            result = run_ema_cross_backtest(
+                rows, fast=2, slow=3, atr_period=1, stop_atr=1.0,
+                target_atr=2.0, fee_rate=0.0, slippage_rate=0.0,
+                risk_fraction=0.01, allow_short=True,
+            )
+        trade = next(t for t in result["trade_log"] if t["entry_time"] == rows[3]["t"])
+        self.assertEqual(trade["side"], "SHORT")
+        self.assertEqual(trade["reason"], "STOP")
+        self.assertEqual(trade["exit"], 110.0)
+
     def test_same_bar_stop_and_target_prefers_stop(self):
         rows = candles_from_closes([100 + (i % 3) for i in range(80)])
         result = run_ema_cross_backtest(rows, fast=3, slow=7, atr_period=3, stop_atr=.1,
