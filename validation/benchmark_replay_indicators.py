@@ -54,9 +54,13 @@ def main():
         (ema(close[:i + 1], 20), ema(close[:i + 1], 50), ema(close[:i + 1], 200))
         for i in windows
     ])
-    new_ema_time, new_ema = timed(lambda: (
-        list(zip(ema_series(close, 20)[199:], ema_series(close, 50)[199:], ema_series(close, 200)[199:]))
-    ))
+    def precompute_ema_series():
+        ema20 = ema_series(close, 20)
+        ema50 = ema_series(close, 50)
+        ema200 = ema_series(close, 200)
+        return list(zip(ema20[199:], ema50[199:], ema200[199:]))
+
+    new_ema_time, new_ema = timed(precompute_ema_series)
     # Compare exact historical-prefix outputs before reporting timing.
     if len(old_ema) != len(new_ema) or any(
         any(not math.isclose(a, b, rel_tol=1e-12, abs_tol=1e-12) for a, b in zip(old, new))
