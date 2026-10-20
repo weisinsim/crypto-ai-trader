@@ -14,7 +14,14 @@ def format_entry_alert(event):
     if not isinstance(symbol, str) or side not in {"LONG", "SHORT"}:
         raise ValueError("alert is missing a valid symbol or direction")
 
-    status = "RESEARCH CANDIDATE — NOT LIVE-APPROVED" if event.get("research_only") else "PRODUCTION SIGNAL"
+    production_approved = (
+        event.get("model_status") == "PRODUCTION"
+        and event.get("research_only") is False
+        and event.get("production_approval") is True
+        and event.get("notification_only") is True
+        and event.get("auto_trade_authorized") is False
+    )
+    status = "PRODUCTION SIGNAL" if production_approved else "RESEARCH CANDIDATE — NOT LIVE-APPROVED"
     score = event.get("score")
     score_text = f"{score:.1f}/100" if isinstance(score, (int, float)) else "n/a"
 
