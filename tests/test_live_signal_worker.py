@@ -206,5 +206,69 @@ class WorkerCycleTests(unittest.TestCase):
         self.assertEqual(emitted[0]["reason"], "RuntimeError")
         self.assertEqual(emitted[0]["worker"], "entry-alert-scan")
 
+
+    def test_worker_delivers_pending_alerts_only_when_telegram_is_configured(self):
+        class StopAfterEmit:
+            def is_set(self):
+                return False
+            def wait(self, seconds):
+                return True
+
+        class FakeStore:
+            _memory_conn = None
+            def pending(self):
+                return []
+
+        store = FakeStore()
+        emitted = []
+        with patch.dict("os.environ", {"TELEGRAM_BOT_TOKEN": "test-token",
+                                       "TELEGRAM_CHAT_ID": "test-chat"}):
+            with patch.object(live_signal_worker, "scan_once", return_value={
+                "scanned": 1, "queued": 1, "duplicates": 0, "rejected": 0, "errors": [],
+            }):
+                with patch.object(live_signal_worker, "deliver_pending",
+                                  return_value={"sent": 1, "failed": 0}) as deliver:
+                    result = live_signal_worker.run_worker(
+                        base_url="https://example.invalid", db_path=":memory:",
+                        symbols=["BTCUSDT"], poll_seconds=5, stop_event=StopAfterEmit(),
+                        snapshot_fetcher=lambda _url: {"BTCUSDT": {"symbol": "BTCUSDT"}},
+                        market_data=object(), store_factory=lambda _path: store,
+                        emit=lambda line: emitted.append(json.loads(line)),
+                    )
+        deliver.assert_called_once_with(store, token="test-token", chat_id="test-chat",
+                                        emit=unittest.mock.ANY)
+        self.assertEqual(result["status"], "OK")
+        self.assertEqual(result["telegram"], {"sent": 1, "failed": 0})
+        self.assertEqual(emitted[0]["telegram"]["sent"], 1)
+
+    def test_worker_marks_delivery_failure_degraded(self):
+        class StopAfterEmit:
+            def is_set(self):
+                return False
+            def wait(self, seconds):
+                return True
+
+        class FakeStore:
+            _memory_conn = None
+            def pending(self):
+                return []
+
+        with patch.dict("os.environ", {"TELEGRAM_BOT_TOKEN": "test-token",
+                                       "TELEGRAM_CHAT_ID": "test-chat"}):
+            with patch.object(live_signal_worker, "scan_once", return_value={
+                "scanned": 1, "queued": 0, "duplicates": 0, "rejected": 0, "errors": [],
+            }):
+                with patch.object(live_signal_worker, "deliver_pending",
+                                  return_value={"sent": 0, "failed": 1}):
+                    result = live_signal_worker.run_worker(
+                        base_url="https://example.invalid", db_path=":memory:",
+                        symbols=["BTCUSDT"], poll_seconds=5, stop_event=StopAfterEmit(),
+                        snapshot_fetcher=lambda _url: {"BTCUSDT": {"symbol": "BTCUSDT"}},
+                        market_data=object(), store_factory=lambda _path: FakeStore(),
+                        emit=lambda _line: None,
+                    )
+        self.assertEqual(result["status"], "DEGRADED")
+        self.assertEqual(result["reason"], "telegram_delivery_degraded")
+
 if __name__ == "__main__":
     unittest.main()
