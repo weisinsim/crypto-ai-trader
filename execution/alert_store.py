@@ -77,7 +77,16 @@ class EntryAlertStore:
                    VALUES (?, ?, ?, 1, ?, 'PENDING', ?)""",
                 (event_id, symbol, side, payload, created_at),
             )
-            return cursor.rowcount == 1
+            if cursor.rowcount == 1:
+                return True
+            existing = conn.execute(
+                "SELECT symbol, side, payload_json FROM entry_alert_outbox WHERE event_id=?",
+                (event_id,),
+            ).fetchone()
+            if (existing is None or existing["symbol"] != symbol
+                    or existing["side"] != side or existing["payload_json"] != payload):
+                raise ValueError("entry_alert_event_id_payload_conflict")
+            return False
 
     def pending(self, limit=100):
         if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
