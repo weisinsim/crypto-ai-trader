@@ -6,6 +6,7 @@ without risking an order. It is not a live execution adapter.
 """
 import hashlib
 import hmac
+import math
 import os
 import time
 from urllib.parse import urlencode
@@ -61,16 +62,28 @@ class BinanceLiveReadiness:
                 mark = float(item.get("markPrice", 0) or 0)
             except (KeyError, TypeError, ValueError, OverflowError) as exc:
                 raise ValueError("invalid_account_position") from exc
+            entry_raw = item.get("entryPrice", 0) or 0
+            try:
+                entry = float(entry_raw)
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError("invalid_account_position") from exc
+            if not all(math.isfinite(value) for value in (amount, mark, entry)):
+                raise ValueError("non_finite_account_position")
             if amount != 0:
                 if mark <= 0:
                     # Account endpoint can omit markPrice. Fetch positionRisk below.
                     continue
-                gross_notional += abs(amount * mark)
+                notional = abs(amount * mark)
+                if not math.isfinite(notional):
+                    raise ValueError("non_finite_account_position_notional")
+                gross_notional += notional
+                if not math.isfinite(gross_notional):
+                    raise ValueError("non_finite_account_gross_notional")
                 open_positions.append({
                     "symbol": item.get("symbol"),
                     "position_amount": amount,
-                    "entry_price": float(item.get("entryPrice", 0) or 0),
-                    "notional_usdt": abs(amount * mark),
+                    "entry_price": entry,
+                    "notional_usdt": notional,
                 })
         position_risk = self._signed_get("/fapi/v2/positionRisk")
         if not isinstance(position_risk, list):
@@ -84,24 +97,36 @@ class BinanceLiveReadiness:
                 entry = float(item["entryPrice"])
             except (KeyError, TypeError, ValueError, OverflowError) as exc:
                 raise ValueError("invalid_position_risk_item") from exc
+            try:
+                unrealized = float(item.get("unRealizedProfit", 0) or 0)
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError("invalid_position_risk_item") from exc
+            if not all(math.isfinite(value) for value in (amount, mark, entry, unrealized)):
+                raise ValueError("non_finite_position_risk_item")
             if amount != 0:
                 if mark <= 0:
                     raise ValueError("invalid_mark_price_for_open_position")
                 notional = abs(amount * mark)
+                if not math.isfinite(notional):
+                    raise ValueError("non_finite_position_notional")
                 gross_notional += notional
+                if not math.isfinite(gross_notional):
+                    raise ValueError("non_finite_gross_notional")
                 open_positions.append({
                     "symbol": item.get("symbol"),
                     "position_amount": amount,
                     "entry_price": entry,
                     "mark_price": mark,
                     "notional_usdt": notional,
-                    "unrealized_pnl_usdt": float(item.get("unRealizedProfit", 0) or 0),
+                    "unrealized_pnl_usdt": unrealized,
                 })
         try:
             available_balance = float(account["availableBalance"])
             total_wallet_balance = float(account["totalWalletBalance"])
         except (KeyError, TypeError, ValueError, OverflowError) as exc:
             raise ValueError("invalid_account_balances") from exc
+        if not math.isfinite(available_balance) or not math.isfinite(total_wallet_balance):
+            raise ValueError("non_finite_account_balance")
         if available_balance < 0 or total_wallet_balance < 0:
             raise ValueError("negative_account_balance")
         return {
