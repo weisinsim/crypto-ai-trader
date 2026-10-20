@@ -82,7 +82,7 @@ class EntryAlertStore:
             return False
         if not math.isfinite(created_at) or created_at <= 0:
             return False
-        with self._connect() as conn:
+        with self._connection() as conn:
             cursor = conn.execute(
                 """INSERT OR IGNORE INTO entry_alert_outbox
                    (event_id, symbol, side, eligible, payload_json, status, created_at)
@@ -94,7 +94,7 @@ class EntryAlertStore:
     def pending(self, limit=100):
         if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
             raise ValueError("limit must be a positive integer")
-        with self._connect() as conn:
+        with self._connection() as conn:
             rows = conn.execute(
                 """SELECT event_id, payload_json, created_at FROM entry_alert_outbox
                    WHERE status='PENDING' ORDER BY created_at, event_id LIMIT ?""",
@@ -115,7 +115,7 @@ class EntryAlertStore:
             return False
         if not math.isfinite(delivered_at) or delivered_at <= 0:
             return False
-        with self._connect() as conn:
+        with self._connection() as conn:
             cursor = conn.execute(
                 """UPDATE entry_alert_outbox SET status='DELIVERED', delivered_at=?
                    WHERE event_id=? AND status='PENDING'""",
