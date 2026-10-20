@@ -306,7 +306,7 @@ class BinanceFuturesTestnet:
         )
         orders_response.raise_for_status()
         orders = orders_response.json()
-        if not isinstance(orders, list):
+        if not isinstance(orders, list) or any(not isinstance(order, dict) for order in orders):
             return {"ok": False, "reason": "invalid_testnet_open_orders_response"}
         return {
             "ok": True,
@@ -327,7 +327,6 @@ class BinanceFuturesTestnet:
                     "executed_quantity": order.get("executedQty", "0"),
                 }
                 for order in orders
-                if isinstance(order, dict)
             ],
         }
 
