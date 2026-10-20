@@ -55,6 +55,16 @@ class EntryAlertStoreTests(unittest.TestCase):
         self.assertFalse(store.mark_delivered("abc", now=12))
         self.assertEqual(store.pending(), [])
 
+    def test_delivery_timestamp_cannot_precede_enqueue_timestamp(self):
+        store = EntryAlertStore(":memory:")
+        event = {"event_id": "ordered-delivery", "eligible": True, "symbol": "BTCUSDT",
+                 "side": "LONG", "notification_only": True, "auto_trade_authorized": False}
+        self.assertTrue(store.enqueue(event, now=100))
+        self.assertFalse(store.mark_delivered("ordered-delivery", now=99))
+        self.assertEqual(len(store.pending()), 1)
+        self.assertTrue(store.mark_delivered("ordered-delivery", now=101))
+        self.assertEqual(store.pending(), [])
+
     def test_rejects_invalid_creation_timestamps(self):
         store = EntryAlertStore(":memory:")
         event = {"event_id": "timestamp-case", "eligible": True, "symbol": "BTCUSDT", "side": "LONG", "notification_only": True, "auto_trade_authorized": False}
