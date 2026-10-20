@@ -74,6 +74,32 @@ class RuntimeGuardTests(unittest.TestCase):
             "runtime_snapshot_invalid",
         )
 
+    def test_malformed_snapshot_types_fail_closed_without_raising(self):
+        self.assertEqual(
+            validate_runtime_state(self.snapshot(total_notional_usdt="not-a-number")).reason,
+            "runtime_snapshot_invalid",
+        )
+        self.assertEqual(
+            validate_runtime_state(self.snapshot(open_positions=True)).reason,
+            "runtime_snapshot_invalid",
+        )
+        self.assertEqual(
+            validate_runtime_state(self.snapshot(emergency_stop=1)).reason,
+            "runtime_snapshot_invalid",
+        )
+
+    def test_malformed_risk_config_fails_closed_without_raising(self):
+        config = RuntimeRiskConfig(max_daily_loss_usdt="bad")
+        self.assertEqual(
+            validate_runtime_state(self.snapshot(), config).reason,
+            "invalid_runtime_risk_configuration",
+        )
+        config = RuntimeRiskConfig(max_open_positions=True)
+        self.assertEqual(
+            validate_runtime_state(self.snapshot(), config).reason,
+            "invalid_runtime_risk_configuration",
+        )
+
     def test_invalid_config_fails_closed(self):
         config = RuntimeRiskConfig(max_daily_loss_usdt=0)
         self.assertEqual(
