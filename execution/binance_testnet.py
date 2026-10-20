@@ -291,6 +291,8 @@ class BinanceFuturesTestnet:
         account = account_response.json()
         if not isinstance(account, dict) or not isinstance(account.get("positions"), list):
             return {"ok": False, "reason": "invalid_testnet_account_response"}
+        if any(not isinstance(position, dict) for position in account["positions"]):
+            return {"ok": False, "reason": "invalid_testnet_position_records"}
         matching = [p for p in account["positions"] if p.get("symbol") == symbol]
         if len(matching) != 1:
             return {"ok": False, "reason": "position_not_found_or_ambiguous"}
