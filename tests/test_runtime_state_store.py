@@ -145,5 +145,24 @@ class RuntimeStateStoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.store.claim_order_attempt("order-2", "not-a-sha256")
 
+
+    def test_order_attempt_status_cannot_leave_reconciliation_required(self):
+        fingerprint = "b" * 64
+        self.assertTrue(self.store.claim_order_attempt("order-stuck", fingerprint))
+        self.assertTrue(self.store.update_order_attempt("order-stuck", "RECONCILIATION_REQUIRED"))
+        with self.assertRaisesRegex(ValueError, "invalid_order_attempt_status_transition"):
+            self.store.update_order_attempt("order-stuck", "COMPLETED")
+        with self.assertRaisesRegex(ValueError, "invalid_order_attempt_status_transition"):
+            self.store.update_order_attempt("order-stuck", "CLAIMED")
+        self.assertEqual(self.store.get_order_attempt("order-stuck")["status"], "RECONCILIATION_REQUIRED")
+
+    def test_terminal_order_attempt_status_cannot_be_rewritten(self):
+        fingerprint = "c" * 64
+        self.assertTrue(self.store.claim_order_attempt("order-done", fingerprint))
+        self.assertTrue(self.store.update_order_attempt("order-done", "COMPLETED"))
+        with self.assertRaisesRegex(ValueError, "invalid_order_attempt_status_transition"):
+            self.store.update_order_attempt("order-done", "RECONCILIATION_REQUIRED")
+        self.assertEqual(self.store.get_order_attempt("order-done")["status"], "COMPLETED")
+
 if __name__ == "__main__":
     unittest.main()
