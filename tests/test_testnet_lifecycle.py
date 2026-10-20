@@ -180,3 +180,42 @@ class TestnetSiblingCancellationTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["reason"], "sibling_cancel_unconfirmed")
         self.assertTrue(result["requires_reconciliation"])
+
+
+    def test_both_exits_filled_requires_exchange_history_reconciliation(self):
+        from execution.testnet_lifecycle import cancel_testnet_sibling_after_flatten
+        adapter = FakeCancellationAdapter(sibling_status="FILLED")
+        result = cancel_testnet_sibling_after_flatten(adapter, "BTCUSDT", "exit-01", "exit-02")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "both_exits_report_filled_check_exchange_history")
+        self.assertEqual(adapter.cancel_calls, [])
+
+    def test_sibling_lookup_failure_does_not_cancel_blindly(self):
+        from execution.testnet_lifecycle import cancel_testnet_sibling_after_flatten
+
+        class MissingSiblingAdapter(FakeCancellationAdapter):
+            def query_testnet_order(self, symbol, client_order_id):
+                if client_order_id == "exit-01":
+                    return {"found": True, "status": "FILLED", "executed_quantity": "0.5"}
+                return {"found": False}
+
+        adapter = MissingSiblingAdapter()
+        result = cancel_testnet_sibling_after_flatten(adapter, "BTCUSDT", "exit-01", "exit-02")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "sibling_lookup_failed")
+        self.assertEqual(adapter.cancel_calls, [])
+
+    def test_post_cancel_position_change_requires_reconciliation(self):
+        from execution.testnet_lifecycle import cancel_testnet_sibling_after_flatten
+
+        class PositionChangesAfterCancelAdapter(FakeCancellationAdapter):
+            def testnet_position_snapshot(self, symbol):
+                self.snapshot_calls += 1
+                amount = "0" if self.snapshot_calls == 1 else "0.1"
+                return {"ok": True, "position_amount": amount, "open_orders": []}
+
+        adapter = PositionChangesAfterCancelAdapter()
+        result = cancel_testnet_sibling_after_flatten(adapter, "BTCUSDT", "exit-01", "exit-02")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "position_reopened_or_not_flat_after_cancel")
+        self.assertTrue(result["requires_reconciliation"])
