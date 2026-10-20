@@ -167,6 +167,21 @@ class TestnetSupervisor:
                     intent_payload, sort_keys=True, separators=(",", ":"), default=str
                 ).encode("utf-8")).hexdigest()
                 claimed = self.state_store.claim_order_attempt(client_order_id, fingerprint)
+            except ValueError as exc:
+                self.state_store.record_execution_result(False)
+                if str(exc) == "client_order_id_intent_fingerprint_conflict":
+                    # A conflicting ID may refer to a prior exchange-side order.
+                    # Do not release the lock or allow another entry until it is reconciled.
+                    return {
+                        "ok": False,
+                        "reason": "client_order_id_intent_conflict_requires_reconciliation",
+                        "error_type": type(exc).__name__,
+                        "entry_submitted": False,
+                        "requires_reconciliation": True,
+                    }
+                release_lock = True
+                return {"ok": False, "reason": "order_attempt_reservation_failed",
+                        "error_type": type(exc).__name__, "entry_submitted": False}
             except Exception as exc:
                 self.state_store.record_execution_result(False)
                 release_lock = True
