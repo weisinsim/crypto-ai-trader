@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 
 DIRECTIONS = {"LONG", "SHORT"}
 ALERTABLE_MODEL_STATES = {"RESEARCH", "FROZEN", "PRODUCTION"}
@@ -41,7 +42,7 @@ def build_entry_alert(snapshot, *, now_ms, max_age_ms=90 * 60 * 1000):
         candle_ms = snapshot.get("last_closed_candle")
     analysis_ts = snapshot.get("analysis_ts")
 
-    if not isinstance(symbol, str) or not symbol.endswith("USDT"):
+    if not isinstance(symbol, str) or re.fullmatch(r"[A-Z0-9]{2,}USDT", symbol) is None:
         blockers.append("invalid_symbol")
     if side not in DIRECTIONS:
         blockers.append("not_actionable_direction")
