@@ -146,3 +146,17 @@ if __name__ == "__main__":
         self.assertEqual(result["reason"], "order_fill_and_position_quantity_mismatch")
         self.assertTrue(result["requires_reconciliation"])
         self.assertEqual(adapter.protective_submissions, [])
+
+
+    def test_partial_fill_is_not_treated_as_stable_position_for_protection(self):
+        class PartialFillAdapter(FakeAdapter):
+            def query_testnet_order(self, symbol, client_order_id):
+                return {"found": True, "status": "PARTIALLY_FILLED",
+                        "executed_quantity": "0.5", "average_price": "100"}
+
+        adapter = PartialFillAdapter()
+        result = self.run_flow(adapter)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "order_fill_and_position_quantity_mismatch")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(adapter.protective_submissions, [])
