@@ -116,6 +116,26 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertEqual(result["reason"], "existing_stop_quantity_mismatch")
         self.assertEqual(adapter.submissions, [])
 
+    def test_unexpected_active_entry_order_blocks_protective_setup(self):
+        adapter = FakeAdapter(orders=[{
+            "status": "NEW", "reduce_only": False, "type": "LIMIT",
+            "stop_price": "0", "side": "BUY", "orig_quantity": "0.5",
+        }])
+        result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-09")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "unexpected_active_order_requires_reconciliation")
+        self.assertEqual(adapter.submissions, [])
+
+    def test_unknown_open_order_status_blocks_duplicate_protection(self):
+        adapter = FakeAdapter(orders=[{
+            "status": "PENDING_UNKNOWN", "reduce_only": True, "type": "STOP_MARKET",
+            "stop_price": "99", "side": "SELL", "orig_quantity": "0.5",
+        }])
+        result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-10")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "unknown_or_malformed_open_order_requires_reconciliation")
+        self.assertEqual(adapter.submissions, [])
+
 
 if __name__ == "__main__":
     unittest.main()
