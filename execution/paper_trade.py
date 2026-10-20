@@ -65,6 +65,7 @@ def open_paper_trade(event, *, quantity, fee_rate=0.0005, opened_at_ms):
         "trailing_stop": None,
         "funding_paid": 0.0,
         "funding_events": 0,
+        "last_funding_at_ms": None,
     }
 
 
@@ -77,16 +78,19 @@ def apply_funding(trade, *, rate, mark_price, timestamp_ms):
     """Apply a simulated signed funding rate; positive rates charge longs."""
     if trade.get("status") != "OPEN":
         raise ValueError("trade_not_open")
+    last_funding = trade.get("last_funding_at_ms")
     if (not isinstance(rate, (int, float)) or isinstance(rate, bool)
             or not math.isfinite(rate) or abs(rate) > 0.05
             or not _finite_positive(mark_price)
             or isinstance(timestamp_ms, bool) or not isinstance(timestamp_ms, int)
-            or timestamp_ms < trade["opened_at_ms"]):
+            or timestamp_ms < trade["opened_at_ms"]
+            or (last_funding is not None and timestamp_ms <= last_funding)):
         raise ValueError("invalid_funding_input")
     signed = 1.0 if trade["side"] == "LONG" else -1.0
     cost = float(mark_price) * trade["quantity_remaining"] * float(rate) * signed
     trade["funding_paid"] += cost
     trade["funding_events"] += 1
+    trade["last_funding_at_ms"] = timestamp_ms
     return cost
 
 
@@ -96,13 +100,16 @@ def update_trailing_stop(trade, *, candidate_stop):
         raise ValueError("invalid_trailing_stop")
     current = trade.get("trailing_stop")
     if trade["side"] == "LONG":
-        if candidate_stop >= trade["entry_price"]:
-            # Break-even or profit-locking stops are allowed.
-            pass
+        # Never place a trailing stop below the original protective stop.
+        if candidate_stop <= trade["stop_loss"]:
+            return False
         if current is None or candidate_stop > current:
             trade["trailing_stop"] = float(candidate_stop)
             return True
     else:
+        # For shorts, lower stops are tighter; never loosen beyond original SL.
+        if candidate_stop >= trade["stop_loss"]:
+            return False
         if current is None or candidate_stop < current:
             trade["trailing_stop"] = float(candidate_stop)
             return True
