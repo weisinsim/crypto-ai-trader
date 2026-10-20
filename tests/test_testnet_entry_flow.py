@@ -119,3 +119,30 @@ class TestnetEntryFlowTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+    def test_position_quantity_must_match_reconciled_order_fill(self):
+        class MismatchedFillAdapter(FakeAdapter):
+            def testnet_position_snapshot(self, symbol):
+                snapshot = super().testnet_position_snapshot(symbol)
+                snapshot["position_amount"] = "0.4"
+                return snapshot
+
+        adapter = MismatchedFillAdapter()
+        result = self.run_flow(adapter)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "order_fill_and_position_quantity_mismatch")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(adapter.protective_submissions, [])
+
+    def test_open_position_with_zero_executed_quantity_fails_closed(self):
+        class ZeroFillAdapter(FakeAdapter):
+            def query_testnet_order(self, symbol, client_order_id):
+                return {"found": True, "status": "FILLED", "executed_quantity": "0", "average_price": "100"}
+
+        adapter = ZeroFillAdapter()
+        result = self.run_flow(adapter)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "order_fill_and_position_quantity_mismatch")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(adapter.protective_submissions, [])
