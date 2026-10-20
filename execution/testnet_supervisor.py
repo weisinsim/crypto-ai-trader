@@ -137,7 +137,13 @@ class TestnetSupervisor:
                 release_lock = True
                 return {"ok": False, "reason": decision.reason, "stage": "runtime_gate_under_lock",
                         "entry_submitted": False}
-            position = self.adapter.testnet_position_snapshot(symbol)
+            try:
+                position = self.adapter.testnet_position_snapshot(symbol)
+            except Exception as exc:
+                self.state_store.record_execution_result(False)
+                return {"ok": False, "reason": "position_recheck_failed_under_lock",
+                        "error_type": type(exc).__name__, "entry_submitted": False,
+                        "requires_reconciliation": True}
             if not isinstance(position, dict) or not position.get("ok"):
                 self.state_store.record_execution_result(False)
                 return {"ok": False, "reason": "position_recheck_failed_under_lock",
