@@ -26,9 +26,21 @@ class EntryAlertMessageTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             format_entry_alert(event)
 
-    def test_production_label_only_when_flag_is_false(self):
+    def test_research_only_false_does_not_authorize_production_label(self):
         event = self.event()
         event["research_only"] = False
+        self.assertIn("NOT LIVE-APPROVED", format_entry_alert(event))
+        self.assertNotIn("PRODUCTION SIGNAL", format_entry_alert(event))
+
+    def test_production_label_requires_explicit_release_approval(self):
+        event = self.event()
+        event.update({
+            "research_only": False,
+            "model_status": "PRODUCTION",
+            "production_approval": True,
+            "notification_only": True,
+            "auto_trade_authorized": False,
+        })
         self.assertIn("PRODUCTION SIGNAL", format_entry_alert(event))
 
 
