@@ -539,6 +539,7 @@ class BacktestTests(unittest.TestCase):
         trade = next(t for t in result["trade_log"] if t["entry_time"] == rows[3]["t"])
         self.assertEqual(trade["reason"], "STOP")
         self.assertEqual(trade["exit"], 90.0)
+        self.assertTrue(trade["same_bar_stop_target_ambiguous"])
 
 
     def test_short_entry_bar_touching_stop_and_target_exits_at_stop(self):
@@ -566,6 +567,7 @@ class BacktestTests(unittest.TestCase):
         self.assertEqual(trade["side"], "SHORT")
         self.assertEqual(trade["reason"], "STOP")
         self.assertEqual(trade["exit"], 110.0)
+        self.assertTrue(trade["same_bar_stop_target_ambiguous"])
 
     def test_same_bar_stop_and_target_prefers_stop(self):
         rows = candles_from_closes([100 + (i % 3) for i in range(80)])
