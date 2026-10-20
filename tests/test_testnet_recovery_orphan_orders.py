@@ -55,5 +55,26 @@ class RecoveryOrphanOrderTests(unittest.TestCase):
         self.assertFalse(result["entry_order_submitted"])
 
 
+    def test_open_position_with_unknown_order_status_fails_closed(self):
+        adapter = Adapter({
+            "ok": True, "position_amount": "1", "entry_price": "100",
+            "open_orders": [{"status": "PENDING_CANCEL", "type": "STOP_MARKET", "reduce_only": True}],
+        })
+        result = recover_testnet_position(adapter, "BTCUSDT", 99, 101, "recover-05")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "recovery_order_status_unknown")
+        self.assertTrue(result["requires_manual_reconciliation"])
+
+    def test_open_position_with_missing_order_status_fails_closed(self):
+        adapter = Adapter({
+            "ok": True, "position_amount": "1", "entry_price": "100",
+            "open_orders": [{"type": "STOP_MARKET", "reduce_only": True}],
+        })
+        result = recover_testnet_position(adapter, "BTCUSDT", 99, 101, "recover-06")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "recovery_order_status_unknown")
+        self.assertTrue(result["requires_manual_reconciliation"])
+
+
 if __name__ == "__main__":
     unittest.main()
