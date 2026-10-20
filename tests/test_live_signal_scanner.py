@@ -36,6 +36,15 @@ class MarketDataTests(unittest.TestCase):
             CANDLE_CLOSE_BOUNDARY,
         )
 
+    def test_rejects_noncanonical_symbols_before_request(self):
+        client = BinanceUsdMMarketData(opener=lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("invalid symbols must be rejected before network access")
+        ))
+        for symbol in ("btcusdt", "BTC/USDT", "BTC USDT", "BTCUSDT.evil", "UUSDT"):
+            with self.subTest(symbol=symbol):
+                with self.assertRaisesRegex(ValueError, "canonical uppercase"):
+                    client.last_closed_candle_ms(symbol, "1h", now_ms=NOW)
+
     def test_rejects_non_finite_or_non_positive_timeout(self):
         for timeout in (float("nan"), float("inf"), 0, -1, True):
             with self.subTest(timeout=timeout):
