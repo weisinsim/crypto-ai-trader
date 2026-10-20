@@ -79,6 +79,11 @@ def scan_once(*, symbols, interval, market_data, snapshot_provider, store,
             if not isinstance(snapshot, dict):
                 result["rejected"] += 1
                 continue
+            # Never enqueue a signal row returned for a different symbol.
+            # The provider is expected to return the requested symbol explicitly.
+            if snapshot.get("symbol") != symbol:
+                result["rejected"] += 1
+                continue
             signal_candle = snapshot.get("confirmed_signal_time")
             if signal_candle is None:
                 signal_candle = snapshot.get("last_closed_candle")
