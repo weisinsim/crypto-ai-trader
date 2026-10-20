@@ -65,6 +65,17 @@ class RuntimeStateStoreTests(unittest.TestCase):
         reopened.update_exchange_metrics(0, 0, 0, now_epoch=now.timestamp())
         self.assertEqual(reopened.load_snapshot(now_epoch=now.timestamp()).daily_realized_pnl_usdt, -2.0)
 
+    def test_realized_pnl_event_id_reuse_with_conflicting_payload_fails_closed(self):
+        now = datetime(2026, 10, 19, 10, tzinfo=timezone.utc)
+        self.assertTrue(self.store.record_realized_pnl(-3.25, now=now, event_id="trade-conflict"))
+        with self.assertRaisesRegex(ValueError, "realized_pnl_event_id_payload_conflict"):
+            self.store.record_realized_pnl(-8.75, now=now, event_id="trade-conflict")
+        with self.assertRaisesRegex(ValueError, "realized_pnl_event_id_payload_conflict"):
+            self.store.record_realized_pnl(-3.25, now=datetime(2026, 10, 20, 10, tzinfo=timezone.utc),
+                                           event_id="trade-conflict")
+        self.store.update_exchange_metrics(0, 0, 0, now_epoch=now.timestamp())
+        self.assertEqual(self.store.load_snapshot(now_epoch=now.timestamp()).daily_realized_pnl_usdt, -3.25)
+
     def test_realized_pnl_event_id_must_be_valid(self):
         with self.assertRaises(ValueError):
             self.store.record_realized_pnl(1, event_id="  ")
