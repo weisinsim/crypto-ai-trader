@@ -4,6 +4,10 @@ from decimal import Decimal, InvalidOperation
 from execution.testnet_lifecycle import ensure_testnet_protective_exits
 
 
+_ACTIVE_STATUSES = {"NEW", "PARTIALLY_FILLED"}
+_PROTECTIVE_TYPES = {"STOP_MARKET", "TAKE_PROFIT_MARKET"}
+
+
 def recover_testnet_position(adapter, symbol, stop_loss, take_profit, client_order_prefix):
     """Inspect exchange state and ensure protection for an existing position."""
     try:
@@ -24,7 +28,7 @@ def recover_testnet_position(adapter, symbol, stop_loss, take_profit, client_ord
     open_orders = snapshot.get("open_orders")
     if not isinstance(open_orders, list) or any(not isinstance(order, dict) for order in open_orders):
         return {"ok": False, "reason": "recovery_open_orders_invalid", "requires_manual_reconciliation": True}
-    active_orders = [order for order in open_orders if order.get("status") in {"NEW", "PARTIALLY_FILLED"}]
+    active_orders = [order for order in open_orders if order.get("status") in _ACTIVE_STATUSES]
     if amount == 0:
         if active_orders:
             return {"ok": False, "reason": "recovery_flat_position_has_open_orders", "open_order_count": len(active_orders), "requires_manual_reconciliation": True}
@@ -33,6 +37,11 @@ def recover_testnet_position(adapter, symbol, stop_loss, take_profit, client_ord
         return {"ok": False, "reason": "recovery_entry_price_invalid", "position_amount": str(amount), "requires_manual_reconciliation": True}
     if (amount > 0 and not stop < entry < target) or (amount < 0 and not target < entry < stop):
         return {"ok": False, "reason": "recovery_protective_geometry_invalid", "position_amount": str(amount), "entry_price": str(entry), "requires_manual_reconciliation": True}
+    unexpected_orders = [order for order in active_orders if not (
+        order.get("reduce_only") is True and order.get("type") in _PROTECTIVE_TYPES
+    )]
+    if unexpected_orders:
+        return {"ok": False, "reason": "recovery_unexpected_active_orders", "open_order_count": len(unexpected_orders), "requires_manual_reconciliation": True}
     try:
         protection = ensure_testnet_protective_exits(adapter, symbol, stop, target, client_order_prefix)
     except Exception as exc:
