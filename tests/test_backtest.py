@@ -601,3 +601,51 @@ class FundingNumericValidationOverflowTests(unittest.TestCase):
                     rows, fast=3, slow=9, atr_period=3,
                     funding_rates=[event],
                 )
+
+
+class CausalBacktestRegressionTests(unittest.TestCase):
+    def test_future_candle_changes_do_not_rewrite_earlier_completed_trades(self):
+        rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(240)])
+        kwargs = dict(fast=3, slow=9, atr_period=3, fee_rate=0, slippage_rate=0)
+        cutoff_index = 150
+        baseline = run_ema_cross_backtest(rows, **kwargs)
+
+        changed_future = [dict(row) for row in rows]
+        for i in range(cutoff_index, len(changed_future)):
+            # Make the future radically different without touching any pre-cutoff bar.
+            value = 300.0 if i % 2 else 50.0
+            changed_future[i].update({"o": value, "h": value * 1.01,
+                                      "l": value * 0.99, "c": value})
+        altered = run_ema_cross_backtest(changed_future, **kwargs)
+        cutoff_ts = rows[cutoff_index]["t"]
+
+        def completed_before_cutoff(result):
+            return [
+                (trade["side"], trade["entry_time"], trade["exit_time"],
+                 trade["entry"], trade["exit"], trade["reason"])
+                for trade in result["trade_log"]
+                if trade["exit_time"] < cutoff_ts
+            ]
+
+        self.assertEqual(completed_before_cutoff(baseline), completed_before_cutoff(altered))
+
+    def test_signal_entry_is_filled_at_next_bar_open_not_signal_close(self):
+        from unittest.mock import patch
+
+        rows = [
+            {"t": i * 3_600_000, "o": 100.0 + i, "h": 102.0 + i,
+             "l": 99.0 + i, "c": 101.0 + i, "v": 10}
+            for i in range(8)
+        ]
+        fast = [None, 1.0, 2.0, 4.0, 4.0, 4.0, 4.0, 4.0]
+        slow = [None, 2.0, 2.0, 3.0, 3.0, 3.0, 3.0, 3.0]
+        with patch("research.backtest._ema", side_effect=lambda values, period: fast if period == 2 else slow), \\
+             patch("research.backtest._atr", return_value=[1.0] * len(rows)):
+            result = run_ema_cross_backtest(
+                rows, fast=2, slow=3, atr_period=1, stop_atr=1.0,
+                target_atr=2.0, fee_rate=0, slippage_rate=0, allow_short=False,
+            )
+        self.assertTrue(result["trade_log"])
+        trade = result["trade_log"][0]
+        self.assertEqual(trade["entry_time"], rows[3]["t"])
+        self.assertEqual(trade["entry"], rows[3]["o"])
