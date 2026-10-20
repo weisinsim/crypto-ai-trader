@@ -80,7 +80,10 @@ class WorkerCycleTests(unittest.TestCase):
                     )
 
     def test_worker_rejects_empty_duplicate_or_invalid_symbols(self):
-        for symbols in ([], ["BTCUSDT", "BTCUSDT"], ["BTCUSD"], [None]):
+        for symbols in (
+            [], ["BTCUSDT", "BTCUSDT"], ["BTCUSD"], [None],
+            ["btcusdt"], ["BTC/USDT"], ["BTC USDT"], ["BTCUSDT.evil"],
+        ):
             with self.subTest(symbols=symbols):
                 with self.assertRaisesRegex(ValueError, "symbols"):
                     live_signal_worker.run_worker(
