@@ -9,6 +9,7 @@ import json
 import math
 import sqlite3
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 
@@ -21,7 +22,7 @@ class EntryAlertStore:
             self._memory_conn.row_factory = sqlite3.Row
         else:
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as conn:
+        with self._connection() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS entry_alert_outbox (
                     event_id TEXT PRIMARY KEY,
@@ -41,6 +42,17 @@ class EntryAlertStore:
         conn = sqlite3.connect(self.path, timeout=10)
         conn.row_factory = sqlite3.Row
         return conn
+
+    @contextmanager
+    def _connection(self):
+        """Commit/rollback each operation and close file-backed connections."""
+        conn = self._connect()
+        try:
+            with conn:
+                yield conn
+        finally:
+            if self._memory_conn is None:
+                conn.close()
 
     def enqueue(self, event, *, now=None):
         """Persist one eligible alert once; returns False for duplicate/invalid events."""
