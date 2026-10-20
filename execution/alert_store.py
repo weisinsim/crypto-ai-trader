@@ -6,6 +6,7 @@ messages, execute trades, or treat an unapproved strategy as production-ready.
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 import time
 from pathlib import Path
@@ -50,8 +51,25 @@ class EntryAlertStore:
         side = event.get("side")
         if not all(isinstance(x, str) and x for x in (event_id, symbol, side)):
             return False
-        payload = json.dumps(event, sort_keys=True, separators=(",", ":"), allow_nan=False)
-        created_at = time.time() if now is None else float(now)
+        # The outbox is strictly for human-facing alerts, never an execution queue.
+        if (
+            side not in ("LONG", "SHORT")
+            or event.get("notification_only") is not True
+            or event.get("auto_trade_authorized") is not False
+        ):
+            return False
+        try:
+            payload = json.dumps(event, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        except (TypeError, ValueError, OverflowError):
+            return False
+        try:
+            if isinstance(now, bool):
+                return False
+            created_at = time.time() if now is None else float(now)
+        except (TypeError, ValueError, OverflowError):
+            return False
+        if not math.isfinite(created_at) or created_at <= 0:
+            return False
         with self._connect() as conn:
             cursor = conn.execute(
                 """INSERT OR IGNORE INTO entry_alert_outbox
@@ -77,7 +95,14 @@ class EntryAlertStore:
         ]
 
     def mark_delivered(self, event_id, *, now=None):
-        delivered_at = time.time() if now is None else float(now)
+        try:
+            if isinstance(now, bool):
+                return False
+            delivered_at = time.time() if now is None else float(now)
+        except (TypeError, ValueError, OverflowError):
+            return False
+        if not math.isfinite(delivered_at) or delivered_at <= 0:
+            return False
         with self._connect() as conn:
             cursor = conn.execute(
                 """UPDATE entry_alert_outbox SET status='DELIVERED', delivered_at=?

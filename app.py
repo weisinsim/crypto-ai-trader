@@ -1,5 +1,8 @@
 import asyncio
 import json
+import hashlib
+import math
+import os
 import time
 from validation.candle_closure import filter_closed_candles, normalize_timestamp_ms, upsert_candle, validate_candle_series
 from validation.dashboard_health import build_health_payload
@@ -137,6 +140,214 @@ async def models():
 @app.get("/api/signals")
 async def signals():
     return {"server_ts": time.time(), "history": signal_history, "confirmed": {s: {k: cache[s].get(k) for k in ("confirmed_signal","confirmed_signal_time","confirmed_entry","confirmed_sl","confirmed_tp1","confirmed_tp2","confirmed_score","confirmed_score_label","confirmed_status")} for s in SYMBOLS}}
+
+@app.get("/api/chatgpt/alerts")
+async def chatgpt_alert_feed():
+    """Read-only feed for a ChatGPT task or other authorized polling client.
+
+    This endpoint reports confirmed candidates only. It never sends a push
+    notification and never authorizes a trade. The deployment must expose this
+    endpoint over HTTPS for a scheduled task to read it.
+    """
+    now = time.time()
+    max_age_seconds = 90 * 60
+    alerts = []
+    # Fail closed: status must be LIVE and the health heartbeat must itself be
+    # recent. A stale status flag can survive a stalled market-data loop.
+    status_updated = market_status.get("updated")
+    status_is_fresh = (
+        isinstance(status_updated, (int, float))
+        and math.isfinite(status_updated)
+        and 0 < status_updated <= now
+        and now - status_updated <= 120
+    )
+    if market_status.get("status") != "LIVE" or not status_is_fresh:
+        reason = (
+            "Market feed is not LIVE; cached candidates are suppressed. No orders are placed."
+            if market_status.get("status") != "LIVE"
+            else "Market status heartbeat is stale or invalid; cached candidates are suppressed. No orders are placed."
+        )
+        return {
+            "generated_at": now,
+            "feed": "crypto-ai-trader-chatgpt-alerts-v1",
+            "status": market_status.get("status", "UNKNOWN"),
+            "alerts": [],
+            "count": 0,
+            "note": reason,
+        }
+    for symbol in SYMBOLS:
+        item = cache[symbol]
+        side = item.get("confirmed_signal")
+        candle_time = item.get("confirmed_signal_time")
+        analysis_time = item.get("analysis_ts")
+        model_status = item.get("model_status", "UNKNOWN")
+        if side not in ("LONG", "SHORT"):
+            continue
+        if model_status not in ("RESEARCH", "FROZEN", "PRODUCTION"):
+            continue
+        if not isinstance(candle_time, (int, float)) or not math.isfinite(candle_time) or candle_time <= 0 or candle_time > now * 1000:
+            continue
+        if now * 1000 - candle_time > max_age_seconds * 1000:
+            continue
+        if not isinstance(analysis_time, (int, float)) or not math.isfinite(analysis_time) or analysis_time <= 0 or analysis_time > now or now - analysis_time > max_age_seconds:
+            continue
+        entry = item.get("confirmed_entry")
+        stop = item.get("confirmed_sl")
+        tp1 = item.get("confirmed_tp1")
+        tp2 = item.get("confirmed_tp2")
+        # Reject bools, NaN, and infinities explicitly. Python treats bool as
+        # int, and infinity can otherwise slip through positive-price checks.
+        prices = (entry, stop, tp1, tp2)
+        if not all(
+            isinstance(v, (int, float))
+            and not isinstance(v, bool)
+            and math.isfinite(v)
+            and v > 0
+            for v in prices
+        ):
+            continue
+        if side == "LONG" and not (stop < entry < tp1 <= tp2):
+            continue
+        if side == "SHORT" and not (tp2 <= tp1 < entry < stop):
+            continue
+        score = item.get("confirmed_score")
+        if (
+            not isinstance(score, (int, float))
+            or isinstance(score, bool)
+            or not math.isfinite(score)
+            or not 0 <= score <= 100
+        ):
+            continue
+        event_material = f"{symbol}|{side}|{int(candle_time)}|{item.get('model_name', '')}"
+        event_id = hashlib.sha256(event_material.encode("utf-8")).hexdigest()[:24]
+        alerts.append({
+            "event_id": event_id,
+            "symbol": symbol,
+            "side": side,
+            "signal_candle_ms": candle_time,
+            "analysis_ts": analysis_time,
+            "entry": entry,
+            "stop_loss": stop,
+            "take_profit_1": tp1,
+            "take_profit_2": tp2,
+            "score": item.get("confirmed_score"),
+            "score_label": item.get("confirmed_score_label"),
+            "model_name": item.get("model_name"),
+            "model_status": model_status,
+            "research_only": model_status != "PRODUCTION",
+            "notification_only": True,
+            "auto_trade_authorized": False,
+        })
+    return {
+        "generated_at": now,
+        "feed": "crypto-ai-trader-chatgpt-alerts-v1",
+        "status": market_status.get("status", "UNKNOWN"),
+        "alerts": alerts,
+        "count": len(alerts),
+        "note": "Read-only signal feed; empty alerts means no fresh confirmed candidate. No orders are placed.",
+    }
+
+
+@app.get("/api/chatgpt/outbox-alerts")
+async def chatgpt_outbox_alert_feed(limit: int = 50):
+    """Read-only projection of queued worker alerts; never acknowledges delivery."""
+    now = time.time()
+    safe_limit = max(1, min(int(limit), 100))
+    status_updated = market_status.get("updated")
+    heartbeat_ok = (
+        isinstance(status_updated, (int, float))
+        and not isinstance(status_updated, bool)
+        and math.isfinite(status_updated)
+        and 0 < status_updated <= now
+        and now - status_updated <= 120
+    )
+    status = market_status.get("status", "UNKNOWN")
+    base = {
+        "generated_at": now,
+        "feed": "crypto-ai-trader-outbox-alerts-v1",
+        "status": status,
+        "alerts": [],
+        "count": 0,
+        "notification_only": True,
+        "auto_trade_authorized": False,
+    }
+    if status != "LIVE" or not heartbeat_ok:
+        base["note"] = "Market status is not safely LIVE; outbox alerts suppressed. No orders are placed."
+        return base
+    db_path = os.environ.get("ALERT_OUTBOX_DB", "data/entry-alerts.sqlite3")
+    try:
+        from execution.alert_store import EntryAlertStore
+        pending = EntryAlertStore(db_path).pending(limit=safe_limit)
+    except Exception:
+        base["status"] = "DEGRADED"
+        base["note"] = "Outbox unavailable or unreadable; alerts suppressed. No orders are placed."
+        return base
+    for row in pending:
+        if not isinstance(row, dict) or not isinstance(row.get("event"), dict):
+            continue
+        event = row["event"]
+        if event.get("eligible") is not True:
+            continue
+        if event.get("event_id") != row.get("event_id"):
+            continue
+        if event.get("notification_only") is not True or event.get("auto_trade_authorized") is not False:
+            continue
+        symbol, side = event.get("symbol"), event.get("side")
+        if not isinstance(symbol, str) or symbol not in SYMBOLS or side not in ("LONG", "SHORT"):
+            continue
+        # A fresh global heartbeat is insufficient if this particular symbol's
+        # market stream has stalled. Fail closed per symbol as well.
+        symbol_ts = cache.get(symbol, {}).get("ts")
+        symbol_price = cache.get(symbol, {}).get("price")
+        if (not isinstance(symbol_ts, (int, float)) or isinstance(symbol_ts, bool)
+                or not math.isfinite(symbol_ts) or symbol_ts <= 0 or symbol_ts > now
+                or now - symbol_ts > 120):
+            continue
+        if (not isinstance(symbol_price, (int, float)) or isinstance(symbol_price, bool)
+                or not math.isfinite(symbol_price) or symbol_price <= 0):
+            continue
+        candle_ms, analysis_ts = event.get("signal_candle_ms"), event.get("analysis_ts")
+        if (not isinstance(candle_ms, (int, float)) or isinstance(candle_ms, bool)
+                or not math.isfinite(candle_ms) or candle_ms <= 0 or candle_ms > now * 1000
+                or now * 1000 - candle_ms > 90 * 60 * 1000):
+            continue
+        if (not isinstance(analysis_ts, (int, float)) or isinstance(analysis_ts, bool)
+                or not math.isfinite(analysis_ts) or analysis_ts <= 0 or analysis_ts > now
+                or now - analysis_ts > 90 * 60):
+            continue
+        entry, stop = event.get("entry"), event.get("stop_loss")
+        tp1, tp2 = event.get("take_profit_1"), event.get("take_profit_2")
+        prices = (entry, stop, tp1, tp2)
+        if not all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                   and math.isfinite(v) and v > 0 for v in prices):
+            continue
+        if side == "LONG" and not (stop < entry < tp1 <= tp2):
+            continue
+        if side == "SHORT" and not (tp2 <= tp1 < entry < stop):
+            continue
+        score = event.get("score")
+        if (not isinstance(score, (int, float)) or isinstance(score, bool)
+                or not math.isfinite(score) or not 0 <= score <= 100):
+            continue
+        base["alerts"].append({
+            "event_id": event.get("event_id"),
+            "symbol": symbol,
+            "side": side,
+            "signal_candle_ms": candle_ms,
+            "analysis_ts": analysis_ts,
+            "entry": entry,
+            "stop_loss": stop,
+            "take_profit_1": tp1,
+            "take_profit_2": tp2,
+            "score": score,
+            "model_status": event.get("model_status", "UNKNOWN"),
+            "research_only": event.get("research_only") is True,
+            "notification_only": True,
+            "auto_trade_authorized": False,
+        })
+    base["count"] = len(base["alerts"])
+    base["note"] = "Read-only pending outbox projection; polling does not mark events delivered and never places orders."
+    return base
 
 def ema(values, period):
     if len(values) < period:
@@ -505,6 +716,7 @@ async def handle_bybit_ws(sock):
             s=topic.split(".")[-1]
             if s in cache and rows.get("lastPrice"):
                 cache[s].update(price=float(rows["lastPrice"]), change=float(rows["price24hPcnt"])*100 if rows.get("price24hPcnt") is not None else cache[s]["change"], volume=float(rows.get("turnover24h",0)), funding=float(rows["fundingRate"]) if rows.get("fundingRate") is not None else cache[s]["funding"], oi=float(rows["openInterest"]) if rows.get("openInterest") is not None else cache[s]["oi"], ts=time.time(), source="Bybit Live")
+                market_status.update(status="LIVE", updated=time.time(), error=None)
                 try:
                     ov=float(rows["openInterest"]); now=time.time(); hist=oi_history[s]; hist.append((now,ov)); del hist[:-180]
                     old=next((v for t,v in reversed(hist) if now-t>=900), hist[0][1] if hist else ov)
@@ -531,6 +743,7 @@ async def handle_bybit_ws(sock):
                             await analyze_symbol(s)
                             record_confirmed_signal(s, int(arr[-2]["t"]) + 3600000 if len(arr) >= 2 else None)
                         cache[s].update(price=item["c"], ts=time.time(), source="Bybit Live")
+                        market_status.update(status="LIVE", updated=time.time(), error=None)
                         if time.time()-last_analysis[s] >= 3:
                             last_analysis[s]=time.time()
                             await analyze_symbol(s)
@@ -557,6 +770,7 @@ async def ws_loop():
                             s=d.get("s")
                             if s in cache:
                                 cache[s].update(price=float(d["c"]), change=float(d["P"]), volume=float(d["q"]), ts=time.time(), source="Binance Futures")
+                                market_status.update(status="LIVE", updated=time.time(), error=None)
                                 diagnostics["last_success"]=time.time()
                                 await broadcast({"type":"ticker","data":cache[s]})
                         elif d.get("e")=="kline":
@@ -574,6 +788,7 @@ async def ws_loop():
                                         await analyze_symbol(s)
                                         record_confirmed_signal(s, int(arr[-2]["t"]) + 3600000 if len(arr) >= 2 else None)
                                     cache[s].update(price=float(k["c"]), ts=time.time(), source="Binance Futures")
+                                    market_status.update(status="LIVE", updated=time.time(), error=None)
                                     if time.time()-last_analysis[s] >= 3:
                                         last_analysis[s]=time.time()
                                         await analyze_symbol(s)
