@@ -7,6 +7,7 @@ candle. This module does not calculate a strategy signal or place orders.
 from __future__ import annotations
 
 import json
+import math
 import time
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -24,8 +25,9 @@ class BinanceUsdMMarketData:
     BASE_URL = "https://fapi.binance.com/fapi/v1/klines"
 
     def __init__(self, *, timeout=10, opener=urlopen):
-        if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or timeout <= 0:
-            raise ValueError("timeout must be positive")
+        if (not isinstance(timeout, (int, float)) or isinstance(timeout, bool)
+                or not math.isfinite(timeout) or timeout <= 0):
+            raise ValueError("timeout must be a finite positive number")
         self.timeout = timeout
         self.opener = opener
 
@@ -49,7 +51,8 @@ class BinanceUsdMMarketData:
             if not isinstance(row, list) or len(row) < 7:
                 raise MarketDataError("binance_market_data_invalid_row")
             open_ms, close_ms = row[0], row[6]
-            if not isinstance(open_ms, int) or not isinstance(close_ms, int):
+            if (not isinstance(open_ms, int) or isinstance(open_ms, bool)
+                    or not isinstance(close_ms, int) or isinstance(close_ms, bool)):
                 raise MarketDataError("binance_market_data_invalid_timestamp")
             if close_ms < now_ms:
                 # Binance closeTime is inclusive (boundary - 1 ms); normalize
