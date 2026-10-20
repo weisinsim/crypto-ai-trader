@@ -24,6 +24,8 @@ class ChatGPTAlertFeedTests(unittest.TestCase):
                 "confirmed_score_label": "NO-TRADE",
                 "model_name": "test-model",
                 "model_status": "RESEARCH",
+                "price": 100.0,
+                "ts": now,
             })
         dashboard.market_status.update(status="LIVE", updated=now, error=None)
         dashboard.cache["BTCUSDT"].update({
@@ -143,6 +145,17 @@ class ChatGPTAlertFeedTests(unittest.TestCase):
             item["confirmed_score"] = score
             payload = asyncio.run(dashboard.chatgpt_alert_feed())
             self.assertEqual(payload["alerts"], [], msg=f"score should be rejected: {score!r}")
+
+    def test_suppresses_candidate_when_its_own_ticker_is_stale(self):
+        item = dashboard.cache["BTCUSDT"]
+        item["ts"] = time.time() - 121
+        payload = asyncio.run(dashboard.chatgpt_alert_feed())
+        self.assertEqual(payload["alerts"], [])
+
+        item["ts"] = time.time()
+        item["price"] = float("nan")
+        payload = asyncio.run(dashboard.chatgpt_alert_feed())
+        self.assertEqual(payload["alerts"], [])
 
     def test_excludes_non_directional_signals(self):
         dashboard.cache["BTCUSDT"]["confirmed_signal"] = "NO-TRADE"
