@@ -227,6 +227,25 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(client.calls, [])
 
 
+    def test_position_snapshot_rejects_malformed_position_record(self):
+        class MalformedPositionClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"positions": [
+                        {"symbol": "BTCUSDT", "positionAmt": "0", "entryPrice": "0"},
+                        None,
+                    ]})
+                return super().get(path, params)
+
+        client = MalformedPositionClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.testnet_position_snapshot("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "invalid_testnet_position_records")
+        self.assertEqual([call[0] for call in client.get_calls], ["/fapi/v2/account"])
+        self.assertEqual(client.calls, [])
+
     def test_position_snapshot_rejects_malformed_open_order_record(self):
         class MalformedOrdersClient(FakeClient):
             def get(self, path, params):
