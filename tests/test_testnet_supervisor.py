@@ -162,6 +162,19 @@ class TestnetSupervisorTests(unittest.TestCase):
         self.assertEqual(self.adapter.submissions, [])
         self.assertIsNone(self.store.get_entry_lock())
 
+    def test_conflicting_order_id_intent_keeps_lock_and_blocks_submission(self):
+        fingerprint = "d" * 64
+        self.assertTrue(self.store.claim_order_attempt("entry-conflicting-id", fingerprint))
+        result = self.supervisor.run_once(
+            "BTCUSDT", self.intent(), "entry-conflicting-id", "run-conflict")
+        self.assertEqual(
+            result["reason"],
+            "client_order_id_intent_conflict_requires_reconciliation")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(self.adapter.submissions, [])
+        self.assertEqual(
+            self.store.get_entry_lock()["token"], "entry-conflicting-id")
+
     def test_order_attempt_persistence_error_keeps_lock_and_requires_reconciliation(self):
         original_update = self.store.update_order_attempt
         def fail_persistence(client_order_id, status):
