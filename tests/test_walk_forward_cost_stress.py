@@ -38,6 +38,27 @@ class WalkForwardCostStressTests(unittest.TestCase):
         self.assertEqual(report["scenario_summary"]["base"]["folds_pf_above_1_15"], 1)
         self.assertIsNone(report["scenario_summary"]["base"]["lowest_numeric_profit_factor"])
 
+    def test_non_finite_return_fails_closed(self):
+        fold = self._passing_fold()
+        fold["cost_stress"]["scenarios"]["base"]["net_return_pct"] = float("nan")
+        report = summarize_walk_forward_cost_stress([fold])
+        self.assertFalse(report["walk_forward_candidate_gate"]["pass"])
+        self.assertEqual(report["folds_passing_all_three_cost_scenarios"], 0)
+
+    def test_non_finite_profit_factor_fails_closed(self):
+        fold = self._passing_fold()
+        fold["cost_stress"]["scenarios"]["stress"]["profit_factor"] = float("inf")
+        report = summarize_walk_forward_cost_stress([fold])
+        self.assertFalse(report["walk_forward_candidate_gate"]["pass"])
+        self.assertEqual(report["folds_passing_all_three_cost_scenarios"], 0)
+
+    def test_drawdown_above_100_percent_fails_closed(self):
+        fold = self._passing_fold()
+        fold["cost_stress"]["scenarios"]["severe_stress"]["max_drawdown_pct"] = 100.01
+        report = summarize_walk_forward_cost_stress([fold])
+        self.assertFalse(report["walk_forward_candidate_gate"]["pass"])
+        self.assertEqual(report["folds_passing_all_three_cost_scenarios"], 0)
+
     def test_missing_equity_floor_status_fails_closed(self):
         fold = self._passing_fold()
         del fold["cost_stress"]["scenarios"]["stress"]["equity_floor_hit"]
