@@ -136,6 +136,16 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertEqual(result["reason"], "unknown_or_malformed_open_order_requires_reconciliation")
         self.assertEqual(adapter.submissions, [])
 
+    def test_non_boolean_reduce_only_value_fails_closed(self):
+        adapter = FakeAdapter(orders=[{
+            "status": "NEW", "reduce_only": 1, "type": "STOP_MARKET",
+            "stop_price": "99", "side": "SELL", "orig_quantity": "0.5",
+        }])
+        result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-11")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "unknown_or_malformed_open_order_requires_reconciliation")
+        self.assertEqual(adapter.submissions, [])
+
 
 if __name__ == "__main__":
     unittest.main()
