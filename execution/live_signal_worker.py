@@ -47,8 +47,9 @@ def run_worker(*, base_url, db_path, symbols, interval="1h", poll_seconds=30,
                max_age_ms=90 * 60 * 1000, stop_event=None, emit=print,
                snapshot_fetcher=None, market_data=None, store_factory=None):
     """Poll until stop_event is set; dependencies are injectable for testing."""
-    if not isinstance(poll_seconds, (int, float)) or isinstance(poll_seconds, bool) or poll_seconds < 5:
-        raise ValueError("poll_seconds must be at least 5")
+    if (not isinstance(poll_seconds, (int, float)) or isinstance(poll_seconds, bool)
+            or not math.isfinite(poll_seconds) or poll_seconds < 5):
+        raise ValueError("poll_seconds must be a finite number of at least 5 seconds")
     stop_event = stop_event or _StopEvent()
     store = (store_factory or EntryAlertStore)(db_path)
     market_data = market_data or BinanceUsdMMarketData()
