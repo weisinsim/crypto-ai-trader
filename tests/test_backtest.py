@@ -522,9 +522,9 @@ class BacktestTests(unittest.TestCase):
             {"t": i * 3_600_000, "o": 100.0, "h": 101.0, "l": 99.0, "c": 100.0, "v": 10}
             for i in range(6)
         ]
-        # The long enters at bar 4 open=100. Its same-bar range crosses both
-        # stop=90 and target=120, so the conservative ordering must choose STOP.
-        rows[4].update({"o": 100.0, "h": 125.0, "l": 85.0, "c": 105.0})
+        # The EMA cross is confirmed at bar 2 and the long enters at bar 3
+        # open=100. Its entry-bar range crosses both stop=90 and target=120.
+        rows[3].update({"o": 100.0, "h": 125.0, "l": 85.0, "c": 105.0})
         fast = [None, 2.0, 4.0, 4.0, 4.0, 4.0]
         slow = [None, 3.0, 3.0, 3.0, 3.0, 3.0]
         with (
@@ -536,7 +536,7 @@ class BacktestTests(unittest.TestCase):
                 target_atr=2.0, fee_rate=0.0, slippage_rate=0.0,
                 risk_fraction=0.01, allow_short=False,
             )
-        trade = next(t for t in result["trade_log"] if t["entry_time"] == rows[4]["t"])
+        trade = next(t for t in result["trade_log"] if t["entry_time"] == rows[3]["t"])
         self.assertEqual(trade["reason"], "STOP")
         self.assertEqual(trade["exit"], 90.0)
 
