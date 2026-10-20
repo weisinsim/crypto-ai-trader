@@ -115,7 +115,7 @@ class EntryAlertStore:
         with self._connect() as conn:
             cursor = conn.execute(
                 """UPDATE entry_alert_outbox SET status='DELIVERED', delivered_at=?
-                   WHERE event_id=? AND status='PENDING'""",
-                (delivered_at, event_id),
+                   WHERE event_id=? AND status='PENDING' AND created_at <= ?""",
+                (delivered_at, event_id, delivered_at),
             )
             return cursor.rowcount == 1
