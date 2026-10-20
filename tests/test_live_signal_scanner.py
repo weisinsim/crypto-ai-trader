@@ -36,6 +36,18 @@ class MarketDataTests(unittest.TestCase):
             CANDLE_CLOSE_BOUNDARY,
         )
 
+    def test_rejects_non_finite_or_non_positive_timeout(self):
+        for timeout in (float("nan"), float("inf"), 0, -1, True):
+            with self.subTest(timeout=timeout):
+                with self.assertRaisesRegex(ValueError, "finite positive"):
+                    BinanceUsdMMarketData(timeout=timeout)
+
+    def test_rejects_boolean_candle_timestamps(self):
+        rows = [[True, 0, 0, 0, 0, 0, CANDLE_CLOSE_BOUNDARY - 1]]
+        client = BinanceUsdMMarketData(opener=lambda *a, **k: Response(rows))
+        with self.assertRaisesRegex(MarketDataError, "invalid_timestamp"):
+            client.last_closed_candle_ms("BTCUSDT", "1h", now_ms=NOW)
+
     def test_rejects_empty_market_data(self):
         client = BinanceUsdMMarketData(opener=lambda *a, **k: Response([]))
         with self.assertRaises(MarketDataError):
