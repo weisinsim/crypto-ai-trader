@@ -79,6 +79,19 @@ class WorkerCycleTests(unittest.TestCase):
                         store_factory=lambda _path: None,
                     )
 
+    def test_worker_rejects_unsupported_kline_intervals_before_starting(self):
+        for interval in ("", "90m", "2w", "1H", None, 60):
+            with self.subTest(interval=interval):
+                with self.assertRaisesRegex(ValueError, "supported kline interval"):
+                    live_signal_worker.run_worker(
+                        base_url="https://example.invalid",
+                        db_path=":memory:",
+                        symbols=["BTCUSDT"],
+                        interval=interval,
+                        poll_seconds=5,
+                        store_factory=lambda _path: self.fail("store must not be initialized"),
+                    )
+
     def test_worker_rejects_empty_duplicate_or_invalid_symbols(self):
         for symbols in ([], ["BTCUSDT", "BTCUSDT"], ["BTCUSD"], [None]):
             with self.subTest(symbols=symbols):
