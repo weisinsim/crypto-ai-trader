@@ -7,6 +7,7 @@ or provide cross-host coordination.
 from datetime import datetime, timezone
 import math
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -16,14 +17,28 @@ from execution.runtime_guard import RuntimeSnapshot
 class RuntimeStateStore:
     def __init__(self, database_path):
         self.database_path = str(database_path)
-        if self.database_path != ":memory:":
+        self._memory_connection = None
+        if self.database_path == ":memory:":
+            self._memory_connection = sqlite3.connect(":memory:", timeout=10)
+            self._memory_connection.execute("PRAGMA busy_timeout=10000")
+        else:
             Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
 
+    @contextmanager
     def _connect(self):
+        """Use a persistent in-memory DB or close each file-backed connection."""
+        if self._memory_connection is not None:
+            with self._memory_connection:
+                yield self._memory_connection
+            return
         connection = sqlite3.connect(self.database_path, timeout=10)
         connection.execute("PRAGMA busy_timeout=10000")
-        return connection
+        try:
+            with connection:
+                yield connection
+        finally:
+            connection.close()
 
     def _initialize(self):
         with self._connect() as db:
