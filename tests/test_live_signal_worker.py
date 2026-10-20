@@ -50,6 +50,18 @@ class SnapshotFetchTests(unittest.TestCase):
 
 
 class WorkerCycleTests(unittest.TestCase):
+    def test_worker_rejects_non_finite_poll_intervals(self):
+        for interval in (float("nan"), float("inf"), float("-inf"), 4.99, True):
+            with self.subTest(interval=interval):
+                with self.assertRaisesRegex(ValueError, "finite number"):
+                    live_signal_worker.run_worker(
+                        base_url="https://example.invalid",
+                        db_path=":memory:",
+                        symbols=["BTCUSDT"],
+                        poll_seconds=interval,
+                        store_factory=lambda _path: None,
+                    )
+
     def test_worker_runs_scan_and_reports_pending_count(self):
         class StopAfterEmit:
             def __init__(self):
