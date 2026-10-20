@@ -131,6 +131,24 @@ def ensure_testnet_protective_exits(
     if not isinstance(final_orders, list) or any(not isinstance(order, dict) for order in final_orders):
         return {"ok": False, "reason": "post_submission_open_orders_invalid", "actions": actions, "requires_reconciliation": True}
 
+    # Validate the entire post-submit snapshot, not just the two expected exits.
+    # An unexpected entry/order appearing during setup makes the exchange state
+    # ambiguous; do not report successful protection while ignoring it.
+    for order in final_orders:
+        if (
+            not isinstance(order.get("status"), str)
+            or order.get("status") not in {"NEW", "PARTIALLY_FILLED"}
+            or not isinstance(order.get("type"), str)
+            or not isinstance(order.get("side"), str)
+            or (order.get("reduce_only") is not True and order.get("reduce_only") is not False)
+        ):
+            return {"ok": False, "reason": "post_submission_order_unknown_or_malformed", "actions": actions, "requires_reconciliation": True}
+        if not (
+            order.get("reduce_only") is True
+            and order.get("type") in {"STOP_MARKET", "TAKE_PROFIT_MARKET"}
+        ):
+            return {"ok": False, "reason": "post_submission_unexpected_active_order", "actions": actions, "requires_reconciliation": True}
+
     active_exits = [
         order for order in final_orders
         if order.get("status") in {"NEW", "PARTIALLY_FILLED"}
