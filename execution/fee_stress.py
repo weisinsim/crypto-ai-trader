@@ -6,6 +6,8 @@ entry/exit fee rate. Funding and slippage are not modeled by this helper.
 """
 from __future__ import annotations
 
+import math
+
 from execution.multi_candle_replay import replay_multiple_events
 
 
@@ -17,7 +19,7 @@ def run_fee_stress(scenarios, *, fee_rates=(0.0004, 0.0005, 0.0010),
     validated = []
     for rate in fee_rates:
         if (not isinstance(rate, (int, float)) or isinstance(rate, bool)
-                or rate < 0 or rate >= 0.1):
+                or not math.isfinite(float(rate)) or rate < 0 or rate >= 0.1):
             raise ValueError("invalid_fee_rate")
         validated.append(float(rate))
     if len(set(validated)) != len(validated):
