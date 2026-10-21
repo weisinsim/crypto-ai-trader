@@ -2,6 +2,7 @@
 import unittest
 
 from execution.candle_replay import replay_paper_trade
+from execution.paper_replay import summarize_closed_trades
 
 
 def event():
@@ -89,6 +90,25 @@ class CandleReplayTests(unittest.TestCase):
             fee_rate=0, mark_price=102,
         )
         self.assertAlmostEqual(result["summary"]["net_pnl"], 2.0)
+
+
+    def test_closed_candle_replay_feeds_net_metrics_report(self):
+        result = replay_paper_trade(
+            event(),
+            [
+                candle(2_000, high=106, low=99, close=104),
+                candle(3_000, open=104, high=111, low=103, close=110),
+            ],
+            quantity=2,
+            opened_at_ms=1_000,
+            fee_rate=0,
+        )
+        report = summarize_closed_trades([result["trade"]], starting_equity=100)
+        self.assertEqual(report["trade_count"], 1)
+        self.assertAlmostEqual(report["net_pnl"], result["summary"]["net_pnl"])
+        self.assertAlmostEqual(report["ending_equity"], 115.0)
+        self.assertEqual(report["open_trades_included"], 0)
+        self.assertEqual(result["orders_sent"], 0)
 
 
 if __name__ == "__main__":
