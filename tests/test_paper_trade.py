@@ -72,6 +72,9 @@ class PaperTradeTests(unittest.TestCase):
     def test_funding_and_fees_are_included_in_net_pnl(self):
         trade = self.open()
         apply_funding(trade, rate=0.001, mark_price=100, timestamp_ms=1_500)
+        # Duplicate funding timestamp must be rejected while the trade is still open.
+        with self.assertRaisesRegex(ValueError, "invalid_funding_input"):
+            apply_funding(trade, rate=0.001, mark_price=100, timestamp_ms=1_500)
         process_candle(trade, {"open": 100, "high": 111, "low": 99, "close": 110},
                        timestamp_ms=2_000)
         summary = trade_summary(trade)
@@ -79,8 +82,6 @@ class PaperTradeTests(unittest.TestCase):
         self.assertGreater(summary["fees_paid"], 0)
         self.assertAlmostEqual(summary["funding_paid"], 0.2)
         self.assertAlmostEqual(summary["net_pnl"], 15.0 - summary["fees_paid"] - 0.2)
-        with self.assertRaisesRegex(ValueError, "invalid_funding_input"):
-            apply_funding(trade, rate=0.001, mark_price=100, timestamp_ms=1_500)
 
     def test_rejects_non_notification_event(self):
         bad = event()
