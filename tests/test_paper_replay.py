@@ -27,7 +27,7 @@ class PaperReplayMetricsTests(unittest.TestCase):
         self.assertAlmostEqual(result["fees_paid"], 2.5)
         self.assertAlmostEqual(result["funding_paid"], 1)
         self.assertAlmostEqual(result["ending_equity"], 111.5)
-        self.assertAlmostEqual(result["max_drawdown_pct"], 10 / 118 * 100)
+        self.assertAlmostEqual(result["max_drawdown_pct"], 11 / 118 * 100)
         self.assertTrue(result["research_only"])
 
     def test_empty_input_returns_zero_metrics(self):
