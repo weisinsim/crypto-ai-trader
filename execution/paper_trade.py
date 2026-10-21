@@ -40,7 +40,8 @@ def open_paper_trade(event, *, quantity, fee_rate=0.0005, opened_at_ms):
         side == "SHORT" and not tp2 <= tp1 < entry < stop
     ):
         raise ValueError("invalid_stop_geometry")
-    if (not _finite_positive(fee_rate) or fee_rate >= 0.1
+    if (not isinstance(fee_rate, (int, float)) or isinstance(fee_rate, bool)
+            or not math.isfinite(float(fee_rate)) or fee_rate < 0 or fee_rate >= 0.1
             or isinstance(opened_at_ms, bool) or not isinstance(opened_at_ms, int)
             or opened_at_ms <= 0):
         raise ValueError("invalid_cost_or_timestamp")
@@ -60,6 +61,7 @@ def open_paper_trade(event, *, quantity, fee_rate=0.0005, opened_at_ms):
         "fees_paid": float(quantity) * float(entry) * float(fee_rate),
         "fee_rate": float(fee_rate),
         "opened_at_ms": opened_at_ms,
+        "last_candle_ms": None,
         "closed_at_ms": None,
         "exit_reason": None,
         "trailing_stop": None,
@@ -126,8 +128,11 @@ def process_candle(trade, candle, *, timestamp_ms):
             or candle["high"] < max(candle["open"], candle["close"])
             or candle["low"] > candle["high"]
             or isinstance(timestamp_ms, bool) or not isinstance(timestamp_ms, int)
-            or timestamp_ms <= trade["opened_at_ms"]):
+            or timestamp_ms <= trade["opened_at_ms"]
+            or (trade.get("last_candle_ms") is not None
+                and timestamp_ms <= trade["last_candle_ms"])):
         raise ValueError("invalid_candle")
+    trade["last_candle_ms"] = timestamp_ms
     side = trade["side"]
     entry = trade["entry_price"]
     stop = trade["stop_loss"]
