@@ -111,5 +111,33 @@ class CandleReplayTests(unittest.TestCase):
         self.assertEqual(result["orders_sent"], 0)
 
 
+    def test_short_replay_applies_tp1_once_then_closes_at_tp2(self):
+        short_event = {
+            **event(),
+            "side": "SHORT",
+            "stop_loss": 105.0,
+            "take_profit_1": 95.0,
+            "take_profit_2": 90.0,
+        }
+        result = replay_paper_trade(
+            short_event,
+            [
+                candle(2_000, open=100, high=101, low=94, close=96),
+                candle(3_000, open=96, high=97, low=89, close=90),
+                candle(4_000, open=90, high=101, low=88, close=99),
+            ],
+            quantity=2,
+            opened_at_ms=1_000,
+            fee_rate=0,
+        )
+        self.assertEqual(
+            [item["action"] for item in result["actions"]],
+            ["TP1_PARTIAL", "TP2_FINAL"],
+        )
+        self.assertEqual(result["trade"]["status"], "CLOSED")
+        self.assertAlmostEqual(result["summary"]["net_pnl"], 15.0)
+        self.assertEqual(result["orders_sent"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()
