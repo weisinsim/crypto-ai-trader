@@ -44,7 +44,7 @@ class CandleReplayTests(unittest.TestCase):
         )
         self.assertEqual(
             [item["action"] for item in result["actions"]],
-            ["TP1_PARTIAL+TP2_FINAL"],
+            ["TP1_PARTIAL", "TP2_FINAL"],
         )
         self.assertEqual(result["trade"]["status"], "CLOSED")
         self.assertEqual(result["summary"]["net_pnl"], 15.0)
