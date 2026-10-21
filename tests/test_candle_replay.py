@@ -35,7 +35,7 @@ class CandleReplayTests(unittest.TestCase):
             event(),
             [
                 candle(2_000, high=106, low=99, close=104),
-                candle(3_000, high=111, low=103, close=110),
+                candle(3_000, open=104, high=111, low=103, close=110),
                 candle(4_000, low=90, high=112),
             ],
             quantity=2,
