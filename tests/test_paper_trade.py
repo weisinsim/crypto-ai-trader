@@ -83,6 +83,19 @@ class PaperTradeTests(unittest.TestCase):
         self.assertAlmostEqual(summary["funding_paid"], 0.2)
         self.assertAlmostEqual(summary["net_pnl"], 15.0 - summary["fees_paid"] - 0.2)
 
+    def test_candle_timestamps_must_be_strictly_increasing(self):
+        trade = self.open()
+        candle = {"open": 100, "high": 104, "low": 99, "close": 102}
+        process_candle(trade, candle, timestamp_ms=2_000)
+        with self.assertRaisesRegex(ValueError, "invalid_candle"):
+            process_candle(trade, candle, timestamp_ms=2_000)
+        with self.assertRaisesRegex(ValueError, "invalid_candle"):
+            process_candle(trade, candle, timestamp_ms=1_500)
+
+    def test_zero_fee_rate_is_valid_for_controlled_simulation(self):
+        trade = open_paper_trade(event(), quantity=1, fee_rate=0, opened_at_ms=1_000)
+        self.assertEqual(trade["fees_paid"], 0)
+
     def test_rejects_non_notification_event(self):
         bad = event()
         bad["auto_trade_authorized"] = True
