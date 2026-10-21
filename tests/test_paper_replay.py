@@ -36,6 +36,18 @@ class PaperReplayMetricsTests(unittest.TestCase):
         self.assertEqual(result["net_pnl"], 0)
         self.assertEqual(result["win_rate"], 0)
 
+    def test_profit_factor_is_json_safe_when_there_are_no_losses(self):
+        import json
+        profitable = summarize_closed_trades([closed(10)], starting_equity=100)
+        self.assertIsNone(profitable["profit_factor"])
+        self.assertFalse(profitable["profit_factor_defined"])
+        json.dumps(profitable, allow_nan=False)
+
+        flat = summarize_closed_trades([], starting_equity=100)
+        self.assertIsNone(flat["profit_factor"])
+        self.assertFalse(flat["profit_factor_defined"])
+        json.dumps(flat, allow_nan=False)
+
     def test_rejects_open_trade(self):
         with self.assertRaisesRegex(ValueError, "all_trades_must_be_closed"):
             summarize_closed_trades([{"status": "OPEN"}])
