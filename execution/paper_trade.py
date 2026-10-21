@@ -157,13 +157,13 @@ def process_candle(trade, candle, *, timestamp_ms):
         return {"status": "CLOSED", "action": trade["exit_reason"], "exit_price": exit_price}
 
     actions = []
-    if tp1_hit and trade["quantity_remaining"] > 0:
+    if tp1_hit and not trade.get("tp1_taken", False) and trade["quantity_remaining"] > 0:
         quantity = min(trade["quantity_remaining"], trade["quantity_initial"] * 0.5)
         trade["realized_gross_pnl"] += _pnl(side, entry, trade["take_profit_1"], quantity)
         trade["fees_paid"] += trade["take_profit_1"] * quantity * trade["fee_rate"]
         trade["quantity_remaining"] -= quantity
         trade["quantity_closed"] += quantity
-        actions.append("TP1_PARTIAL")
+        trade["tp1_taken"] = True\n        actions.append("TP1_PARTIAL")
     if tp2_hit and trade["quantity_remaining"] > 0:
         quantity = trade["quantity_remaining"]
         trade["realized_gross_pnl"] += _pnl(side, entry, trade["take_profit_2"], quantity)
