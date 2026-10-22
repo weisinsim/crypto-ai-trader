@@ -19,18 +19,16 @@ SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT", "XRPUSDT"]
 XRP = {"kill_slope": 0.0077, "atr_max": 0.0135, "shock_max": 0.025, "sl_atr": 1.7, "tp_atr": 2.8}
 
 
-def candle_close_timestamp_iso(open_ts_ms, interval_ms=3_600_000):
-    """Convert a candle OPEN timestamp to its close timestamp in UTC ISO-8601.
+def utc_timestamp_iso(timestamp_ms):
+    """Format a source timestamp as UTC ISO-8601 without shifting it.
 
-    Replay decisions are made at the end of the 1h signal candle. Exporting that
-    close time lets downstream candle-close-based audits align signals without
-    accidentally treating an open timestamp as the decision time.
+    Historical downloader CSVs store Binance candle CLOSE timestamps, not OPEN
+    timestamps. Preserve that exact close timestamp so replay output matches the
+    exit audit's candle-close timestamp contract.
     """
-    if not isinstance(open_ts_ms, int) or isinstance(open_ts_ms, bool):
-        raise ValueError("open_ts_ms must be an integer")
-    if not isinstance(interval_ms, int) or isinstance(interval_ms, bool) or interval_ms <= 0:
-        raise ValueError("interval_ms must be a positive integer")
-    return datetime.fromtimestamp((open_ts_ms + interval_ms) / 1000, tz=timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    if not isinstance(timestamp_ms, int) or isinstance(timestamp_ms, bool):
+        raise ValueError("timestamp_ms must be an integer")
+    return datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def ts_ms(v):
@@ -190,13 +188,13 @@ def closed_rows_at(rows, decision_close_ms, interval_ms=14_400_000):
 
 
 def closed_four_count_at(rows, decision_close_ms, start_index=0):
-    """Advance to the count of 4h candles whose close time is at/before decision time.
+    """Advance over 4h rows whose source CLOSE timestamp is at/before decision time.
 
-    Historical CSV timestamps are candle OPEN times. The returned index is the
-    first row not yet closed, so rows[:index] are safe to use without lookahead.
+    The downloader stores close timestamps. The returned index is the first
+    higher-timeframe row not yet closed, so rows[:index] cannot leak future bars.
     """
     index = start_index
-    while index < len(rows) and rows[index]["ts"] + 14_400_000 <= decision_close_ms:
+    while index < len(rows) and rows[index]["ts"] <= decision_close_ms:
         index += 1
     return index
 
@@ -238,7 +236,7 @@ def replay(symbol, one, four, *, include_states=False):
         # the end of that 1h candle, and a 4h candle is usable only after its
         # own close. Comparing open timestamps directly leaks an unfinished
         # 4h candle into the replay.
-        decision_close_ms=one[i]["ts"] + 3_600_000
+        decision_close_ms=one[i]["ts"]
         four_index=closed_four_count_at(four, decision_close_ms, four_index)
         if four_index<50: continue
         p=c_all[i]; e20=ema20_all[i]; e50=ema50_all[i]; e200=ema200_all[i]
@@ -295,7 +293,7 @@ def replay(symbol, one, four, *, include_states=False):
         signal_state = signal_state_for(side, reason, direction)
         status = side if side else ("WATCH" if signal_state.startswith("WATCH-") else "NO-TRADE")
         if side or include_states:
-            output.append({"timestamp":candle_close_timestamp_iso(one[i]["ts"]),"status":status,"signal":signal_state,"side":side,
+            output.append({"timestamp":utc_timestamp_iso(one[i]["ts"]),"status":status,"signal":signal_state,"side":side,
                            "entry":entry,"atr":a,"stop":sl,"target":target,
                            "target2":risk_levels(symbol,p,direction,a,(1.2 if symbol=="BTCUSDT" else 1.0 if symbol=="SOLUSDT" else 1.2 if symbol=="AVAXUSDT" else XRP["sl_atr"]), (1.5 if symbol=="BTCUSDT" else 2.0 if symbol=="SOLUSDT" else 1.2 if symbol=="AVAXUSDT" else XRP["tp_atr"]))[2] if direction else None,
                            "score":score,"model":symbol,"model_version":"app.py-replay-v2",
