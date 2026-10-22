@@ -78,13 +78,16 @@ class PaperExecutionBook:
             if source_schema == 1 and set(order) == required:
                 order = {**order, "fill_events": {}}
             if source_schema in (1, 2) and set(order) == required_v2:
-                order = {
-                    **order,
-                    "cancelled_remainder": (
-                        order["status"] == "CANCELLED"
-                        and 0 < order["filled_quantity"] < order["quantity"]
-                    ),
-                }
+                # Validate values used by migration comparisons before comparing them.
+                if not isinstance(order["status"], str):
+                    raise ValueError("invalid order status in paper ledger")
+                if order["status"] == "CANCELLED":
+                    migrated_filled = _nonnegative_finite(order["filled_quantity"], "filled quantity")
+                    migrated_quantity = _positive_finite(order["quantity"], "quantity")
+                    cancelled_remainder = 0 < migrated_filled < migrated_quantity
+                else:
+                    cancelled_remainder = False
+                order = {**order, "cancelled_remainder": cancelled_remainder}
             elif source_schema in (1, 2) and set(order) != required_v2:
                 raise ValueError("invalid order record in paper ledger")
             elif source_schema == 3 and set(order) != required_v3:
@@ -107,10 +110,10 @@ class PaperExecutionBook:
                 raise ValueError("invalid order identity in paper ledger")
             if not isinstance(order["status"], str) or order["status"] not in allowed_statuses:
                 raise ValueError("invalid order status in paper ledger")
+            if order["exit_reason"] is not None and not isinstance(order["exit_reason"], str):
+                raise ValueError("invalid exit reason in paper ledger")
             for field in ("quantity", "stop_loss", "take_profit"):
                 _positive_finite(order[field], field)
-            # Persisted state must preserve the same protective-level geometry
-            # enforced when an order is first created.
             if order["side"] == "LONG" and not order["stop_loss"] < order["take_profit"]:
                 raise ValueError("invalid LONG protective-level geometry in paper ledger")
             if order["side"] == "SHORT" and not order["take_profit"] < order["stop_loss"]:
@@ -296,8 +299,6 @@ class PaperExecutionBook:
         if not stop_hit and not target_hit:
             return deepcopy(order)
         before = deepcopy(order)
-        # When open is provided, model a gap-through at the open rather than
-        # pretending the stop/target could fill at its trigger price.
         if stop_gap:
             order["exit_price"], order["exit_reason"] = open_price, "STOP"
         elif target_gap:
