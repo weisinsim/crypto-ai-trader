@@ -88,6 +88,7 @@ class FillReconciliationTests(unittest.TestCase):
             (self.trade(time=-1), "invalid_trade_timestamp"),
             (self.trade(time="1780000000000"), "invalid_trade_timestamp"),
             (self.trade(time=None), "invalid_trade_timestamp"),
+            (self.trade(time=10**100), "invalid_trade_timestamp"),
         ]:
             with self.subTest(error=error):
                 with self.assertRaisesRegex(ValueError, error):
