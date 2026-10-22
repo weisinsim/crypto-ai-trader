@@ -89,6 +89,15 @@ def main():
         "symbols": sorted({trade["symbol"] for trade in trades}),
         "notice": "Risk is a fixed per-trade assumption supplied by the operator; it is not inferred from the exit audit."
     }
+    result["evidence_status"] = (
+        "NO_TRADES_TO_AUDIT" if not trades else "AUDIT_COMPLETE_RESEARCH_ONLY"
+    )
+    result["release_gates"] = {
+        "profitability_claim_eligible": False,
+        "strategy_approval": False,
+        "live_trading_enabled": False,
+        "exchange_funding_and_fill_reconciliation_complete": False,
+    }
     Path(args.out).write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result, indent=2))
 
