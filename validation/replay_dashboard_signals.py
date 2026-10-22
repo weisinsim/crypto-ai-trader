@@ -10,13 +10,27 @@ import argparse
 import csv
 import json
 import math
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from validation.xrp_model import evaluate_xrp_signal
 
 SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT", "XRPUSDT"]
 XRP = {"kill_slope": 0.0077, "atr_max": 0.0135, "shock_max": 0.025, "sl_atr": 1.7, "tp_atr": 2.8}
+
+
+def candle_close_timestamp_iso(open_ts_ms, interval_ms=3_600_000):
+    """Convert a candle OPEN timestamp to its close timestamp in UTC ISO-8601.
+
+    Replay decisions are made at the end of the 1h signal candle. Exporting that
+    close time lets downstream candle-close-based audits align signals without
+    accidentally treating an open timestamp as the decision time.
+    """
+    if not isinstance(open_ts_ms, int) or isinstance(open_ts_ms, bool):
+        raise ValueError("open_ts_ms must be an integer")
+    if not isinstance(interval_ms, int) or isinstance(interval_ms, bool) or interval_ms <= 0:
+        raise ValueError("interval_ms must be a positive integer")
+    return datetime.fromtimestamp((open_ts_ms + interval_ms) / 1000, tz=timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def ts_ms(v):
@@ -281,7 +295,7 @@ def replay(symbol, one, four, *, include_states=False):
         signal_state = signal_state_for(side, reason, direction)
         status = side if side else ("WATCH" if signal_state.startswith("WATCH-") else "NO-TRADE")
         if side or include_states:
-            output.append({"timestamp":one[i]["timestamp"],"status":status,"signal":signal_state,"side":side,
+            output.append({"timestamp":candle_close_timestamp_iso(one[i]["ts"]),"status":status,"signal":signal_state,"side":side,
                            "entry":entry,"atr":a,"stop":sl,"target":target,
                            "target2":risk_levels(symbol,p,direction,a,(1.2 if symbol=="BTCUSDT" else 1.0 if symbol=="SOLUSDT" else 1.2 if symbol=="AVAXUSDT" else XRP["sl_atr"]), (1.5 if symbol=="BTCUSDT" else 2.0 if symbol=="SOLUSDT" else 1.2 if symbol=="AVAXUSDT" else XRP["tp_atr"]))[2] if direction else None,
                            "score":score,"model":symbol,"model_version":"app.py-replay-v2",
