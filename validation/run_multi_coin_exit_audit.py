@@ -59,10 +59,19 @@ def main():
     p.add_argument("--holdout-fraction", type=float, default=0.30)
     p.add_argument("--max-hold", type=int, default=72)
     a = p.parse_args()
-    if any(c < 0 for c in a.cost_bps) or not 0.05 <= a.holdout_fraction <= 0.45 or a.max_hold < 1:
-        p.error("Invalid costs, holdout fraction (0.05–0.45), or max hold")
+    if (not a.cost_bps
+            or any(not __import__("math").isfinite(c) or c < 0 for c in a.cost_bps)
+            or not __import__("math").isfinite(a.holdout_fraction)
+            or not 0.05 <= a.holdout_fraction <= 0.45
+            or a.max_hold < 1):
+        p.error("Costs must be finite and non-negative; holdout fraction must be 0.05–0.45; max hold must be positive")
+    normalized_symbols = [symbol.strip().upper() for symbol in a.symbols]
+    if any(not symbol for symbol in normalized_symbols):
+        p.error("Symbols must be non-empty")
+    if len(set(normalized_symbols)) != len(normalized_symbols):
+        p.error("Duplicate symbols are not allowed; each asset must be audited once")
     reports = []
-    for symbol in a.symbols:
+    for symbol in normalized_symbols:
         reports.append(run_one(symbol, Path(a.data_dir), Path(a.signal_dir),
                                a.cost_bps, a.holdout_fraction, a.max_hold))
     output = {
