@@ -45,6 +45,12 @@ class FillReconciliationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "filled_quantity_mismatch"):
             normalize_order_payload(self.order(status="FILLED", executedQty="0.5"))
 
+    def test_huge_decimal_quantity_cannot_overflow_float_output(self):
+        with self.assertRaisesRegex(ValueError, "invalid_executed_qty"):
+            normalize_order_payload(self.order(
+                executedQty="1e9999", origQty="1e10000",
+            ))
+
     def test_unknown_status_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "unknown_order_status"):
             normalize_order_payload(self.order(status="PENDING_CANCEL"))
