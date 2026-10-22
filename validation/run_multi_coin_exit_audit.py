@@ -14,9 +14,18 @@ def run_one(symbol, data_dir, signal_dir, costs, holdout_fraction, max_hold):
         raise ValueError(f"No candles for {symbol}")
     matched = {c["ts"] for c in candles}
     split_ts = candles[int(len(candles) * (1 - holdout_fraction))]["ts"]
+    # Split both candles and signals at the same chronological boundary. If
+    # development signals are replayed against the full candle series, their
+    # exits can consume holdout candles and leak future outcomes into development.
     periods = {
-        "development": [s for s in signals if s["ts"] < split_ts],
-        "holdout": [s for s in signals if s["ts"] >= split_ts],
+        "development": {
+            "candles": [c for c in candles if c["ts"] < split_ts],
+            "signals": [s for s in signals if s["ts"] < split_ts],
+        },
+        "holdout": {
+            "candles": [c for c in candles if c["ts"] >= split_ts],
+            "signals": [s for s in signals if s["ts"] >= split_ts],
+        },
     }
     result = {
         "symbol": symbol, "candles": len(candles), "signals": len(signals),
@@ -27,11 +36,15 @@ def run_one(symbol, data_dir, signal_dir, costs, holdout_fraction, max_hold):
         "periods": {}
     }
     for period, subset in periods.items():
-        result["periods"][period] = {}
+        result["periods"][period] = {
+            "candle_rows": len(subset["candles"]),
+            "signal_rows": len(subset["signals"]),
+        }
         for cost in costs:
             result["periods"][period][f"cost_{cost:g}_bps"] = {}
             for target_r in (2.5, 3.0):
-                trades = evaluate(candles, subset, target_r, 2.0, cost, max_hold)
+                trades = evaluate(subset["candles"], subset["signals"],
+                                  target_r, 2.0, cost, max_hold)
                 result["periods"][period][f"cost_{cost:g}_bps"][f"target_{target_r:g}R"] = summarize(trades)
     return result
 
