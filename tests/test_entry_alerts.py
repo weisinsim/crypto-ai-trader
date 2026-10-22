@@ -70,6 +70,21 @@ class EntryAlertTests(unittest.TestCase):
         self.assertTrue(should_emit_alert(a, set()))
         self.assertFalse(should_emit_alert(b, {a["event_id"]}))
 
+    def test_invalid_time_window_fails_closed(self):
+        for now_ms, max_age_ms in (
+            (float("nan"), 5_000),
+            (float("inf"), 5_000),
+            (True, 5_000),
+            (1_800_000_100_000, float("nan")),
+            (1_800_000_100_000, float("inf")),
+            (1_800_000_100_000, -1),
+        ):
+            with self.subTest(now_ms=now_ms, max_age_ms=max_age_ms):
+                event = build_entry_alert(
+                    self.base(), now_ms=now_ms, max_age_ms=max_age_ms)
+                self.assertFalse(event["eligible"])
+                self.assertIn("invalid_time_window", event["blockers"])
+
     def test_numeric_nan_is_rejected(self):
         data = self.base()
         data["entry"] = float("nan")
