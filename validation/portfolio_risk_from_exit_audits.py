@@ -33,10 +33,14 @@ def combine_audit_trades(audit_specs, period, target, trade_set, risk_pct_per_tr
         raise ValueError("trade_set must be signal_level or single_position")
 
     combined = []
+    seen_symbols = set()
     for symbol, path in audit_specs:
         symbol = str(symbol).strip().upper()
         if not symbol:
             raise ValueError("Symbol in --audit must not be empty")
+        if symbol in seen_symbols:
+            raise ValueError(f"Duplicate symbol audit {symbol!r}; provide exactly one report per symbol")
+        seen_symbols.add(symbol)
         report = json.loads(Path(path).read_text(encoding="utf-8"))
         try:
             section = report["periods"][period][target]
