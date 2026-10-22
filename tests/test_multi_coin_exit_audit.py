@@ -47,6 +47,14 @@ class MultiCoinExitAuditTests(unittest.TestCase):
                 main()
         self.assertEqual(raised.exception.code, 2)
 
+
+    def test_cli_rejects_duplicate_cost_scenarios(self):
+        with patch.object(sys, "argv", ["run_multi_coin_exit_audit.py",
+                                        "--cost-bps", "5", "5"]):
+            with self.assertRaises(SystemExit) as raised:
+                main()
+        self.assertEqual(raised.exception.code, 2)
+
     def test_cli_rejects_duplicate_symbols(self):
         with patch.object(sys, "argv", ["run_multi_coin_exit_audit.py",
                                         "--symbols", "BTCUSDT", "btcusdt"]):
