@@ -5,10 +5,35 @@ from unittest.mock import patch
 import sys
 from pathlib import Path
 
-from validation.run_multi_coin_exit_audit import main, run_one
+from validation.run_multi_coin_exit_audit import aggregate_holdout_sample_gate, main, run_one
 
 
 class MultiCoinExitAuditTests(unittest.TestCase):
+
+    def test_aggregate_sample_gate_fails_closed_for_empty_reports(self):
+        gate = aggregate_holdout_sample_gate([])
+        self.assertEqual(gate["coins_checked"], 0)
+        self.assertEqual(gate["scenarios_checked"], 0)
+        self.assertFalse(gate["all_coins_meet_minimum"])
+
+    def test_aggregate_sample_gate_reports_failing_symbols(self):
+        reports = [
+            {"symbol": "BTCUSDT", "holdout_sample_gate": {
+                "scenarios_checked": 8, "scenarios_below_minimum": 0,
+                "all_scenarios_meet_minimum": True}},
+            {"symbol": "SOLUSDT", "holdout_sample_gate": {
+                "scenarios_checked": 8, "scenarios_below_minimum": 3,
+                "all_scenarios_meet_minimum": False}},
+            {"symbol": "ETHUSDT", "holdout_sample_gate": {
+                "scenarios_checked": 0, "scenarios_below_minimum": 0,
+                "all_scenarios_meet_minimum": False}},
+        ]
+        gate = aggregate_holdout_sample_gate(reports)
+        self.assertEqual(gate["coins_checked"], 3)
+        self.assertEqual(gate["scenarios_checked"], 16)
+        self.assertEqual(gate["scenarios_below_minimum"], 3)
+        self.assertEqual(gate["coins_failing_sample_gate"], ["SOLUSDT", "ETHUSDT"])
+        self.assertFalse(gate["all_coins_meet_minimum"])
     def test_cli_rejects_non_finite_costs(self):
         with patch.object(sys, "argv", ["run_multi_coin_exit_audit.py", "--cost-bps", "nan"]):
             with self.assertRaises(SystemExit) as raised:
