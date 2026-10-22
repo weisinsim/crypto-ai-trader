@@ -29,8 +29,8 @@ def audit_portfolio_risk(trades, max_portfolio_risk_pct=2.0, max_symbol_risk_pct
             raise ValueError(f"Trade {i} has invalid timestamp")
         if isinstance(exit_ts, bool) or not isinstance(exit_ts, (int, float)) or not math.isfinite(exit_ts):
             raise ValueError(f"Trade {i} has invalid exit_timestamp")
-        if exit_ts < entry_ts:
-            raise ValueError(f"Trade {i} exits before entry")
+        if exit_ts <= entry_ts:
+            raise ValueError(f"Trade {i} exit_timestamp must be strictly after entry timestamp")
         if isinstance(risk_pct, bool) or not isinstance(risk_pct, (int, float)) or not math.isfinite(risk_pct) or risk_pct <= 0:
             raise ValueError(f"Trade {i} risk_pct must be finite and positive")
         trade_id = str(trade.get("trade_id", i))
