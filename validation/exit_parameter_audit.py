@@ -8,8 +8,7 @@ at the recorded price after that signal candle closes and is evaluated from the 
 target collisions are resolved as stop-first. Fees and slippage are separately modeled as round-trip bps of entry
 notional, converted to R. Slippage is a conservative linear cost proxy, not tick-level fills. The final holdout is chronological, not shuffled.
 
-This evaluates exit parameters only. It does not validate signal generation,
-funding, realistic fills, overlapping positions, or portfolio-level risk.
+This evaluates exit parameters only. Funding cashflows are approximated from supplied event data or a sensitivity proxy; exact exchange settlement reconciliation is not complete. It does not validate signal generation, tick-level fills, or portfolio-level risk.
 """
 import argparse
 import csv
@@ -230,7 +229,9 @@ def evaluate(candles, signals, target_r, stop_atr, cost_bps, max_hold,
 def summarize(trades):
     if not trades:
         return {"trades": 0, "win_rate_pct": None, "profit_factor": None,
-                "net_R": 0.0, "avg_R": None, "max_drawdown_R": None}
+                "gross_R": 0.0, "fee_R": 0.0, "slippage_R": 0.0,
+                "funding_R": 0.0, "net_R": 0.0, "net_R_reconciliation_error": 0.0,
+                "avg_R": None, "max_drawdown_R": None}
     # Drawdown must follow chronological trade order, not an incidental caller order.
     chronological = sorted(trades, key=lambda t: t.get("timestamp", 0))
     vals = [t["net_R"] for t in chronological]
@@ -271,7 +272,16 @@ def summarize(trades):
         "trades": len(vals),
         "win_rate_pct": round(100 * sum(x > 0 for x in vals) / len(vals), 2),
         "profit_factor": round(pf, 4) if isinstance(pf, float) else pf,
+        "gross_R": round(sum(t.get("gross_R", t["net_R"]) for t in chronological), 4),
+        "fee_R": round(sum(t.get("cost_R", 0.0) for t in chronological), 4),
+        "slippage_R": round(sum(t.get("slippage_R", 0.0) for t in chronological), 4),
+        "funding_R": round(sum(t.get("funding_R", 0.0) for t in chronological), 4),
         "net_R": round(sum(vals), 4),
+        "net_R_reconciliation_error": round(sum(
+            t.get("gross_R", t["net_R"]) - t.get("cost_R", 0.0)
+            - t.get("slippage_R", 0.0) - t.get("funding_R", 0.0) - t["net_R"]
+            for t in chronological
+        ), 8),
         "avg_R": round(sum(vals) / len(vals), 4),
         "max_win_R": round(max(vals), 4),
         "max_loss_R": round(min(vals), 4),
