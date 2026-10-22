@@ -37,7 +37,7 @@ def build_entry_alert(snapshot, *, now_ms, max_age_ms=90 * 60 * 1000):
 
     symbol = snapshot.get("symbol")
     side = snapshot.get("confirmed_signal")
-    if side not in DIRECTIONS:
+    if not isinstance(side, str) or side not in DIRECTIONS:
         side = snapshot.get("signal")
     model_status = snapshot.get("model_status", "UNKNOWN")
     candle_ms = snapshot.get("confirmed_signal_time")
@@ -47,9 +47,9 @@ def build_entry_alert(snapshot, *, now_ms, max_age_ms=90 * 60 * 1000):
 
     if not isinstance(symbol, str) or re.fullmatch(r"[A-Z0-9]{2,}USDT", symbol) is None:
         blockers.append("invalid_symbol")
-    if side not in DIRECTIONS:
+    if not isinstance(side, str) or side not in DIRECTIONS:
         blockers.append("not_actionable_direction")
-    if model_status not in ALERTABLE_MODEL_STATES:
+    if not isinstance(model_status, str) or model_status not in ALERTABLE_MODEL_STATES:
         blockers.append("model_not_approved_for_alerts")
 
     if not isinstance(candle_ms, (int, float)) or isinstance(candle_ms, bool) or not math.isfinite(float(candle_ms)):
