@@ -170,7 +170,7 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
         index = 0
         for decision_close_ms in decisions:
             index = closed_four_count_at(bars, decision_close_ms, index)
-            expected = len(closed_rows_at(bars, decision_close_ms, 14_400_000))
+            expected = sum(row["ts"] <= decision_close_ms for row in bars)
             self.assertEqual(index, expected)
             self.assertTrue(all(bars[j]["ts"] <= decision_close_ms for j in range(index)))
             if index < len(bars):
