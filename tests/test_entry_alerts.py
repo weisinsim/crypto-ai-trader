@@ -96,6 +96,14 @@ class EntryAlertTests(unittest.TestCase):
                             else "model_not_approved_for_alerts")
                 self.assertIn(expected, event["blockers"])
 
+    def test_extremely_large_numeric_values_fail_closed_without_crashing(self):
+        data = self.base()
+        data["entry"] = 10 ** 10000
+        event = build_entry_alert(data, now_ms=1_800_000_100_000)
+        self.assertFalse(event["eligible"])
+        self.assertIn("invalid_numeric_fields", event["blockers"])
+        self.assertIsNone(event["entry"])
+
     def test_numeric_nan_is_rejected(self):
         data = self.base()
         data["entry"] = float("nan")
