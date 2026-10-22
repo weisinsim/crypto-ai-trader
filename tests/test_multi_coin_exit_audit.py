@@ -15,6 +15,13 @@ class MultiCoinExitAuditTests(unittest.TestCase):
                 main()
         self.assertEqual(raised.exception.code, 2)
 
+    def test_cli_rejects_non_positive_minimum_holdout_trades(self):
+        with patch.object(sys, "argv", ["run_multi_coin_exit_audit.py",
+                                        "--min-holdout-trades", "0"]):
+            with self.assertRaises(SystemExit) as raised:
+                main()
+        self.assertEqual(raised.exception.code, 2)
+
     def test_cli_rejects_duplicate_symbols(self):
         with patch.object(sys, "argv", ["run_multi_coin_exit_audit.py",
                                         "--symbols", "BTCUSDT", "btcusdt"]):
@@ -78,6 +85,8 @@ class MultiCoinExitAuditTests(unittest.TestCase):
             self.assertEqual(result["unmatched_signals"], 1)
             self.assertEqual(result["signal_match_rate"], 0.66666667)
             self.assertEqual(result["evidence_quality_status"], "BLOCKED_UNMATCHED_SIGNALS")
+            self.assertEqual(result["holdout_sample_gate"]["scenarios_checked"], 2)
+            self.assertEqual(result["holdout_sample_gate"]["minimum_trades_required_per_scenario"], 30)
             self.assertFalse(result["holdout_sample_gate"]["all_scenarios_meet_minimum"])
             self.assertGreater(result["holdout_sample_gate"]["scenarios_below_minimum"], 0)
             self.assertEqual(
