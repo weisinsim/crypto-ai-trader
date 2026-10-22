@@ -2,7 +2,7 @@ import unittest
 import tempfile
 from pathlib import Path
 
-from validation.replay_dashboard_signals import ema, rsi, atr, adx, replay, ts_ms, read_rows, closed_rows_at, closed_four_count_at, signal_state_for, risk_levels, validate_candle_cadence, utc_timestamp_iso
+from validation.replay_dashboard_signals import ema, rsi, atr, adx, replay, ts_ms, read_rows, closed_rows_at, closed_four_count_at, signal_state_for, replay_model_status, risk_levels, validate_candle_cadence, utc_timestamp_iso
 
 
 class ReplayDashboardSignalsTests(unittest.TestCase):
@@ -83,6 +83,13 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
         self.assertEqual(signal_state_for("", "WATCH_SCORE_BELOW_75", -1), "WATCH-SHORT")
         self.assertEqual(signal_state_for("LONG", "ENTRY", 1), "LONG")
         self.assertEqual(signal_state_for("", "XRP_KILL", 0), "NO-TRADE")
+
+    def test_replay_model_status_distinguishes_disabled_model_and_missing_diagnostics(self):
+        self.assertEqual(replay_model_status("ETHUSDT", [], True, 0), "NO_PRODUCTION_MODEL")
+        self.assertEqual(replay_model_status("BTCUSDT", [], True, 0), "INSUFFICIENT_REPLAY_HISTORY")
+        self.assertEqual(replay_model_status("BTCUSDT", [], False, 0), "SIGNAL_STATE_DIAGNOSTICS_NOT_REQUESTED")
+        self.assertEqual(replay_model_status("BTCUSDT", [], True, 10), "NO_SIGNALS_EMITTED")
+        self.assertEqual(replay_model_status("BTCUSDT", [{"side": "LONG"}], True, 10), "SIGNALS_EMITTED")
 
     def test_replay_preserves_source_candle_close_timestamp(self):
         self.assertEqual(
