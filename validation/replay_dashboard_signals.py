@@ -329,11 +329,30 @@ def main():
         dest=out/f"{s}_signals.csv"
         with dest.open("w",newline="",encoding="utf-8") as f:
             w=csv.DictWriter(f,fieldnames=fields); w.writeheader(); w.writerows(trades)
-        model_status = "NO_PRODUCTION_MODEL" if s == "ETHUSDT" else ("SIGNALS_EMITTED" if trades else "NO_SIGNALS_EMITTED")
-        manifest.append({"symbol":s,"model_status":model_status,"hourly_candles":len(one),
-                         "four_hour_candles":len(four),"signals":len(trades),"state_rows":sum(state_counts.values()),
-                         "state_reason_counts":state_counts,"file":str(dest),
-                         "notice":"Historical code replay only; verify parity and data gaps before interpreting results."})
+        state_rows = sum(state_counts.values())
+        if s == "ETHUSDT":
+            model_status = "NO_PRODUCTION_MODEL"
+        elif a.include_states and state_rows == 0:
+            model_status = "INSUFFICIENT_REPLAY_HISTORY"
+        elif trades:
+            model_status = "SIGNALS_EMITTED"
+        else:
+            model_status = "NO_SIGNALS_EMITTED" if a.include_states else "SIGNAL_STATE_DIAGNOSTICS_NOT_REQUESTED"
+        manifest.append({
+            "symbol": s,
+            "model_status": model_status,
+            "hourly_candles": len(one),
+            "hourly_first_timestamp": one[0]["timestamp"] if one else None,
+            "hourly_last_timestamp": one[-1]["timestamp"] if one else None,
+            "four_hour_candles": len(four),
+            "four_hour_first_timestamp": four[0]["timestamp"] if four else None,
+            "four_hour_last_timestamp": four[-1]["timestamp"] if four else None,
+            "signals": len(trades),
+            "state_rows": state_rows,
+            "state_reason_counts": state_counts,
+            "file": str(dest),
+            "notice": "Historical code replay only; verify parity and data gaps before interpreting results.",
+        })
         print(json.dumps(manifest[-1]))
     (out/"replay_manifest.json").write_text(json.dumps(manifest,indent=2),encoding="utf-8")
 
