@@ -292,7 +292,7 @@ class TestnetPostSubmissionSnapshotValidationTests(unittest.TestCase):
 
         adapter = MalformedFinalOrderAdapter()
         result = ensure_testnet_protective_exits(
-            adapter, "BTCUSDT", "99", "102", "btc-run-final-malformed"
+            adapter, "BTCUSDT", "99", "102", "btc-final-malformed"
         )
         self.assertFalse(result["ok"])
         self.assertEqual(result["reason"], "post_submission_order_unknown_or_malformed")
