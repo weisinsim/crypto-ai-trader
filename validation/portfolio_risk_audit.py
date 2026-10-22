@@ -16,8 +16,8 @@ from pathlib import Path
 def audit_portfolio_risk(trades, max_portfolio_risk_pct=2.0, max_symbol_risk_pct=1.0):
     for name, value in (("max_portfolio_risk_pct", max_portfolio_risk_pct),
                         ("max_symbol_risk_pct", max_symbol_risk_pct)):
-        if not math.isfinite(value) or value <= 0:
-            raise ValueError(f"{name} must be finite and positive")
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+            raise ValueError(f"{name} must be a finite positive number")
     normalized = []
     seen = set()
     for i, trade in enumerate(trades):
