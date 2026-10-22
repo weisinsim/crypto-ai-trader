@@ -43,6 +43,16 @@ class PortfolioRiskAuditTests(unittest.TestCase):
                 {"trade_id": "same", "symbol": "ETH", "timestamp": 2, "exit_timestamp": 3, "risk_pct": 0.5},
             ])
 
+    def test_invalid_trade_container_objects_symbols_and_ids_fail_closed(self):
+        with self.assertRaisesRegex(ValueError, "list or tuple"):
+            audit_portfolio_risk({"symbol": "BTC"})
+        with self.assertRaisesRegex(ValueError, "must be an object"):
+            audit_portfolio_risk(["not-a-trade"])
+        with self.assertRaisesRegex(ValueError, "valid symbol"):
+            audit_portfolio_risk([{"symbol": None, "timestamp": 1, "exit_timestamp": 2, "risk_pct": 0.5}])
+        with self.assertRaisesRegex(ValueError, "invalid trade_id"):
+            audit_portfolio_risk([{"trade_id": " ", "symbol": "BTC", "timestamp": 1, "exit_timestamp": 2, "risk_pct": 0.5}])
+
     def test_invalid_limits_are_rejected(self):
         with self.assertRaisesRegex(ValueError, "finite positive"):
             audit_portfolio_risk([], max_portfolio_risk_pct=0)
