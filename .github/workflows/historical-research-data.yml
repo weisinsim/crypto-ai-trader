@@ -127,7 +127,7 @@ jobs:
           python -c 'import json; r=json.load(open("research-results/funding-integrity.json")); assert r.get("all_basic_integrity_pass"), "Funding integrity gate failed"'
       - name: Replay asset-specific signals
         run: |
-          python validation/replay_dashboard_signals.py --data-dir data/historical --out-dir data/replay
+          python validation/replay_dashboard_signals.py --data-dir data/historical --out-dir data/replay --include-states
       - name: Audit replay signal consistency
         run: |
           python validation/audit_replay_signals.py \
