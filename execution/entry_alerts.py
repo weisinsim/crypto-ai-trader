@@ -16,6 +16,15 @@ DIRECTIONS = {"LONG", "SHORT"}
 ALERTABLE_MODEL_STATES = {"RESEARCH", "FROZEN", "PRODUCTION"}
 
 
+def _finite_number(value):
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError, OverflowError):
+        return False
+
+
 def _finite_positive(value):
     if not isinstance(value, (int, float)) or isinstance(value, bool):
         return False
@@ -29,7 +38,7 @@ def _finite_positive(value):
 def build_entry_alert(snapshot, *, now_ms, max_age_ms=90 * 60 * 1000):
     """Build a candidate alert from a fresh, closed-candle directional signal."""
     blockers = []
-    if not isinstance(now_ms, (int, float)) or isinstance(now_ms, bool) or not math.isfinite(float(now_ms)) or float(now_ms) <= 0 or not isinstance(max_age_ms, (int, float)) or isinstance(max_age_ms, bool) or not math.isfinite(float(max_age_ms)) or float(max_age_ms) < 0:
+    if not _finite_number(now_ms) or float(now_ms) <= 0 or not _finite_number(max_age_ms) or float(max_age_ms) < 0:
         blockers.append("invalid_time_window")
         now_ms, max_age_ms = 0, 0
     if not isinstance(snapshot, dict):
@@ -53,13 +62,13 @@ def build_entry_alert(snapshot, *, now_ms, max_age_ms=90 * 60 * 1000):
     if not isinstance(model_status, str) or model_status not in ALERTABLE_MODEL_STATES:
         blockers.append("model_not_approved_for_alerts")
 
-    if not isinstance(candle_ms, (int, float)) or isinstance(candle_ms, bool) or not math.isfinite(float(candle_ms)):
+    if not _finite_number(candle_ms):
         blockers.append("missing_closed_candle")
         candle_ms = None
     elif candle_ms > now_ms or now_ms - candle_ms > max_age_ms:
         blockers.append("stale_signal")
 
-    if not isinstance(analysis_ts, (int, float)) or isinstance(analysis_ts, bool) or not math.isfinite(float(analysis_ts)):
+    if not _finite_number(analysis_ts):
         blockers.append("missing_analysis_timestamp")
     elif now_ms / 1000 - float(analysis_ts) > max_age_ms / 1000 or float(analysis_ts) > now_ms / 1000:
         blockers.append("stale_analysis")
@@ -73,7 +82,7 @@ def build_entry_alert(snapshot, *, now_ms, max_age_ms=90 * 60 * 1000):
         blockers.append("invalid_stop_geometry")
 
     score = snapshot.get("confirmed_score", snapshot.get("score"))
-    if not isinstance(score, (int, float)) or isinstance(score, bool) or not math.isfinite(float(score)) or not 0 <= score <= 100:
+    if not _finite_number(score) or not 0 <= score <= 100:
         blockers.append("invalid_score")
 
     payload = {
@@ -93,7 +102,7 @@ def build_entry_alert(snapshot, *, now_ms, max_age_ms=90 * 60 * 1000):
         "side": side if isinstance(side, str) and side in DIRECTIONS else "NO-TRADE",
         "model_status": model_status,
         "research_only": model_status != "PRODUCTION",
-        "score": score if isinstance(score, (int, float)) and not isinstance(score, bool) and math.isfinite(float(score)) else None,
+        "score": score if _finite_number(score) else None,
         "entry": fields["entry"] if _finite_positive(fields["entry"]) else None,
         "stop_loss": fields["sl"] if _finite_positive(fields["sl"]) else None,
         "take_profit_1": fields["tp1"] if _finite_positive(fields["tp1"]) else None,
