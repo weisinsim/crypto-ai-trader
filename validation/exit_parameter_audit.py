@@ -390,7 +390,7 @@ def main():
                    "funding_bps_per_8h_sensitivity": a.funding_bps_per_8h if funding_rows is None else None,
                    "funding_file": a.funding_file,
                    "funding_mark_price_assumption": "entry_price_proxy",
-                   "funding_event_timing_assumption": "event_timestamp_compared_to_candle_close_exit_timestamp",
+                   "funding_event_timing_assumption": "charge events in (entry_signal_close, exit_candle_close]; exact exit-boundary events are conservatively charged and must be reconciled against exchange settlement records",
                    "max_hold_candles": a.max_hold, "expected_interval": a.interval},
         "periods": {}
     }
