@@ -60,6 +60,21 @@ class PaperLedgerFillEventIntegrityTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, "invalid exit reason"):
                         PaperExecutionBook(path)
 
+    def test_schema_v2_migration_preserves_partial_closed_order_remainder(self):
+        order = {
+            "client_order_id": "legacy-closed", "symbol": "BTCUSDT", "side": "LONG",
+            "quantity": 1.0, "stop_loss": 90.0, "take_profit": 120.0,
+            "status": "CLOSED", "filled_quantity": 0.5, "average_fill_price": 100.0,
+            "exit_price": 90.0, "exit_reason": "STOP", "fill_events": {},
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ledger.json"
+            path.write_text(json.dumps({"schema_version": 2, "orders": {"legacy-closed": order}}), encoding="utf-8")
+            restored = PaperExecutionBook(path).get("legacy-closed")
+            self.assertTrue(restored["cancelled_remainder"])
+            self.assertEqual(restored["status"], "CLOSED")
+            self.assertEqual(restored["filled_quantity"], 0.5)
+
     def test_load_rejects_boolean_schema_version(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "ledger.json"
