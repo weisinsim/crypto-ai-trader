@@ -39,7 +39,7 @@ def normalize_order_payload(payload):
         "EXPIRED_IN_MATCH": "CANCELED",
         "REJECTED": "REJECTED",
     }
-    if status not in status_map:
+    if not isinstance(status, str) or status not in status_map:
         raise ValueError("unknown_order_status_requires_reconciliation")
     executed = _decimal(payload.get("executedQty"), "executed_qty")
     original = _decimal(payload.get("origQty"), "original_qty", allow_zero=False)
@@ -96,7 +96,7 @@ def normalize_trade_payload(payload):
     if not realized_decimal.is_finite():
         raise ValueError("invalid_realized_pnl")
     side = payload.get("side")
-    if side not in {"BUY", "SELL"}:
+    if not isinstance(side, str) or side not in {"BUY", "SELL"}:
         raise ValueError("invalid_trade_side")
     timestamp_ms = payload.get("time")
     if isinstance(timestamp_ms, bool) or not isinstance(timestamp_ms, int) or timestamp_ms < 0:
