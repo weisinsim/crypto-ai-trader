@@ -36,6 +36,23 @@ class PaperLedgerFillEventIntegrityTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "fill event quantity exceeds recorded filled quantity"):
                 PaperExecutionBook(path)
 
+    def test_load_rejects_unhashable_persisted_side_and_status(self):
+        base = {
+            "client_order_id": "paper-integrity", "symbol": "BTCUSDT", "side": "LONG",
+            "quantity": 2.0, "stop_loss": 90.0, "take_profit": 120.0,
+            "status": "OPEN", "filled_quantity": 0.0, "average_fill_price": None,
+            "exit_price": None, "exit_reason": None, "fill_events": {},
+            "cancelled_remainder": False,
+        }
+        for field, value in (("side", []), ("status", {})):
+            with self.subTest(field=field):
+                order = {**base, field: value}
+                with tempfile.TemporaryDirectory() as tmp:
+                    path = Path(tmp) / "ledger.json"
+                    path.write_text(json.dumps({"schema_version": 3, "orders": {"paper-integrity": order}}), encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, "invalid order"):
+                        PaperExecutionBook(path)
+
     def test_load_accepts_fill_events_within_recorded_filled_quantity(self):
         order = {
             "client_order_id": "paper-integrity",
