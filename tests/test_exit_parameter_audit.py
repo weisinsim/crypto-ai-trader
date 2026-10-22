@@ -249,6 +249,35 @@ class ExitAuditTests(unittest.TestCase):
             evaluate(candles, signals, target_r=2.5, stop_atr=2,
                      cost_bps=0, max_hold=1, slippage_bps=-1)
 
+    def test_evaluate_rejects_invalid_public_helper_parameters(self):
+        candles = [candle(1, 100, 101, 99, 100), candle(2, 100, 101, 99, 100)]
+        signals = [{"ts": 1, "side": "LONG", "entry": 100, "atr": 1}]
+        invalid_cases = [
+            {"target_r": 0},
+            {"target_r": float("nan")},
+            {"stop_atr": float("inf")},
+            {"cost_bps": True},
+            {"slippage_bps": -1},
+            {"funding_bps_per_8h": float("nan")},
+            {"max_hold": True},
+            {"max_hold": 1.5},
+            {"max_hold": 0},
+        ]
+        for override in invalid_cases:
+            params = {"target_r": 2.5, "stop_atr": 2, "cost_bps": 0,
+                      "max_hold": 1, "funding_bps_per_8h": 0,
+                      "slippage_bps": 0}
+            params.update(override)
+            with self.subTest(override=override), self.assertRaises(ValueError):
+                evaluate(candles, signals, **params)
+
+    def test_evaluate_rejects_invalid_input_containers(self):
+        with self.assertRaisesRegex(ValueError, "lists or tuples"):
+            evaluate(None, [], target_r=2.5, stop_atr=2, cost_bps=0, max_hold=1)
+        with self.assertRaisesRegex(ValueError, "funding_rows"):
+            evaluate([candle(1, 100, 101, 99, 100)], [], target_r=2.5,
+                     stop_atr=2, cost_bps=0, max_hold=1, funding_rows={})
+
     def test_unmatched_signal_is_not_counted(self):
         candles = [candle(1, 100, 101, 99, 100), candle(2, 100, 101, 99, 100)]
         signals = [{"ts": 9, "side": "LONG", "entry": 100, "atr": 1}]
