@@ -114,9 +114,16 @@ def validate_funding_coverage(funding_rows, candles, expected_interval_seconds, 
         raise ValueError("Funding history is empty")
     first_ts, last_ts = candles[0]["ts"], candles[-1]["ts"]
     events = [row["ts"] for row in funding_rows]
-    max_gap = max(max_gap_hours * 3600, expected_interval_seconds * 24)
+    if (not math.isfinite(max_gap_hours) or max_gap_hours <= 0
+            or not isinstance(expected_interval_seconds, int)
+            or isinstance(expected_interval_seconds, bool)
+            or expected_interval_seconds <= 0):
+        raise ValueError("Funding coverage intervals must be positive and finite")
     # Funding events are discrete and may not occur exactly on candle boundaries.
-    # Allow bounded edge distance, but fail closed if either edge is too far away.
+    # Permit at least one candle interval at the edge, but do not scale the
+    # funding-gap limit to 24 candles: for daily bars that would allow 24-day
+    # funding outages and materially understate financing risk.
+    max_gap = max(max_gap_hours * 3600, expected_interval_seconds)
     if abs(events[0] - first_ts) > max_gap or abs(last_ts - events[-1]) > max_gap:
         raise ValueError(
             "Funding history does not adequately cover the candle window: "
