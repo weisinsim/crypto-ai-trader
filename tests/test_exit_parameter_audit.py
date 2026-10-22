@@ -458,6 +458,30 @@ class ExitAuditTests(unittest.TestCase):
         self.assertAlmostEqual(stats["largest_win_share_pct"], 88.89, places=2)
         self.assertAlmostEqual(stats["top_three_wins_share_pct"], 100.0, places=2)
 
+    def test_summary_reconciles_gross_fees_slippage_funding_and_net(self):
+        from validation.exit_parameter_audit import summarize
+        trades = [{
+            "timestamp": 1, "exit_timestamp": 2, "exit_reason": "TP",
+            "gross_R": 2.5, "cost_R": 0.05, "slippage_R": 0.10,
+            "funding_R": 0.02, "net_R": 2.33,
+        }]
+        stats = summarize(trades)
+        self.assertEqual(stats["gross_R"], 2.5)
+        self.assertEqual(stats["fee_R"], 0.05)
+        self.assertEqual(stats["slippage_R"], 0.1)
+        self.assertEqual(stats["funding_R"], 0.02)
+        self.assertEqual(stats["net_R"], 2.33)
+        self.assertEqual(stats["net_R_reconciliation_error"], 0.0)
+
+    def test_summary_reconciliation_detects_inconsistent_trade_evidence(self):
+        from validation.exit_parameter_audit import summarize
+        stats = summarize([{
+            "timestamp": 1, "exit_reason": "TP", "gross_R": 2.5,
+            "cost_R": 0.05, "slippage_R": 0.10, "funding_R": 0.02,
+            "net_R": 2.40,
+        }])
+        self.assertAlmostEqual(stats["net_R_reconciliation_error"], -0.07)
+
     def test_summary_counts_trades(self):
         stats = summarize([
             {"net_R": 2.0, "exit_reason": "TP"},
