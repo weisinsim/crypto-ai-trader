@@ -87,6 +87,25 @@ class ScanOnceTests(unittest.TestCase):
             "rr": 2.0, "model_name": "test", "model_version": "test-v1",
         }
 
+    def test_scan_once_rejects_invalid_timestamp_and_symbol_batches(self):
+        invalid_cases = [
+            (["BTCUSDT"], True),
+            (["BTCUSDT"], 0),
+            (["BTCUSDT"], -1),
+            (["BTCUSDT"], 1.5),
+            (["BTCUSDT", "BTCUSDT"], NOW),
+            (["btcusdt"], NOW),
+            ([], NOW),
+        ]
+        for symbols, now_ms in invalid_cases:
+            with self.subTest(symbols=symbols, now_ms=now_ms):
+                with self.assertRaises(ValueError):
+                    scan_once(
+                        symbols=symbols, interval="1h", market_data=self.market,
+                        snapshot_provider=lambda symbol: dict(self.snapshot),
+                        store=EntryAlertStore(":memory:"), now_ms=now_ms,
+                    )
+
     def test_queues_valid_candle_aligned_signal(self):
         class Store:
             def __init__(self):
