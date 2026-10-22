@@ -58,9 +58,12 @@ class PaperExecutionBook:
             payload = json.loads(self.storage_path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise ValueError("paper ledger unreadable; refusing to start with empty state") from exc
-        if not isinstance(payload, dict) or payload.get("schema_version") not in (1, 2, _SCHEMA_VERSION):
+        if not isinstance(payload, dict):
             raise ValueError("unsupported or invalid paper ledger schema")
-        source_schema = payload["schema_version"]
+        source_schema = payload.get("schema_version")
+        # bool is an int subclass in Python; do not accept True as schema version 1.
+        if isinstance(source_schema, bool) or not isinstance(source_schema, int) or source_schema not in (1, 2, _SCHEMA_VERSION):
+            raise ValueError("unsupported or invalid paper ledger schema")
         orders = payload.get("orders")
         if not isinstance(orders, dict):
             raise ValueError("invalid paper ledger orders")
