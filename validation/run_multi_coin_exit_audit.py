@@ -9,8 +9,10 @@ from validation.exit_parameter_audit import read_candles, read_signals, evaluate
 
 
 def run_one(symbol, data_dir, signal_dir, costs, holdout_fraction, max_hold, min_holdout_trades=30):
-    if not costs or any(not math.isfinite(cost) or cost < 0 for cost in costs):
-        raise ValueError("Costs must be a non-empty sequence of finite, non-negative values")
+    if (not isinstance(costs, (list, tuple)) or not costs
+            or any(isinstance(cost, bool) or not isinstance(cost, (int, float))
+                   or not math.isfinite(cost) or cost < 0 for cost in costs)):
+        raise ValueError("Costs must be a non-empty sequence of finite, non-negative numbers")
     if len(set(costs)) != len(costs):
         raise ValueError("Duplicate cost scenarios are not allowed")
     if (not math.isfinite(holdout_fraction) or not 0.05 <= holdout_fraction <= 0.45
