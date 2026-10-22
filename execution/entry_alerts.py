@@ -89,7 +89,7 @@ def build_entry_alert(snapshot, *, now_ms, max_age_ms=90 * 60 * 1000):
         "eligible": eligible,
         "blockers": sorted(set(blockers)),
         "symbol": symbol,
-        "side": side if side in DIRECTIONS else "NO-TRADE",
+        "side": side if isinstance(side, str) and side in DIRECTIONS else "NO-TRADE",
         "model_status": model_status,
         "research_only": model_status != "PRODUCTION",
         "score": score if isinstance(score, (int, float)) and not isinstance(score, bool) and math.isfinite(float(score)) else None,
