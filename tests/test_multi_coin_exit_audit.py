@@ -63,6 +63,27 @@ class MultiCoinExitAuditTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, 2)
 
 
+
+    def test_run_one_rejects_duplicate_costs_for_direct_callers(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            data_dir, signal_dir = root / "data", root / "signals"
+            data_dir.mkdir()
+            signal_dir.mkdir()
+            with self.assertRaisesRegex(ValueError, "Duplicate cost scenarios"):
+                run_one("TESTUSDT", data_dir, signal_dir, [5, 5],
+                        holdout_fraction=0.3, max_hold=72)
+
+    def test_run_one_rejects_invalid_minimum_sample_threshold(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            data_dir, signal_dir = root / "data", root / "signals"
+            data_dir.mkdir()
+            signal_dir.mkdir()
+            with self.assertRaisesRegex(ValueError, "positive integers"):
+                run_one("TESTUSDT", data_dir, signal_dir, [5],
+                        holdout_fraction=0.3, max_hold=72, min_holdout_trades=True)
+
     def test_sample_gate_requires_all_cost_target_scenarios(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
