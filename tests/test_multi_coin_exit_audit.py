@@ -1,12 +1,27 @@
 import csv
 import tempfile
 import unittest
+from unittest.mock import patch
+import sys
 from pathlib import Path
 
-from validation.run_multi_coin_exit_audit import run_one
+from validation.run_multi_coin_exit_audit import main, run_one
 
 
 class MultiCoinExitAuditTests(unittest.TestCase):
+    def test_cli_rejects_non_finite_costs(self):
+        with patch.object(sys, "argv", ["run_multi_coin_exit_audit.py", "--cost-bps", "nan"]):
+            with self.assertRaises(SystemExit) as raised:
+                main()
+        self.assertEqual(raised.exception.code, 2)
+
+    def test_cli_rejects_duplicate_symbols(self):
+        with patch.object(sys, "argv", ["run_multi_coin_exit_audit.py",
+                                        "--symbols", "BTCUSDT", "btcusdt"]):
+            with self.assertRaises(SystemExit) as raised:
+                main()
+        self.assertEqual(raised.exception.code, 2)
+
     def test_development_signals_cannot_exit_on_holdout_candles(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
