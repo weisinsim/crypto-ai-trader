@@ -81,7 +81,18 @@ def scan_once(*, symbols, interval, market_data, snapshot_provider, store,
     matches the most recently closed public-market candle, avoiding alerts
     based on stale or still-forming bars. Errors are isolated per symbol.
     """
-    now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
+    if now_ms is None:
+        now_ms = int(time.time() * 1000)
+    elif isinstance(now_ms, bool) or not isinstance(now_ms, int) or now_ms <= 0:
+        raise ValueError("now_ms must be a positive integer timestamp")
+    if not isinstance(symbols, (list, tuple)) or not symbols:
+        raise ValueError("symbols must be a non-empty list or tuple")
+    if len(set(symbols)) != len(symbols):
+        raise ValueError("symbols must not contain duplicates")
+    if any(not isinstance(symbol, str)
+           or re.fullmatch(r"[A-Z0-9]{2,}USDT", symbol) is None
+           for symbol in symbols):
+        raise ValueError("symbols must be canonical uppercase USDT pairs")
     result = {"scanned": 0, "queued": 0, "duplicates": 0, "rejected": 0, "errors": []}
     for symbol in symbols:
         result["scanned"] += 1
