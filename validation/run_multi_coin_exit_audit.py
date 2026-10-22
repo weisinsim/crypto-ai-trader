@@ -114,11 +114,12 @@ def main():
     a = p.parse_args()
     if (not a.cost_bps
             or any(not math.isfinite(c) or c < 0 for c in a.cost_bps)
+            or len(set(a.cost_bps)) != len(a.cost_bps)
             or not math.isfinite(a.holdout_fraction)
             or not 0.05 <= a.holdout_fraction <= 0.45
             or a.max_hold < 1
             or a.min_holdout_trades < 1):
-        p.error("Costs must be finite and non-negative; holdout fraction must be 0.05–0.45; max hold and minimum holdout trades must be positive")
+        p.error("Costs must be unique, finite, and non-negative; holdout fraction must be 0.05–0.45; max hold and minimum holdout trades must be positive")
     normalized_symbols = [symbol.strip().upper() for symbol in a.symbols]
     if any(not symbol for symbol in normalized_symbols):
         p.error("Symbols must be non-empty")
