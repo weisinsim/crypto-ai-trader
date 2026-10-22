@@ -102,9 +102,10 @@ class PaperExecutionBook:
                 fill_event_quantity += event_quantity
                 if not isfinite(fill_event_quantity):
                     raise ValueError("aggregate fill event quantity must remain finite")
-            if order["client_order_id"] != key or order["side"] not in {"LONG", "SHORT"}:
+            if (order["client_order_id"] != key or not isinstance(order["side"], str)
+                    or order["side"] not in {"LONG", "SHORT"}):
                 raise ValueError("invalid order identity in paper ledger")
-            if order["status"] not in allowed_statuses:
+            if not isinstance(order["status"], str) or order["status"] not in allowed_statuses:
                 raise ValueError("invalid order status in paper ledger")
             for field in ("quantity", "stop_loss", "take_profit"):
                 _positive_finite(order[field], field)
