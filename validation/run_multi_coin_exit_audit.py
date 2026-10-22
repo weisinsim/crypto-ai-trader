@@ -9,6 +9,15 @@ from validation.exit_parameter_audit import read_candles, read_signals, evaluate
 
 
 def run_one(symbol, data_dir, signal_dir, costs, holdout_fraction, max_hold, min_holdout_trades=30):
+    if not costs or any(not math.isfinite(cost) or cost < 0 for cost in costs):
+        raise ValueError("Costs must be a non-empty sequence of finite, non-negative values")
+    if len(set(costs)) != len(costs):
+        raise ValueError("Duplicate cost scenarios are not allowed")
+    if (not math.isfinite(holdout_fraction) or not 0.05 <= holdout_fraction <= 0.45
+            or isinstance(max_hold, bool) or not isinstance(max_hold, int) or max_hold < 1
+            or isinstance(min_holdout_trades, bool) or not isinstance(min_holdout_trades, int)
+            or min_holdout_trades < 1):
+        raise ValueError("Holdout fraction must be 0.05–0.45; max hold and minimum holdout trades must be positive integers")
     candles = read_candles(data_dir / f"{symbol}_1h.csv")
     signals = read_signals(signal_dir / f"{symbol}_signals.csv")
     if not candles:
