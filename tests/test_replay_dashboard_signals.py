@@ -2,7 +2,7 @@ import unittest
 import tempfile
 from pathlib import Path
 
-from validation.replay_dashboard_signals import ema, rsi, atr, adx, replay, ts_ms, read_rows, closed_rows_at, closed_four_count_at, signal_state_for, risk_levels, validate_candle_cadence
+from validation.replay_dashboard_signals import ema, rsi, atr, adx, replay, ts_ms, read_rows, closed_rows_at, closed_four_count_at, signal_state_for, risk_levels, validate_candle_cadence, candle_close_timestamp_iso
 
 
 class ReplayDashboardSignalsTests(unittest.TestCase):
@@ -83,6 +83,16 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
         self.assertEqual(signal_state_for("", "WATCH_SCORE_BELOW_75", -1), "WATCH-SHORT")
         self.assertEqual(signal_state_for("LONG", "ENTRY", 1), "LONG")
         self.assertEqual(signal_state_for("", "XRP_KILL", 0), "NO-TRADE")
+
+    def test_replay_signal_timestamp_is_candle_close_time(self):
+        self.assertEqual(
+            candle_close_timestamp_iso(1_700_000_000_000),
+            "2023-11-14T23:13:20.000Z",
+        )
+
+    def test_candle_close_timestamp_rejects_invalid_interval(self):
+        with self.assertRaisesRegex(ValueError, "positive integer"):
+            candle_close_timestamp_iso(1_700_000_000_000, 0)
 
     def test_timezone_naive_timestamp_rejected(self):
         with self.assertRaises(ValueError):
