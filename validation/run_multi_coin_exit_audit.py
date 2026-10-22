@@ -81,6 +81,25 @@ def run_one(symbol, data_dir, signal_dir, costs, holdout_fraction, max_hold, min
     return result
 
 
+def aggregate_holdout_sample_gate(reports):
+    """Aggregate per-coin holdout sample gates without treating empty evidence as a pass."""
+    gates = [report.get("holdout_sample_gate", {}) for report in reports]
+    checked = sum(int(gate.get("scenarios_checked", 0)) for gate in gates)
+    below = sum(int(gate.get("scenarios_below_minimum", 0)) for gate in gates)
+    failing_symbols = [
+        report.get("symbol", "UNKNOWN")
+        for report in reports
+        if not report.get("holdout_sample_gate", {}).get("all_scenarios_meet_minimum", False)
+    ]
+    return {
+        "coins_checked": len(reports),
+        "scenarios_checked": checked,
+        "scenarios_below_minimum": below,
+        "coins_failing_sample_gate": failing_symbols,
+        "all_coins_meet_minimum": bool(reports) and not failing_symbols,
+    }
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--data-dir", default="data/historical")
@@ -115,6 +134,7 @@ def main():
         "promotion_status": "NOT_PROMOTED",
         "evidence_gate": {
             "all_symbols_have_matched_signals": all(r["evidence_quality_status"] == "RESEARCH_ONLY_MATCHED_SIGNALS" for r in reports),
+            "holdout_sample_gate": aggregate_holdout_sample_gate(reports),
             "promotion_allowed": False,
             "reason": "Historical OHLC replay is research-only; live parity, exchange fills, funding settlement, and testnet lifecycle remain unverified."
         },
