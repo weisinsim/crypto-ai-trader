@@ -54,6 +54,38 @@ class MultiCoinExitAuditTests(unittest.TestCase):
                 main()
         self.assertEqual(raised.exception.code, 2)
 
+
+    def test_sample_gate_requires_all_cost_target_scenarios(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            data_dir, signal_dir = root / "data", root / "signals"
+            data_dir.mkdir()
+            signal_dir.mkdir()
+            timestamps = [
+                "2026-02-01T00:59:59Z", "2026-02-01T01:59:59Z",
+                "2026-02-01T02:59:59Z", "2026-02-01T03:59:59Z",
+                "2026-02-01T04:59:59Z", "2026-02-01T05:59:59Z",
+                "2026-02-01T06:59:59Z", "2026-02-01T07:59:59Z",
+            ]
+            with (data_dir / "TESTUSDT_1h.csv").open("w", newline="", encoding="utf-8") as stream:
+                writer = csv.writer(stream)
+                writer.writerow(["timestamp", "open", "high", "low", "close"])
+                for ts in timestamps:
+                    writer.writerow([ts, 100, 101, 99, 100])
+            with (signal_dir / "TESTUSDT_signals.csv").open("w", newline="", encoding="utf-8") as stream:
+                writer = csv.writer(stream)
+                writer.writerow(["timestamp", "side", "entry", "atr", "stop"])
+                # Only one holdout signal; both target scenarios have a valid full
+                # replay window but cannot meet the deliberately strict threshold.
+                writer.writerow([timestamps[5], "LONG", 100, 1, 98])
+            result = run_one("TESTUSDT", data_dir, signal_dir, [0, 10],
+                             holdout_fraction=0.5, max_hold=1, min_holdout_trades=2)
+            gate = result["holdout_sample_gate"]
+            self.assertEqual(gate["scenarios_checked"], 4)
+            self.assertEqual(gate["scenarios_below_minimum"], 4)
+            self.assertFalse(gate["all_scenarios_meet_minimum"])
+            self.assertFalse(aggregate_holdout_sample_gate([result])["all_coins_meet_minimum"])
+
     def test_development_signals_cannot_exit_on_holdout_candles(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
