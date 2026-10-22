@@ -8,7 +8,13 @@ it does not simulate fills, correlation, or dynamic position sizing.
 """
 import argparse
 import json
+import sys
 from pathlib import Path
+
+# Support both `python -m validation.portfolio_risk_from_exit_audits` and
+# direct script execution from outside the repository root.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from validation.portfolio_risk_audit import audit_portfolio_risk
 
