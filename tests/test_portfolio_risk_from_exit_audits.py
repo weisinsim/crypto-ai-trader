@@ -83,6 +83,31 @@ class PortfolioRiskAdapterTests(unittest.TestCase):
             self.assertEqual(report["max_concurrent_positions"], 2)
             self.assertAlmostEqual(report["max_concurrent_stop_risk_pct"], 2.2)
             self.assertEqual(report["source"]["symbols"], ["BTCUSDT", "ETHUSDT"])
+            self.assertEqual(report["evidence_status"], "AUDIT_COMPLETE_RESEARCH_ONLY")
+            self.assertFalse(report["release_gates"]["profitability_claim_eligible"])
+            self.assertFalse(report["release_gates"]["strategy_approval"])
+            self.assertFalse(report["release_gates"]["live_trading_enabled"])
+
+    def test_empty_trade_evidence_is_explicitly_not_a_pass(self):
+        import subprocess
+        import sys
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            btc = self.write_report(root, "btc", [], [])
+            out = root / "portfolio.json"
+            script = Path(__file__).resolve().parents[1] / "validation" / "portfolio_risk_from_exit_audits.py"
+            run = subprocess.run([
+                sys.executable, str(script),
+                "--audit", f"BTCUSDT={btc}",
+                "--period", "holdout",
+                "--risk-pct-per-trade", "0.5",
+                "--out", str(out),
+            ], capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            report = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual(report["trade_count"], 0)
+            self.assertEqual(report["evidence_status"], "NO_TRADES_TO_AUDIT")
+            self.assertFalse(report["release_gates"]["strategy_approval"])
 
     def test_rejects_invalid_report_selection(self):
         with tempfile.TemporaryDirectory() as td:
