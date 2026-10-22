@@ -109,6 +109,18 @@ class PortfolioRiskAdapterTests(unittest.TestCase):
             self.assertEqual(report["evidence_status"], "NO_TRADES_TO_AUDIT")
             self.assertFalse(report["release_gates"]["strategy_approval"])
 
+    def test_rejects_duplicate_symbol_audit_inputs(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            report = self.write_report(root, "btc", [], [
+                {"timestamp": 10, "exit_timestamp": 20, "net_R": 1.0},
+            ])
+            with self.assertRaisesRegex(ValueError, "Duplicate symbol audit"):
+                combine_audit_trades(
+                    [("BTCUSDT", str(report)), ("btcusdt", str(report))],
+                    "holdout", "target_2.5R", "signal_level", 0.5,
+                )
+
     def test_rejects_invalid_report_selection(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
