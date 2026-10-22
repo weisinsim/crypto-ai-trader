@@ -49,6 +49,12 @@ def normalize_order_payload(payload):
         raise ValueError("filled_quantity_mismatch")
     if status == "PARTIALLY_FILLED" and not (0 < executed < original):
         raise ValueError("partial_fill_quantity_mismatch")
+    try:
+        cumulative_filled_qty = float(executed)
+    except (OverflowError, ValueError):
+        raise ValueError("invalid_executed_qty")
+    if cumulative_filled_qty == float("inf"):
+        raise ValueError("invalid_executed_qty")
     return {
         "exchange_order_id": str(order_id),
         "client_order_id": client_id,
@@ -57,7 +63,7 @@ def normalize_order_payload(payload):
         "exchange_status": status,
         "executed_quantity": str(executed),
         "original_quantity": str(original),
-        "cumulative_filled_qty": float(executed),
+        "cumulative_filled_qty": cumulative_filled_qty,
         "terminal": status in {"FILLED", "CANCELED", "REJECTED", "EXPIRED", "EXPIRED_IN_MATCH"},
         "reconciliation_required": False,
     }
