@@ -18,10 +18,17 @@ def audit_portfolio_risk(trades, max_portfolio_risk_pct=2.0, max_symbol_risk_pct
                         ("max_symbol_risk_pct", max_symbol_risk_pct)):
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
             raise ValueError(f"{name} must be a finite positive number")
+    if not isinstance(trades, (list, tuple)):
+        raise ValueError("trades must be a list or tuple of trade objects")
     normalized = []
     seen = set()
     for i, trade in enumerate(trades):
-        symbol = str(trade.get("symbol", "")).strip().upper()
+        if not isinstance(trade, dict):
+            raise ValueError(f"Trade {i} must be an object")
+        raw_symbol = trade.get("symbol")
+        if not isinstance(raw_symbol, str) or not raw_symbol.strip():
+            raise ValueError(f"Trade {i} is missing a valid symbol")
+        symbol = raw_symbol.strip().upper()
         entry_ts, exit_ts, risk_pct = trade.get("timestamp"), trade.get("exit_timestamp"), trade.get("risk_pct")
         if not symbol:
             raise ValueError(f"Trade {i} is missing symbol")
@@ -33,7 +40,10 @@ def audit_portfolio_risk(trades, max_portfolio_risk_pct=2.0, max_symbol_risk_pct
             raise ValueError(f"Trade {i} exit_timestamp must be strictly after entry timestamp")
         if isinstance(risk_pct, bool) or not isinstance(risk_pct, (int, float)) or not math.isfinite(risk_pct) or risk_pct <= 0:
             raise ValueError(f"Trade {i} risk_pct must be finite and positive")
-        trade_id = str(trade.get("trade_id", i))
+        raw_trade_id = trade.get("trade_id", i)
+        if raw_trade_id is None or not str(raw_trade_id).strip():
+            raise ValueError(f"Trade {i} has an invalid trade_id")
+        trade_id = str(raw_trade_id)
         if trade_id in seen:
             raise ValueError(f"Duplicate trade_id {trade_id!r}")
         seen.add(trade_id)
