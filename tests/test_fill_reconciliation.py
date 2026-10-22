@@ -52,8 +52,10 @@ class FillReconciliationTests(unittest.TestCase):
             ))
 
     def test_unknown_status_fails_closed(self):
-        with self.assertRaisesRegex(ValueError, "unknown_order_status"):
-            normalize_order_payload(self.order(status="PENDING_CANCEL"))
+        for status in ("PENDING_CANCEL", [], {}):
+            with self.subTest(status=status):
+                with self.assertRaisesRegex(ValueError, "unknown_order_status"):
+                    normalize_order_payload(self.order(status=status))
 
     def test_executed_quantity_cannot_exceed_original(self):
         with self.assertRaisesRegex(ValueError, "executed_qty_exceeds_original"):
@@ -78,6 +80,8 @@ class FillReconciliationTests(unittest.TestCase):
             (self.trade(qty="0"), "invalid_trade_qty"),
             (self.trade(price="NaN"), "invalid_trade_price"),
             (self.trade(side="LONG"), "invalid_trade_side"),
+            (self.trade(side=[]), "invalid_trade_side"),
+            (self.trade(side={}), "invalid_trade_side"),
             (self.trade(id=None), "trade_id_missing"),
             (self.trade(realizedPnl="Infinity"), "invalid_realized_pnl"),
             (self.trade(time=True), "invalid_trade_timestamp"),
