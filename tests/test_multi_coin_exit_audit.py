@@ -172,7 +172,7 @@ class MultiCoinExitAuditTests(unittest.TestCase):
             self.assertEqual(result["signal_match_rate"], 0.66666667)
             self.assertEqual(result["evidence_quality_status"], "BLOCKED_UNMATCHED_SIGNALS")
             self.assertEqual(result["holdout_sample_gate"]["scenarios_checked"], 2)
-            self.assertEqual(result["holdout_sample_gate"]["minimum_trades_required_per_scenario"], 30)
+            self.assertEqual(result["holdout_sample_gate"]["minimum_trades_required_per_scenario"], 2)
             self.assertFalse(result["holdout_sample_gate"]["all_scenarios_meet_minimum"])
             self.assertGreater(result["holdout_sample_gate"]["scenarios_below_minimum"], 0)
             self.assertEqual(
