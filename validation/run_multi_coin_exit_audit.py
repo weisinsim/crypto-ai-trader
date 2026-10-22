@@ -28,11 +28,21 @@ def run_one(symbol, data_dir, signal_dir, costs, holdout_fraction, max_hold):
             "signals": [s for s in signals if s["ts"] >= split_ts],
         },
     }
+    matched_signals = sum(s["ts"] in matched for s in signals)
+    unmatched_signals = len(signals) - matched_signals
+    split_index = int(len(candles) * (1 - holdout_fraction))
     result = {
         "symbol": symbol, "candles": len(candles), "signals": len(signals),
-        "matched_signals": sum(s["ts"] in matched for s in signals),
-        "unmatched_signals": sum(s["ts"] not in matched for s in signals),
-        "split_timestamp_epoch": split_ts, "holdout_fraction": holdout_fraction,
+        "matched_signals": matched_signals,
+        "unmatched_signals": unmatched_signals,
+        "signal_match_rate": round(matched_signals / len(signals), 8) if signals else None,
+        "evidence_quality_status": (
+            "BLOCKED_UNMATCHED_SIGNALS" if unmatched_signals
+            else "BLOCKED_NO_SIGNALS" if not signals
+            else "RESEARCH_ONLY_MATCHED_SIGNALS"
+        ),
+        "split_timestamp_epoch": split_ts, "split_candle_index": split_index,
+        "holdout_fraction": holdout_fraction,
         "max_hold_candles": max_hold, "cost_sensitivity_bps": costs,
         "periods": {}
     }
@@ -78,6 +88,11 @@ def main():
     output = {
         "notice": "Research-only code replay and simplified OHLC exit simulation; not validated live performance or investment advice.",
         "promotion_status": "NOT_PROMOTED",
+        "evidence_gate": {
+            "all_symbols_have_matched_signals": all(r["evidence_quality_status"] == "RESEARCH_ONLY_MATCHED_SIGNALS" for r in reports),
+            "promotion_allowed": False,
+            "reason": "Historical OHLC replay is research-only; live parity, exchange fills, funding settlement, and testnet lifecycle remain unverified."
+        },
         "assumptions": {"targets_R": [2.5, 3.0], "stop": "signal-specific stop when present",
                         "same_candle_collision": "stop-first", "costs": "round-trip bps of entry notional",
                         "funding_and_partial_exits": "not modeled"},
