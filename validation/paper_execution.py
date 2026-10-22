@@ -84,7 +84,7 @@ class PaperExecutionBook:
                 # Validate values used by migration comparisons before comparing them.
                 if not isinstance(order["status"], str):
                     raise ValueError("invalid order status in paper ledger")
-                if order["status"] == "CANCELLED":
+                if order["status"] in {"CANCELLED", "CLOSED"}:
                     migrated_filled = _nonnegative_finite(order["filled_quantity"], "filled quantity")
                     migrated_quantity = _positive_finite(order["quantity"], "quantity")
                     cancelled_remainder = 0 < migrated_filled < migrated_quantity
