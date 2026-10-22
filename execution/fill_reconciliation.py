@@ -99,7 +99,8 @@ def normalize_trade_payload(payload):
     if not isinstance(side, str) or side not in {"BUY", "SELL"}:
         raise ValueError("invalid_trade_side")
     timestamp_ms = payload.get("time")
-    if isinstance(timestamp_ms, bool) or not isinstance(timestamp_ms, int) or timestamp_ms < 0:
+    if (isinstance(timestamp_ms, bool) or not isinstance(timestamp_ms, int)
+            or timestamp_ms < 0 or timestamp_ms > 253402300799999):
         raise ValueError("invalid_trade_timestamp")
     return {
         "event_id": f"binance-usdm:{symbol}:{order_id}:{trade_id}",
