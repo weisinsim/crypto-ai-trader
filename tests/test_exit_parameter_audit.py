@@ -482,6 +482,19 @@ class ExitAuditTests(unittest.TestCase):
         }])
         self.assertAlmostEqual(stats["net_R_reconciliation_error"], -0.07)
 
+    def test_summary_detects_trade_reconciliation_errors_that_cancel_in_aggregate(self):
+        from validation.exit_parameter_audit import summarize
+        stats = summarize([
+            {"timestamp": 1, "exit_reason": "TP", "gross_R": 2.5,
+             "cost_R": 0.05, "slippage_R": 0.10, "funding_R": 0.02,
+             "net_R": 2.40},
+            {"timestamp": 2, "exit_reason": "TP", "gross_R": 2.5,
+             "cost_R": 0.05, "slippage_R": 0.10, "funding_R": 0.02,
+             "net_R": 2.26},
+        ])
+        self.assertAlmostEqual(stats["net_R_reconciliation_error_sum"], 0.0)
+        self.assertAlmostEqual(stats["max_abs_trade_reconciliation_error"], 0.07)
+
     def test_summary_counts_trades(self):
         stats = summarize([
             {"net_R": 2.0, "exit_reason": "TP"},
