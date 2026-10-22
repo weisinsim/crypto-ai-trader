@@ -278,6 +278,21 @@ class ExitAuditTests(unittest.TestCase):
             evaluate([candle(1, 100, 101, 99, 100)], [], target_r=2.5,
                      stop_atr=2, cost_bps=0, max_hold=1, funding_rows={})
 
+    def test_evaluate_rejects_invalid_direct_funding_events(self):
+        candles = [candle(1, 100, 101, 99, 100), candle(2, 100, 101, 99, 100)]
+        signals = [{"ts": 1, "side": "LONG", "entry": 100, "atr": 1}]
+        invalid_events = [
+            [None],
+            [{"ts": 1, "rate": float("nan")}],
+            [{"ts": 1, "rate": 0.1}],
+            [{"ts": float("inf"), "rate": 0.001}],
+            [{"ts": 1, "rate": 0.001}, {"ts": 1, "rate": 0.002}],
+        ]
+        for funding_rows in invalid_events:
+            with self.subTest(funding_rows=funding_rows), self.assertRaises(ValueError):
+                evaluate(candles, signals, target_r=2.5, stop_atr=2,
+                         cost_bps=0, max_hold=1, funding_rows=funding_rows)
+
     def test_unmatched_signal_is_not_counted(self):
         candles = [candle(1, 100, 101, 99, 100), candle(2, 100, 101, 99, 100)]
         signals = [{"ts": 9, "side": "LONG", "entry": 100, "atr": 1}]
