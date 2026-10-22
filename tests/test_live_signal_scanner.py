@@ -95,6 +95,7 @@ class ScanOnceTests(unittest.TestCase):
             (["BTCUSDT"], 1.5),
             (["BTCUSDT", "BTCUSDT"], NOW),
             (["btcusdt"], NOW),
+            ([["BTCUSDT"]], NOW),
             ([], NOW),
         ]
         for symbols, now_ms in invalid_cases:
