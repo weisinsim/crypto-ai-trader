@@ -159,7 +159,7 @@ class MultiCoinExitAuditTests(unittest.TestCase):
                 writer.writerow(["2026-01-02T00:00:00Z", "LONG", 100, 1, 98])
 
             result = run_one("TESTUSDT", data_dir, signal_dir, [0],
-                             holdout_fraction=0.25, max_hold=2, min_holdout_trades=2)
+                             holdout_fraction=0.45, max_hold=2, min_holdout_trades=2)
 
             development = result["periods"]["development"]["cost_0_bps"]["target_2.5R"]
             holdout = result["periods"]["holdout"]["cost_0_bps"]["target_2.5R"]
