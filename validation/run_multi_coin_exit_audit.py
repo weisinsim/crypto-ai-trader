@@ -2,6 +2,7 @@
 """Run reproducible multi-coin 2.5R/3R exit audits over replayed signals."""
 import argparse
 import json
+import math
 from pathlib import Path
 
 from validation.exit_parameter_audit import read_candles, read_signals, evaluate, summarize
@@ -60,8 +61,8 @@ def main():
     p.add_argument("--max-hold", type=int, default=72)
     a = p.parse_args()
     if (not a.cost_bps
-            or any(not __import__("math").isfinite(c) or c < 0 for c in a.cost_bps)
-            or not __import__("math").isfinite(a.holdout_fraction)
+            or any(not math.isfinite(c) or c < 0 for c in a.cost_bps)
+            or not math.isfinite(a.holdout_fraction)
             or not 0.05 <= a.holdout_fraction <= 0.45
             or a.max_hold < 1):
         p.error("Costs must be finite and non-negative; holdout fraction must be 0.05–0.45; max hold must be positive")
