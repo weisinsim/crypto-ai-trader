@@ -318,14 +318,21 @@ def main():
         four=validate_candle_cadence(read_rows(four_path), 14_400_000, str(four_path))
         trades=replay(s,one,four)
         fields=["timestamp","status","signal","side","entry","atr","stop","target","target2","score","model","model_version","rsi","ema20_1h","ema50_1h","ema20_4h","ema50_4h","adx","vwap","support","resistance","reason"]
+        state_counts = {}
         if a.include_states:
             states=replay(s,one,four,include_states=True)
+            for row in states:
+                key = row["reason"]
+                state_counts[key] = state_counts.get(key, 0) + 1
             with (out/f"{s}_states.csv").open("w",newline="",encoding="utf-8") as sf:
                 sw=csv.DictWriter(sf,fieldnames=fields); sw.writeheader(); sw.writerows(states)
         dest=out/f"{s}_signals.csv"
         with dest.open("w",newline="",encoding="utf-8") as f:
             w=csv.DictWriter(f,fieldnames=fields); w.writeheader(); w.writerows(trades)
-        manifest.append({"symbol":s,"hourly_candles":len(one),"four_hour_candles":len(four),"signals":len(trades),"file":str(dest),
+        model_status = "NO_PRODUCTION_MODEL" if s == "ETHUSDT" else ("SIGNALS_EMITTED" if trades else "NO_SIGNALS_EMITTED")
+        manifest.append({"symbol":s,"model_status":model_status,"hourly_candles":len(one),
+                         "four_hour_candles":len(four),"signals":len(trades),"state_rows":sum(state_counts.values()),
+                         "state_reason_counts":state_counts,"file":str(dest),
                          "notice":"Historical code replay only; verify parity and data gaps before interpreting results."})
         print(json.dumps(manifest[-1]))
     (out/"replay_manifest.json").write_text(json.dumps(manifest,indent=2),encoding="utf-8")
