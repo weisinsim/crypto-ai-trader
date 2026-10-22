@@ -230,6 +230,25 @@ class ExitAuditTests(unittest.TestCase):
         self.assertAlmostEqual(trades[0]["cost_R"], 0.05)
         self.assertAlmostEqual(trades[0]["net_R"], 2.45)
 
+    def test_round_trip_slippage_is_separate_and_reduces_net_r(self):
+        candles = [
+            candle(1, 100, 101, 99, 100),
+            candle(2, 100, 106, 99, 104),
+        ]
+        signals = [{"ts": 1, "side": "LONG", "entry": 100, "atr": 1}]
+        trades = evaluate(candles, signals, target_r=2.5, stop_atr=2,
+                          cost_bps=10, max_hold=5, slippage_bps=20)
+        self.assertAlmostEqual(trades[0]["cost_R"], 0.05)
+        self.assertAlmostEqual(trades[0]["slippage_R"], 0.10)
+        self.assertAlmostEqual(trades[0]["net_R"], 2.35)
+
+    def test_negative_slippage_assumption_is_rejected(self):
+        candles = [candle(1, 100, 101, 99, 100), candle(2, 100, 101, 99, 100)]
+        signals = [{"ts": 1, "side": "LONG", "entry": 100, "atr": 1}]
+        with self.assertRaisesRegex(ValueError, "non-negative"):
+            evaluate(candles, signals, target_r=2.5, stop_atr=2,
+                     cost_bps=0, max_hold=1, slippage_bps=-1)
+
     def test_unmatched_signal_is_not_counted(self):
         candles = [candle(1, 100, 101, 99, 100), candle(2, 100, 101, 99, 100)]
         signals = [{"ts": 9, "side": "LONG", "entry": 100, "atr": 1}]
