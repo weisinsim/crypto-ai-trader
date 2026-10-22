@@ -222,6 +222,17 @@ def signal_state_for(side, reason, direction):
     return "NO-TRADE"
 
 
+def replay_model_status(symbol, trades, include_states, state_rows):
+    """Avoid treating missing state diagnostics or insufficient history as zero-signal evidence."""
+    if symbol == "ETHUSDT":
+        return "NO_PRODUCTION_MODEL"
+    if include_states and state_rows == 0:
+        return "INSUFFICIENT_REPLAY_HISTORY"
+    if trades:
+        return "SIGNALS_EMITTED"
+    return "NO_SIGNALS_EMITTED" if include_states else "SIGNAL_STATE_DIAGNOSTICS_NOT_REQUESTED"
+
+
 def replay(symbol, one, four, *, include_states=False):
     output=[]
     c_all=[x["c"] for x in one]; hi_all=[x["h"] for x in one]
@@ -330,14 +341,7 @@ def main():
         with dest.open("w",newline="",encoding="utf-8") as f:
             w=csv.DictWriter(f,fieldnames=fields); w.writeheader(); w.writerows(trades)
         state_rows = sum(state_counts.values())
-        if s == "ETHUSDT":
-            model_status = "NO_PRODUCTION_MODEL"
-        elif a.include_states and state_rows == 0:
-            model_status = "INSUFFICIENT_REPLAY_HISTORY"
-        elif trades:
-            model_status = "SIGNALS_EMITTED"
-        else:
-            model_status = "NO_SIGNALS_EMITTED" if a.include_states else "SIGNAL_STATE_DIAGNOSTICS_NOT_REQUESTED"
+        model_status = replay_model_status(s, trades, a.include_states, state_rows)
         manifest.append({
             "symbol": s,
             "model_status": model_status,
