@@ -33,8 +33,10 @@ class PortfolioRiskAuditTests(unittest.TestCase):
         self.assertEqual(result["breach_count"], 0)
 
     def test_invalid_trade_and_duplicate_ids_fail_closed(self):
-        with self.assertRaisesRegex(ValueError, "exits before entry"):
+        with self.assertRaisesRegex(ValueError, "strictly after"):
             audit_portfolio_risk([{"symbol": "BTC", "timestamp": 5, "exit_timestamp": 4, "risk_pct": 1}])
+        with self.assertRaisesRegex(ValueError, "strictly after"):
+            audit_portfolio_risk([{"symbol": "BTC", "timestamp": 5, "exit_timestamp": 5, "risk_pct": 1}])
         with self.assertRaisesRegex(ValueError, "Duplicate trade_id"):
             audit_portfolio_risk([
                 {"trade_id": "same", "symbol": "BTC", "timestamp": 1, "exit_timestamp": 2, "risk_pct": 0.5},
