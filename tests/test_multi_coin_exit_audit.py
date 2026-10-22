@@ -74,6 +74,18 @@ class MultiCoinExitAuditTests(unittest.TestCase):
                 run_one("TESTUSDT", data_dir, signal_dir, [5, 5],
                         holdout_fraction=0.3, max_hold=72)
 
+    def test_run_one_rejects_invalid_cost_types_for_direct_callers(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            data_dir, signal_dir = root / "data", root / "signals"
+            data_dir.mkdir()
+            signal_dir.mkdir()
+            for costs in ([True], ["5"], [float("nan")], [float("inf")], [-1]):
+                with self.subTest(costs=costs):
+                    with self.assertRaisesRegex(ValueError, "finite, non-negative numbers"):
+                        run_one("TESTUSDT", data_dir, signal_dir, costs,
+                                holdout_fraction=0.3, max_hold=72)
+
     def test_run_one_rejects_invalid_minimum_sample_threshold(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
