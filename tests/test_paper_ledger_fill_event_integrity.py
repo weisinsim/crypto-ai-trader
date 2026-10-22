@@ -60,6 +60,13 @@ class PaperLedgerFillEventIntegrityTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, "invalid exit reason"):
                         PaperExecutionBook(path)
 
+    def test_load_rejects_boolean_schema_version(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ledger.json"
+            path.write_text(json.dumps({"schema_version": True, "orders": {}}), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "unsupported or invalid paper ledger schema"):
+                PaperExecutionBook(path)
+
     def test_load_accepts_fill_events_within_recorded_filled_quantity(self):
         order = {
             "client_order_id": "paper-integrity", "symbol": "BTCUSDT", "side": "LONG",
