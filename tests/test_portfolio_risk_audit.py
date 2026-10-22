@@ -44,8 +44,12 @@ class PortfolioRiskAuditTests(unittest.TestCase):
             ])
 
     def test_invalid_limits_are_rejected(self):
-        with self.assertRaisesRegex(ValueError, "finite and positive"):
+        with self.assertRaisesRegex(ValueError, "finite positive"):
             audit_portfolio_risk([], max_portfolio_risk_pct=0)
+        with self.assertRaisesRegex(ValueError, "finite positive"):
+            audit_portfolio_risk([], max_portfolio_risk_pct=True)
+        with self.assertRaisesRegex(ValueError, "finite positive"):
+            audit_portfolio_risk([], max_symbol_risk_pct="1.0")
 
 
 if __name__ == "__main__":
