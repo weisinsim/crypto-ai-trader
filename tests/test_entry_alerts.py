@@ -104,6 +104,23 @@ class EntryAlertTests(unittest.TestCase):
         self.assertIn("invalid_numeric_fields", event["blockers"])
         self.assertIsNone(event["entry"])
 
+    def test_oversized_timestamp_and_score_values_fail_closed(self):
+        cases = [
+            ("last_closed_candle", 10 ** 10000, "missing_closed_candle"),
+            ("analysis_ts", 10 ** 10000, "missing_analysis_timestamp"),
+            ("score", 10 ** 10000, "invalid_score"),
+        ]
+        for field, value, blocker in cases:
+            with self.subTest(field=field):
+                data = self.base()
+                data[field] = value
+                event = build_entry_alert(data, now_ms=1_800_000_100_000)
+                self.assertFalse(event["eligible"])
+                self.assertIn(blocker, event["blockers"])
+        event = build_entry_alert(self.base(), now_ms=10 ** 10000)
+        self.assertFalse(event["eligible"])
+        self.assertIn("invalid_time_window", event["blockers"])
+
     def test_numeric_nan_is_rejected(self):
         data = self.base()
         data["entry"] = float("nan")
