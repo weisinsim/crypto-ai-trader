@@ -54,6 +54,36 @@ class PortfolioRiskAdapterTests(unittest.TestCase):
                 combine_audit_trades([("BTCUSDT", str(report))],
                                      "holdout", "target_2.5R", "signal_level", 0.5)
 
+    def test_cli_emits_portfolio_report_from_two_symbol_audits(self):
+        import subprocess
+        import sys
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            btc = self.write_report(root, "btc", [], [
+                {"timestamp": 10, "exit_timestamp": 30, "net_R": 1.0},
+            ])
+            eth = self.write_report(root, "eth", [], [
+                {"timestamp": 20, "exit_timestamp": 40, "net_R": -1.0},
+            ])
+            out = root / "portfolio.json"
+            script = Path(__file__).resolve().parents[1] / "validation" / "portfolio_risk_from_exit_audits.py"
+            run = subprocess.run([
+                sys.executable, str(script),
+                "--audit", f"BTCUSDT={btc}",
+                "--audit", f"ETHUSDT={eth}",
+                "--period", "holdout",
+                "--risk-pct-per-trade", "1.1",
+                "--max-portfolio-risk-pct", "2.0",
+                "--max-symbol-risk-pct", "1.5",
+                "--out", str(out),
+            ], capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            report = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual(report["trade_count"], 2)
+            self.assertEqual(report["max_concurrent_positions"], 2)
+            self.assertAlmostEqual(report["max_concurrent_stop_risk_pct"], 2.2)
+            self.assertEqual(report["source"]["symbols"], ["BTCUSDT", "ETHUSDT"])
+
     def test_rejects_invalid_report_selection(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
