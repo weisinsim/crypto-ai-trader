@@ -5,8 +5,8 @@ candles.csv columns: timestamp,open,high,low,close
 signals.csv columns: timestamp,side,entry,atr
 Timestamps must match candle CLOSE timestamps exactly (the downloader emits UTC ISO-8601 close times). Each signal assumes entry
 at the recorded price after that signal candle closes and is evaluated from the NEXT candle onward. Same-candle stop and
-target collisions are resolved as stop-first. Costs are round-trip bps of entry
-notional, converted to R. The final holdout is chronological, not shuffled.
+target collisions are resolved as stop-first. Fees and slippage are separately modeled as round-trip bps of entry
+notional, converted to R. Slippage is a conservative linear cost proxy, not tick-level fills. The final holdout is chronological, not shuffled.
 
 This evaluates exit parameters only. It does not validate signal generation,
 funding, realistic fills, overlapping positions, or portfolio-level risk.
@@ -160,7 +160,11 @@ def funding_cost_r(funding_rows, entry_ts, exit_ts, side, entry, risk):
 
 
 def evaluate(candles, signals, target_r, stop_atr, cost_bps, max_hold,
-             funding_bps_per_8h=0.0, funding_rows=None):
+             funding_bps_per_8h=0.0, funding_rows=None, slippage_bps=0.0):
+    if (not math.isfinite(cost_bps) or cost_bps < 0
+            or not math.isfinite(slippage_bps) or slippage_bps < 0
+            or not math.isfinite(funding_bps_per_8h) or funding_bps_per_8h < 0):
+        raise ValueError("Cost, slippage, and adverse funding assumptions must be finite and non-negative")
     index = {c["ts"]: i for i, c in enumerate(candles)}
     results = []
     for sig in signals:
@@ -206,6 +210,9 @@ def evaluate(candles, signals, target_r, stop_atr, cost_bps, max_hold,
             close = future[-1]["close"]
             outcome = d * (close - entry) / risk
         cost_r = (cost_bps / 10000.0) * entry / risk
+        # Linear round-trip slippage proxy; penalizes entry and exit without
+        # claiming exact tick-level fill prices.
+        slippage_r = (slippage_bps / 10000.0) * entry / risk
         # Prefer actual timestamped funding cashflows when supplied; otherwise
         # use the explicitly labeled constant adverse-rate sensitivity proxy.
         if funding_rows is not None:
@@ -214,8 +221,9 @@ def evaluate(candles, signals, target_r, stop_atr, cost_bps, max_hold,
             elapsed_hours = max(0.0, (exit_ts - sig["ts"]) / 3600.0)
             funding_r = (funding_bps_per_8h / 10000.0) * (elapsed_hours / 8.0) * entry / risk
         results.append({"timestamp": sig["ts"], "exit_timestamp": exit_ts, "side": sig["side"], "exit_reason": reason,
-                        "gross_R": outcome, "cost_R": cost_r, "funding_R": funding_r,
-                        "net_R": outcome - cost_r - funding_r})
+                        "gross_R": outcome, "cost_R": cost_r, "slippage_R": slippage_r,
+                        "funding_R": funding_r,
+                        "net_R": outcome - cost_r - slippage_r - funding_r})
     return results
 
 
@@ -306,7 +314,10 @@ def main():
     p.add_argument("--candles", required=True)
     p.add_argument("--signals", required=True)
     p.add_argument("--stop-atr", type=float, default=2.0)
-    p.add_argument("--cost-bps", type=float, default=10.0)
+    p.add_argument("--cost-bps", type=float, default=10.0,
+                   help="Round-trip trading fees in bps of entry notional")
+    p.add_argument("--slippage-bps", type=float, default=5.0,
+                   help="Round-trip adverse slippage proxy in bps of entry notional")
     p.add_argument("--funding-bps-per-8h", type=float, default=0.0,
                    help="Fallback stress proxy: adverse funding cost in bps per 8h")
     p.add_argument("--funding-file", default=None,
@@ -320,9 +331,9 @@ def main():
     p.add_argument("--min-match-pct", type=float, default=95.0, help="Abort if fewer than this percent of signals match candle timestamps")
     p.add_argument("--out", default="exit_audit_results.json")
     a = p.parse_args()
-    numeric_params = (a.stop_atr, a.cost_bps, a.funding_bps_per_8h, a.holdout_fraction, a.min_match_pct, a.funding_max_gap_hours)
+    numeric_params = (a.stop_atr, a.cost_bps, a.slippage_bps, a.funding_bps_per_8h, a.holdout_fraction, a.min_match_pct, a.funding_max_gap_hours)
     if (not all(math.isfinite(value) for value in numeric_params)
-            or a.stop_atr <= 0 or a.cost_bps < 0 or a.funding_bps_per_8h < 0
+            or a.stop_atr <= 0 or a.cost_bps < 0 or a.slippage_bps < 0 or a.funding_bps_per_8h < 0
             or a.funding_max_gap_hours <= 0
             or a.max_hold < 1 or not 0.05 <= a.holdout_fraction <= 0.45
             or not 0 <= a.min_match_pct <= 100):
@@ -374,7 +385,8 @@ def main():
                    "minimum_required_match_pct": a.min_match_pct,
                    "holdout_start_epoch": split_ts, "stop_atr_fallback": a.stop_atr,
                    "uses_signal_stop_when_present": True,
-                   "round_trip_cost_bps": a.cost_bps,
+                   "round_trip_fee_bps": a.cost_bps,
+                   "round_trip_slippage_proxy_bps": a.slippage_bps,
                    "funding_bps_per_8h_sensitivity": a.funding_bps_per_8h if funding_rows is None else None,
                    "funding_file": a.funding_file,
                    "funding_mark_price_assumption": "entry_price_proxy",
@@ -388,7 +400,7 @@ def main():
         subset_candle_ts = {c["ts"] for c in subset["candles"]}
         matched_subset_signals = sum(s["ts"] in subset_candle_ts for s in subset["signals"])
         for r in (2.5, 3.0):
-            trades = evaluate(subset["candles"], subset["signals"], r, a.stop_atr, a.cost_bps, a.max_hold, a.funding_bps_per_8h, funding_rows)
+            trades = evaluate(subset["candles"], subset["signals"], r, a.stop_atr, a.cost_bps, a.max_hold, a.funding_bps_per_8h, funding_rows, a.slippage_bps)
             sequential, skipped = filter_single_position(trades)
             # Preserve per-trade evidence so aggregate R/PF/DD can be independently
             # reconciled and suspicious outliers traced to entry, exit, costs, and funding.
