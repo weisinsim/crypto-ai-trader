@@ -231,6 +231,8 @@ def summarize(trades):
         return {"trades": 0, "win_rate_pct": None, "profit_factor": None,
                 "gross_R": 0.0, "fee_R": 0.0, "slippage_R": 0.0,
                 "funding_R": 0.0, "net_R": 0.0, "net_R_reconciliation_error": 0.0,
+                "net_R_reconciliation_error_sum": 0.0,
+                "max_abs_trade_reconciliation_error": 0.0,
                 "avg_R": None, "max_drawdown_R": None}
     # Drawdown must follow chronological trade order, not an incidental caller order.
     chronological = sorted(trades, key=lambda t: t.get("timestamp", 0))
@@ -261,6 +263,11 @@ def summarize(trades):
         active += delta
         max_active = max(max_active, active)
     pf = gross_profit / gross_loss if gross_loss else (None if gross_profit == 0 else "Infinity")
+    reconciliation_errors = [
+        t.get("gross_R", t["net_R"]) - t.get("cost_R", 0.0)
+        - t.get("slippage_R", 0.0) - t.get("funding_R", 0.0) - t["net_R"]
+        for t in chronological
+    ]
     winning_values = sorted((x for x in vals if x > 0), reverse=True)
     largest_win_share_pct = (
         100 * winning_values[0] / gross_profit if gross_profit > 0 and winning_values else None
@@ -277,11 +284,11 @@ def summarize(trades):
         "slippage_R": round(sum(t.get("slippage_R", 0.0) for t in chronological), 4),
         "funding_R": round(sum(t.get("funding_R", 0.0) for t in chronological), 4),
         "net_R": round(sum(vals), 4),
-        "net_R_reconciliation_error": round(sum(
-            t.get("gross_R", t["net_R"]) - t.get("cost_R", 0.0)
-            - t.get("slippage_R", 0.0) - t.get("funding_R", 0.0) - t["net_R"]
-            for t in chronological
-        ), 8),
+        # Keep aggregate sum for accounting, but also report the largest per-trade
+        # discrepancy so positive/negative errors cannot cancel one another.
+        "net_R_reconciliation_error": round(sum(reconciliation_errors), 8),
+        "net_R_reconciliation_error_sum": round(sum(reconciliation_errors), 8),
+        "max_abs_trade_reconciliation_error": round(max(abs(x) for x in reconciliation_errors), 8),
         "avg_R": round(sum(vals) / len(vals), 4),
         "max_win_R": round(max(vals), 4),
         "max_loss_R": round(min(vals), 4),
