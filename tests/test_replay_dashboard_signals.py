@@ -2,7 +2,7 @@ import unittest
 import tempfile
 from pathlib import Path
 
-from validation.replay_dashboard_signals import ema, rsi, atr, adx, replay, ts_ms, read_rows, closed_rows_at, closed_four_count_at, signal_state_for, risk_levels, validate_candle_cadence, candle_close_timestamp_iso
+from validation.replay_dashboard_signals import ema, rsi, atr, adx, replay, ts_ms, read_rows, closed_rows_at, closed_four_count_at, signal_state_for, risk_levels, validate_candle_cadence, utc_timestamp_iso
 
 
 class ReplayDashboardSignalsTests(unittest.TestCase):
@@ -84,15 +84,26 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
         self.assertEqual(signal_state_for("LONG", "ENTRY", 1), "LONG")
         self.assertEqual(signal_state_for("", "XRP_KILL", 0), "NO-TRADE")
 
-    def test_replay_signal_timestamp_is_candle_close_time(self):
+    def test_replay_preserves_source_candle_close_timestamp(self):
         self.assertEqual(
-            candle_close_timestamp_iso(1_700_000_000_000),
-            "2023-11-14T23:13:20.000Z",
+            utc_timestamp_iso(1_700_000_000_000),
+            "2023-11-14T22:13:20.000Z",
         )
 
-    def test_candle_close_timestamp_rejects_invalid_interval(self):
-        with self.assertRaisesRegex(ValueError, "positive integer"):
-            candle_close_timestamp_iso(1_700_000_000_000, 0)
+    def test_replay_timestamp_formatter_rejects_non_integer(self):
+        with self.assertRaisesRegex(ValueError, "integer"):
+            utc_timestamp_iso(1_700_000_000_000.5)
+
+    def test_incremental_four_hour_index_uses_source_close_timestamps(self):
+        bars = [
+            {"ts": 4 * 3_600_000 - 1, "c": 1},
+            {"ts": 8 * 3_600_000 - 1, "c": 2},
+            {"ts": 12 * 3_600_000 - 1, "c": 3},
+        ]
+        # At 08:00:00 UTC, the second 4h candle is closed and usable.
+        self.assertEqual(closed_four_count_at(bars, 8 * 3_600_000, 0), 2)
+        # At 07:59:59.999 UTC, only the first 4h candle is closed.
+        self.assertEqual(closed_four_count_at(bars, 8 * 3_600_000 - 1, 0), 1)
 
     def test_timezone_naive_timestamp_rejected(self):
         with self.assertRaises(ValueError):
@@ -161,13 +172,13 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
             index = closed_four_count_at(bars, decision_close_ms, index)
             expected = len(closed_rows_at(bars, decision_close_ms, 14_400_000))
             self.assertEqual(index, expected)
-            self.assertTrue(all(bars[j]["ts"] + 14_400_000 <= decision_close_ms for j in range(index)))
+            self.assertTrue(all(bars[j]["ts"] <= decision_close_ms for j in range(index)))
             if index < len(bars):
-                self.assertGreater(bars[index]["ts"] + 14_400_000, decision_close_ms)
+                self.assertGreater(bars[index]["ts"], decision_close_ms)
 
     def test_incremental_four_hour_index_rejects_no_closed_rows_without_advancing(self):
         bars = [{"ts": 14_400_000, "c": 1}, {"ts": 28_800_000, "c": 2}]
-        self.assertEqual(closed_four_count_at(bars, 14_400_000, 0), 0)
+        self.assertEqual(closed_four_count_at(bars, 14_400_000 - 1, 0), 0)
         self.assertEqual(closed_four_count_at(bars, 14_400_000, 0), 0)
 
     def test_closed_rows_rejects_invalid_interval(self):
