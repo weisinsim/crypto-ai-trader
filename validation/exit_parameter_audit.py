@@ -175,8 +175,23 @@ def evaluate(candles, signals, target_r, stop_atr, cost_bps, max_hold,
         raise ValueError("max_hold must be a positive integer")
     if not isinstance(candles, (list, tuple)) or not isinstance(signals, (list, tuple)):
         raise ValueError("candles and signals must be lists or tuples")
-    if funding_rows is not None and not isinstance(funding_rows, (list, tuple)):
-        raise ValueError("funding_rows must be a list or tuple when supplied")
+    if funding_rows is not None:
+        if not isinstance(funding_rows, (list, tuple)):
+            raise ValueError("funding_rows must be a list or tuple when supplied")
+        seen_funding_timestamps = set()
+        for event_index, event in enumerate(funding_rows):
+            if not isinstance(event, dict):
+                raise ValueError(f"Funding event {event_index} must be an object")
+            event_ts, rate = event.get("ts"), event.get("rate")
+            if (isinstance(event_ts, bool) or not isinstance(event_ts, (int, float))
+                    or not math.isfinite(event_ts)):
+                raise ValueError(f"Funding event {event_index} has an invalid timestamp")
+            if (isinstance(rate, bool) or not isinstance(rate, (int, float))
+                    or not math.isfinite(rate) or abs(rate) > 0.05):
+                raise ValueError(f"Funding event {event_index} has an invalid rate")
+            if event_ts in seen_funding_timestamps:
+                raise ValueError(f"Duplicate funding timestamp {event_ts}")
+            seen_funding_timestamps.add(event_ts)
     index = {c["ts"]: i for i, c in enumerate(candles)}
     results = []
     for sig in signals:
