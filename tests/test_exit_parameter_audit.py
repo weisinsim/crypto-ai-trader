@@ -180,6 +180,22 @@ class ExitAuditTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "internal gaps"):
             validate_funding_coverage(funding, candles, 3600)
 
+    def test_daily_candles_do_not_allow_24_day_funding_gaps(self):
+        from validation.exit_parameter_audit import validate_funding_coverage
+        candles = [candle(0, 100, 101, 99, 100), candle(86_400, 100, 101, 99, 100)]
+        # The edge is exactly one day away, but the two-day event gap must fail.
+        # A 24x-candle-interval multiplier would incorrectly allow this outage.
+        funding = [{"ts": 0, "rate": 0.0001}, {"ts": 172_800, "rate": 0.0001}]
+        with self.assertRaisesRegex(ValueError, "internal gaps"):
+            validate_funding_coverage(funding, candles, 86_400, max_gap_hours=24)
+
+    def test_funding_coverage_rejects_invalid_interval_parameters(self):
+        from validation.exit_parameter_audit import validate_funding_coverage
+        candles = [candle(0, 100, 101, 99, 100)]
+        funding = [{"ts": 0, "rate": 0.0001}]
+        with self.assertRaisesRegex(ValueError, "positive and finite"):
+            validate_funding_coverage(funding, candles, 0)
+
     def test_actual_funding_events_are_side_aware(self):
         from validation.exit_parameter_audit import funding_cost_r
         funding = [
