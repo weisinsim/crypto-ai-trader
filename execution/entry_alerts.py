@@ -28,6 +28,9 @@ def _finite_positive(value):
 def build_entry_alert(snapshot, *, now_ms, max_age_ms=90 * 60 * 1000):
     """Build a candidate alert from a fresh, closed-candle directional signal."""
     blockers = []
+    if not isinstance(now_ms, (int, float)) or isinstance(now_ms, bool) or not math.isfinite(float(now_ms)) or float(now_ms) <= 0 or not isinstance(max_age_ms, (int, float)) or isinstance(max_age_ms, bool) or not math.isfinite(float(max_age_ms)) or float(max_age_ms) < 0:
+        blockers.append("invalid_time_window")
+        now_ms, max_age_ms = 0, 0
     if not isinstance(snapshot, dict):
         snapshot = {}
         blockers.append("invalid_snapshot")
