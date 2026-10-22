@@ -106,9 +106,9 @@ class MultiCoinExitAuditTests(unittest.TestCase):
                 writer.writerow(["timestamp", "side", "entry", "atr", "stop"])
                 # Only one holdout signal; both target scenarios have a valid full
                 # replay window but cannot meet the deliberately strict threshold.
-                writer.writerow([timestamps[5], "LONG", 100, 1, 98])
+                writer.writerow([timestamps[6], "LONG", 100, 1, 98])
             result = run_one("TESTUSDT", data_dir, signal_dir, [0, 10],
-                             holdout_fraction=0.5, max_hold=1, min_holdout_trades=2)
+                             holdout_fraction=0.25, max_hold=1, min_holdout_trades=2)
             gate = result["holdout_sample_gate"]
             self.assertEqual(gate["scenarios_checked"], 4)
             self.assertEqual(gate["scenarios_below_minimum"], 4)
@@ -159,7 +159,7 @@ class MultiCoinExitAuditTests(unittest.TestCase):
                 writer.writerow(["2026-01-02T00:00:00Z", "LONG", 100, 1, 98])
 
             result = run_one("TESTUSDT", data_dir, signal_dir, [0],
-                             holdout_fraction=0.5, max_hold=2)
+                             holdout_fraction=0.25, max_hold=2, min_holdout_trades=2)
 
             development = result["periods"]["development"]["cost_0_bps"]["target_2.5R"]
             holdout = result["periods"]["holdout"]["cost_0_bps"]["target_2.5R"]
