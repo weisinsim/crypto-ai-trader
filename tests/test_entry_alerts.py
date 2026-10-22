@@ -85,6 +85,17 @@ class EntryAlertTests(unittest.TestCase):
                 self.assertFalse(event["eligible"])
                 self.assertIn("invalid_time_window", event["blockers"])
 
+    def test_malformed_direction_and_model_status_fail_closed(self):
+        for field, value in (("signal", ["LONG"]), ("model_status", ["PRODUCTION"])):
+            with self.subTest(field=field):
+                data = self.base()
+                data[field] = value
+                event = build_entry_alert(data, now_ms=1_800_000_100_000)
+                self.assertFalse(event["eligible"])
+                expected = ("not_actionable_direction" if field == "signal"
+                            else "model_not_approved_for_alerts")
+                self.assertIn(expected, event["blockers"])
+
     def test_numeric_nan_is_rejected(self):
         data = self.base()
         data["entry"] = float("nan")
