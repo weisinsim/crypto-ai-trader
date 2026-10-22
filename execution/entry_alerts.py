@@ -17,12 +17,13 @@ ALERTABLE_MODEL_STATES = {"RESEARCH", "FROZEN", "PRODUCTION"}
 
 
 def _finite_positive(value):
-    return (
-        isinstance(value, (int, float))
-        and not isinstance(value, bool)
-        and math.isfinite(float(value))
-        and float(value) > 0
-    )
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return math.isfinite(number) and number > 0
 
 
 def build_entry_alert(snapshot, *, now_ms, max_age_ms=90 * 60 * 1000):
