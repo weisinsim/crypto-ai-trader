@@ -78,18 +78,33 @@ def main():
     ):
         raise AssertionError("RSI series differs from repeated-prefix reference")
 
-    full_window_time, _ = timed(lambda: [
+    full_window_time, full_window = timed(lambda: [
         (atr(high[:i + 1], low[:i + 1], close[:i + 1]),
          vwap(high[:i + 1], low[:i + 1], close[:i + 1], quote[:i + 1]),
          levels(high[:i + 1], low[:i + 1], close[:i + 1]))
         for i in windows
     ])
-    bounded_time, _ = timed(lambda: [
+    bounded_time, bounded_window = timed(lambda: [
         (atr(high[max(0, i - 29):i + 1], low[max(0, i - 29):i + 1], close[max(0, i - 29):i + 1]),
          vwap(high[max(0, i - 47):i + 1], low[max(0, i - 47):i + 1], close[max(0, i - 47):i + 1], quote[max(0, i - 47):i + 1]),
          levels(high[max(0, i - 47):i + 1], low[max(0, i - 47):i + 1], close[max(0, i - 47):i + 1]))
         for i in windows
     ])
+    # The rolling functions are intended to depend only on the most recent
+    # window. Prove that bounded inputs preserve ATR, quote-volume VWAP, support
+    # and resistance before reporting any speedup.
+    if len(full_window) != len(bounded_window):
+        raise AssertionError("bounded rolling indicator result length differs")
+    for index, (full, bounded) in enumerate(zip(full_window, bounded_window)):
+        for full_value, bounded_value in zip(full, bounded):
+            if isinstance(full_value, tuple):
+                if full_value != bounded_value:
+                    raise AssertionError(f"bounded support/resistance parity failed at decision {index}")
+            elif full_value is None or bounded_value is None:
+                if full_value is not bounded_value:
+                    raise AssertionError(f"bounded rolling indicator null parity failed at decision {index}")
+            elif not math.isclose(full_value, bounded_value, rel_tol=1e-12, abs_tol=1e-12):
+                raise AssertionError(f"bounded rolling indicator parity failed at decision {index}")
 
     report = {
         "benchmark": "indicator_microbenchmark_only",
@@ -105,6 +120,7 @@ def main():
         "rolling_indicators_bounded_window_seconds": round(bounded_time, 6),
         "rolling_indicators_speedup": round(full_window_time / max(bounded_time, 1e-12), 3),
         "parity": "passed",
+        "rolling_indicator_parity": "passed",
         "limitations": "Synthetic deterministic data; indicator-only timings, not end-to-end replay performance.",
     }
     print(json.dumps(report, indent=2, sort_keys=True))
