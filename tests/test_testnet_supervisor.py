@@ -136,7 +136,11 @@ class TestnetSupervisorTests(unittest.TestCase):
         self.assertEqual(restarted_store.get_entry_lock()["token"], "crashed-process")
 
     def test_restart_with_unresolved_attempt_never_replays_order_id(self):
-        fingerprint = "a" * 64
+        import hashlib, json
+        from dataclasses import asdict
+        fingerprint = hashlib.sha256(json.dumps(
+            asdict(self.intent()), sort_keys=True, separators=(",", ":"), default=str
+        ).encode("utf-8")).hexdigest()
         self.assertTrue(self.store.claim_order_attempt("entry-unresolved", fingerprint))
         self.assertTrue(self.store.update_order_attempt("entry-unresolved", "RECONCILIATION_REQUIRED"))
         restarted_store = RuntimeStateStore(str(Path(self.temp.name) / "risk.sqlite"))
@@ -181,7 +185,7 @@ class TestnetSupervisorTests(unittest.TestCase):
             raise OSError("simulated SQLite write failure")
         self.store.update_order_attempt = fail_persistence
         result = self.supervisor.run_once(
-            "BTCUSDT", self.intent(), "entry-persistence-failure", "run-persistence-failure")
+            "BTCUSDT", self.intent(), "entry-persistence-failure", "run-persist-fail")
         self.assertEqual(result["reason"], "state_persistence_failed_requires_reconciliation")
         self.assertTrue(result["requires_reconciliation"])
         self.assertEqual(result["entry_submitted"], "unknown")
