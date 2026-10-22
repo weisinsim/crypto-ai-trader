@@ -61,6 +61,9 @@ class MultiCoinExitAuditTests(unittest.TestCase):
                 # It can only reach its target on the first holdout candle.
                 writer.writerow([timestamps[2], "LONG", 100, 1, 98])
                 writer.writerow([timestamps[3], "LONG", 100, 1, 98])
+                # A signal timestamp absent from the candle file must be surfaced,
+                # not silently treated as valid evidence.
+                writer.writerow(["2026-01-02T00:00:00Z", "LONG", 100, 1, 98])
 
             result = run_one("TESTUSDT", data_dir, signal_dir, [0],
                              holdout_fraction=0.5, max_hold=2)
@@ -71,6 +74,10 @@ class MultiCoinExitAuditTests(unittest.TestCase):
             self.assertEqual(holdout["trades"], 1)
             self.assertEqual(result["periods"]["development"]["candle_rows"], 3)
             self.assertEqual(result["periods"]["holdout"]["candle_rows"], 3)
+            self.assertEqual(result["matched_signals"], 2)
+            self.assertEqual(result["unmatched_signals"], 1)
+            self.assertEqual(result["signal_match_rate"], 0.66666667)
+            self.assertEqual(result["evidence_quality_status"], "BLOCKED_UNMATCHED_SIGNALS")
 
 
 if __name__ == "__main__":
