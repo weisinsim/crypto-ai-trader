@@ -160,10 +160,23 @@ def funding_cost_r(funding_rows, entry_ts, exit_ts, side, entry, risk):
 
 def evaluate(candles, signals, target_r, stop_atr, cost_bps, max_hold,
              funding_bps_per_8h=0.0, funding_rows=None, slippage_bps=0.0):
-    if (not math.isfinite(cost_bps) or cost_bps < 0
-            or not math.isfinite(slippage_bps) or slippage_bps < 0
-            or not math.isfinite(funding_bps_per_8h) or funding_bps_per_8h < 0):
-        raise ValueError("Cost, slippage, and adverse funding assumptions must be finite and non-negative")
+    # Validate this public helper independently of CLI parsing so library callers
+    # cannot bypass the same fail-closed assumptions used by the command-line audit.
+    for name, value in (("target_r", target_r), ("stop_atr", stop_atr),
+                        ("cost_bps", cost_bps), ("slippage_bps", slippage_bps),
+                        ("funding_bps_per_8h", funding_bps_per_8h)):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            raise ValueError(f"{name} must be a finite number")
+    if target_r <= 0 or stop_atr <= 0:
+        raise ValueError("target_r and stop_atr must be positive")
+    if cost_bps < 0 or slippage_bps < 0 or funding_bps_per_8h < 0:
+        raise ValueError("Cost, slippage, and adverse funding assumptions must be non-negative")
+    if isinstance(max_hold, bool) or not isinstance(max_hold, int) or max_hold < 1:
+        raise ValueError("max_hold must be a positive integer")
+    if not isinstance(candles, (list, tuple)) or not isinstance(signals, (list, tuple)):
+        raise ValueError("candles and signals must be lists or tuples")
+    if funding_rows is not None and not isinstance(funding_rows, (list, tuple)):
+        raise ValueError("funding_rows must be a list or tuple when supplied")
     index = {c["ts"]: i for i, c in enumerate(candles)}
     results = []
     for sig in signals:
