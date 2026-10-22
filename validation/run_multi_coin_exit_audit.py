@@ -8,7 +8,7 @@ from pathlib import Path
 from validation.exit_parameter_audit import read_candles, read_signals, evaluate, summarize
 
 
-def run_one(symbol, data_dir, signal_dir, costs, holdout_fraction, max_hold):
+def run_one(symbol, data_dir, signal_dir, costs, holdout_fraction, max_hold, min_holdout_trades=30):
     candles = read_candles(data_dir / f"{symbol}_1h.csv")
     signals = read_signals(signal_dir / f"{symbol}_signals.csv")
     if not candles:
@@ -56,7 +56,28 @@ def run_one(symbol, data_dir, signal_dir, costs, holdout_fraction, max_hold):
             for target_r in (2.5, 3.0):
                 trades = evaluate(subset["candles"], subset["signals"],
                                   target_r, 2.0, cost, max_hold)
-                result["periods"][period][f"cost_{cost:g}_bps"][f"target_{target_r:g}R"] = summarize(trades)
+                scenario = summarize(trades)
+                scenario["sample_status"] = (
+                    "INSUFFICIENT_SAMPLE"
+                    if period == "holdout" and scenario.get("trades", 0) < min_holdout_trades
+                    else "SAMPLE_THRESHOLD_MET" if period == "holdout"
+                    else "DEVELOPMENT_ONLY"
+                )
+                scenario["minimum_holdout_trades_required"] = min_holdout_trades
+                result["periods"][period][f"cost_{cost:g}_bps"][f"target_{target_r:g}R"] = scenario
+    holdout_scenarios = [
+        scenario
+        for cost_data in result["periods"]["holdout"].values()
+        if isinstance(cost_data, dict)
+        for scenario in cost_data.values()
+        if isinstance(scenario, dict) and "trades" in scenario
+    ]
+    result["holdout_sample_gate"] = {
+        "minimum_trades_required_per_scenario": min_holdout_trades,
+        "scenarios_checked": len(holdout_scenarios),
+        "scenarios_below_minimum": sum(s["trades"] < min_holdout_trades for s in holdout_scenarios),
+        "all_scenarios_meet_minimum": bool(holdout_scenarios) and all(s["trades"] >= min_holdout_trades for s in holdout_scenarios),
+    }
     return result
 
 
@@ -69,13 +90,16 @@ def main():
     p.add_argument("--cost-bps", nargs="+", type=float, default=[5, 10, 20, 30])
     p.add_argument("--holdout-fraction", type=float, default=0.30)
     p.add_argument("--max-hold", type=int, default=72)
+    p.add_argument("--min-holdout-trades", type=int, default=30,
+                   help="Minimum completed holdout trades required per cost/target scenario")
     a = p.parse_args()
     if (not a.cost_bps
             or any(not math.isfinite(c) or c < 0 for c in a.cost_bps)
             or not math.isfinite(a.holdout_fraction)
             or not 0.05 <= a.holdout_fraction <= 0.45
-            or a.max_hold < 1):
-        p.error("Costs must be finite and non-negative; holdout fraction must be 0.05–0.45; max hold must be positive")
+            or a.max_hold < 1
+            or a.min_holdout_trades < 1):
+        p.error("Costs must be finite and non-negative; holdout fraction must be 0.05–0.45; max hold and minimum holdout trades must be positive")
     normalized_symbols = [symbol.strip().upper() for symbol in a.symbols]
     if any(not symbol for symbol in normalized_symbols):
         p.error("Symbols must be non-empty")
@@ -84,7 +108,8 @@ def main():
     reports = []
     for symbol in normalized_symbols:
         reports.append(run_one(symbol, Path(a.data_dir), Path(a.signal_dir),
-                               a.cost_bps, a.holdout_fraction, a.max_hold))
+                               a.cost_bps, a.holdout_fraction, a.max_hold,
+                               a.min_holdout_trades))
     output = {
         "notice": "Research-only code replay and simplified OHLC exit simulation; not validated live performance or investment advice.",
         "promotion_status": "NOT_PROMOTED",
