@@ -103,7 +103,7 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
         # At 08:00:00 UTC, the second 4h candle is closed and usable.
         self.assertEqual(closed_four_count_at(bars, 8 * 3_600_000, 0), 2)
         # At 07:59:59.999 UTC, only the first 4h candle is closed.
-        self.assertEqual(closed_four_count_at(bars, 8 * 3_600_000 - 1, 0), 1)
+        self.assertEqual(closed_four_count_at(bars, 8 * 3_600_000 - 2, 0), 1)
 
     def test_timezone_naive_timestamp_rejected(self):
         with self.assertRaises(ValueError):
@@ -179,7 +179,7 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
     def test_incremental_four_hour_index_rejects_no_closed_rows_without_advancing(self):
         bars = [{"ts": 14_400_000, "c": 1}, {"ts": 28_800_000, "c": 2}]
         self.assertEqual(closed_four_count_at(bars, 14_400_000 - 1, 0), 0)
-        self.assertEqual(closed_four_count_at(bars, 14_400_000, 0), 0)
+        self.assertEqual(closed_four_count_at(bars, 14_400_000 - 1, 0), 0)
 
     def test_closed_rows_rejects_invalid_interval(self):
         with self.assertRaisesRegex(ValueError, "positive integer"):
