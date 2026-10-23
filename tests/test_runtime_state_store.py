@@ -157,6 +157,13 @@ class RuntimeStateStoreTests(unittest.TestCase):
         self.assertEqual(record["intent_fingerprint"], "d" * 64)
         self.assertEqual(record["status"], "CLAIMED")
 
+    def test_order_attempt_rejects_unhashable_status_values(self):
+        self.store.claim_order_attempt("order-status-type", "f" * 64)
+        for status in (None, [], {}, True, 1):
+            with self.subTest(status=status):
+                with self.assertRaisesRegex(ValueError, "invalid_order_attempt_status"):
+                    self.store.update_order_attempt("order-status-type", status)
+
     def test_order_attempt_rejects_invalid_fingerprint(self):
         with self.assertRaises(ValueError):
             self.store.claim_order_attempt("order-2", "not-a-sha256")
