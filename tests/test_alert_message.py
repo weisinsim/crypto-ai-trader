@@ -20,6 +20,28 @@ class EntryAlertMessageTests(unittest.TestCase):
         self.assertIn("Stop loss: 64500", text)
         self.assertIn("no order was placed", text)
 
+    def test_non_finite_and_boolean_numbers_are_rendered_as_unavailable(self):
+        event = self.event()
+        event.update({
+            "score": float("nan"),
+            "entry": float("inf"),
+            "stop_loss": True,
+            "take_profit_1": 10 ** 10000,
+            "take_profit_2": float("-inf"),
+            "risk_reward": float("nan"),
+            "signal_candle_ms": float("inf"),
+        })
+        text = format_entry_alert(event)
+        self.assertIn("Score: n/a", text)
+        self.assertIn("Entry: n/a", text)
+        self.assertIn("Stop loss: n/a", text)
+        self.assertIn("Take profit 1: n/a", text)
+        self.assertIn("Take profit 2: n/a", text)
+        self.assertIn("Signal candle: n/a", text)
+        self.assertNotIn("Risk/reward:", text)
+        self.assertNotIn("nan", text.lower())
+        self.assertNotIn("inf", text.lower())
+
     def test_rejects_ineligible_events(self):
         event = self.event()
         event["eligible"] = False
