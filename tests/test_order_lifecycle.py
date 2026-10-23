@@ -64,6 +64,22 @@ class OrderLifecycleTests(unittest.TestCase):
         self.assertEqual(outcome, "invalid_update_requires_reconciliation")
         self.assertEqual(result["state"], "RECONCILIATION_REQUIRED")
 
+    def test_extreme_or_unhashable_update_values_fail_closed(self):
+        for state, quantity in (("FILLED", 10 ** 10000), ([], 1), ({"state": "FILLED"}, 1)):
+            with self.subTest(state=state):
+                result, outcome = apply_order_update(
+                    self.record, self.update("extreme-event", state, quantity))
+                self.assertEqual(outcome, "invalid_update_requires_reconciliation")
+                self.assertEqual(result["state"], "RECONCILIATION_REQUIRED")
+                self.assertTrue(result["requires_reconciliation"])
+
+    def test_extreme_previous_quantity_fails_closed(self):
+        corrupted = dict(self.record, cumulative_filled_qty=10 ** 10000)
+        result, outcome = apply_order_update(
+            corrupted, self.update("next-event", "PARTIALLY_FILLED", 1))
+        self.assertEqual(outcome, "non_monotonic_fill_requires_reconciliation")
+        self.assertEqual(result["state"], "RECONCILIATION_REQUIRED")
+
     def test_missing_event_id_fails_closed(self):
         result, outcome = apply_order_update(
             self.record, {"state": "ACKNOWLEDGED", "cumulative_filled_qty": 0})
