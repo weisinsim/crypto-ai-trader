@@ -65,6 +65,8 @@ class EntryAlertStore:
         side = event.get("side")
         if not all(isinstance(x, str) and x for x in (event_id, symbol, side)):
             return False
+        if re.fullmatch(r"[A-Z0-9]{2,}USDT", symbol) is None:
+            return False
         # The outbox is strictly for human-facing alerts, never an execution queue.
         if (
             side not in ("LONG", "SHORT")
