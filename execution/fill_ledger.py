@@ -4,6 +4,7 @@ This is a narrow integration layer. It does not fetch fills, infer missing event
 or authorize trading. Callers must supply exchange-confirmed trade payloads.
 """
 from decimal import Decimal, InvalidOperation
+import math
 
 from execution.fill_reconciliation import normalize_trade_payload
 
@@ -24,8 +25,14 @@ def record_confirmed_fill_pnl(state_store, exchange_trade_payload):
         raise ValueError("invalid_normalized_realized_pnl")
     if not realized_pnl.is_finite():
         raise ValueError("invalid_normalized_realized_pnl")
+    try:
+        realized_pnl_float = float(realized_pnl)
+    except (OverflowError, ValueError):
+        raise ValueError("invalid_normalized_realized_pnl")
+    if not math.isfinite(realized_pnl_float):
+        raise ValueError("invalid_normalized_realized_pnl")
     inserted = state_store.record_realized_pnl(
-        float(realized_pnl),
+        realized_pnl_float,
         event_id=fill["event_id"],
     )
     return {
