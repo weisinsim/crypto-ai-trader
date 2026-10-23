@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import math
+import re
 
 
 def _finite_number(value):
@@ -21,7 +22,8 @@ def format_entry_alert(event):
 
     symbol = event.get("symbol")
     side = event.get("side")
-    if not isinstance(symbol, str) or side not in {"LONG", "SHORT"}:
+    if (not isinstance(symbol, str) or re.fullmatch(r"[A-Z0-9]{2,}USDT", symbol) is None
+            or not isinstance(side, str) or side not in {"LONG", "SHORT"}):
         raise ValueError("alert is missing a valid symbol or direction")
 
     production_approved = (
