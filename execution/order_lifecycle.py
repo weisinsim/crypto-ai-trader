@@ -79,18 +79,24 @@ def apply_order_update(record, update):
 
     new_state = update.get("state")
     quantity = update.get("cumulative_filled_qty")
-    if (new_state not in STATES or isinstance(quantity, bool)
-            or not isinstance(quantity, (int, float))
-            or not math.isfinite(quantity) or quantity < 0):
+    try:
+        quantity_number = float(quantity) if not isinstance(quantity, bool) else math.nan
+    except (TypeError, ValueError, OverflowError):
+        quantity_number = math.nan
+    if (not isinstance(new_state, str) or new_state not in STATES
+            or not math.isfinite(quantity_number) or quantity_number < 0):
         result["state"] = "RECONCILIATION_REQUIRED"
         result["requires_reconciliation"] = True
         result["seen_event_ids"].append(event_id)
         return result, "invalid_update_requires_reconciliation"
 
     previous_qty = result.get("cumulative_filled_qty", 0.0)
-    if (isinstance(previous_qty, bool) or not isinstance(previous_qty, (int, float))
-            or not math.isfinite(previous_qty) or previous_qty < 0
-            or quantity < previous_qty):
+    try:
+        previous_number = float(previous_qty) if not isinstance(previous_qty, bool) else math.nan
+    except (TypeError, ValueError, OverflowError):
+        previous_number = math.nan
+    if (not math.isfinite(previous_number) or previous_number < 0
+            or quantity_number < previous_number):
         result["state"] = "RECONCILIATION_REQUIRED"
         result["requires_reconciliation"] = True
         result["seen_event_ids"].append(event_id)
@@ -112,7 +118,7 @@ def apply_order_update(record, update):
         return result, "filled_without_quantity_requires_reconciliation"
 
     result["state"] = new_state
-    result["cumulative_filled_qty"] = float(quantity)
+    result["cumulative_filled_qty"] = quantity_number
     result["seen_event_ids"].append(event_id)
     result["requires_reconciliation"] = new_state == "RECONCILIATION_REQUIRED"
     return result, "applied"
