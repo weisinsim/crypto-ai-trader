@@ -95,6 +95,14 @@ class RuntimeStateStoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.store.record_realized_pnl(float("inf"))
 
+    def test_boolean_values_rejected_for_numeric_risk_state(self):
+        with self.assertRaisesRegex(ValueError, "symbol_notional_usdt must be finite numeric"):
+            self.store.update_exchange_metrics(0, True, 0, now_epoch=1000)
+        with self.assertRaisesRegex(ValueError, "amount_usdt must be finite numeric"):
+            self.store.record_realized_pnl(False)
+        with self.assertRaisesRegex(ValueError, "now_epoch must be finite numeric"):
+            self.store.update_exchange_metrics(0, 0, 0, now_epoch=True)
+
     def test_corrupt_runtime_metrics_fail_closed(self):
         self.store.update_exchange_metrics(0, 0, 0, now_epoch=1000)
         import sqlite3
