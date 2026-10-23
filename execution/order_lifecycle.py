@@ -66,7 +66,9 @@ def apply_order_update(record, update):
 
     result = deepcopy(record)
     seen = result.get("seen_event_ids")
-    if not isinstance(seen, list):
+    if (not isinstance(seen, list)
+            or any(not isinstance(item, str) or not item.strip() for item in seen)
+            or len(seen) != len(set(seen))):
         result["requires_reconciliation"] = True
         result["state"] = "RECONCILIATION_REQUIRED"
         return result, "invalid_event_ledger"
