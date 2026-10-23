@@ -81,10 +81,24 @@ def build_entry_alert(snapshot, *, now_ms, max_age_ms=90 * 60 * 1000):
     elif side == "SHORT" and not (fields["tp2"] <= fields["tp1"] < fields["entry"] < fields["sl"]):
         blockers.append("invalid_stop_geometry")
 
+    # Prefer an explicitly supplied RR, but derive it from validated trade
+    # geometry when older snapshots/adapters do not include the field.
     risk_reward = snapshot.get("rr")
-    if (not isinstance(risk_reward, (int, float)) or isinstance(risk_reward, bool)
-            or not math.isfinite(float(risk_reward)) or float(risk_reward) <= 0):
+    if risk_reward is None:
+        if all(_finite_positive(fields[k]) for k in ("entry", "sl", "tp1")) and side in DIRECTIONS:
+            risk_amount = (fields["entry"] - fields["sl"] if side == "LONG"
+                           else fields["sl"] - fields["entry"])
+            reward_amount = (fields["tp1"] - fields["entry"] if side == "LONG"
+                             else fields["entry"] - fields["tp1"])
+            if risk_amount > 0 and reward_amount > 0:
+                risk_reward = reward_amount / risk_amount
+            else:
+                blockers.append("invalid_risk_reward")
+        else:
+            blockers.append("invalid_risk_reward")
+    elif (not _finite_positive(risk_reward)):
         blockers.append("invalid_risk_reward")
+        risk_reward = None
 
     score = snapshot.get("confirmed_score", snapshot.get("score"))
     if not _finite_number(score) or not 0 <= score <= 100:
@@ -112,7 +126,7 @@ def build_entry_alert(snapshot, *, now_ms, max_age_ms=90 * 60 * 1000):
         "stop_loss": fields["sl"] if _finite_positive(fields["sl"]) else None,
         "take_profit_1": fields["tp1"] if _finite_positive(fields["tp1"]) else None,
         "take_profit_2": fields["tp2"] if _finite_positive(fields["tp2"]) else None,
-        "risk_reward": risk_reward if isinstance(risk_reward, (int, float)) and not isinstance(risk_reward, bool) and math.isfinite(float(risk_reward)) and float(risk_reward) > 0 else None,
+        "risk_reward": risk_reward if _finite_positive(risk_reward) else None,
         "signal_candle_ms": candle_ms,
         "analysis_ts": analysis_ts,
         "source": snapshot.get("source"),
