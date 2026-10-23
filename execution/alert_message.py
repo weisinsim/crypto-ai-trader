@@ -2,6 +2,16 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import math
+
+
+def _finite_number(value):
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError, OverflowError):
+        return False
 
 
 def format_entry_alert(event):
@@ -23,15 +33,18 @@ def format_entry_alert(event):
     )
     status = "PRODUCTION SIGNAL" if production_approved else "RESEARCH CANDIDATE — NOT LIVE-APPROVED"
     score = event.get("score")
-    score_text = f"{score:.1f}/100" if isinstance(score, (int, float)) else "n/a"
+    score_text = f"{score:.1f}/100" if _finite_number(score) else "n/a"
 
     def price(name):
         value = event.get(name)
-        return f"{value:.8g}" if isinstance(value, (int, float)) else "n/a"
+        return f"{value:.8g}" if _finite_number(value) else "n/a"
 
     candle = event.get("signal_candle_ms")
-    if isinstance(candle, (int, float)):
-        candle_text = datetime.fromtimestamp(candle / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    if _finite_number(candle):
+        try:
+            candle_text = datetime.fromtimestamp(candle / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        except (OverflowError, OSError, ValueError):
+            candle_text = "n/a"
     else:
         candle_text = "n/a"
 
@@ -47,6 +60,6 @@ def format_entry_alert(event):
         "Execution: notification only; no order was placed.",
     ]
     rr = event.get("risk_reward")
-    if isinstance(rr, (int, float)):
+    if _finite_number(rr) and rr > 0:
         lines.insert(4, f"Risk/reward: {rr:.2f}")
     return "\n".join(lines)
