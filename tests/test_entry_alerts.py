@@ -121,6 +121,16 @@ class EntryAlertTests(unittest.TestCase):
         self.assertFalse(event["eligible"])
         self.assertIn("invalid_time_window", event["blockers"])
 
+    def test_invalid_risk_reward_fails_closed(self):
+        for value in (0, -1, float("nan"), float("inf"), True, "2.0"):
+            with self.subTest(value=value):
+                data = self.base()
+                data["rr"] = value
+                event = build_entry_alert(data, now_ms=1_800_000_100_000)
+                self.assertFalse(event["eligible"])
+                self.assertIn("invalid_risk_reward", event["blockers"])
+                self.assertIsNone(event["risk_reward"])
+
     def test_numeric_nan_is_rejected(self):
         data = self.base()
         data["entry"] = float("nan")
