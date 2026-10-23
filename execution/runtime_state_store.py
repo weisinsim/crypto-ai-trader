@@ -97,6 +97,8 @@ class RuntimeStateStore:
 
     @staticmethod
     def _finite_number(value, field):
+        if isinstance(value, bool):
+            raise ValueError(f"{field} must be finite numeric")
         try:
             number = float(value)
         except (TypeError, ValueError, OverflowError) as exc:
