@@ -108,7 +108,7 @@ class ScanOnceTests(unittest.TestCase):
                     )
 
     def test_rejects_invalid_max_age_before_scanning(self):
-        for max_age_ms in (True, -1, float("nan"), float("inf"), "60000"):
+        for max_age_ms in (True, -1, float("nan"), float("inf"), "60000", 10**10000):
             with self.subTest(max_age_ms=max_age_ms):
                 with self.assertRaisesRegex(ValueError, "max_age_ms must be a finite non-negative number"):
                     scan_once(
