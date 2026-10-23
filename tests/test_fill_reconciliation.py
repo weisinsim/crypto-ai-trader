@@ -51,6 +51,12 @@ class FillReconciliationTests(unittest.TestCase):
                 executedQty="1e9999", origQty="1e10000",
             ))
 
+    def test_positive_executed_quantity_cannot_underflow_to_zero(self):
+        with self.assertRaisesRegex(ValueError, "invalid_executed_qty"):
+            normalize_order_payload(self.order(
+                status="PARTIALLY_FILLED", executedQty="1e-10000", origQty="1",
+            ))
+
     def test_unknown_status_fails_closed(self):
         for status in ("PENDING_CANCEL", [], {}):
             with self.subTest(status=status):
