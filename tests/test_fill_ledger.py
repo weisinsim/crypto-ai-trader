@@ -43,6 +43,12 @@ class FillLedgerTests(unittest.TestCase):
         self.assertFalse(second["pnl_event_recorded"])
         self.assertEqual(len(self.store.events), 1)
 
+    def test_unrepresentable_realized_pnl_is_rejected_before_recording(self):
+        trade = dict(self.trade, realizedPnl="1e9999")
+        with self.assertRaisesRegex(ValueError, "invalid_normalized_realized_pnl"):
+            record_confirmed_fill_pnl(self.store, trade)
+        self.assertEqual(self.store.events, {})
+
     def test_missing_store_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "runtime_state_store_required"):
             record_confirmed_fill_pnl(None, self.trade)
