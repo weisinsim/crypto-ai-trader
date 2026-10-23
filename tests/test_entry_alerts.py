@@ -152,6 +152,15 @@ class EntryAlertTests(unittest.TestCase):
         self.assertFalse(event["eligible"])
         self.assertIn("invalid_numeric_fields", event["blockers"])
 
+    def test_derived_risk_reward_overflow_fails_closed(self):
+        data = self.base()
+        data.pop("rr")
+        data.update(entry=1e-300, sl=5e-324, tp1=1e308, tp2=1.1e308)
+        event = build_entry_alert(data, now_ms=1_800_000_100_000)
+        self.assertFalse(event["eligible"])
+        self.assertIn("invalid_risk_reward", event["blockers"])
+        self.assertIsNone(event["risk_reward"])
+
 
 if __name__ == "__main__":
     unittest.main()
