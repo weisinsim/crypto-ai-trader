@@ -107,6 +107,17 @@ class ScanOnceTests(unittest.TestCase):
                         store=EntryAlertStore(":memory:"), now_ms=now_ms,
                     )
 
+    def test_rejects_invalid_max_age_before_scanning(self):
+        for max_age_ms in (True, -1, float("nan"), float("inf"), "60000"):
+            with self.subTest(max_age_ms=max_age_ms):
+                with self.assertRaisesRegex(ValueError, "max_age_ms must be a finite non-negative number"):
+                    scan_once(
+                        symbols=["BTCUSDT"], interval="1h", market_data=self.market,
+                        snapshot_provider=lambda symbol: dict(self.snapshot),
+                        store=EntryAlertStore(":memory:"), now_ms=NOW,
+                        max_age_ms=max_age_ms,
+                    )
+
     def test_queues_valid_candle_aligned_signal(self):
         class Store:
             def __init__(self):
