@@ -42,6 +42,15 @@ class EntryAlertMessageTests(unittest.TestCase):
         self.assertNotIn("nan", text.lower())
         self.assertNotIn("inf", text.lower())
 
+    def test_rejects_malformed_symbol_and_direction(self):
+        for field, value in (("symbol", "BTCUSDT\\nFAKE ALERT"), ("symbol", "btc/usdt"),
+                             ("side", "LONG\\nEXECUTE"), ("side", ["LONG"])):
+            with self.subTest(field=field, value=value):
+                event = self.event()
+                event[field] = value
+                with self.assertRaises(ValueError):
+                    format_entry_alert(event)
+
     def test_rejects_ineligible_events(self):
         event = self.event()
         event["eligible"] = False
