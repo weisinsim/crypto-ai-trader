@@ -35,6 +35,15 @@ class EntryAlertStoreTests(unittest.TestCase):
         self.assertFalse(store.enqueue(event))
         self.assertEqual(store.pending(), [])
 
+    def test_rejects_noncanonical_symbols_at_storage_boundary(self):
+        store = EntryAlertStore(":memory:")
+        base = {"event_id": "symbol-check", "eligible": True, "side": "LONG",
+                "notification_only": True, "auto_trade_authorized": False}
+        for symbol in ("btcusdt", "BTC/USDT", "BTC USDT", "BTCUSDT.evil", "UUSDT"):
+            with self.subTest(symbol=symbol):
+                self.assertFalse(store.enqueue(dict(base, symbol=symbol), now=10))
+        self.assertEqual(store.pending(), [])
+
     def test_requires_alert_contract_fields(self):
         store = EntryAlertStore(":memory:")
         event = {"event_id": "candidate", "eligible": True, "symbol": "BTCUSDT", "side": "LONG"}
