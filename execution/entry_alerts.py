@@ -81,6 +81,11 @@ def build_entry_alert(snapshot, *, now_ms, max_age_ms=90 * 60 * 1000):
     elif side == "SHORT" and not (fields["tp2"] <= fields["tp1"] < fields["entry"] < fields["sl"]):
         blockers.append("invalid_stop_geometry")
 
+    risk_reward = snapshot.get("rr")
+    if (not isinstance(risk_reward, (int, float)) or isinstance(risk_reward, bool)
+            or not math.isfinite(float(risk_reward)) or float(risk_reward) <= 0):
+        blockers.append("invalid_risk_reward")
+
     score = snapshot.get("confirmed_score", snapshot.get("score"))
     if not _finite_number(score) or not 0 <= score <= 100:
         blockers.append("invalid_score")
@@ -107,7 +112,7 @@ def build_entry_alert(snapshot, *, now_ms, max_age_ms=90 * 60 * 1000):
         "stop_loss": fields["sl"] if _finite_positive(fields["sl"]) else None,
         "take_profit_1": fields["tp1"] if _finite_positive(fields["tp1"]) else None,
         "take_profit_2": fields["tp2"] if _finite_positive(fields["tp2"]) else None,
-        "risk_reward": snapshot.get("rr"),
+        "risk_reward": risk_reward if isinstance(risk_reward, (int, float)) and not isinstance(risk_reward, bool) and math.isfinite(float(risk_reward)) and float(risk_reward) > 0 else None,
         "signal_candle_ms": candle_ms,
         "analysis_ts": analysis_ts,
         "source": snapshot.get("source"),
