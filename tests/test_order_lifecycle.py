@@ -57,6 +57,26 @@ class OrderLifecycleTests(unittest.TestCase):
         self.assertEqual(outcome, "filled_without_quantity_requires_reconciliation")
         self.assertTrue(result["requires_reconciliation"])
 
+    def test_filled_numeric_string_quantity_is_normalized_before_comparison(self):
+        result, outcome = apply_order_update(
+            self.record, self.update("string-qty", "FILLED", "1.0"))
+        self.assertEqual(outcome, "applied")
+        self.assertEqual(result["state"], "FILLED")
+        self.assertEqual(result["cumulative_filled_qty"], 1.0)
+
+    def test_filled_zero_string_quantity_requires_reconciliation(self):
+        result, outcome = apply_order_update(
+            self.record, self.update("zero-string-qty", "FILLED", "0"))
+        self.assertEqual(outcome, "filled_without_quantity_requires_reconciliation")
+        self.assertEqual(result["state"], "RECONCILIATION_REQUIRED")
+
+    def test_unhashable_record_state_is_rejected_cleanly(self):
+        for state in ([], {}):
+            with self.subTest(state=state):
+                with self.assertRaisesRegex(ValueError, "invalid_order_record"):
+                    apply_order_update(dict(self.record, state=state),
+                                       self.update("bad-state", "ACKNOWLEDGED", 0))
+
     def test_malformed_update_fails_closed(self):
         result, outcome = apply_order_update(
             self.record, {"event_id": "e1", "state": "FILLED",
