@@ -121,6 +121,20 @@ class EntryAlertTests(unittest.TestCase):
         self.assertFalse(event["eligible"])
         self.assertIn("invalid_time_window", event["blockers"])
 
+    def test_missing_risk_reward_is_derived_from_validated_geometry(self):
+        data = self.base()
+        data.pop("rr")
+        event = build_entry_alert(data, now_ms=1_800_000_100_000)
+        self.assertTrue(event["eligible"], event["blockers"])
+        self.assertAlmostEqual(event["risk_reward"], 2.0)
+
+        short = self.base()
+        short.update(signal="SHORT", entry=100.0, sl=105.0, tp1=90.0, tp2=85.0)
+        short.pop("rr")
+        event = build_entry_alert(short, now_ms=1_800_000_100_000)
+        self.assertTrue(event["eligible"], event["blockers"])
+        self.assertAlmostEqual(event["risk_reward"], 2.0)
+
     def test_invalid_risk_reward_fails_closed(self):
         for value in (0, -1, float("nan"), float("inf"), True, "2.0"):
             with self.subTest(value=value):
