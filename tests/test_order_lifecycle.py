@@ -77,6 +77,16 @@ class OrderLifecycleTests(unittest.TestCase):
                     apply_order_update(dict(self.record, state=state),
                                        self.update("bad-state", "ACKNOWLEDGED", 0))
 
+    def test_malformed_event_ledger_requires_reconciliation(self):
+        for event_ids in ([None], [""], ["e1", "e1"]):
+            with self.subTest(event_ids=event_ids):
+                corrupted = dict(self.record, seen_event_ids=event_ids)
+                result, outcome = apply_order_update(
+                    corrupted, self.update("new-event", "ACKNOWLEDGED", 0))
+                self.assertEqual(outcome, "invalid_event_ledger")
+                self.assertEqual(result["state"], "RECONCILIATION_REQUIRED")
+                self.assertTrue(result["requires_reconciliation"])
+
     def test_malformed_update_fails_closed(self):
         result, outcome = apply_order_update(
             self.record, {"event_id": "e1", "state": "FILLED",
