@@ -4,6 +4,7 @@ Pure functions only: no network calls, no order submission, and no inference tha
 an order is safe to retry. Malformed or incomplete exchange data fails closed.
 """
 from decimal import Decimal, InvalidOperation
+import math
 
 
 def _decimal(value, field, *, allow_zero=True):
@@ -53,7 +54,9 @@ def normalize_order_payload(payload):
         cumulative_filled_qty = float(executed)
     except (OverflowError, ValueError):
         raise ValueError("invalid_executed_qty")
-    if cumulative_filled_qty == float("inf"):
+    if not math.isfinite(cumulative_filled_qty):
+        raise ValueError("invalid_executed_qty")
+    if executed > 0 and cumulative_filled_qty == 0:
         raise ValueError("invalid_executed_qty")
     return {
         "exchange_order_id": str(order_id),
