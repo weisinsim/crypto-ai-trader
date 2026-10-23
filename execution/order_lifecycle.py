@@ -57,7 +57,9 @@ def apply_order_update(record, update):
     Event IDs provide idempotency. Cumulative fill quantity must never decrease.
     Any malformed or contradictory update fails closed into reconciliation.
     """
-    if not isinstance(record, dict) or record.get("state") not in STATES:
+    if (not isinstance(record, dict)
+            or not isinstance(record.get("state"), str)
+            or record.get("state") not in STATES):
         raise ValueError("invalid_order_record")
     if not isinstance(update, dict):
         raise ValueError("invalid_order_update")
@@ -111,7 +113,7 @@ def apply_order_update(record, update):
 
     # A FILLED exchange state must have a positive cumulative fill. A
     # cancellation/rejection may legitimately report zero or partial fill.
-    if new_state == "FILLED" and quantity <= 0:
+    if new_state == "FILLED" and quantity_number <= 0:
         result["state"] = "RECONCILIATION_REQUIRED"
         result["requires_reconciliation"] = True
         result["seen_event_ids"].append(event_id)
