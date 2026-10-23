@@ -246,7 +246,7 @@ class RuntimeStateStore:
         if not isinstance(client_order_id, str) or not client_order_id:
             raise ValueError("invalid_client_order_id")
         allowed_statuses = {"CLAIMED", "REJECTED", "SUBMITTED", "RECONCILIATION_REQUIRED", "COMPLETED"}
-        if status not in allowed_statuses:
+        if not isinstance(status, str) or status not in allowed_statuses:
             raise ValueError("invalid_order_attempt_status")
         transitions = {
             "CLAIMED": allowed_statuses,
