@@ -85,6 +85,9 @@ def scan_once(*, symbols, interval, market_data, snapshot_provider, store,
         now_ms = int(time.time() * 1000)
     elif isinstance(now_ms, bool) or not isinstance(now_ms, int) or now_ms <= 0:
         raise ValueError("now_ms must be a positive integer timestamp")
+    if (not isinstance(max_age_ms, (int, float)) or isinstance(max_age_ms, bool)
+            or not math.isfinite(max_age_ms) or max_age_ms < 0):
+        raise ValueError("max_age_ms must be a finite non-negative number")
     if not isinstance(symbols, (list, tuple)) or not symbols:
         raise ValueError("symbols must be a non-empty list or tuple")
     if any(not isinstance(symbol, str)
