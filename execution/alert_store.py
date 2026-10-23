@@ -120,6 +120,8 @@ class EntryAlertStore:
         ]
 
     def mark_delivered(self, event_id, *, now=None):
+        if not isinstance(event_id, str) or not event_id:
+            return False
         try:
             if isinstance(now, bool):
                 return False
