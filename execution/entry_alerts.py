@@ -100,6 +100,12 @@ def build_entry_alert(snapshot, *, now_ms, max_age_ms=90 * 60 * 1000):
         blockers.append("invalid_risk_reward")
         risk_reward = None
 
+    # Derived arithmetic can overflow even when each input is finite. Re-check
+    # the final value so an infinite RR can never leave an event eligible.
+    if not _finite_positive(risk_reward):
+        blockers.append("invalid_risk_reward")
+        risk_reward = None
+
     score = snapshot.get("confirmed_score", snapshot.get("score"))
     if not _finite_number(score) or not 0 <= score <= 100:
         blockers.append("invalid_score")
