@@ -41,10 +41,13 @@ class V12FeatureBuilderTests(unittest.TestCase):
         ]
         features = build_v12_features(one_hour, four_hour, events)
         before_future_event = [row for row in features if row["t"] + 3_600_000 < 250 * 3_600_000]
-        after_future_event = [row for row in features if row["t"] + 3_600_000 >= 250 * 3_600_000]
+        after_future_event = [row for row in features if row["t"] + 3_600_000 > 250 * 3_600_000]
         self.assertTrue(before_future_event)
         self.assertTrue(after_future_event)
         self.assertEqual(before_future_event[-1]["funding_rate"], 0.0001)
+        at_settlement_close = [row for row in features if row["t"] + 3_600_000 == 250 * 3_600_000]
+        self.assertTrue(at_settlement_close)
+        self.assertEqual(at_settlement_close[-1]["funding_rate"], 0.0001)
         self.assertEqual(after_future_event[0]["funding_rate"], -0.0007)
 
     def test_feature_builder_does_not_fabricate_oi_or_cvd(self):
