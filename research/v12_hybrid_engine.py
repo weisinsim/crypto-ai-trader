@@ -227,6 +227,7 @@ def evaluate_hybrid(symbol: str, features: Mapping[str, Any], *, min_score_overr
     else:
         signal, score, status = "SHORT", short_score, "RESEARCH_CANDIDATE"
 
+    reasons = []
     if short_rsi_floor is not None:
         if not isinstance(short_rsi_floor, (int, float)) or isinstance(short_rsi_floor, bool) or not isfinite(float(short_rsi_floor)) or not 0 <= float(short_rsi_floor) <= 50:
             return {"model_version": MODEL_VERSION, "symbol": symbol, "signal": "NO-TRADE",
@@ -236,7 +237,6 @@ def evaluate_hybrid(symbol: str, features: Mapping[str, Any], *, min_score_overr
             signal, status = "NO-TRADE", "SHORT_EXHAUSTION_FILTER"
             reasons = [f"Short blocked: RSI {rsi:.2f} is below exhaustion floor {float(short_rsi_floor):.2f}"]
 
-    reasons = locals().get("reasons", [])
     if long_block:
         reasons.append("Long blocked: resistance is less than 0.75 ATR away")
     if short_block:
