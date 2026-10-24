@@ -43,7 +43,7 @@ def _clamp(value: float, lo: float = 0.0, hi: float = 100.0) -> float:
     return max(lo, min(hi, value))
 
 
-def evaluate_hybrid(symbol: str, features: Mapping[str, Any], *, min_score_override: int | None = None, min_edge_override: int | None = None, short_rsi_floor: float | None = None) -> dict:
+def evaluate_hybrid(symbol: str, features: Mapping[str, Any], *, min_score_override: int | None = None, min_edge_override: int | None = None, short_rsi_floor: float | None = None, component_weights_override: Mapping[str, float] | None = None) -> dict:
     """Return an auditable directional candidate from normalized feature inputs.
 
     Expected optional inputs:
@@ -198,8 +198,35 @@ def evaluate_hybrid(symbol: str, features: Mapping[str, Any], *, min_score_overr
                   "confluence": round(m3_long, 2), "asset_adaptive": round(m4_long, 2)}
     short_parts = {"momentum_funding": round(m1_short, 2), "trend_breakout": round(m2_short, 2),
                    "confluence": round(m3_short, 2), "asset_adaptive": round(m4_short, 2)}
-    long_score = round(sum(long_parts[k] * WEIGHTS[k] for k in WEIGHTS) * regime_factor)
-    short_score = round(sum(short_parts[k] * WEIGHTS[k] for k in WEIGHTS) * regime_factor)
+    weights = dict(WEIGHTS)
+    if component_weights_override is not None:
+        if not isinstance(component_weights_override, Mapping):
+            return {"model_version": MODEL_VERSION, "symbol": symbol, "signal": "NO-TRADE",
+                    "score": 0, "status": "INVALID_COMPONENT_WEIGHTS", "missing": [],
+                    "components": {}, "reasons": ["component_weights_override must be a mapping"]}
+        for key, value in component_weights_override.items():
+            if key not in WEIGHTS or isinstance(value, bool):
+                return {"model_version": MODEL_VERSION, "symbol": symbol, "signal": "NO-TRADE",
+                        "score": 0, "status": "INVALID_COMPONENT_WEIGHTS", "missing": [],
+                        "components": {}, "reasons": ["Unknown component or non-numeric weight"]}
+            try:
+                value = float(value)
+            except (TypeError, ValueError, OverflowError):
+                value = float("nan")
+            if not isfinite(value) or value < 0:
+                return {"model_version": MODEL_VERSION, "symbol": symbol, "signal": "NO-TRADE",
+                        "score": 0, "status": "INVALID_COMPONENT_WEIGHTS", "missing": [],
+                        "components": {}, "reasons": ["Weights must be finite and nonnegative"]}
+            weights[key] = value
+        total_weight = sum(weights.values())
+        if total_weight <= 0:
+            return {"model_version": MODEL_VERSION, "symbol": symbol, "signal": "NO-TRADE",
+                    "score": 0, "status": "INVALID_COMPONENT_WEIGHTS", "missing": [],
+                    "components": {}, "reasons": ["At least one component weight must be positive"]}
+        weights = {key: value / total_weight for key, value in weights.items()}
+
+    long_score = round(sum(long_parts[k] * weights[k] for k in weights) * regime_factor)
+    short_score = round(sum(short_parts[k] * weights[k] for k in weights) * regime_factor)
 
     # Do not buy directly into nearby resistance or short directly into nearby support.
     long_room = (resistance - price) / atr if resistance is not None and resistance > price else None
@@ -250,7 +277,7 @@ def evaluate_hybrid(symbol: str, features: Mapping[str, Any], *, min_score_overr
         "signal": signal, "score": score, "status": status, "missing": [],
         "components": {"long": long_parts, "short": short_parts,
                        "long_score": long_score, "short_score": short_score,
-                       "weights": WEIGHTS, "regime_factor": regime_factor},
+                       "weights": weights, "regime_factor": regime_factor},
         "risk": {"atr": atr, "stop_atr_default": 1.5, "target_r_default": 2.0,
                  "long_resistance_room_atr": long_room, "short_support_room_atr": short_room},
         "reasons": reasons,
