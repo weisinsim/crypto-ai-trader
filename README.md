@@ -74,6 +74,13 @@ Before enabling exchange execution, separately implement and validate idempotent
 
 The backtest report includes `funding_interpretation_gate` and `funding_data.audit_status`. Missing funding history, duplicate raw event timestamps, events outside the candle coverage, or raw event times that do not align to candle opens set the gate to `FUNDING_DATA_REVIEW_REQUIRED` / `REVIEW_REQUIRED`. A clean timestamp-alignment diagnostic is only `TIMESTAMP_ALIGNMENT_ONLY_NOT_RECONCILED`; it does not prove complete venue history, source authenticity, or account cashflow reconciliation. The gate is an interpretation warning, not a claim that funding is fully audited and not a production approval.
 
+## V12 adaptive hybrid research
+- [V12 research guide](V12_RESEARCH_GUIDE.md): data pipeline, cost assumptions, calibration policy, and validation commands.
+- [Pre-exit baseline findings](V12_2025_2026_RESEARCH_FINDINGS.md): initial four-coin results before ATR trailing/reversal/time exits.
+- [Exit-management findings](V12_2025_2026_EXIT_MODEL_FINDINGS.md): current historical results with 1.5 ATR trailing after TP1, next-open signal-reversal exit, and a 72-hour time stop.
+
+Current conclusion: **research only; no coin is approved for live trading**. SOL is the best candidate for continued research, but walk-forward evidence and trade count are insufficient for production. The reviewed 2025–2026 holdout is consumed for future tuning; future promotion requires a new paper-trading or reserved out-of-sample period.
+
 ## Research status and promotion criteria
 
 A passing unit test or successful compile validates software behavior only; it is not evidence of strategy profitability. Do not promote any model to production without a reproducible, independently reviewable report that documents:
