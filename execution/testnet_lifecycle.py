@@ -234,6 +234,8 @@ def cancel_testnet_sibling_after_flatten(
         if not value.replace("-", "").replace("_", "").isalnum():
             return {"ok": False, "reason": "invalid_client_order_id"}
     filled = adapter.query_testnet_order(symbol, filled_exit_client_order_id)
+    if not isinstance(filled, dict):
+        return {"ok": False, "reason": "filled_exit_lookup_invalid_response", "requires_reconciliation": True}
     if not filled.get("found"):
         return {"ok": False, "reason": "filled_exit_lookup_failed", "requires_reconciliation": True}
     if filled.get("status") != "FILLED":
@@ -266,6 +268,8 @@ def cancel_testnet_sibling_after_flatten(
         }
 
     sibling = adapter.query_testnet_order(symbol, sibling_exit_client_order_id)
+    if not isinstance(sibling, dict):
+        return {"ok": False, "reason": "sibling_lookup_invalid_response", "requires_reconciliation": True}
     if not sibling.get("found"):
         return {"ok": False, "reason": "sibling_lookup_failed", "requires_reconciliation": True}
     if sibling.get("status") in {"CANCELED", "EXPIRED", "REJECTED"}:
@@ -277,6 +281,8 @@ def cancel_testnet_sibling_after_flatten(
             "requires_reconciliation": True,
         }
     cancelled = adapter.cancel_testnet_order(symbol, sibling_exit_client_order_id)
+    if not isinstance(cancelled, dict):
+        return {"ok": False, "reason": "sibling_cancel_invalid_response", "requires_reconciliation": True}
     if not cancelled.get("cancelled"):
         return {
             "ok": False,
@@ -287,6 +293,8 @@ def cancel_testnet_sibling_after_flatten(
     # A cancel acknowledgement is not proof the sibling is inactive: it may
     # have filled in the race between the pre-cancel lookup and cancellation.
     sibling_after_cancel = adapter.query_testnet_order(symbol, sibling_exit_client_order_id)
+    if not isinstance(sibling_after_cancel, dict):
+        return {"ok": False, "reason": "post_cancel_sibling_invalid_response", "requires_reconciliation": True}
     if not sibling_after_cancel.get("found"):
         return {"ok": False, "reason": "post_cancel_sibling_lookup_failed", "requires_reconciliation": True}
     if sibling_after_cancel.get("status") not in {"CANCELED", "EXPIRED", "REJECTED"}:
