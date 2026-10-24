@@ -52,6 +52,11 @@ class V12HybridEngineTests(unittest.TestCase):
         self.assertEqual(result["signal"], "NO-TRADE")
         self.assertEqual(result["status"], "EXTERNAL_FROZEN_MODEL_REQUIRED")
 
+    def test_invalid_threshold_override_fails_closed(self):
+        result = evaluate_hybrid("BTCUSDT", strong_long_features(), min_score_override=10)
+        self.assertEqual(result["signal"], "NO-TRADE")
+        self.assertEqual(result["status"], "INVALID_THRESHOLD_OVERRIDE")
+
 
 if __name__ == "__main__":
     unittest.main()
