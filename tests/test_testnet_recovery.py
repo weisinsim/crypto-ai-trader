@@ -94,5 +94,35 @@ class TestnetRecoveryTests(unittest.TestCase):
         self.assertTrue(result["requires_manual_reconciliation"])
         self.assertEqual(adapter.snapshot_calls, 1)
 
+    def test_unknown_order_status_requires_manual_reconciliation(self):
+        adapter = RecoveryAdapter({
+            "ok": True, "position_amount": "1", "entry_price": "100",
+            "open_orders": [{"status": "PENDING_UNKNOWN", "type": "STOP_MARKET",
+                             "reduce_only": True}]
+        })
+        result = recover_testnet_position(adapter, "BTCUSDT", 99, 101, "recover-unknown-status")
+        self.assertEqual(result["reason"], "recovery_order_status_unknown")
+        self.assertTrue(result["requires_manual_reconciliation"])
+
+    def test_flat_position_with_active_order_requires_manual_reconciliation(self):
+        adapter = RecoveryAdapter({
+            "ok": True, "position_amount": "0", "entry_price": "0",
+            "open_orders": [{"status": "NEW", "type": "STOP_MARKET",
+                             "reduce_only": True}]
+        })
+        result = recover_testnet_position(adapter, "BTCUSDT", 99, 101, "recover-orphan-order")
+        self.assertEqual(result["reason"], "recovery_flat_position_has_open_orders")
+        self.assertTrue(result["requires_manual_reconciliation"])
+
+    def test_active_non_protective_order_blocks_recovery(self):
+        adapter = RecoveryAdapter({
+            "ok": True, "position_amount": "1", "entry_price": "100",
+            "open_orders": [{"status": "NEW", "type": "LIMIT",
+                             "reduce_only": False}]
+        })
+        result = recover_testnet_position(adapter, "BTCUSDT", 99, 101, "recover-unexpected-order")
+        self.assertEqual(result["reason"], "recovery_unexpected_active_orders")
+        self.assertTrue(result["requires_manual_reconciliation"])
+
 if __name__ == "__main__":
     unittest.main()
