@@ -76,6 +76,26 @@ class V12HybridEngineTests(unittest.TestCase):
         self.assertEqual(filtered["signal"], "NO-TRADE")
         self.assertEqual(filtered["status"], "SHORT_EXHAUSTION_FILTER")
 
+    def test_component_weight_override_is_normalized(self):
+        result = evaluate_hybrid(
+            "BTCUSDT", strong_long_features(),
+            component_weights_override={"momentum_funding": 0.0},
+        )
+        weights = result["components"]["weights"]
+        self.assertEqual(weights["momentum_funding"], 0.0)
+        self.assertAlmostEqual(sum(weights.values()), 1.0)
+
+    def test_all_zero_component_weights_fail_closed(self):
+        result = evaluate_hybrid(
+            "BTCUSDT", strong_long_features(),
+            component_weights_override={
+                "momentum_funding": 0.0, "trend_breakout": 0.0,
+                "confluence": 0.0, "asset_adaptive": 0.0,
+            },
+        )
+        self.assertEqual(result["signal"], "NO-TRADE")
+        self.assertEqual(result["status"], "INVALID_COMPONENT_WEIGHTS")
+
 
 if __name__ == "__main__":
     unittest.main()
