@@ -36,7 +36,7 @@ Repeat per symbol. Do not mix symbols or exchanges in one input file. Funding in
 - Historical OI change, CVD, and spread are not currently available in the feature builder and are explicitly left unknown/empty, not fabricated.
 
 ## Calibration and drawdown accounting
-- The validation runner tests score/edge thresholds on the training partition only. A candidate is selected only when it has at least 20 training trades, PF > 1, positive net return, and max drawdown <= 15%; if no candidate qualifies, the default threshold is retained.
+- The validation runner tests score thresholds and an optional short-side RSI exhaustion floor (disabled vs 30) on the training partition only. A candidate is selected only when it has at least 20 training trades, PF > 1, positive net return, and max drawdown <= 15%; if no candidate qualifies, default settings are retained.
 - The final chronological holdout is never used to choose thresholds. The calibrated holdout is reported separately from the default holdout. Expanding-window walk-forward folds recalibrate on earlier data only and test on the next contiguous window.
 - Maximum drawdown is computed from candle-close mark-to-market equity while positions are open, not only from closed-trade balances. A holdout with fewer than 20 trades is explicitly marked insufficient for screening.
 - These are initial screening gates, not proof of an edge; 20 trades is not enough for statistical confidence and must be followed by larger sample / paper-trading checks.
