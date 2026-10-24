@@ -23,7 +23,7 @@ REQUIRED_FEATURES = (
 OPTIONAL_NUMERIC = (
     "ema200_1h", "ema200_4h", "atr_pct", "adx_1h", "vol_ratio", "vwap_1h",
     "support", "resistance", "funding_rate", "oi_change_pct", "momentum_pct",
-    "macd_hist", "spread_bps",
+    "macd_hist", "spread_bps", "cvd_ratio_12", "cvd_ratio_24",
 )
 BOOL_FIELDS = ("breakout_up", "breakout_down", "retest_long", "retest_short",
                "candle_closed", "data_fresh")
@@ -93,7 +93,7 @@ def _features(row: dict) -> dict:
         "ema200_4h", "rsi_1h", "atr_1h", "atr_pct", "adx_1h", "vol_ratio",
         "vwap_1h", "support", "resistance", "funding_rate", "oi_change_pct",
         "momentum_pct", "macd_hist", "breakout_up", "breakout_down",
-        "retest_long", "retest_short", "cvd_direction", "market_regime",
+        "retest_long", "retest_short", "cvd_direction", "cvd_ratio_12", "cvd_ratio_24", "market_regime",
         "data_fresh", "candle_closed", "spread_bps",
     )} | {"price": row["c"]}
 
