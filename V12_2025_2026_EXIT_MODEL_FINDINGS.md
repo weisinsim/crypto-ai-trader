@@ -41,6 +41,19 @@ PF = profit factor. Returns are simulated and include modeled fees, slippage, an
 
 * BTC's positive holdout result uses a training-selected score threshold of 80 but only 7 holdout trades; it is explicitly **insufficient evidence**.
 
+## Four-module ablation (fixed thresholds, pre-holdout 50%–80%)
+
+This diagnostic removes one component at a time and renormalizes the remaining weights. It does not retune thresholds per variant.
+
+| Symbol | Full ensemble return / PF | Without Momentum+Funding | Without Trend Breakout | Without Confluence | Without Asset Adaptive |
+|---|---:|---:|---:|---:|---:|
+| BTCUSDT | -1.61% / 0.88 | -5.79% / 0.73 | -0.47% / 0.93 | -4.20% / 0.71 | -2.37% / 0.86 |
+| ETHUSDT | +2.40% / 1.21 | -1.11% / 0.91 | +3.34% / 1.68 | -1.11% / 0.91 | +1.00% / 1.06 |
+| SOLUSDT | +3.11% / 1.25 | +2.23% / 1.15 | -4.97% / 0.64 | -3.03% / 0.78 | +0.50% / 1.03 |
+| AVAXUSDT | -3.36% / 0.72 | -4.31% / 0.59 | +1.80% / 1.22 | -2.61% / 0.74 | -4.12% / 0.71 |
+
+**Finding:** Trend Breakout is strongly beneficial for SOL but appears harmful for BTC, ETH, and AVAX in this development window. Momentum+Funding and Confluence generally add value. This supports per-coin model selection rather than forcing identical weights across assets. These ablation results are diagnostic and have already been examined; using them to choose new weights requires another out-of-sample or paper-trading validation.
+
 ## Assessment
 - **BTC:** Exit management materially reduced the full-sample loss, but walk-forward is essentially flat with only 12 trades. The positive calibrated holdout is too small to trust.
 - **ETH:** Full-sample remains positive, but both walk-forward and holdout are negative. Do not promote.
