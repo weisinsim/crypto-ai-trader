@@ -82,6 +82,9 @@ def _adx(rows, period=14):
 def _macd_hist(values, fast=12, slow=26, signal=9):
     if len(values) < slow + signal:
         return None
+    # EMA memory decays exponentially; a 300-bar warm-up keeps the current
+    # histogram numerically stable while bounding repeated per-candle work.
+    values = values[-300:]
     fast_alpha, slow_alpha = 2 / (fast + 1), 2 / (slow + 1)
     fast_value = sum(values[:fast]) / fast
     slow_value = sum(values[:slow]) / slow
