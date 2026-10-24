@@ -65,7 +65,9 @@ class BinanceFuturesTestnet:
             for position in account["positions"]:
                 if not isinstance(position, dict):
                     return {"ok": False, "reason": "invalid_position_record"}
-                amount = Decimal(str(position.get("positionAmt", "0")))
+                if "positionAmt" not in position:
+                    return {"ok": False, "reason": "invalid_position_amount"}
+                amount = Decimal(str(position["positionAmt"]))
                 if not amount.is_finite():
                     return {"ok": False, "reason": "invalid_position_amount"}
                 if amount == 0:
