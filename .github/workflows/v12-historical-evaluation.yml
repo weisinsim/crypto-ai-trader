@@ -1,0 +1,60 @@
+name: V12 Historical Research Evaluation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/v12-historical-evaluation.yml"
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "UTC start date (inclusive), YYYY-MM-DD"
+        required: true
+        default: "2025-10-01"
+      end:
+        description: "UTC end date (exclusive), YYYY-MM-DD"
+        required: true
+        default: "2026-10-01"
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    name: "V12 research ${{ matrix.symbol }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        symbol: [BTCUSDT, ETHUSDT, SOLUSDT, AVAXUSDT]
+    env:
+      START_DATE: ${{ inputs.start || '2025-10-01' }}
+      END_DATE: ${{ inputs.end || '2026-10-01' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - name: Install project dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Download data and run causal V12 validation
+        run: |
+          python -m research.run_v12_research \
+            --symbol "${{ matrix.symbol }}" \
+            --start "$START_DATE" \
+            --end "$END_DATE" \
+            --output-dir "reports/v12/${{ matrix.symbol }}" \
+            --holdout-fraction 0.2 \
+            --folds 4 \
+            --fee-rate 0.0005 \
+            --slippage-rate 0.0002
+      - name: Upload per-coin data and validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v12-research-${{ matrix.symbol }}
+          path: reports/v12/${{ matrix.symbol }}/
+          if-no-files-found: warn
+          retention-days: 30
