@@ -60,7 +60,7 @@ confirmed_state = {s: "NO-TRADE" for s in SYMBOLS}
 http_client = None
 
 MODEL_NAME = "Crypto AI Trader Multi-Asset Adaptive"
-MODEL_VERSION = "V28.3-V12 Adaptive Hybrid Research + Validated Execution Gate"
+MODEL_VERSION = "V28.4-V12 Adaptive Hybrid Research + Closed-Candle Freshness Gate"
 XRP_PARAMS = {"kill_slope": 0.0077, "atr_max": 0.0135, "shock_max": 0.025, "sl_atr": 1.7, "tp_atr": 2.8, "direction": "LONG_ONLY"}
 MODEL_LIBRARY = {
     "BTCUSDT": {"name":"BTC Trend Tactical", "status":"RESEARCH", "direction":"LONG/SHORT", "horizon":"1–3H tactical", "family":"trend_tactical"},
