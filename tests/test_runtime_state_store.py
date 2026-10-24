@@ -85,6 +85,14 @@ class RuntimeStateStoreTests(unittest.TestCase):
         self.store.update_exchange_metrics(0, 0, 0, now_epoch=now.timestamp())
         self.assertEqual(self.store.load_snapshot(now_epoch=now.timestamp()).daily_realized_pnl_usdt, -3.25)
 
+    def test_realized_pnl_rejects_non_datetime_and_naive_timestamps(self):
+        for invalid_now in ("2026-10-19T10:00:00Z", 123, object()):
+            with self.subTest(invalid_now=type(invalid_now).__name__):
+                with self.assertRaisesRegex(ValueError, "now must be a timezone-aware datetime"):
+                    self.store.record_realized_pnl(1, now=invalid_now)
+        with self.assertRaisesRegex(ValueError, "now must be a timezone-aware datetime"):
+            self.store.record_realized_pnl(1, now=datetime(2026, 10, 19, 10))
+
     def test_realized_pnl_event_id_must_be_valid(self):
         with self.assertRaises(ValueError):
             self.store.record_realized_pnl(1, event_id="  ")
