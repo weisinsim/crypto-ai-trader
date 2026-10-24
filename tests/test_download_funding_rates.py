@@ -29,6 +29,13 @@ class FundingDownloaderTests(unittest.TestCase):
         )
         self.assertEqual(row["funding_rate"], "0.0002")
 
+    def test_archive_parser_rejects_mismatched_contract_symbol(self):
+        with self.assertRaisesRegex(RuntimeError, "Archive symbol mismatch"):
+            parse_archive_row(
+                ["1735689600000", "0.0001", "8", "ETHUSDT"],
+                "BTCUSDT", 1735689600000, 1735776000000,
+            )
+
     def test_archive_parser_ignores_rows_outside_requested_window(self):
         self.assertIsNone(parse_archive_row(
             ["1735776000000", "0.0001", "BTCUSDT"],
