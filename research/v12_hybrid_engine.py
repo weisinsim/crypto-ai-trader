@@ -43,7 +43,7 @@ def _clamp(value: float, lo: float = 0.0, hi: float = 100.0) -> float:
     return max(lo, min(hi, value))
 
 
-def evaluate_hybrid(symbol: str, features: Mapping[str, Any]) -> dict:
+def evaluate_hybrid(symbol: str, features: Mapping[str, Any], *, min_score_override: int | None = None, min_edge_override: int | None = None) -> dict:
     """Return an auditable directional candidate from normalized feature inputs.
 
     Expected optional inputs:
@@ -211,9 +211,14 @@ def evaluate_hybrid(symbol: str, features: Mapping[str, Any]) -> dict:
     if short_block:
         short_score = min(short_score, 49)
 
-    min_score = int(profile["min_score"])
+    min_score = int(profile["min_score"] if min_score_override is None else min_score_override)
+    min_edge = 8 if min_edge_override is None else int(min_edge_override)
+    if not 50 <= min_score <= 95 or not 0 <= min_edge <= 50:
+        return {"model_version": MODEL_VERSION, "symbol": symbol, "signal": "NO-TRADE",
+                "score": 0, "status": "INVALID_THRESHOLD_OVERRIDE", "missing": [],
+                "components": {}, "reasons": ["Threshold override outside permitted research bounds"]}
     edge = abs(long_score - short_score)
-    if max(long_score, short_score) < min_score or edge < 8:
+    if max(long_score, short_score) < min_score or edge < min_edge:
         signal = "NO-TRADE"
         score = max(long_score, short_score)
         status = "BELOW_THRESHOLD_OR_DIRECTION_CONFLICT"
