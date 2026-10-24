@@ -121,7 +121,7 @@ def _funding_asof(events, timestamp):
     return found
 
 
-def build_v12_features(candles_1h, candles_4h, funding_events=None):
+def build_v12_features(candles_1h, candles_4h, funding_events=None, *, symbol=None):
     """Return one causally aligned feature row per 1h candle with sufficient history."""
     output = []
     funding_events = funding_events or []
@@ -165,6 +165,7 @@ def build_v12_features(candles_1h, candles_4h, funding_events=None):
         volume_mean = sum(volume_base) / len(volume_base) if volume_base else 0.0
         vol_ratio = candle.get("q", 0.0) / volume_mean if volume_mean > 0 else None
         output.append({
+            "symbol": str(symbol).upper() if symbol else "",
             "t": candle["t"], "o": candle["o"], "h": candle["h"], "l": candle["l"], "c": price,
             "ema20_1h": ema20_1h, "ema50_1h": ema50_1h, "ema200_1h": ema200_1h,
             "ema20_4h": ema20_4h, "ema50_4h": ema50_4h, "ema200_4h": ema200_4h,
@@ -198,6 +199,7 @@ def write_feature_csv(path, rows):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--symbol", required=True, help="single symbol represented by both candle files")
     parser.add_argument("--candles-1h", required=True, help="validated 1h OHLCV CSV")
     parser.add_argument("--candles-4h", required=True, help="validated 4h OHLCV CSV")
     parser.add_argument("--funding-csv", help="optional historical funding settlement CSV")
@@ -206,9 +208,9 @@ def main():
     one_hour = load_csv(args.candles_1h, 3_600_000)
     four_hour = load_csv(args.candles_4h, 14_400_000)
     funding = load_funding_csv(args.funding_csv) if args.funding_csv else []
-    if funding and funding[0]["symbol"] == "":
-        raise ValueError("funding CSV must contain a symbol")
-    features = build_v12_features(one_hour, four_hour, funding)
+    if funding and funding[0]["symbol"] != args.symbol.upper():
+        raise ValueError("funding CSV symbol does not match --symbol")
+    features = build_v12_features(one_hour, four_hour, funding, symbol=args.symbol)
     write_feature_csv(args.output, features)
     print(json.dumps({"status": "RESEARCH_ONLY", "input_1h_bars": len(one_hour),
                       "input_4h_bars": len(four_hour), "feature_rows": len(features),
