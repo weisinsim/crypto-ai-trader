@@ -75,8 +75,8 @@ class TestnetLifecycleTests(unittest.TestCase):
     def test_target_submission_timeout_preserves_stop_and_requires_reconciliation(self):
         class TimeoutTargetAdapter(FakeAdapter):
             def submit_testnet_protective_exit(self, symbol, kind, quantity, price, client_id):
-                self.submissions.append((symbol, kind, str(quantity), str(price), client_id))
                 if kind == "take_profit":
+                    self.submissions.append((symbol, kind, str(quantity), str(price), client_id))
                     raise TimeoutError("exchange response lost")
                 return super().submit_testnet_protective_exit(symbol, kind, quantity, price, client_id)
 
