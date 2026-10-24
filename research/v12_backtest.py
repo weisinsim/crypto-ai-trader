@@ -331,7 +331,7 @@ def run_v12_backtest(
                 else:
                     active_stop = min(active_stop, low_water + trailing_atr_multiple * current_atr)
                 if active_stop != previous_stop:
-                    stop_updates.append({"t": bar["t"], "from": previous_stop, "to": active_stop})
+                    stop_updates.append({"t": bar["t"] + 3_600_000, "from": previous_stop, "to": active_stop})
 
             if signal_reversal_exit and remaining > 0:
                 close_signal = evaluate_hybrid(
@@ -389,7 +389,8 @@ def run_v12_backtest(
             "signal_time": signal_row["t"], "entry_time": entry_row["t"],
             "entry_price": entry, "quantity": qty, "entry_fee": entry_fee,
             "stop": stop, "final_stop": active_stop, "stop_updates": stop_updates,
-            "tp1": tp1, "tp2": tp2, "holding_bars": min(j, len(rows) - 1) - (i + 1) + 1,
+            "tp1": tp1, "tp2": tp2,
+            "holding_bars": max(1, min(j, len(rows) - 1) - (i + 1) + (0 if outcome in ("SIGNAL_REVERSAL_EXIT", "TP1+SIGNAL_REVERSAL_EXIT", "TIME_EXIT", "TP1+TIME_EXIT") else 1)),
             "signal_score": result["score"], "gross_pnl": gross_pnl, "fees": fees,
             "funding_pnl": funding_pnl, "funding_events": funding_applied,
             "net_pnl": net_pnl, "equity_before": equity_before, "equity_after": equity,
