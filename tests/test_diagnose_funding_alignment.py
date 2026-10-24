@@ -29,6 +29,9 @@ class FundingAlignmentDiagnosticsTests(unittest.TestCase):
         self.assertEqual(result['funding_events_outside_candle_timestamp_range'], 1)
         self.assertEqual(result['nearest_delta_examples_ms'], [18000000])
         self.assertIn('no timestamps were shifted', result['notice'])
+        self.assertEqual(result['candle_first_10_utc'][0], '2025-01-01T00:00:00Z')
+        self.assertEqual(result['funding_first_10_utc'][0], '2025-01-01T06:00:00Z')
+        self.assertEqual(result['funding_mod_hour_ms_counts'], {'0': 1})
 
     def test_accepts_epoch_milliseconds_and_iso_utc(self):
         candles = self._csv('candles.csv',
