@@ -112,6 +112,7 @@ def run_ema_cross_backtest(
     allow_short: bool = True,
     risk_fraction: float = 0.01,
     trade_start_ts: int | None = None,
+    interval_ms: int | None = None,
 ) -> dict:
     """Next-open EMA cross baseline with fixed-risk exits and conservative same-bar ordering.
 
@@ -131,7 +132,7 @@ def run_ema_cross_backtest(
         raise ValueError(
             "funding_rate_per_bar must be zero when explicit funding_rates are supplied"
         )
-    rows = validate_candles(candles)
+    rows = validate_candles(candles, interval_ms=interval_ms)
     funding_events = {}
     if funding_rates is not None:
         funding_rates = list(funding_rates)
