@@ -40,6 +40,7 @@ def run_pipeline(symbol, start_date, end_date, output_dir, *, holdout_fraction=0
     report = run_v12_validation(
         features, symbol, holdout_fraction=holdout_fraction, folds=folds,
         fee_rate=fee_rate, slippage_rate=slippage_rate,
+        funding_events=funding,
     )
     report["data_lineage"] = {
         "venue": "Binance USD-M Futures",
@@ -54,8 +55,9 @@ def run_pipeline(symbol, start_date, end_date, output_dir, *, holdout_fraction=0
             "features": str(features_path),
         },
         "funding_quality_note": (
-            "Funding rate is used as an as-of signal feature; settlement cash flows are not "
-            "included in simulated PnL and mark-price reconciliation has not been performed."
+            "Funding rate is used as an as-of signal feature and funding cash flows use "
+            "historical settlement rate * position quantity * endpoint mark price; "
+            "account-ledger reconciliation has not been performed."
         ),
     }
     report_path.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8")
