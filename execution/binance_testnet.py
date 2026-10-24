@@ -271,11 +271,28 @@ class BinanceFuturesTestnet:
             "quantity": quantity_text,
             "newClientOrderId": client_order_id,
         })
-        response = self._client.post("/fapi/v1/order", params=params)
-        response.raise_for_status()
-        payload = response.json()
+        try:
+            response = self._client.post("/fapi/v1/order", params=params)
+            response.raise_for_status()
+            payload = response.json()
+        except Exception:
+            # The exchange may have accepted the order before the transport failed.
+            # Never signal a retry-safe failure; reconcile using this client order ID.
+            return {
+                "accepted": False,
+                "reason": "order_submission_outcome_unknown",
+                "mode": "testnet_reconciliation_required",
+                "symbol": intent.symbol,
+                "client_order_id": client_order_id,
+            }
         if not isinstance(payload, dict) or "orderId" not in payload:
-            return {"accepted": False, "reason": "unexpected_testnet_order_response"}
+            return {
+                "accepted": False,
+                "reason": "order_submission_outcome_unknown",
+                "mode": "testnet_reconciliation_required",
+                "symbol": intent.symbol,
+                "client_order_id": client_order_id,
+            }
         return {
             "accepted": True,
             "mode": "testnet_order_submitted",
@@ -465,11 +482,27 @@ class BinanceFuturesTestnet:
             })
         except (ValueError, InvalidOperation, TypeError, KeyError):
             return {"accepted": False, "reason": "exchange_preflight_failed"}
-        response = self._client.post("/fapi/v1/order", params=params)
-        response.raise_for_status()
-        payload = response.json()
+        try:
+            response = self._client.post("/fapi/v1/order", params=params)
+            response.raise_for_status()
+            payload = response.json()
+        except Exception:
+            # A transport/API decoding error can occur after the exchange accepted it.
+            return {
+                "accepted": False,
+                "reason": "order_submission_outcome_unknown",
+                "mode": "testnet_reconciliation_required",
+                "symbol": symbol,
+                "client_order_id": client_order_id,
+            }
         if not isinstance(payload, dict) or "orderId" not in payload:
-            return {"accepted": False, "reason": "unexpected_testnet_order_response"}
+            return {
+                "accepted": False,
+                "reason": "order_submission_outcome_unknown",
+                "mode": "testnet_reconciliation_required",
+                "symbol": symbol,
+                "client_order_id": client_order_id,
+            }
         return {
             "accepted": True,
             "mode": "testnet_protective_exit_submitted",
