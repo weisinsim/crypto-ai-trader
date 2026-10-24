@@ -166,8 +166,11 @@ def run_v12_backtest(
     min_edge_override: int | None = None,
     funding_events: list[dict] | None = None,
     short_rsi_floor: float | None = None,
+    trailing_atr_multiple: float = 1.5,
+    max_holding_bars: int = 72,
+    signal_reversal_exit: bool = True,
 ) -> dict:
-    """Run a single-position, next-open simulator with 50/50 TP1/TP2 exits."""
+    """Run next-open V12 simulation with partial targets, ATR trailing, reversal and time exits."""
     if len(rows) < 3:
         raise ValueError("at least three rows are required")
     source_symbols = {row.get("symbol") for row in rows if row.get("symbol")}
@@ -177,13 +180,19 @@ def run_v12_backtest(
         raise ValueError("requested --symbol does not match feature CSV symbol")
     for name, value in (("fee_rate", fee_rate), ("slippage_rate", slippage_rate),
                         ("initial_equity", initial_equity), ("risk_fraction", risk_fraction),
-                        ("max_leverage", max_leverage)):
+                        ("max_leverage", max_leverage), ("trailing_atr_multiple", trailing_atr_multiple)):
         if not math.isfinite(value):
             raise ValueError(f"{name} must be finite")
     if fee_rate < 0 or slippage_rate < 0 or initial_equity <= 0:
         raise ValueError("cost rates must be nonnegative and initial equity positive")
     if not 0 < risk_fraction <= 0.02 or not 0 < max_leverage <= 5:
         raise ValueError("risk_fraction must be in (0, 2%] and max_leverage in (0, 5]")
+    if not 0.1 <= trailing_atr_multiple <= 5.0:
+        raise ValueError("trailing_atr_multiple must be in [0.1, 5]")
+    if isinstance(max_holding_bars, bool) or not isinstance(max_holding_bars, int) or not 1 <= max_holding_bars <= 720:
+        raise ValueError("max_holding_bars must be an integer in [1, 720]")
+    if not isinstance(signal_reversal_exit, bool):
+        raise ValueError("signal_reversal_exit must be boolean")
     funding_events = list(funding_events or [])
     previous_funding_ts = None
     for event in funding_events:
@@ -237,45 +246,101 @@ def run_v12_backtest(
         entry_fee = entry * qty * fee_rate
         fees = entry_fee
         exits = []
+        stop_updates = []
         outcome = "END_OF_DATA"
+        active_stop = stop
+        tp1_done = False
+        high_water = entry
+        low_water = entry
+        bars_held = 0
+        pending_reversal = False
         j = i + 1
         while j < len(rows):
             bar = rows[j]
-            stop_hit = bar["l"] <= stop if direction == 1 else bar["h"] >= stop
+
+            # Reversal is known at the previous candle close and executes at this open.
+            if pending_reversal:
+                fill = _adverse_fill(bar["o"], direction, entry=False, slippage_rate=slippage_rate)
+                gross_pnl += (fill - entry) * direction * remaining
+                exit_fee = fill * remaining * fee_rate
+                fees += exit_fee
+                exits.append({"t": bar["t"], "kind": "SIGNAL_REVERSAL_EXIT", "price": fill, "qty": remaining, "fee": exit_fee})
+                remaining = 0.0
+                outcome = "TP1+SIGNAL_REVERSAL_EXIT" if tp1_done else "SIGNAL_REVERSAL_EXIT"
+                break
+
+            # Hard time stop prevents an intended short-term trade becoming a long hold.
+            if bars_held >= max_holding_bars:
+                fill = _adverse_fill(bar["o"], direction, entry=False, slippage_rate=slippage_rate)
+                gross_pnl += (fill - entry) * direction * remaining
+                exit_fee = fill * remaining * fee_rate
+                fees += exit_fee
+                exits.append({"t": bar["t"], "kind": "TIME_EXIT", "price": fill, "qty": remaining, "fee": exit_fee})
+                remaining = 0.0
+                outcome = "TP1+TIME_EXIT" if tp1_done else "TIME_EXIT"
+                break
+
+            stop_hit = bar["l"] <= active_stop if direction == 1 else bar["h"] >= active_stop
             tp1_hit = bar["h"] >= tp1 if direction == 1 else bar["l"] <= tp1
             tp2_hit = bar["h"] >= tp2 if direction == 1 else bar["l"] <= tp2
 
-            # Conservative OHLC ordering: stop wins if stop and any target touch
+            # Conservative OHLC ordering: active stop wins if stop and any target touch
             # on the same bar. For a gap through the stop, use the worse open.
             if stop_hit:
-                raw_exit = min(stop, bar["o"]) if direction == 1 else max(stop, bar["o"])
+                raw_exit = min(active_stop, bar["o"]) if direction == 1 else max(active_stop, bar["o"])
                 fill = _adverse_fill(raw_exit, direction, entry=False, slippage_rate=slippage_rate)
                 gross_pnl += (fill - entry) * direction * remaining
                 exit_fee = fill * remaining * fee_rate
                 fees += exit_fee
-                exits.append({"t": bar["t"], "kind": "STOP", "price": fill, "qty": remaining, "fee": exit_fee})
+                exit_kind = "TRAILING_STOP" if tp1_done else "STOP"
+                exits.append({"t": bar["t"], "kind": exit_kind, "price": fill, "qty": remaining, "fee": exit_fee})
                 remaining = 0.0
-                outcome = "STOP"
+                outcome = "TP1+TRAILING_STOP" if tp1_done else "STOP"
                 break
 
-            if tp1_hit and remaining > qty * 0.5000001:
-                take_qty = qty * 0.5
+            if tp1_hit and not tp1_done:
+                take_qty = min(qty * 0.5, remaining)
                 fill = _adverse_fill(tp1, direction, entry=False, slippage_rate=slippage_rate)
                 gross_pnl += (fill - entry) * direction * take_qty
                 exit_fee = fill * take_qty * fee_rate
                 fees += exit_fee
                 remaining -= take_qty
+                tp1_done = True
                 exits.append({"t": bar["t"], "kind": "TP1", "price": fill, "qty": take_qty, "fee": exit_fee})
 
-            if tp2_hit:
+            if tp2_hit and remaining > 0:
                 fill = _adverse_fill(tp2, direction, entry=False, slippage_rate=slippage_rate)
-                gross_pnl += (fill - entry) * direction * remaining
                 exit_fee = fill * remaining * fee_rate
+                gross_pnl += (fill - entry) * direction * remaining
                 fees += exit_fee
                 exits.append({"t": bar["t"], "kind": "TP2", "price": fill, "qty": remaining, "fee": exit_fee})
                 remaining = 0.0
-                outcome = "TP2" if len(exits) == 1 else "TP1+TP2"
+                outcome = "TP1+TP2" if tp1_done else "TP2"
                 break
+
+            # Update trailing stop only after this candle has completed; it is active
+            # from the next candle, avoiding intrabar lookahead.
+            high_water = max(high_water, bar["h"])
+            low_water = min(low_water, bar["l"])
+            bars_held += 1
+            if tp1_done and remaining > 0:
+                current_atr = bar.get("atr_1h") or atr
+                previous_stop = active_stop
+                if direction == 1:
+                    active_stop = max(active_stop, high_water - trailing_atr_multiple * current_atr)
+                else:
+                    active_stop = min(active_stop, low_water + trailing_atr_multiple * current_atr)
+                if active_stop != previous_stop:
+                    stop_updates.append({"t": bar["t"], "from": previous_stop, "to": active_stop})
+
+            if signal_reversal_exit and remaining > 0:
+                close_signal = evaluate_hybrid(
+                    symbol, _features(bar), min_score_override=min_score_override,
+                    min_edge_override=min_edge_override, short_rsi_floor=short_rsi_floor,
+                )
+                opposite = "SHORT" if direction == 1 else "LONG"
+                if close_signal["signal"] == opposite and close_signal.get("status") == "RESEARCH_CANDIDATE":
+                    pending_reversal = True
 
             j += 1
 
@@ -287,6 +352,7 @@ def run_v12_backtest(
             fees += exit_fee
             exits.append({"t": bar["t"], "kind": "END_OF_DATA", "price": fill, "qty": remaining, "fee": exit_fee})
             remaining = 0.0
+            outcome = "TP1+END_OF_DATA" if tp1_done else "END_OF_DATA"
 
         funding_pnl = 0.0
         funding_applied = []
@@ -322,7 +388,8 @@ def run_v12_backtest(
             "symbol": symbol.upper(), "direction": result["signal"],
             "signal_time": signal_row["t"], "entry_time": entry_row["t"],
             "entry_price": entry, "quantity": qty, "entry_fee": entry_fee,
-            "stop": stop, "tp1": tp1, "tp2": tp2,
+            "stop": stop, "final_stop": active_stop, "stop_updates": stop_updates,
+            "tp1": tp1, "tp2": tp2, "holding_bars": min(j, len(rows) - 1) - (i + 1) + 1,
             "signal_score": result["score"], "gross_pnl": gross_pnl, "fees": fees,
             "funding_pnl": funding_pnl, "funding_events": funding_applied,
             "net_pnl": net_pnl, "equity_before": equity_before, "equity_after": equity,
@@ -357,6 +424,9 @@ def run_v12_backtest(
                         "risk_fraction": risk_fraction, "max_leverage": max_leverage,
                         "entry": "next candle open", "same_bar_stop_target": "stop first",
                         "partial_targets": "50% at 2R, remaining 50% at 3R",
+                        "trailing_atr_multiple": trailing_atr_multiple,
+                        "max_holding_bars": max_holding_bars,
+                        "signal_reversal_exit": signal_reversal_exit,
                         "funding_costs_included": bool(funding_events),
                         "funding_boundary_policy": "exclude event at entry timestamp; include event at exit candle open before OHLC exit"},
         "trade_log": trades, "equity_curve": equity_curve,
