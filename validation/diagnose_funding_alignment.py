@@ -60,6 +60,7 @@ def diagnose(candle_path, funding_path):
     deltas = []
     outside = 0
     for event in sorted(funding):
+        index = bisect.bisect_left(candle_sorted, event)
         candidates = candle_sorted[max(0, index - 1):min(len(candle_sorted), index + 1)]
         nearest = min(candidates, key=lambda candle: (abs(candle - event), candle))
         delta = event - nearest
