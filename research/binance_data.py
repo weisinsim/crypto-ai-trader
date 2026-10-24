@@ -15,9 +15,10 @@ import httpx
 BASE_URL = "https://fapi.binance.com"
 INTERVAL_MS = {"1h": 3_600_000, "4h": 14_400_000}
 FIELDS = ("t", "o", "h", "l", "c", "v", "q")
+FIELDS_WITH_TAKER_FLOW = FIELDS + ("tb", "tq")
 
 
-def parse_klines(raw_rows: list[list], interval_ms: int, end_ms: int) -> list[dict]:
+def parse_klines(raw_rows: list[list], interval_ms: int, end_ms: int, *, include_taker_flow: bool = False) -> list[dict]:
     """Validate and normalize exchange kline arrays; keep only closed candles."""
     if not isinstance(raw_rows, list):
         raise ValueError("kline response must be a list")
@@ -30,8 +31,8 @@ def parse_klines(raw_rows: list[list], interval_ms: int, end_ms: int) -> list[di
     for index, raw in enumerate(raw_rows):
         if not isinstance(raw, (list, tuple)):
             raise ValueError(f"kline row {index} must be a sequence")
-        if len(raw) < 8:
-            raise ValueError("kline row has fewer than 8 fields")
+        if len(raw) < (11 if include_taker_flow else 8):
+            raise ValueError("kline row has too few fields for requested schema")
         raw_ts = raw[0]
         if isinstance(raw_ts, bool) or not (
             isinstance(raw_ts, int) or
@@ -54,7 +55,18 @@ def parse_klines(raw_rows: list[list], interval_ms: int, end_ms: int) -> list[di
             raise ValueError(f"inconsistent OHLC values in kline row {index}")
         if ts + interval_ms > end_ms:
             continue
-        rows.append({"t": ts, "o": o, "h": h, "l": low, "c": c, "v": v, "q": q})
+        row = {"t": ts, "o": o, "h": h, "l": low, "c": c, "v": v, "q": q}
+        if include_taker_flow:
+            try:
+                taker_buy_base, taker_buy_quote = float(raw[9]), float(raw[10])
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError(f"non-numeric taker-buy volume in kline row {index}") from exc
+            if (not math.isfinite(taker_buy_base) or not math.isfinite(taker_buy_quote)
+                    or taker_buy_base < 0 or taker_buy_base > v * 1.000001
+                    or taker_buy_quote < 0 or taker_buy_quote > q * 1.000001):
+                raise ValueError(f"invalid taker-buy volume in kline row {index}")
+            row["tb"], row["tq"] = taker_buy_base, taker_buy_quote
+        rows.append(row)
     rows.sort(key=lambda r: r["t"])
     seen = set()
     for row in rows:
@@ -73,6 +85,7 @@ def download_klines(
     fetch_page: Callable | None = None,
     limit: int = 1500,
     pause_seconds: float = 0.05,
+    include_taker_flow: bool = False,
 ) -> list[dict]:
     """Fetch [start_ms, end_ms) candle coverage using forward pagination.
 
@@ -93,6 +106,8 @@ def download_klines(
         raise ValueError("require integer timestamps with 0 <= start_ms < end_ms")
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1500:
         raise ValueError("limit must be an integer between 1 and 1500")
+    if not isinstance(include_taker_flow, bool):
+        raise ValueError("include_taker_flow must be boolean")
     duration = INTERVAL_MS[interval]
     if start_ms % duration or end_ms % duration:
         raise ValueError("start_ms and end_ms must align to interval boundaries")
@@ -116,7 +131,7 @@ def download_klines(
             })
             if not page:
                 break
-            parsed = parse_klines(page, duration, end_ms)
+            parsed = parse_klines(page, duration, end_ms, include_taker_flow=include_taker_flow)
             rows.extend(r for r in parsed if start_ms <= r["t"] < end_ms)
             last_ts = max(int(r[0]) for r in page)
             next_cursor = last_ts + duration
@@ -134,7 +149,8 @@ def download_klines(
         # Retry the exact requested range from the publisher's public archive.
         from research.binance_archive import download_archive_klines
         return download_archive_klines(
-            symbol, interval, start_ms, end_ms, duration
+            symbol, interval, start_ms, end_ms, duration,
+            include_taker_flow=include_taker_flow,
         )
     finally:
         if client is not None:
@@ -165,7 +181,8 @@ def save_csv(rows: list[dict], path: str | Path) -> None:
     )
     try:
         with os.fdopen(fd, "w", newline="", encoding="utf-8") as handle:
-            writer = csv.DictWriter(handle, fieldnames=FIELDS)
+            fields = FIELDS_WITH_TAKER_FLOW if rows and "tb" in rows[0] and "tq" in rows[0] else FIELDS
+            writer = csv.DictWriter(handle, fieldnames=fields)
             writer.writeheader()
             writer.writerows(rows)
             handle.flush()
@@ -191,9 +208,10 @@ def main() -> None:
     parser.add_argument("--start", required=True, help="UTC date YYYY-MM-DD, inclusive")
     parser.add_argument("--end", required=True, help="UTC date YYYY-MM-DD, exclusive")
     parser.add_argument("--output", required=True, help="CSV output path")
+    parser.add_argument("--include-taker-flow", action="store_true", help="include Binance taker-buy base/quote volume fields")
     args = parser.parse_args()
     start_ms, end_ms = utc_ms(args.start), utc_ms(args.end)
-    rows = download_klines(args.symbol, args.interval, start_ms, end_ms)
+    rows = download_klines(args.symbol, args.interval, start_ms, end_ms, include_taker_flow=args.include_taker_flow)
     save_csv(rows, args.output)
     print(f"status=COMPLETE symbol={args.symbol.upper()} interval={args.interval} "
           f"bars={len(rows)} start_ms={rows[0]['t']} end_ms={rows[-1]['t']} "
