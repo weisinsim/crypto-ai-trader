@@ -413,6 +413,22 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["reason"], "position_notional_out_of_range")
 
+    def test_account_risk_metrics_rejects_missing_position_amount(self):
+        class MissingAmountClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"positions": [
+                        {"symbol": "BTCUSDT", "notional": "100"},
+                    ]})
+                return super().get(path, params)
+
+        client = MissingAmountClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.account_risk_metrics("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "invalid_position_amount")
+
     def test_account_risk_metrics_returns_finite_notional(self):
         class ValidRiskClient(FakeClient):
             def get(self, path, params):
