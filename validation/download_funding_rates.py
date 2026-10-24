@@ -63,6 +63,19 @@ def parse_archive_row(item, symbol, start_ms, end_ms):
     if not start_ms <= ts < end_ms:
         return None
 
+    # Archive rows can include the contract symbol at different positions.
+    # If a recognizable USDT contract token is present, require an exact match.
+    symbol_tokens = [
+        value.strip().upper() for value in item[1:]
+        if isinstance(value, str) and value.strip().upper().endswith("USDT")
+        and value.strip().upper().replace("_", "").isalnum()
+    ]
+    mismatched_symbols = [value for value in symbol_tokens if value != symbol.upper()]
+    if mismatched_symbols:
+        raise RuntimeError(
+            f"Archive symbol mismatch for {symbol}: found {mismatched_symbols!r} in row {item!r}"
+        )
+
     import math
     numeric = []
     for value in item[1:]:
