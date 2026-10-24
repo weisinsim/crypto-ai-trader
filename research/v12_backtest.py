@@ -103,6 +103,56 @@ def _adverse_fill(price: float, direction: int, *, entry: bool, slippage_rate: f
     return price * (1 + adverse_sign * slippage_rate)
 
 
+def _mark_to_market_equity_curve(rows: list[dict], trades: list[dict], initial_equity: float):
+    """Rebuild equity at every held 1h candle close, including unrealized PnL."""
+    curve = [{"t": rows[0]["t"], "equity": initial_equity, "kind": "initial"}]
+    if not trades:
+        return curve, 0.0
+    index_by_ts = {row["t"]: i for i, row in enumerate(rows)}
+    peak = initial_equity
+    max_drawdown = 0.0
+    for trade in trades:
+        entry_index = index_by_ts.get(trade["entry_time"])
+        exit_index = index_by_ts.get(trade["exit_time"])
+        if entry_index is None or exit_index is None or exit_index < entry_index:
+            raise ValueError("trade timestamps do not align to feature candle timestamps")
+        direction = 1 if trade["direction"] == "LONG" else -1
+        entry = trade["entry_price"]
+        quantity = trade["quantity"]
+        exits = trade["exits"]
+        funding = trade["funding_events"]
+        for index in range(entry_index, exit_index + 1):
+            candle = rows[index]
+            ts = candle["t"]
+            completed_exits = [item for item in exits if item["t"] <= ts]
+            exited_quantity = sum(item["qty"] for item in completed_exits)
+            realized_gross = sum(
+                (item["price"] - entry) * direction * item["qty"]
+                for item in completed_exits
+            )
+            fees = trade["entry_fee"] + sum(item["fee"] for item in completed_exits)
+            funding_pnl = sum(
+                item["cashflow"] for item in funding
+                if item["funding_time"] <= ts + 3_600_000
+            )
+            remaining = max(0.0, quantity - exited_quantity)
+            mark_equity = (
+                trade["equity_before"] + realized_gross
+                + (candle["c"] - entry) * direction * remaining
+                - fees + funding_pnl
+            )
+            if index == exit_index and remaining <= quantity * 1e-8:
+                mark_equity = trade["equity_after"]
+            peak = max(peak, mark_equity)
+            drawdown = (peak - mark_equity) / peak if peak > 0 else 1.0
+            max_drawdown = max(max_drawdown, drawdown)
+            curve.append({
+                "t": ts + 3_600_000, "equity": round(mark_equity, 10),
+                "kind": "mark_to_market",
+            })
+    return curve, max_drawdown
+
+
 def run_v12_backtest(
     rows: list[dict],
     symbol: str,
@@ -183,7 +233,8 @@ def run_v12_backtest(
 
         remaining = qty
         gross_pnl = 0.0
-        fees = entry * qty * fee_rate
+        entry_fee = entry * qty * fee_rate
+        fees = entry_fee
         exits = []
         outcome = "END_OF_DATA"
         j = i + 1
@@ -199,8 +250,9 @@ def run_v12_backtest(
                 raw_exit = min(stop, bar["o"]) if direction == 1 else max(stop, bar["o"])
                 fill = _adverse_fill(raw_exit, direction, entry=False, slippage_rate=slippage_rate)
                 gross_pnl += (fill - entry) * direction * remaining
-                fees += fill * remaining * fee_rate
-                exits.append({"t": bar["t"], "kind": "STOP", "price": fill, "qty": remaining})
+                exit_fee = fill * remaining * fee_rate
+                fees += exit_fee
+                exits.append({"t": bar["t"], "kind": "STOP", "price": fill, "qty": remaining, "fee": exit_fee})
                 remaining = 0.0
                 outcome = "STOP"
                 break
@@ -209,15 +261,17 @@ def run_v12_backtest(
                 take_qty = qty * 0.5
                 fill = _adverse_fill(tp1, direction, entry=False, slippage_rate=slippage_rate)
                 gross_pnl += (fill - entry) * direction * take_qty
-                fees += fill * take_qty * fee_rate
+                exit_fee = fill * take_qty * fee_rate
+                fees += exit_fee
                 remaining -= take_qty
-                exits.append({"t": bar["t"], "kind": "TP1", "price": fill, "qty": take_qty})
+                exits.append({"t": bar["t"], "kind": "TP1", "price": fill, "qty": take_qty, "fee": exit_fee})
 
             if tp2_hit:
                 fill = _adverse_fill(tp2, direction, entry=False, slippage_rate=slippage_rate)
                 gross_pnl += (fill - entry) * direction * remaining
-                fees += fill * remaining * fee_rate
-                exits.append({"t": bar["t"], "kind": "TP2", "price": fill, "qty": remaining})
+                exit_fee = fill * remaining * fee_rate
+                fees += exit_fee
+                exits.append({"t": bar["t"], "kind": "TP2", "price": fill, "qty": remaining, "fee": exit_fee})
                 remaining = 0.0
                 outcome = "TP2" if len(exits) == 1 else "TP1+TP2"
                 break
@@ -228,8 +282,9 @@ def run_v12_backtest(
             bar = rows[-1]
             fill = _adverse_fill(bar["c"], direction, entry=False, slippage_rate=slippage_rate)
             gross_pnl += (fill - entry) * direction * remaining
-            fees += fill * remaining * fee_rate
-            exits.append({"t": bar["t"], "kind": "END_OF_DATA", "price": fill, "qty": remaining})
+            exit_fee = fill * remaining * fee_rate
+            fees += exit_fee
+            exits.append({"t": bar["t"], "kind": "END_OF_DATA", "price": fill, "qty": remaining, "fee": exit_fee})
             remaining = 0.0
 
         funding_pnl = 0.0
@@ -265,7 +320,8 @@ def run_v12_backtest(
         trades.append({
             "symbol": symbol.upper(), "direction": result["signal"],
             "signal_time": signal_row["t"], "entry_time": entry_row["t"],
-            "entry_price": entry, "stop": stop, "tp1": tp1, "tp2": tp2,
+            "entry_price": entry, "quantity": qty, "entry_fee": entry_fee,
+            "stop": stop, "tp1": tp1, "tp2": tp2,
             "signal_score": result["score"], "gross_pnl": gross_pnl, "fees": fees,
             "funding_pnl": funding_pnl, "funding_events": funding_applied,
             "net_pnl": net_pnl, "equity_before": equity_before, "equity_after": equity,
@@ -277,6 +333,9 @@ def run_v12_backtest(
         if equity <= 0:
             break
 
+    # Drawdown must include open-position adverse excursions, not just closed-trade
+    # equity. Rebuild a candle-close mark-to-market curve from each trade ledger.
+    equity_curve, max_dd = _mark_to_market_equity_curve(rows, trades, initial_equity)
     wins = [trade for trade in trades if trade["net_pnl"] > 0]
     losses = [trade for trade in trades if trade["net_pnl"] < 0]
     gross_profit = sum(t["net_pnl"] for t in wins)
