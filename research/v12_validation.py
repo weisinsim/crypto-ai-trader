@@ -22,18 +22,19 @@ def _calibrate_threshold(train_rows, symbol, common):
     base_score = int(ASSET_PROFILES.get(symbol, {}).get("min_score", 75))
     score_candidates = sorted({base_score, min(base_score + 5, 95),
                                min(base_score + 10, 95), min(base_score + 15, 95)})
-    edge_candidates = (8, 12)
+    short_rsi_floors = (None, 30.0)
     candidates = []
     eligible = []
     for min_score in score_candidates:
-        for min_edge in edge_candidates:
+        for short_rsi_floor in short_rsi_floors:
             result = run_v12_backtest(
                 train_rows, symbol, **common,
-                min_score_override=min_score, min_edge_override=min_edge,
+                min_score_override=min_score, min_edge_override=8,
+                short_rsi_floor=short_rsi_floor,
             )
             pf = result["profit_factor"]
             item = {
-                "min_score": min_score, "min_edge": min_edge,
+                "min_score": min_score, "min_edge": 8, "short_rsi_floor": short_rsi_floor,
                 "trades": result["trades"], "win_rate_pct": result["win_rate_pct"],
                 "profit_factor": pf, "net_return_pct": result["net_return_pct"],
                 "max_drawdown_pct": result["max_drawdown_pct"],
@@ -62,7 +63,7 @@ def _calibrate_threshold(train_rows, symbol, common):
 def _overrides(calibration):
     selected = calibration.get("selected")
     return (
-        {"min_score_override": selected["min_score"], "min_edge_override": selected["min_edge"]}
+        {"min_score_override": selected["min_score"], "min_edge_override": selected["min_edge"], "short_rsi_floor": selected["short_rsi_floor"]}
         if selected else {}
     )
 
