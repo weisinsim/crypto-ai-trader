@@ -44,6 +44,18 @@ class FundingAlignmentDiagnosticsTests(unittest.TestCase):
         self.assertEqual(result['nearest_delta_examples_ms'], [0])
         self.assertEqual(result['funding_events_outside_candle_timestamp_range'], 0)
 
+    def test_converts_binance_close_timestamp_to_open_grid(self):
+        # 01:00 candle close is 01:59:59.999; its corresponding open is 01:00.
+        candles = self._csv('candles.csv',
+            'timestamp,open,high,low,close,volume\\n'
+            '2025-01-01T01:59:59.999Z,1,1,1,1,1\\n')
+        funding = self._csv('funding.csv',
+            'timestamp,funding_rate\\n'
+            '2025-01-01T01:00:00Z,0.0001\\n')
+        result = diagnose(candles, funding, candle_timestamp_kind='close', interval_ms=3600000)
+        self.assertEqual(result['nearest_delta_examples_ms'], [0])
+        self.assertTrue(result['candle_timestamps_converted_to_open_grid'])
+
     def test_rejects_timezone_naive_iso_timestamp(self):
         candles = self._csv('candles.csv', 'timestamp\n2025-01-01T00:00:00\n')
         funding = self._csv('funding.csv', 'timestamp\n2025-01-01T00:00:00Z\n')
