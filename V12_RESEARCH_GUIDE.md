@@ -16,7 +16,7 @@ Run separately for each symbol. The script is a research workflow, not an approv
 3. Build causal features:
    `python -m research.v12_features --symbol BTCUSDT --candles-1h data/BTCUSDT_1h.csv --candles-4h data/BTCUSDT_4h.csv --funding-csv data/BTCUSDT_funding.csv --output data/BTCUSDT_v12_features.csv`
 4. Run chronological holdout, forward-fold, and cost-stress evaluation (this calls the next-open simulator internally):
-   `python -m research.v12_validation --csv data/BTCUSDT_v12_features.csv --symbol BTCUSDT --holdout-fraction 0.2 --folds 4 --fee-rate 0.0005 --slippage-rate 0.0002 --output reports/BTCUSDT_v12_validation.json`
+   `python -m research.v12_validation --csv data/BTCUSDT_v12_features.csv --funding-csv data/BTCUSDT_funding.csv --symbol BTCUSDT --holdout-fraction 0.2 --folds 4 --fee-rate 0.0005 --slippage-rate 0.0002 --output reports/BTCUSDT_v12_validation.json`
 
 Repeat per symbol. Do not mix symbols or exchanges in one input file. Funding input is optional, but when absent the model does not receive funding information and the report must not be interpreted as a funding-aware result.
 
