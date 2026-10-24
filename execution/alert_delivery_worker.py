@@ -44,7 +44,10 @@ def deliver_pending_once(*, store, sender, limit=20, now=None):
             failed.append({"event_id": event_id, "reason": "invalid_provider_ack"})
             continue
         timestamp = time.time() if now is None else now
-        if not store.mark_delivered(event_id, now=timestamp):
+        if not store.mark_delivered(
+            event_id, now=timestamp,
+            provider_receipt_id=acknowledgement["receipt_id"].strip(),
+        ):
             failed.append({"event_id": event_id, "reason": "outbox_transition_failed"})
             continue
         delivered.append({
