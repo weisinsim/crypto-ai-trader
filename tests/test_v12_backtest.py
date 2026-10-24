@@ -100,6 +100,17 @@ class V12BacktestTests(unittest.TestCase):
         )
         self.assertEqual(result["trade_log"][0]["funding_pnl"], 0.0)
 
+    def test_max_drawdown_includes_open_position_adverse_excursion(self):
+        rows = [
+            feature_row(0),
+            feature_row(3_600_000, o=101.0, h=102.0, l=99.6, c=99.8),
+            feature_row(7_200_000, o=99.8, h=106.0, l=99.7, c=105.0),
+        ]
+        result = run_v12_backtest(rows, "BTCUSDT", fee_rate=0.0001, slippage_rate=0.0001)
+        self.assertGreater(result["trade_log"][0]["net_pnl"], 0)
+        self.assertGreater(result["max_drawdown_pct"], 0)
+        self.assertGreater(len(result["equity_curve"]), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
