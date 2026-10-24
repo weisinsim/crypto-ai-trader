@@ -1,15 +1,6 @@
 name: V12 Historical Research Evaluation
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/v12-historical-evaluation.yml"
-      - "research/v12_hybrid_engine.py"
-      - "research/v12_backtest.py"
-      - "research/v12_features.py"
-      - "research/v12_validation.py"
-      - "research/run_v12_research.py"
   workflow_dispatch:
     inputs:
       start:
