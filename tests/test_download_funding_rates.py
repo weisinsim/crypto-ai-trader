@@ -74,6 +74,25 @@ class FundingDownloaderTests(unittest.TestCase):
         self.assertEqual(get_json.call_count, 2)
         self.assertEqual(rows, sorted(rows, key=lambda row: row["timestamp"]))
 
+    def test_deduplicate_rows_rejects_conflicting_rates_for_same_timestamp(self):
+        from validation.download_funding_rates import deduplicate_rows
+        rows = [
+            {"timestamp": "2025-01-01T00:00:00Z", "funding_rate": "0.0001"},
+            {"timestamp": "2025-01-01T00:00:00Z", "funding_rate": "0.0002"},
+        ]
+        with self.assertRaisesRegex(RuntimeError, "Conflicting funding rates"):
+            deduplicate_rows(rows, "BTCUSDT")
+
+    def test_deduplicate_rows_collapses_identical_events_and_sorts(self):
+        from validation.download_funding_rates import deduplicate_rows
+        rows = [
+            {"timestamp": "2025-01-01T08:00:00Z", "funding_rate": "-0.0001"},
+            {"timestamp": "2025-01-01T00:00:00Z", "funding_rate": "0.0001"},
+            {"timestamp": "2025-01-01T00:00:00Z", "funding_rate": "0.00010"},
+        ]
+        result = deduplicate_rows(rows, "BTCUSDT")
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["timestamp"], "2025-01-01T00:00:00Z")
     @patch("validation.download_funding_rates.get_json")
     def test_download_filters_exclusive_end(self, get_json):
         start = 1_735_689_600_000
