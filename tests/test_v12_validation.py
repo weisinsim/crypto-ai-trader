@@ -25,7 +25,7 @@ class V12ValidationTests(unittest.TestCase):
         self.assertEqual(report["status"], "RESEARCH_ONLY")
         self.assertFalse(report["live_trading_enabled"])
         self.assertEqual(report["dataset"]["rows"], 40)
-        self.assertEqual(len(report["forward_folds"]), 4)
+        self.assertEqual(len(report["walk_forward_folds"]), 4)
         self.assertIn("base", report["holdout_cost_stress"])
         self.assertIn("stress_1_5x", report["holdout_cost_stress"])
         self.assertIn("severe_2x", report["holdout_cost_stress"])
@@ -33,6 +33,10 @@ class V12ValidationTests(unittest.TestCase):
         self.assertIn(report["threshold_calibration"]["status"],
                       ("TRAINING_CANDIDATE_SELECTED", "NO_CANDIDATE_PASSED_TRAINING_GATES"))
         self.assertIn("net_return_pct", report["calibrated_holdout"])
+        self.assertIn(report["holdout_sample_gate"],
+                      ("SUFFICIENT_FOR_SCREENING", "INSUFFICIENT_HOLDOUT_TRADES"))
+        self.assertIn("net_return_pct", report["walk_forward_aggregate"])
+        self.assertIn("training_calibration", report["walk_forward_folds"][0])
 
     def test_invalid_fold_count_rejected(self):
         with self.assertRaises(ValueError):
