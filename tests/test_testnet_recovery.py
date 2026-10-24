@@ -124,5 +124,16 @@ class TestnetRecoveryTests(unittest.TestCase):
         self.assertEqual(result["reason"], "recovery_unexpected_active_orders")
         self.assertTrue(result["requires_manual_reconciliation"])
 
+    def test_terminal_order_inside_open_orders_snapshot_requires_manual_reconciliation(self):
+        adapter = RecoveryAdapter({
+            "ok": True, "position_amount": "0", "entry_price": "0",
+            "open_orders": [{"status": "FILLED", "type": "STOP_MARKET",
+                             "reduce_only": True}]
+        })
+        result = recover_testnet_position(adapter, "BTCUSDT", 99, 101, "recover-terminal-in-open")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "recovery_open_orders_contains_terminal_status")
+        self.assertTrue(result["requires_manual_reconciliation"])
+
 if __name__ == "__main__":
     unittest.main()
