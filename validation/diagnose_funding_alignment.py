@@ -51,8 +51,17 @@ def _iso(ms):
     return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).isoformat().replace('+00:00', 'Z')
 
 
-def diagnose(candle_path, funding_path):
-    candles, candle_field = _read_timestamps(candle_path, ('timestamp', 't', 'open_time_ms', 'openTime'))
+def diagnose(candle_path, funding_path, candle_timestamp_kind='open', interval_ms=None):
+    candles_raw, candle_field = _read_timestamps(candle_path, ('timestamp', 't', 'open_time_ms', 'openTime'))
+    if candle_timestamp_kind not in ('open', 'close'):
+        raise ValueError("candle_timestamp_kind must be 'open' or 'close'")
+    if candle_timestamp_kind == 'close':
+        if isinstance(interval_ms, bool) or not isinstance(interval_ms, int) or interval_ms <= 0:
+            raise ValueError("interval_ms must be a positive integer when candle timestamps are close times")
+        # Binance candle close timestamps are inclusive: open + interval - 1 ms.
+        candles = [timestamp - interval_ms + 1 for timestamp in candles_raw]
+    else:
+        candles = candles_raw
     funding, funding_field = _read_timestamps(funding_path, ('funding_time_ms', 'fundingTime', 'timestamp'))
     candle_sorted = sorted(set(candles))
     duplicate_candles = len(candles) - len(set(candles))
@@ -83,6 +92,9 @@ def diagnose(candle_path, funding_path):
     return {
         'candle_file': str(candle_path), 'funding_file': str(funding_path),
         'candle_timestamp_field': candle_field, 'funding_timestamp_field': funding_field,
+        'candle_timestamp_kind_input': candle_timestamp_kind,
+        'candle_interval_ms': interval_ms,
+        'candle_timestamps_converted_to_open_grid': candle_timestamp_kind == 'close',
         'candle_rows': len(candles), 'funding_rows': len(funding),
         'duplicate_candle_timestamps': duplicate_candles, 'duplicate_funding_timestamps': duplicate_funding,
         'candle_first_utc': _iso(min(candles)), 'candle_last_utc': _iso(max(candles)),
@@ -106,8 +118,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--candles', required=True)
     parser.add_argument('--funding', required=True)
+    parser.add_argument('--candle-timestamp-kind', choices=('open', 'close'), default='open',
+                        help='Meaning of timestamps stored in the candle CSV; Binance downloader output uses close times')
+    parser.add_argument('--interval-ms', type=int,
+                        help='Candle interval in milliseconds; required with --candle-timestamp-kind close')
     args = parser.parse_args()
-    print(json.dumps(diagnose(Path(args.candles), Path(args.funding)), indent=2))
+    print(json.dumps(diagnose(Path(args.candles), Path(args.funding),
+                              args.candle_timestamp_kind, args.interval_ms), indent=2))
 
 
 if __name__ == '__main__':
