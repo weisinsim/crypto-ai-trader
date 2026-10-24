@@ -143,8 +143,10 @@ class BinanceFuturesTestnet:
         for position in account["positions"]:
             if not isinstance(position, dict):
                 raise ValueError("invalid_testnet_position_record")
+            if "positionAmt" not in position:
+                raise ValueError("invalid_testnet_position_amount")
             try:
-                amount = Decimal(str(position.get("positionAmt", "0")))
+                amount = Decimal(str(position["positionAmt"]))
             except (InvalidOperation, TypeError, ValueError) as exc:
                 raise ValueError("invalid_testnet_position_amount") from exc
             if not amount.is_finite():
@@ -318,9 +320,11 @@ class BinanceFuturesTestnet:
         if len(matching) != 1:
             return {"ok": False, "reason": "position_not_found_or_ambiguous"}
         position = matching[0]
+        if "positionAmt" not in position or "entryPrice" not in position:
+            return {"ok": False, "reason": "invalid_testnet_position_values"}
         try:
-            amount = Decimal(str(position.get("positionAmt", "0")))
-            entry_price = Decimal(str(position.get("entryPrice", "0")))
+            amount = Decimal(str(position["positionAmt"]))
+            entry_price = Decimal(str(position["entryPrice"]))
             if not amount.is_finite() or not entry_price.is_finite() or entry_price < 0:
                 raise InvalidOperation
         except (InvalidOperation, TypeError, ValueError):
