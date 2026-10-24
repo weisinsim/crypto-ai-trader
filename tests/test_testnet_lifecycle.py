@@ -81,7 +81,7 @@ class TestnetLifecycleTests(unittest.TestCase):
                 return super().submit_testnet_protective_exit(symbol, kind, quantity, price, client_id)
 
         adapter = TimeoutTargetAdapter()
-        result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-target-timeout")
+        result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-tgt-timeout")
         self.assertFalse(result["ok"])
         self.assertEqual(result["reason"], "take_profit_submission_outcome_unknown_stop_remains")
         self.assertTrue(result["requires_reconciliation"])
