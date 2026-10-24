@@ -56,6 +56,16 @@ class V12FeatureBuilderTests(unittest.TestCase):
         self.assertTrue(all(row["oi_change_pct"] is None for row in features))
         self.assertTrue(all(row["cvd_direction"] == "UNKNOWN" for row in features))
 
+    def test_feature_builder_uses_taker_volume_cvd_proxy_when_available(self):
+        one_hour = candles(300, 3_600_000)
+        for row in one_hour:
+            row["tb"] = row["v"] * 0.7
+            row["tq"] = row["q"] * 0.7
+        features = build_v12_features(one_hour, candles(80, 14_400_000))
+        self.assertEqual(features[-1]["cvd_direction"], "UP")
+        self.assertGreater(features[-1]["cvd_ratio_12"], 0.02)
+        self.assertGreater(features[-1]["cvd_ratio_24"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()
