@@ -33,7 +33,8 @@ class EntryAlertStore:
                     payload_json TEXT NOT NULL,
                     status TEXT NOT NULL,
                     created_at REAL NOT NULL,
-                    delivered_at REAL
+                    delivered_at REAL,
+                    provider_receipt_id TEXT
                 )
             """)
 
@@ -119,7 +120,7 @@ class EntryAlertStore:
             for row in rows
         ]
 
-    def mark_delivered(self, event_id, *, now=None):
+    def mark_delivered(self, event_id, *, now=None, provider_receipt_id=None):
         if not isinstance(event_id, str) or not event_id:
             return False
         try:
@@ -130,10 +131,28 @@ class EntryAlertStore:
             return False
         if not math.isfinite(delivered_at) or delivered_at <= 0:
             return False
+        if provider_receipt_id is not None and (
+            not isinstance(provider_receipt_id, str) or not provider_receipt_id.strip()
+        ):
+            return False
         with self._connect() as conn:
             cursor = conn.execute(
-                """UPDATE entry_alert_outbox SET status='DELIVERED', delivered_at=?
+                """UPDATE entry_alert_outbox
+                   SET status='DELIVERED', delivered_at=?, provider_receipt_id=?
                    WHERE event_id=? AND status='PENDING' AND created_at <= ?""",
-                (delivered_at, event_id, delivered_at),
+                (delivered_at, provider_receipt_id.strip() if provider_receipt_id else None,
+                 event_id, delivered_at),
             )
             return cursor.rowcount == 1
+
+    def delivery_record(self, event_id):
+        """Return persisted delivery state without exposing the alert payload."""
+        if not isinstance(event_id, str) or not event_id:
+            return None
+        with self._connect() as conn:
+            row = conn.execute(
+                """SELECT event_id, status, created_at, delivered_at, provider_receipt_id
+                   FROM entry_alert_outbox WHERE event_id=?""",
+                (event_id,),
+            ).fetchone()
+        return dict(row) if row is not None else None
