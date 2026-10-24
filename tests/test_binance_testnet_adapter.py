@@ -430,5 +430,35 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(result["symbol_notional_usdt"], 100.5)
         self.assertEqual(result["total_notional_usdt"], 100.5)
 
+    def test_account_preflight_rejects_missing_position_amount(self):
+        class MissingAmountClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"canTrade": True, "positions": [{"symbol": "BTCUSDT"}]})
+                return super().get(path, params)
+
+        client = MissingAmountClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        with self.assertRaisesRegex(ValueError, "invalid_testnet_position_amount"):
+            adapter.account_preflight()
+
+    def test_position_snapshot_rejects_missing_position_amount(self):
+        class MissingAmountClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"positions": [
+                        {"symbol": "BTCUSDT", "entryPrice": "0"},
+                    ]})
+                return super().get(path, params)
+
+        client = MissingAmountClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.testnet_position_snapshot("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "invalid_testnet_position_values")
+        self.assertEqual([call[0] for call in client.get_calls], ["/fapi/v2/account"])
+
 if __name__ == "__main__":
     unittest.main()
