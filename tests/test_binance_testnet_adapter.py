@@ -101,6 +101,24 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             adapter.account_preflight()
 
+    def test_account_preflight_rejects_string_can_trade_flag(self):
+        class BadClient(FakeClient):
+            def get(self, path, params):
+                return FakeResponse({"canTrade": "false", "positions": []})
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=BadClient())
+        with self.assertRaisesRegex(ValueError, "invalid_testnet_account_response"):
+            adapter.account_preflight()
+
+    def test_account_preflight_rejects_malformed_position_amount(self):
+        class BadClient(FakeClient):
+            def get(self, path, params):
+                return FakeResponse({"canTrade": True, "positions": [
+                    {"symbol": "BTCUSDT", "positionAmt": "NaN"}
+                ]})
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=BadClient())
+        with self.assertRaisesRegex(ValueError, "invalid_testnet_position_amount"):
+            adapter.account_preflight()
+
     def test_symbol_rules_reads_quantity_and_notional_filters(self):
         client = FakeClient()
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
