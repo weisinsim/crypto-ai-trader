@@ -92,6 +92,20 @@ class ReplaySignalAuditTests(unittest.TestCase):
             self.assertEqual(result["status"], "NO_SIGNALS")
             self.assertEqual(result["matched_signal_count"], 0)
 
+    def test_direct_api_rejects_invalid_entry_tolerance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            candles = root / "candles.csv"
+            signals = root / "signals.csv"
+            self.write_csv(candles, ["timestamp", "close"], [
+                {"timestamp": "2025-01-01T00:59:59.999Z", "close": "100"}
+            ])
+            self.write_csv(signals, ["timestamp", "side", "entry", "atr", "stop", "target"], [])
+            for tolerance in (-1, float("nan"), float("inf"), True):
+                with self.subTest(tolerance=tolerance):
+                    with self.assertRaisesRegex(ValueError, "entry_tolerance_bps must be finite"):
+                        audit("BTCUSDT", candles, signals, tolerance)
+
 
 
 if __name__ == "__main__":
