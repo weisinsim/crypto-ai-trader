@@ -28,12 +28,23 @@
 
 PF = profit factor. Returns are simulated and include modeled fees, slippage, and available funding cash flows. Initial equity is normalized to 1.0.
 
+### Severe cost stress (2× fee and slippage assumptions)
+
+| Symbol | Holdout net return | Holdout PF |
+|---|---:|---:|
+| BTCUSDT* | +3.91% | 4.12 |
+| ETHUSDT | -5.68% | 0.42 |
+| SOLUSDT | +2.73% | 1.32 |
+| AVAXUSDT | +1.19% | 1.16 |
+
+*BTC stress result is based on only 7 trades and is not decision-grade.
+
 * BTC's positive holdout result uses a training-selected score threshold of 80 but only 7 holdout trades; it is explicitly **insufficient evidence**.
 
 ## Assessment
 - **BTC:** Exit management materially reduced the full-sample loss, but walk-forward is essentially flat with only 12 trades. The positive calibrated holdout is too small to trust.
 - **ETH:** Full-sample remains positive, but both walk-forward and holdout are negative. Do not promote.
-- **SOL:** Best research candidate. Walk-forward and holdout are positive, but walk-forward PF is only 1.25 across 37 trades, full-sample PF is 1.04, and market-regime stability is not established. Continue research only.
+- **SOL:** Best research candidate. Walk-forward and holdout are positive, and the holdout remains positive under 2× fee/slippage stress (+2.73%, PF 1.32). However, walk-forward PF is only 1.25 across 37 trades, full-sample PF is 1.04, and market-regime stability is not established. Continue research only.
 - **AVAX:** Holdout is positive, but full-sample is near breakeven and walk-forward is negative. Do not promote.
 - No symbol clears the intended institutional validation bar across full sample, expanding walk-forward, cost stress, adequate trade count, and paper-trading confirmation.
 
