@@ -49,6 +49,18 @@ class FillLedgerTests(unittest.TestCase):
             record_confirmed_fill_pnl(self.store, trade)
         self.assertEqual(self.store.events, {})
 
+    def test_nonzero_realized_pnl_that_underflows_float_is_rejected(self):
+        trade = dict(self.trade, realizedPnl="1e-9999")
+        with self.assertRaisesRegex(ValueError, "invalid_normalized_realized_pnl"):
+            record_confirmed_fill_pnl(self.store, trade)
+        self.assertEqual(self.store.events, {})
+
+    def test_zero_realized_pnl_remains_valid(self):
+        trade = dict(self.trade, realizedPnl="0")
+        result = record_confirmed_fill_pnl(self.store, trade)
+        self.assertTrue(result["pnl_event_recorded"])
+        self.assertEqual(self.store.events[result["event_id"]], 0.0)
+
     def test_missing_store_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "runtime_state_store_required"):
             record_confirmed_fill_pnl(None, self.trade)
