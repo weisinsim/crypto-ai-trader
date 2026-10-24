@@ -8,6 +8,7 @@ levels are supplied; otherwise it fails closed.
 import hashlib
 import json
 from dataclasses import asdict, is_dataclass
+from decimal import Decimal, InvalidOperation
 
 from execution.runtime_guard import RuntimeRiskConfig, validate_runtime_state
 from execution.runtime_state_store import RuntimeStateStore
@@ -68,10 +69,10 @@ class TestnetSupervisor:
             return {"ok": False, "reason": "position_snapshot_unavailable",
                     "entry_submitted": False, "requires_manual_reconciliation": True}
         try:
-            amount = float(position["position_amount"])
-        except (KeyError, TypeError, ValueError, OverflowError):
-            amount = float("nan")
-        if not __import__("math").isfinite(amount):
+            amount = Decimal(str(position["position_amount"]))
+        except (KeyError, TypeError, ValueError, InvalidOperation):
+            amount = Decimal("NaN")
+        if not amount.is_finite():
             self.state_store.record_execution_result(False)
             return {"ok": False, "reason": "position_amount_invalid",
                     "entry_submitted": False, "requires_manual_reconciliation": True}
@@ -149,10 +150,10 @@ class TestnetSupervisor:
                 return {"ok": False, "reason": "position_recheck_failed_under_lock",
                         "entry_submitted": False, "requires_reconciliation": True}
             try:
-                current_amount = float(position["position_amount"])
-            except (KeyError, TypeError, ValueError, OverflowError):
-                current_amount = float("nan")
-            if not __import__("math").isfinite(current_amount):
+                current_amount = Decimal(str(position["position_amount"]))
+            except (KeyError, TypeError, ValueError, InvalidOperation):
+                current_amount = Decimal("NaN")
+            if not current_amount.is_finite():
                 self.state_store.record_execution_result(False)
                 return {"ok": False, "reason": "position_amount_invalid_under_lock",
                         "entry_submitted": False, "requires_reconciliation": True}
