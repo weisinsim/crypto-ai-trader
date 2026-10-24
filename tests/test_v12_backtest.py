@@ -111,6 +111,50 @@ class V12BacktestTests(unittest.TestCase):
         self.assertGreater(result["max_drawdown_pct"], 0)
         self.assertGreater(len(result["equity_curve"]), 2)
 
+    def test_atr_trailing_stop_protects_remaining_half_after_tp1(self):
+        rows = [
+            feature_row(0),
+            feature_row(3_600_000, o=101.0, h=104.5, l=100.0, c=104.2),
+            feature_row(7_200_000, o=103.5, h=104.0, l=102.8, c=103.0),
+        ]
+        result = run_v12_backtest(rows, "BTCUSDT", fee_rate=0.0001, slippage_rate=0.0001)
+        trade = result["trade_log"][0]
+        self.assertEqual(trade["exit_kind"], "TP1+TRAILING_STOP")
+        self.assertEqual([exit_row["kind"] for exit_row in trade["exits"]], ["TP1", "TRAILING_STOP"])
+        self.assertTrue(trade["stop_updates"])
+        self.assertGreater(trade["net_pnl"], 0)
+
+    def test_max_holding_time_exits_at_next_open(self):
+        rows = [
+            feature_row(0),
+            feature_row(3_600_000, o=101.0, h=102.0, l=100.0, c=101.0),
+            feature_row(7_200_000, o=101.0, h=102.0, l=100.0, c=101.0),
+        ]
+        result = run_v12_backtest(rows, "BTCUSDT", max_holding_bars=1)
+        trade = result["trade_log"][0]
+        self.assertEqual(trade["exit_kind"], "TIME_EXIT")
+        self.assertEqual(trade["exit_time"], 7_200_000)
+        self.assertEqual(trade["holding_bars"], 1)
+
+    def test_signal_reversal_exits_at_next_open(self):
+        row0 = feature_row(0)
+        row1 = feature_row(3_600_000, o=101.0, h=101.2, l=99.6, c=99.8)
+        row1.update({
+            "ema20_1h": 100.0, "ema50_1h": 101.0, "ema200_1h": 102.0,
+            "ema20_4h": 100.0, "ema50_4h": 102.0, "ema200_4h": 103.0,
+            "rsi_1h": 25.0, "vwap_1h": 100.0, "support": 90.0, "resistance": 103.0,
+            "funding_rate": 0.0005, "momentum_pct": -2.0,
+            "breakout_up": False, "breakout_down": True,
+            "retest_long": False, "retest_short": True,
+            "cvd_direction": "DOWN", "market_regime": "BEAR",
+        })
+        row2 = feature_row(7_200_000, o=99.7, h=100.5, l=99.5, c=100.0)
+        result = run_v12_backtest([row0, row1, row2], "BTCUSDT")
+        trade = result["trade_log"][0]
+        self.assertEqual(trade["exit_kind"], "SIGNAL_REVERSAL_EXIT")
+        self.assertEqual(trade["exit_time"], 7_200_000)
+        self.assertEqual(trade["holding_bars"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
