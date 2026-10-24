@@ -795,9 +795,12 @@ class CausalBacktestRegressionTests(unittest.TestCase):
                 rows, fast=2, slow=3, atr_period=1, stop_atr=1.0,
                 target_atr=2.0, fee_rate=0, slippage_rate=0, allow_short=False,
             )
-        self.assertEqual(result["trades"], 0)
-        self.assertEqual(result["trade_log"], [])
-        self.assertEqual(result["equity_final"], 1.0)
+        self.assertEqual(result["trades"], 1)
+        trade = result["trade_log"][0]
+        self.assertEqual(trade["entry_time"], rows[-1]["t"])
+        self.assertEqual(trade["exit_time"], rows[-1]["t"])
+        self.assertEqual(trade["reason"], "END_OF_DATA")
+        self.assertEqual(result["equity_final"], 1.0 + trade["pnl_equity"])
 
     def test_signal_entry_is_filled_at_next_bar_open_not_signal_close(self):
         from unittest.mock import patch
