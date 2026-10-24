@@ -7,7 +7,7 @@ import math
 from pathlib import Path
 
 from research.v12_backtest import load_feature_csv, run_v12_backtest, MODEL_VERSION
-from research.v12_hybrid_engine import ASSET_PROFILES
+from research.v12_hybrid_engine import ASSET_PROFILES, WEIGHTS
 from research.run_backtest import load_funding_csv
 
 
@@ -130,6 +130,84 @@ def _aggregate_walk_forward(rows, symbol, *, split, folds, wf_start, common, ini
     return fold_reports, aggregate
 
 
+def _fixed_weight_walk_forward(rows, symbol, *, split, folds, wf_start, common, initial_equity, weights):
+    """Evaluate fixed component weights on expanding chronological test windows."""
+    available = split - wf_start
+    if available < folds * 3:
+        raise ValueError("not enough pre-holdout rows for component ablation")
+    current_equity = initial_equity
+    aggregate_curve = [{"t": rows[wf_start]["t"], "equity": initial_equity, "kind": "initial"}]
+    all_trades = []
+    for fold in range(folds):
+        start = wf_start + (available * fold) // folds
+        end = wf_start + (available * (fold + 1)) // folds
+        fold_common = dict(common)
+        fold_common["initial_equity"] = current_equity
+        result = run_v12_backtest(
+            rows[start:end], symbol, **fold_common,
+            component_weights_override=weights,
+        )
+        current_equity = result["equity_final"]
+        all_trades.extend(result["trade_log"])
+        aggregate_curve.extend(result["equity_curve"][1:])
+
+    peak = initial_equity
+    max_drawdown = 0.0
+    for point in aggregate_curve:
+        peak = max(peak, point["equity"])
+        dd = (peak - point["equity"]) / peak if peak > 0 else 1.0
+        max_drawdown = max(max_drawdown, dd)
+    wins = [trade for trade in all_trades if trade["net_pnl"] > 0]
+    losses = [trade for trade in all_trades if trade["net_pnl"] < 0]
+    gross_profit = sum(trade["net_pnl"] for trade in wins)
+    gross_loss = -sum(trade["net_pnl"] for trade in losses)
+    return {
+        "trades": len(all_trades), "wins": len(wins), "losses": len(losses),
+        "win_rate_pct": round(len(wins) / len(all_trades) * 100, 4) if all_trades else None,
+        "profit_factor": round(gross_profit / gross_loss, 4) if gross_loss else (None if not gross_profit else "INF"),
+        "funding_pnl_total": round(sum(trade["funding_pnl"] for trade in all_trades), 8),
+        "net_return_pct": round((current_equity / initial_equity - 1) * 100, 4),
+        "max_drawdown_pct": round(max_drawdown * 100, 4),
+        "equity_final": round(current_equity, 8),
+    }
+
+
+def _component_ablation(rows, symbol, *, split, folds, wf_start, common, initial_equity):
+    baseline_weights = dict(WEIGHTS)
+    results = {
+        "full_ensemble_fixed_threshold": _fixed_weight_walk_forward(
+            rows, symbol, split=split, folds=folds, wf_start=wf_start,
+            common=common, initial_equity=initial_equity, weights=baseline_weights,
+        )
+    }
+    for component in WEIGHTS:
+        weights = dict(WEIGHTS)
+        weights[component] = 0.0
+        results[f"without_{component}"] = _fixed_weight_walk_forward(
+            rows, symbol, split=split, folds=folds, wf_start=wf_start,
+            common=common, initial_equity=initial_equity, weights=weights,
+        )
+    baseline = results["full_ensemble_fixed_threshold"]
+    deltas = {}
+    for name, metrics in results.items():
+        if name == "full_ensemble_fixed_threshold":
+            continue
+        deltas[name] = {
+            "net_return_delta_pct_points": round(metrics["net_return_pct"] - baseline["net_return_pct"], 4),
+            "profit_factor_delta": (
+                round(metrics["profit_factor"] - baseline["profit_factor"], 4)
+                if isinstance(metrics["profit_factor"], (int, float))
+                and isinstance(baseline["profit_factor"], (int, float)) else None
+            ),
+            "trade_count_delta": metrics["trades"] - baseline["trades"],
+        }
+    return {
+        "method": "fixed per-coin default score threshold; expanding windows within the pre-holdout 50%-80% period",
+        "note": "Ablation diagnostics only; thresholds are not re-tuned per variant and results are not production approval.",
+        "results": results, "delta_vs_full_ensemble": deltas,
+    }
+
+
 def run_v12_validation(rows, symbol, *, holdout_fraction=0.2, folds=4,
                        fee_rate=0.0005, slippage_rate=0.0002,
                        initial_equity=1.0, risk_fraction=0.005, max_leverage=3.0,
@@ -169,6 +247,10 @@ def run_v12_validation(rows, symbol, *, holdout_fraction=0.2, folds=4,
 
     # The final holdout is outside both threshold selection and walk-forward test windows.
     walk_forward, walk_forward_aggregate = _aggregate_walk_forward(
+        rows, symbol, split=split, folds=folds, wf_start=wf_start,
+        common=common, initial_equity=initial_equity,
+    )
+    component_ablation = _component_ablation(
         rows, symbol, split=split, folds=folds, wf_start=wf_start,
         common=common, initial_equity=initial_equity,
     )
@@ -216,6 +298,7 @@ def run_v12_validation(rows, symbol, *, holdout_fraction=0.2, folds=4,
         "holdout_sample_gate": holdout_sample_gate,
         "walk_forward_folds": walk_forward,
         "walk_forward_aggregate": walk_forward_aggregate,
+        "component_ablation": component_ablation,
         "holdout_cost_stress": cost_stress,
         "limitations": [
             "Funding cash flows are included when validated funding events are supplied; endpoint mark prices are not reconciled against an account ledger.",
