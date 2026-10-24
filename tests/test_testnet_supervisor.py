@@ -87,6 +87,29 @@ class TestnetSupervisorTests(unittest.TestCase):
         self.assertEqual(result["reason"], "existing_position_requires_protection_metadata")
         self.assertFalse(result["entry_submitted"])
 
+    def test_tiny_nonzero_position_does_not_underflow_to_flat(self):
+        self.adapter.position_amount = "1e-9999"
+        result = self.supervisor.run_once("BTCUSDT", self.intent(), "tiny-pos-entry", "run-tiny")
+        self.assertEqual(result["reason"], "existing_position_requires_protection_metadata")
+        self.assertFalse(result["entry_submitted"])
+        self.assertEqual(self.adapter.submissions, [])
+
+    def test_tiny_nonzero_position_is_rechecked_under_entry_lock(self):
+        class ChangesOnSecondSnapshot(FakeAdapter):
+            def testnet_position_snapshot(inner, symbol):
+                inner.position_snapshot_calls += 1
+                amount = "0" if inner.position_snapshot_calls == 1 else "1e-9999"
+                return {"ok": True, "position_amount": amount, "entry_price": "100",
+                        "open_orders": []}
+        adapter = ChangesOnSecondSnapshot()
+        store = RuntimeStateStore(str(Path(self.temp.name) / "tiny-lock.sqlite"))
+        supervisor = TestnetSupervisor(adapter, store,
+            execution_config=ExecutionConfig(mode="testnet", max_notional_usdt=100,
+                                             max_risk_fraction=0.005))
+        result = supervisor.run_once("BTCUSDT", self.intent(), "tiny-lock-entry", "run-tiny-lock")
+        self.assertEqual(result["reason"], "position_opened_by_concurrent_activity")
+        self.assertEqual(adapter.submissions, [])
+
     def test_intent_entry_is_guarded_and_protected(self):
         result = self.supervisor.run_once("BTCUSDT", self.intent(), "entry-1", "run-1")
         self.assertTrue(result["ok"], result)
