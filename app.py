@@ -148,6 +148,37 @@ def ema(values, period):
         e = v * k + e * (1-k)
     return e
 
+def macd_histogram(values, fast=12, slow=26, signal=9):
+    """Return MACD histogram from the supplied chronological closed-candle closes."""
+    if len(values) < slow + signal:
+        return None
+
+    def ema_series(items, period):
+        if len(items) < period:
+            return []
+        k = 2 / (period + 1)
+        current = sum(items[:period]) / period
+        out = [None] * (period - 1) + [current]
+        for value in items[period:]:
+            current = value * k + current * (1 - k)
+            out.append(current)
+        return out
+
+    fast_line = ema_series(values, fast)
+    slow_line = ema_series(values, slow)
+    macd_line = [
+        (fast_line[i] - slow_line[i]) if fast_line[i] is not None and slow_line[i] is not None else None
+        for i in range(len(values))
+    ]
+    valid = [value for value in macd_line if value is not None]
+    if len(valid) < signal:
+        return None
+    signal_line = ema_series(valid, signal)
+    if not signal_line or signal_line[-1] is None:
+        return None
+    return valid[-1] - signal_line[-1]
+
+
 def rsi(values, period=14):
     if len(values) < period + 1:
         return None
@@ -407,7 +438,19 @@ async def analyze_symbol(s):
         # four-model ensemble. Frozen XRP and blocked ETH retain their safeguards.
         hybrid_result = None
         if s in ("BTCUSDT", "SOLUSDT", "AVAXUSDT"):
-            now_s = time.time()
+            # Freshness is based on the timestamp of the last CLOSED 1h candle,
+            # not on the websocket ticker timestamp. A fresh price tick must not
+            # make an old candle set appear fresh.
+            now_ms = int(time.time() * 1000)
+            last_1h_close_ms = int(k1[-1]["t"]) + 3_600_000
+            last_4h_close_ms = int(k4[-1]["t"]) + 14_400_000
+            age_1h_ms = now_ms - last_1h_close_ms
+            age_4h_ms = now_ms - last_4h_close_ms
+            candles_fresh = (
+                0 <= age_1h_ms <= 70 * 60_000
+                and 0 <= age_4h_ms <= 4 * 60 * 60_000 + 10 * 60_000
+            )
+            macd_hist_value = macd_histogram(c1)
             hybrid_features = {
                 "price": p, "ema20_1h": e20, "ema50_1h": e50, "ema200_1h": e200,
                 "ema20_4h": e20_4, "ema50_4h": e50_4, "ema200_4h": e200_4,
@@ -419,10 +462,11 @@ async def analyze_symbol(s):
                 "breakout_down": bool(support is not None and p < support and c1[-2] >= support),
                 "retest_long": bool(support is not None and a and abs(p-support) <= 0.4*a and p >= c1[-2]),
                 "retest_short": bool(resistance is not None and a and abs(p-resistance) <= 0.4*a and p <= c1[-2]),
+                "macd_hist": macd_hist_value,
                 "cvd_direction": "UNKNOWN",
                 "market_regime": "RANGE" if trend4 == "RANGE" else trend4,
-                "data_fresh": bool(cache[s].get("ts") and now_s-cache[s]["ts"] <= 60),
-                "candle_closed": True,
+                "data_fresh": candles_fresh,
+                "candle_closed": bool(age_1h_ms >= 0 and age_4h_ms >= 0),
                 "spread_bps": cache[s].get("spread_bps"),
             }
             hybrid_result = evaluate_hybrid(s, hybrid_features)
