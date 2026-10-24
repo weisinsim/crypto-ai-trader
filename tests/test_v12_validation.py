@@ -37,6 +37,8 @@ class V12ValidationTests(unittest.TestCase):
                       ("SUFFICIENT_FOR_SCREENING", "INSUFFICIENT_HOLDOUT_TRADES"))
         self.assertIn("net_return_pct", report["walk_forward_aggregate"])
         self.assertIn("training_calibration", report["walk_forward_folds"][0])
+        self.assertIn("full_ensemble_fixed_threshold", report["component_ablation"]["results"])
+        self.assertIn("without_momentum_funding", report["component_ablation"]["results"])
 
     def test_invalid_fold_count_rejected(self):
         with self.assertRaises(ValueError):
