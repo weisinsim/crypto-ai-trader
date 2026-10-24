@@ -54,6 +54,19 @@ This diagnostic removes one component at a time and renormalizes the remaining w
 
 **Finding:** Trend Breakout is strongly beneficial for SOL but appears harmful for BTC, ETH, and AVAX in this development window. Momentum+Funding and Confluence generally add value. This supports per-coin model selection rather than forcing identical weights across assets. These ablation results are diagnostic and have already been examined; using them to choose new weights requires another out-of-sample or paper-trading validation.
 
+## Training-selected per-coin weight profiles
+
+A second experiment selected among three profiles using training data only: `default`, `trend_light` (trend-breakout weight reduced to 15%), and `trend_off` (trend-breakout weight set to zero). The selected profile was then tested on expanding walk-forward windows and the separately reported holdout.
+
+| Symbol | Profile selected on training | Profile-WF return | Profile-WF PF | WF trades | Profile holdout return | Holdout PF | Holdout trades |
+|---|---|---:|---:|---:|---:|---:|---:|
+| BTCUSDT | default | -3.09% | 0.78 | 37 | -0.76% | 0.91 | 21 |
+| ETHUSDT | trend_off | +3.34% | 1.68 | 17 | -1.19% | 0.69 | 10 |
+| SOLUSDT | default | +3.11% | 1.25 | 37 | +4.09% | 1.53 | 26 |
+| AVAXUSDT | trend_light | -2.27% | 0.80 | 31 | -0.24% | 0.97 | 20 |
+
+**Interpretation:** Per-coin weight selection does not produce a robust winner. SOL remains the only candidate with positive profile-WF and holdout returns, but its fold results are uneven and the trade count is still low. ETH's attractive profile-WF PF is based on only 17 trades and fails in holdout. Keep all profiles in research only.
+
 ## Assessment
 - **BTC:** Exit management materially reduced the full-sample loss, but walk-forward is essentially flat with only 12 trades. The positive calibrated holdout is too small to trust.
 - **ETH:** Full-sample remains positive, but both walk-forward and holdout are negative. Do not promote.
