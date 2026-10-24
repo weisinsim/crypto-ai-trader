@@ -6,11 +6,13 @@ on:
     paths:
       - "research/**"
       - "tests/**"
+      - "app.py"
       - ".github/workflows/research-tests.yml"
   pull_request:
     paths:
       - "research/**"
       - "tests/**"
+      - "app.py"
       - ".github/workflows/research-tests.yml"
   workflow_dispatch:
 
@@ -18,7 +20,23 @@ permissions:
   contents: read
 
 jobs:
-  unit-tests:
+  v12-focused:
+    name: V12 focused tests and compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install focused test dependencies
+        run: python -m pip install --upgrade pytest
+      - name: Run V12 hybrid unit tests
+        run: python -m pytest -q tests/test_v12_hybrid_engine.py
+      - name: Compile application and research modules
+        run: python -m compileall -q app.py research validation tests
+
+  full-suite:
+    name: Full repository test suite
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,5 +45,5 @@ jobs:
           python-version: "3.12"
       - name: Install test dependencies
         run: python -m pip install --upgrade pytest httpx
-      - name: Run unit tests
+      - name: Run all unit tests
         run: python -m pytest -q
