@@ -156,6 +156,40 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             adapter.symbol_rules("../BTCUSDT")
 
+    def test_symbol_rules_rejects_nonfinite_or_inconsistent_quantity_filters(self):
+        for step, minimum, maximum in (
+            ("NaN", "0.001", "100"),
+            ("Infinity", "0.001", "100"),
+            ("0.001", "-0.001", "100"),
+            ("0.001", "1", "0.5"),
+        ):
+            with self.subTest(step=step, minimum=minimum, maximum=maximum):
+                payload = {"symbols": [{"symbol": "BTCUSDT", "status": "TRADING", "filters": [
+                    {"filterType": "MARKET_LOT_SIZE", "stepSize": step,
+                     "minQty": minimum, "maxQty": maximum},
+                ]}]}
+                adapter = BinanceFuturesTestnet(
+                    api_key="test-key", api_secret="test-secret",
+                    client=FakeClient(exchange_payload=payload),
+                )
+                with self.assertRaisesRegex(ValueError, "invalid_exchange_quantity_filters"):
+                    adapter.symbol_rules("BTCUSDT")
+
+    def test_symbol_rules_rejects_nonfinite_min_notional(self):
+        for value in ("NaN", "Infinity", "-1", "0"):
+            with self.subTest(value=value):
+                payload = {"symbols": [{"symbol": "BTCUSDT", "status": "TRADING", "filters": [
+                    {"filterType": "MARKET_LOT_SIZE", "stepSize": "0.001",
+                     "minQty": "0.001", "maxQty": "100"},
+                    {"filterType": "MIN_NOTIONAL", "notional": value},
+                ]}]}
+                adapter = BinanceFuturesTestnet(
+                    api_key="test-key", api_secret="test-secret",
+                    client=FakeClient(exchange_payload=payload),
+                )
+                with self.assertRaisesRegex(ValueError, "invalid_exchange_min_notional"):
+                    adapter.symbol_rules("BTCUSDT")
+
     def test_non_trading_symbol_is_rejected_before_order_validation(self):
         payload = {"symbols": [{"symbol": "BTCUSDT", "status": "BREAK", "filters": [
             {"filterType": "MARKET_LOT_SIZE", "stepSize": "0.001", "minQty": "0.001", "maxQty": "100"},
