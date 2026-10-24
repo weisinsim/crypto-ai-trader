@@ -61,6 +61,25 @@ def fetch_klines(symbol, interval, start_ms, end_ms, keep_open=False):
     return rows
 
 
+def deduplicate_funding_rows(rows):
+    """Sort funding events and reject conflicting rates at the same event time."""
+    import math
+    by_time = {}
+    for row in rows:
+        timestamp = int(row["fundingTime"])
+        rate = float(row["fundingRate"])
+        if not math.isfinite(rate):
+            raise RuntimeError(f"Non-finite funding rate at {timestamp}")
+        previous = by_time.get(timestamp)
+        if previous is not None and float(previous["fundingRate"]) != rate:
+            raise RuntimeError(
+                f"Conflicting funding rates at {timestamp}: "
+                f"{previous['fundingRate']} vs {row['fundingRate']}"
+            )
+        by_time[timestamp] = row
+    return [by_time[key] for key in sorted(by_time)]
+
+
 def fetch_funding(symbol, start_ms, end_ms):
     out, cursor = [], start_ms
     while cursor < end_ms:
@@ -77,8 +96,7 @@ def fetch_funding(symbol, start_ms, end_ms):
         if len(batch) < 1000:
             break
         time.sleep(0.15)
-    dedup = {int(r["fundingTime"]): r for r in out}
-    return [dedup[k] for k in sorted(dedup)]
+    return deduplicate_funding_rows(out)
 
 
 def write_csv(path, headers, rows):
