@@ -1,6 +1,10 @@
 name: V12 Historical Research Evaluation
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/v12-historical-evaluation.yml"
   workflow_dispatch:
     inputs:
       start:
