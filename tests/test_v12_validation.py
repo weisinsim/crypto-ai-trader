@@ -39,6 +39,10 @@ class V12ValidationTests(unittest.TestCase):
         self.assertIn("training_calibration", report["walk_forward_folds"][0])
         self.assertIn("full_ensemble_fixed_threshold", report["component_ablation"]["results"])
         self.assertIn("without_momentum_funding", report["component_ablation"]["results"])
+        self.assertIn(report["weight_profile_selection"]["selected"]["profile"],
+                      ("default", "trend_light", "trend_off"))
+        self.assertEqual(len(report["weight_profile_walk_forward_folds"]), 4)
+        self.assertIn("net_return_pct", report["weight_profile_walk_forward_aggregate"])
 
     def test_invalid_fold_count_rejected(self):
         with self.assertRaises(ValueError):
