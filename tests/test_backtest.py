@@ -34,6 +34,15 @@ class CandleValidationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_candles(rows, interval_ms=3_600_000)
 
+    def test_backtest_can_reject_gaps_with_expected_interval(self):
+        rows = candles_from_closes([100, 101, 102, 103, 104])
+        rows[3]["t"] += 3_600_000
+        with self.assertRaisesRegex(ValueError, "breaks expected interval continuity"):
+            run_ema_cross_backtest(
+                rows, fast=2, slow=3, atr_period=1,
+                interval_ms=3_600_000,
+            )
+
     def test_rejects_invalid_high(self):
         with self.assertRaises(ValueError):
             validate_candles([{"t": 0, "o": 10, "h": 9, "l": 8, "c": 9}])
