@@ -443,6 +443,9 @@ def main() -> None:
     parser.add_argument("--initial-equity", type=float, default=1.0)
     parser.add_argument("--risk-fraction", type=float, default=0.005)
     parser.add_argument("--max-leverage", type=float, default=3.0)
+    parser.add_argument("--trailing-atr-multiple", type=float, default=1.5)
+    parser.add_argument("--max-holding-bars", type=int, default=72)
+    parser.add_argument("--disable-signal-reversal-exit", action="store_true")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     input_path = Path(args.csv).resolve()
@@ -454,6 +457,9 @@ def main() -> None:
         rows, args.symbol, fee_rate=args.fee_rate, slippage_rate=args.slippage_rate,
         initial_equity=args.initial_equity, risk_fraction=args.risk_fraction,
         max_leverage=args.max_leverage,
+        trailing_atr_multiple=args.trailing_atr_multiple,
+        max_holding_bars=args.max_holding_bars,
+        signal_reversal_exit=not args.disable_signal_reversal_exit,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8")
