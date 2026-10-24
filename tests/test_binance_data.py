@@ -65,6 +65,19 @@ class BinanceDataTests(unittest.TestCase):
         rows = parse_klines([raw_kline("0")], 3_600_000, 3_600_000)
         self.assertEqual(rows[0]["t"], 0)
 
+    def test_parse_optional_taker_flow_fields(self):
+        rows = parse_klines(
+            [raw_kline(0)], 3_600_000, 3_600_000, include_taker_flow=True
+        )
+        self.assertEqual(rows[0]["tb"], 6.0)
+        self.assertEqual(rows[0]["tq"], 600.0)
+
+    def test_taker_flow_fields_are_validated(self):
+        raw = raw_kline(0)
+        raw[9] = "13"  # taker-buy base volume cannot exceed total base volume
+        with self.assertRaisesRegex(ValueError, "taker-buy volume"):
+            parse_klines([raw], 3_600_000, 3_600_000, include_taker_flow=True)
+
     def test_parse_rejects_malformed_row_shapes_and_timestamps(self):
         for raw in (None, {"t": 0}, [True, "99", "101", "98", "100", "12", 0, "1200"],
                     [0.5, "99", "101", "98", "100", "12", 0, "1200"]):
@@ -84,6 +97,14 @@ class BinanceDataTests(unittest.TestCase):
             save_csv([{"t": 0, "o": 99, "h": 101, "l": 98, "c": 100, "v": 12, "q": 1200}], path)
             self.assertEqual(path.read_text(encoding="utf-8").splitlines()[0], "t,o,h,l,c,v,q")
             self.assertEqual([item.name for item in path.parent.iterdir()], ["candles.csv"])
+
+    def test_save_csv_preserves_optional_taker_flow_columns(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "candles.csv"
+            save_csv([{"t": 0, "o": 99, "h": 101, "l": 98, "c": 100,
+                       "v": 12, "q": 1200, "tb": 6, "tq": 600}], path)
+            self.assertEqual(path.read_text(encoding="utf-8").splitlines()[0],
+                             "t,o,h,l,c,v,q,tb,tq")
 
     def test_save_csv_preserves_previous_file_on_write_failure(self):
         with tempfile.TemporaryDirectory() as tmp:
