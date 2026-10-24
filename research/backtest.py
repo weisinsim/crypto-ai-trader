@@ -127,6 +127,10 @@ def run_ema_cross_backtest(
     """
     if funding_entry_boundary_policy not in ("exclude", "include"):
         raise ValueError("funding_entry_boundary_policy must be 'exclude' or 'include'")
+    if funding_rates is not None and funding_rate_per_bar != 0:
+        raise ValueError(
+            "funding_rate_per_bar must be zero when explicit funding_rates are supplied"
+        )
     rows = validate_candles(candles)
     funding_events = {}
     if funding_rates is not None:
