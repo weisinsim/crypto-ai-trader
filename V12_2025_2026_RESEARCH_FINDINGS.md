@@ -1,6 +1,8 @@
-# V12 Historical Research Findings — 2025-10-01 to 2026-10-01
+# V12 Historical Research Findings — Baseline Before Exit-Management Upgrade
 
 **Decision: NO PRODUCTION PROMOTION.** These are research results, not live trading performance or a profitability guarantee.
+
+**Version note:** The metrics below are the baseline before the later ATR trailing-stop, next-open signal-reversal exit, and 72-hour time-stop upgrade. A fresh historical evaluation of that upgraded exit logic is running; do not treat this baseline table as the current model result.
 
 ## Method
 - Venue: Binance USD-M Futures; one symbol per run.
