@@ -81,13 +81,23 @@ def load_csv(path: str, interval_ms: int) -> list[dict]:
                     "l": float(row["l"]), "c": float(row["c"]),
                     "v": float(row.get("v", 0) or 0), "q": float(row.get("q", 0) or 0),
                 }
+                has_tb, has_tq = "tb" in headers, "tq" in headers
+                if has_tb != has_tq:
+                    raise ValueError("taker-buy CSV columns tb and tq must be provided together")
+                if has_tb:
+                    parsed["tb"], parsed["tq"] = float(row["tb"]), float(row["tq"])
             except (OverflowError, TypeError, ValueError) as exc:
-                raise ValueError(f"candle CSV contains invalid numeric value at line {line_number}") from exc
-            numeric_fields = ("o", "h", "l", "c", "v", "q")
+                raise ValueError(f"candle CSV contains invalid numeric value at line {line_number}: {exc}") from exc
+            numeric_fields = ("o", "h", "l", "c", "v", "q") + (("tb", "tq") if "tb" in parsed else ())
             if any(not math.isfinite(parsed[field]) for field in numeric_fields):
                 raise ValueError(f"candle CSV contains non-finite numeric value at line {line_number}")
             if parsed["v"] < 0 or parsed["q"] < 0:
                 raise ValueError(f"candle CSV contains negative volume at line {line_number}")
+            if "tb" in parsed and (
+                parsed["tb"] < 0 or parsed["tb"] > parsed["v"] * 1.000001
+                or parsed["tq"] < 0 or parsed["tq"] > parsed["q"] * 1.000001
+            ):
+                raise ValueError(f"candle CSV contains invalid taker-buy volume at line {line_number}")
             rows.append(parsed)
     if not rows:
         raise ValueError("candle CSV contains no data rows")
