@@ -29,7 +29,9 @@ def record_confirmed_fill_pnl(state_store, exchange_trade_payload):
         realized_pnl_float = float(realized_pnl)
     except (OverflowError, ValueError):
         raise ValueError("invalid_normalized_realized_pnl")
-    if not math.isfinite(realized_pnl_float):
+    if not math.isfinite(realized_pnl_float) or (realized_pnl != 0 and realized_pnl_float == 0.0):
+        # Float conversion can silently underflow tiny nonzero PnL to zero.
+        # Reject it rather than permanently losing a confirmed ledger amount.
         raise ValueError("invalid_normalized_realized_pnl")
     inserted = state_store.record_realized_pnl(
         realized_pnl_float,
