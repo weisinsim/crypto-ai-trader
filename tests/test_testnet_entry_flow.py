@@ -101,6 +101,24 @@ class TestnetEntryFlowTests(unittest.TestCase):
         self.assertEqual(adapter.protective_submissions, ["stop_loss", "take_profit"])
         self.assertFalse(result["live_trading_enabled"])
 
+    def test_structured_ambiguous_submission_still_reconciles_order(self):
+        class StructuredAmbiguousAdapter(FakeAdapter):
+            def submit_testnet_market_order(self, intent, client_order_id, config):
+                self.market_submissions.append(client_order_id)
+                return {
+                    "accepted": False,
+                    "reason": "order_submission_outcome_unknown",
+                    "mode": "testnet_reconciliation_required",
+                    "symbol": intent.symbol,
+                    "client_order_id": client_order_id,
+                }
+
+        adapter = StructuredAmbiguousAdapter()
+        result = self.run_flow(adapter)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(adapter.market_submissions, ["btc-entry-0001"])
+        self.assertEqual(adapter.protective_submissions, ["stop_loss", "take_profit"])
+
     def test_ambiguous_market_timeout_never_auto_retries(self):
         adapter = FakeAdapter(submit_error=True)
         result = self.run_flow(adapter)
