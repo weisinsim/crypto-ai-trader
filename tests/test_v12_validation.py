@@ -29,6 +29,10 @@ class V12ValidationTests(unittest.TestCase):
         self.assertIn("base", report["holdout_cost_stress"])
         self.assertIn("stress_1_5x", report["holdout_cost_stress"])
         self.assertIn("severe_2x", report["holdout_cost_stress"])
+        self.assertEqual(report["threshold_calibration"]["training_rows"], 32)
+        self.assertIn(report["threshold_calibration"]["status"],
+                      ("TRAINING_CANDIDATE_SELECTED", "NO_CANDIDATE_PASSED_TRAINING_GATES"))
+        self.assertIn("net_return_pct", report["calibrated_holdout"])
 
     def test_invalid_fold_count_rejected(self):
         with self.assertRaises(ValueError):
