@@ -106,14 +106,27 @@ class BinanceFuturesTestnet:
         response = self._client.get("/fapi/v1/exchangeInfo", params={"symbol": symbol})
         response.raise_for_status()
         payload = response.json()
-        matches = [item for item in payload.get("symbols", []) if item.get("symbol") == symbol]
+        if not isinstance(payload, dict) or not isinstance(payload.get("symbols"), list):
+            raise ValueError("invalid_exchange_info_response")
+        if any(not isinstance(item, dict) for item in payload["symbols"]):
+            raise ValueError("invalid_exchange_info_symbol_record")
+        matches = [item for item in payload["symbols"] if item.get("symbol") == symbol]
         if len(matches) != 1:
             raise ValueError("symbol_not_found_or_ambiguous")
-        filters = {item.get("filterType"): item for item in matches[0].get("filters", [])}
+        raw_filters = matches[0].get("filters")
+        if not isinstance(raw_filters, list) or any(not isinstance(item, dict) for item in raw_filters):
+            raise ValueError("invalid_exchange_info_filters")
+        filters = {item.get("filterType"): item for item in raw_filters if isinstance(item.get("filterType"), str)}
         lot = filters.get("MARKET_LOT_SIZE") or filters.get("LOT_SIZE")
-        if not lot:
+        if not isinstance(lot, dict):
             raise ValueError("market_lot_size_filter_missing")
+        if any(field not in lot for field in ("stepSize", "minQty", "maxQty")):
+            raise ValueError("invalid_exchange_quantity_filters")
         min_notional_filter = filters.get("MIN_NOTIONAL") or filters.get("NOTIONAL")
+        if min_notional_filter is not None and not any(
+            min_notional_filter.get(field) not in (None, "") for field in ("notional", "minNotional")
+        ):
+            min_notional_filter = None
         return {
             "symbol": symbol,
             "status": matches[0].get("status"),
