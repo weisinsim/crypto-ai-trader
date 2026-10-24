@@ -32,7 +32,7 @@ Repeat per symbol. Do not mix symbols or exchanges in one input file. Funding in
 - Stop is assumed to execute before targets if both stop and target are touched in one OHLC candle.
 - Fee and slippage rates are charged on entry and each exit.
 - Position risk is capped at 0.5% of current equity by default and notional leverage at 3x.
-- Funding cash flows are not yet applied to simulator PnL. Historical funding is only passed as a signal feature; this limitation must be resolved before calling the backtest a complete net-return result.
+- When historical funding events are supplied, cash flows are applied as `-direction × open quantity × settlement mark price × funding rate`. Funding exactly at entry time is excluded as a boundary ambiguity; an event at the exit candle open is applied before OHLC exit handling. Endpoint mark prices have not been reconciled against an account ledger.
 - Historical OI change, CVD, and spread are not currently available in the feature builder and are explicitly left unknown/empty, not fabricated.
 
 ## Validation gates
