@@ -374,3 +374,33 @@ class TestnetPostSubmissionSnapshotValidationTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["reason"], "post_submission_order_unknown_or_malformed")
         self.assertTrue(result["requires_reconciliation"])
+
+
+class TestnetProtectiveOrderIntegrityEdgeCases(unittest.TestCase):
+    def test_existing_stop_with_wrong_side_fails_closed(self):
+        adapter = FakeAdapter(orders=[{
+            "status": "NEW", "reduce_only": True, "type": "STOP_MARKET",
+            "stop_price": "99", "side": "BUY", "orig_quantity": "0.5",
+        }])
+        result = ensure_testnet_protective_exits(
+            adapter, "BTCUSDT", "99", "102", "btc-wrong-side"
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "existing_stop_side_mismatch")
+        self.assertEqual(adapter.submissions, [])
+
+    def test_duplicate_existing_stops_fail_closed_without_adding_orders(self):
+        adapter = FakeAdapter(orders=[
+            {"status": "NEW", "reduce_only": True, "type": "STOP_MARKET",
+             "stop_price": "99", "side": "SELL", "orig_quantity": "0.5"},
+            {"status": "PARTIALLY_FILLED", "reduce_only": True, "type": "STOP_MARKET",
+             "stop_price": "99", "side": "SELL", "orig_quantity": "0.5"},
+        ])
+        result = ensure_testnet_protective_exits(
+            adapter, "BTCUSDT", "99", "102", "btc-duplicate-stop"
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(
+            result["reason"], "duplicate_protective_orders_require_manual_reconciliation"
+        )
+        self.assertEqual(adapter.submissions, [])
