@@ -61,6 +61,13 @@ class V12BacktestTests(unittest.TestCase):
             run_v12_backtest([feature_row(0), feature_row(1), feature_row(2)],
                              "BTCUSDT", risk_fraction=0.1)
 
+    def test_feature_symbol_mismatch_is_rejected(self):
+        rows = [feature_row(0), feature_row(1), feature_row(2)]
+        for item in rows:
+            item["symbol"] = "ETHUSDT"
+        with self.assertRaises(ValueError):
+            run_v12_backtest(rows, "BTCUSDT")
+
 
 if __name__ == "__main__":
     unittest.main()
