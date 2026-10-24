@@ -90,6 +90,38 @@ jobs:
           --start "$START_DATE"
           --end "$END_DATE"
           --out-dir data/funding
+      - name: Diagnose funding-to-candle timestamp alignment
+        run: |
+          mkdir -p research-results/funding-alignment
+          for symbol in BTCUSDT ETHUSDT SOLUSDT AVAXUSDT XRPUSDT; do
+            for spec in "1h 3600000" "4h 14400000"; do
+              read -r interval interval_ms <<< "$spec"
+              python validation/diagnose_funding_alignment.py \
+                --candles "data/historical/${symbol}_${interval}.csv" \
+                --funding "data/funding/${symbol}_funding.csv" \
+                --candle-timestamp-kind close --interval-ms "$interval_ms" \
+                > "research-results/funding-alignment/${symbol}_${interval}.json"
+            done
+          done
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          reports = sorted(Path("research-results/funding-alignment").glob("*.json"))
+          if len(reports) != 10:
+              raise SystemExit(f"Expected 10 alignment reports, got {len(reports)}")
+          for path in reports:
+              report = json.loads(path.read_text())
+              print(
+                  path.name,
+                  "candle_rows=", report["candle_rows"],
+                  "funding_rows=", report["funding_rows"],
+                  "duplicate_candles=", report["duplicate_candle_timestamps"],
+                  "duplicate_funding=", report["duplicate_funding_timestamps"],
+                  "funding_outside_candle_range=", report["funding_events_outside_candle_timestamp_range"],
+                  "first_candle_mod_hour_ms=", report["candle_first_mod_hour_ms"],
+                  "first_funding_mod_hour_ms=", report["funding_first_mod_hour_ms"],
+              )
+          PY
       - name: Enforce strict candle and funding input inventory
         run: |
           mkdir -p research-results
