@@ -246,6 +246,44 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertIn("signature", client.get_calls[0][1])
         self.assertEqual(client.calls, [])
 
+    def test_query_order_rejects_response_for_different_client_order_id(self):
+        class MismatchedOrderClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "BTCUSDT", "clientOrderId": "another-order",
+                        "orderId": 12345, "status": "FILLED",
+                        "executedQty": "0.5", "avgPrice": "100",
+                    })
+                return super().get(path, params)
+
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=MismatchedOrderClient()
+        )
+        result = adapter.query_testnet_order("BTCUSDT", "paper-test-0001")
+        self.assertFalse(result["found"])
+        self.assertEqual(result["reason"], "testnet_order_identity_mismatch")
+
+    def test_query_order_rejects_non_finite_executed_quantity(self):
+        class InvalidFillClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "BTCUSDT", "clientOrderId": params["origClientOrderId"],
+                        "orderId": 12345, "status": "FILLED",
+                        "executedQty": "NaN", "avgPrice": "100",
+                    })
+                return super().get(path, params)
+
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=InvalidFillClient()
+        )
+        result = adapter.query_testnet_order("BTCUSDT", "paper-test-0001")
+        self.assertFalse(result["found"])
+        self.assertEqual(result["reason"], "invalid_testnet_order_fill_values")
+
     def test_query_order_rejects_invalid_client_id_without_network_call(self):
         client = FakeClient()
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
