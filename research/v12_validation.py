@@ -254,5 +254,5 @@ def main():
     output.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8")
 
 
-if __file__ == "__main__":
+if __name__ == "__main__":
     main()
