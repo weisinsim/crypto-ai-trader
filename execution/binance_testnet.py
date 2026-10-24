@@ -323,15 +323,34 @@ class BinanceFuturesTestnet:
         payload = response.json()
         if not isinstance(payload, dict) or "orderId" not in payload:
             return {"found": False, "reason": "unexpected_testnet_order_response"}
+        returned_symbol = payload.get("symbol")
+        returned_client_id = payload.get("clientOrderId")
+        status = payload.get("status")
+        if returned_symbol != symbol or returned_client_id != client_order_id:
+            return {"found": False, "reason": "testnet_order_identity_mismatch"}
+        if not isinstance(status, str) or not status:
+            return {"found": False, "reason": "invalid_testnet_order_status"}
+        try:
+            executed_quantity = Decimal(str(payload["executedQty"]))
+            average_price = Decimal(str(payload.get("avgPrice", "0")))
+            if (
+                not executed_quantity.is_finite()
+                or executed_quantity < 0
+                or not average_price.is_finite()
+                or average_price < 0
+            ):
+                raise InvalidOperation
+        except (KeyError, InvalidOperation, TypeError, ValueError):
+            return {"found": False, "reason": "invalid_testnet_order_fill_values"}
         return {
             "found": True,
             "mode": "testnet_order_reconciliation",
-            "symbol": payload.get("symbol", symbol),
-            "client_order_id": payload.get("clientOrderId", client_order_id),
+            "symbol": returned_symbol,
+            "client_order_id": returned_client_id,
             "exchange_order_id": str(payload["orderId"]),
-            "status": payload.get("status", "UNKNOWN"),
-            "executed_quantity": payload.get("executedQty", "0"),
-            "average_price": payload.get("avgPrice", "0"),
+            "status": status,
+            "executed_quantity": str(executed_quantity),
+            "average_price": str(average_price),
         }
 
     def testnet_position_snapshot(self, symbol: str):
