@@ -202,7 +202,7 @@ def _component_ablation(rows, symbol, *, split, folds, wf_start, common, initial
             "trade_count_delta": metrics["trades"] - baseline["trades"],
         }
     return {
-        "method": "fixed per-coin default score threshold; expanding windows within the pre-holdout 50%-80% period",
+        "method": "fixed per-coin default score threshold; same chronological pre-holdout test segments (50%-80%), no per-variant retuning",
         "note": "Ablation diagnostics only; thresholds are not re-tuned per variant and results are not production approval.",
         "results": results, "delta_vs_full_ensemble": deltas,
     }
