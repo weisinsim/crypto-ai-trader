@@ -165,6 +165,7 @@ def run_v12_backtest(
     min_score_override: int | None = None,
     min_edge_override: int | None = None,
     funding_events: list[dict] | None = None,
+    short_rsi_floor: float | None = None,
 ) -> dict:
     """Run a single-position, next-open simulator with 50/50 TP1/TP2 exits."""
     if len(rows) < 3:
@@ -209,7 +210,7 @@ def run_v12_backtest(
     i = 0
     while i < len(rows) - 1:
         signal_row = rows[i]
-        result = evaluate_hybrid(symbol, _features(signal_row), min_score_override=min_score_override, min_edge_override=min_edge_override)
+        result = evaluate_hybrid(symbol, _features(signal_row), min_score_override=min_score_override, min_edge_override=min_edge_override, short_rsi_floor=short_rsi_floor)
         if result["signal"] not in ("LONG", "SHORT") or result.get("status") != "RESEARCH_CANDIDATE":
             i += 1
             continue
