@@ -403,7 +403,7 @@ def run_ema_cross_backtest(
                     equity = equity_floor
 
         # Signal is known only after the previous bar closes; fill at current open.
-        if (not equity_floor_hit and can_enter_at_open and position is None and (trade_start_ts is None or int(bar["t"]) >= trade_start_ts)
+        if (i < len(rows) - 1 and not equity_floor_hit and can_enter_at_open and position is None and (trade_start_ts is None or int(bar["t"]) >= trade_start_ts)
                 and fast_ema[i - 1] is not None and slow_ema[i - 1] is not None
                 and fast_ema[i - 2] is not None and slow_ema[i - 2] is not None and atrs[i - 1]):
             prior_diff = fast_ema[i - 2] - slow_ema[i - 2]
