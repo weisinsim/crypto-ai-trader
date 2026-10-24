@@ -55,6 +55,8 @@ python validation/audit_research_input_inventory.py \
 
 The requested interval is UTC start-inclusive/end-exclusive. Candle files are expected as `SYMBOL_1h.csv` and `SYMBOL_4h.csv`; funding files as `SYMBOL_funding.csv`. The command returns a nonzero exit code if any required file is missing, malformed, out of range, has duplicate/non-increasing timestamps, or lacks an expected candle close timestamp. Preserve the JSON output alongside the source files and code revision.
 
+The automated workflow also writes `research-results/funding-alignment/SYMBOL_1h.json` and `SYMBOL_4h.json` for each configured symbol. These reports explicitly interpret downloader candle timestamps as inclusive close times and convert them to the corresponding open-time grid before comparing funding-event proximity. Review duplicate counts, UTC first/last samples, modulo-hour distributions, and funding events outside the candle timestamp range. This diagnostic deliberately does not shift funding timestamps or establish whether an event should be charged to a particular position; settlement-boundary semantics still require separate validation.
+
 **Important:** the inventory report fingerprints each present file and checks exact candle timestamp coverage, but it does not download data itself. A funding file with rows is only marked `FUNDING_INVENTORIED_NOT_RECONCILED`; this is not proof of complete funding-event coverage or authoritative settlement reconciliation. A successful inventory is not a performance result, strategy approval, or permission to enable live trading.
 
 ## 3. Replay asset-specific signals
