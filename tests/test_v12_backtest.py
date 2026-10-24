@@ -68,6 +68,38 @@ class V12BacktestTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             run_v12_backtest(rows, "BTCUSDT")
 
+    def test_historical_funding_cashflow_is_applied_to_open_position(self):
+        rows = [
+            feature_row(0),
+            feature_row(3_600_000, o=101.0, h=102.0, l=100.0, c=101.0),
+            feature_row(7_200_000, o=101.0, h=106.0, l=100.0, c=105.0),
+        ]
+        baseline = run_v12_backtest(rows, "BTCUSDT", fee_rate=0.0001, slippage_rate=0.0001)
+        funding_event = {
+            "funding_time": 4_000_000, "funding_rate": 0.001,
+            "mark_price": 101.0, "symbol": "BTCUSDT",
+        }
+        funded = run_v12_backtest(
+            rows, "BTCUSDT", fee_rate=0.0001, slippage_rate=0.0001,
+            funding_events=[funding_event],
+        )
+        self.assertLess(funded["trade_log"][0]["funding_pnl"], 0)
+        self.assertLess(funded["trade_log"][0]["net_pnl"], baseline["trade_log"][0]["net_pnl"])
+        self.assertTrue(funded["assumptions"]["funding_costs_included"])
+
+    def test_funding_at_entry_timestamp_is_excluded_as_boundary_ambiguous(self):
+        rows = [
+            feature_row(0),
+            feature_row(3_600_000, o=101.0, h=102.0, l=100.0, c=101.0),
+            feature_row(7_200_000, o=101.0, h=106.0, l=100.0, c=105.0),
+        ]
+        result = run_v12_backtest(
+            rows, "BTCUSDT",
+            funding_events=[{"funding_time": 3_600_000, "funding_rate": 0.001,
+                             "mark_price": 101.0, "symbol": "BTCUSDT"}],
+        )
+        self.assertEqual(result["trade_log"][0]["funding_pnl"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()
