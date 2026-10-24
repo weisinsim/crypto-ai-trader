@@ -133,7 +133,8 @@ def _aggregate_walk_forward(rows, symbol, *, split, folds, wf_start, common, ini
 def run_v12_validation(rows, symbol, *, holdout_fraction=0.2, folds=4,
                        fee_rate=0.0005, slippage_rate=0.0002,
                        initial_equity=1.0, risk_fraction=0.005, max_leverage=3.0,
-                       funding_events=None):
+                       funding_events=None, trailing_atr_multiple=1.5,
+                       max_holding_bars=72, signal_reversal_exit=True):
     if not math.isfinite(holdout_fraction) or not 0.1 <= holdout_fraction <= 0.4:
         raise ValueError("holdout_fraction must be between 0.1 and 0.4")
     if not isinstance(folds, int) or isinstance(folds, bool) or folds < 2:
@@ -150,6 +151,8 @@ def run_v12_validation(rows, symbol, *, holdout_fraction=0.2, folds=4,
         "fee_rate": fee_rate, "slippage_rate": slippage_rate,
         "initial_equity": initial_equity, "risk_fraction": risk_fraction,
         "max_leverage": max_leverage, "funding_events": list(funding_events or []),
+        "trailing_atr_multiple": trailing_atr_multiple,
+        "max_holding_bars": max_holding_bars, "signal_reversal_exit": signal_reversal_exit,
     }
 
     full = run_v12_backtest(rows, symbol, **common)
@@ -233,6 +236,9 @@ def main():
     parser.add_argument("--initial-equity", type=float, default=1.0)
     parser.add_argument("--risk-fraction", type=float, default=0.005)
     parser.add_argument("--max-leverage", type=float, default=3.0)
+    parser.add_argument("--trailing-atr-multiple", type=float, default=1.5)
+    parser.add_argument("--max-holding-bars", type=int, default=72)
+    parser.add_argument("--disable-signal-reversal-exit", action="store_true")
     parser.add_argument("--holdout-fraction", type=float, default=0.2)
     parser.add_argument("--folds", type=int, default=4)
     parser.add_argument("--output", required=True)
@@ -250,6 +256,9 @@ def main():
         fee_rate=args.fee_rate, slippage_rate=args.slippage_rate,
         initial_equity=args.initial_equity, risk_fraction=args.risk_fraction,
         max_leverage=args.max_leverage, funding_events=funding_events,
+        trailing_atr_multiple=args.trailing_atr_multiple,
+        max_holding_bars=args.max_holding_bars,
+        signal_reversal_exit=not args.disable_signal_reversal_exit,
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8")
