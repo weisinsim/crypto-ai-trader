@@ -99,6 +99,26 @@ def parse_archive_row(item, symbol, start_ms, end_ms):
     rate = numeric[0]
     return {"timestamp": iso_utc(ts), "funding_rate": str(rate)}
 
+def deduplicate_rows(rows, symbol):
+    """Sort duplicate event timestamps only when their funding rates agree.
+
+    Repeated identical records can occur across archive boundaries; conflicting
+    rates for one event timestamp are data-integrity failures, not last-write-wins.
+    """
+    by_ts = {}
+    for row in rows:
+        timestamp = row["timestamp"]
+        rate = row["funding_rate"]
+        previous = by_ts.get(timestamp)
+        if previous is not None and float(previous["funding_rate"]) != float(rate):
+            raise RuntimeError(
+                f"Conflicting funding rates for {symbol} at {timestamp}: "
+                f"{previous['funding_rate']} vs {rate}"
+            )
+        by_ts[timestamp] = row
+    return [by_ts[key] for key in sorted(by_ts)]
+
+
 def download_archive(symbol, start_ms, end_ms):
     """Fallback to Binance public funding-rate archives if REST is region-blocked."""
     from calendar import monthrange
@@ -153,8 +173,7 @@ def download_archive(symbol, start_ms, end_ms):
             month = month.replace(year=month.year + 1, month=1)
         else:
             month = month.replace(month=month.month + 1)
-    by_ts = {row["timestamp"]: row for row in rows}
-    return [by_ts[key] for key in sorted(by_ts)]
+    return deduplicate_rows(rows, symbol)
 
 
 def download(symbol, start_ms, end_ms):
@@ -184,8 +203,7 @@ def download(symbol, start_ms, end_ms):
         if exc.code != 451:
             raise
         rows = download_archive(symbol, start_ms, end_ms)
-    by_ts = {row["timestamp"]: row for row in rows}
-    return [by_ts[k] for k in sorted(by_ts)]
+    return deduplicate_rows(rows, symbol)
 
 
 def main():
