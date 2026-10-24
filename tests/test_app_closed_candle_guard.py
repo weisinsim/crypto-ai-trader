@@ -61,6 +61,26 @@ class AppClosedCandleGuardTests(unittest.TestCase):
                 validated_assignments.append(value)
         self.assertGreaterEqual(len(validated_assignments), 2)
 
+    def test_binance_series_preserves_taker_flow_and_analyzer_uses_cvd_proxy(self):
+        set_series_fn = self.functions["set_series"]
+        calls = [
+            node for node in ast.walk(set_series_fn)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "kline_to_obj"
+        ]
+        self.assertTrue(any(
+            any(keyword.arg == "include_taker_flow" and isinstance(keyword.value, ast.Constant)
+                and keyword.value.value is True for keyword in call.keywords)
+            for call in calls
+        ))
+        analyze = self.functions["analyze_symbol"]
+        self.assertTrue(any(
+            isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            and node.func.id == "cvd_proxy_features"
+            for node in ast.walk(analyze)
+        ))
+
 
 if __name__ == "__main__":
     unittest.main()
