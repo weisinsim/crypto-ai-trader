@@ -47,6 +47,9 @@ class AlertDeliveryWorkerTests(unittest.TestCase):
             [item["event_id"] for item in self.store.pending()],
             ["bad-1", "raise-1"],
         )
+        receipt = self.store.delivery_record("ok-1")
+        self.assertEqual(receipt["status"], "DELIVERED")
+        self.assertEqual(receipt["provider_receipt_id"], "provider-msg-123")
 
     def test_malformed_ack_and_false_ack_leave_event_pending(self):
         for acknowledgement in (None, {}, {"ok": False, "receipt_id": "x"},
