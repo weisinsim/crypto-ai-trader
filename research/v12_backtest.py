@@ -114,6 +114,7 @@ def run_v12_backtest(
     max_leverage: float = 3.0,
     min_score_override: int | None = None,
     min_edge_override: int | None = None,
+    funding_events: list[dict] | None = None,
 ) -> dict:
     """Run a single-position, next-open simulator with 50/50 TP1/TP2 exits."""
     if len(rows) < 3:
@@ -132,6 +133,23 @@ def run_v12_backtest(
         raise ValueError("cost rates must be nonnegative and initial equity positive")
     if not 0 < risk_fraction <= 0.02 or not 0 < max_leverage <= 5:
         raise ValueError("risk_fraction must be in (0, 2%] and max_leverage in (0, 5]")
+    funding_events = list(funding_events or [])
+    previous_funding_ts = None
+    for event in funding_events:
+        if event.get("symbol") and str(event["symbol"]).upper() != str(symbol).upper():
+            raise ValueError("funding event symbol does not match requested symbol")
+        event_ts = event.get("funding_time")
+        rate = event.get("funding_rate")
+        mark_price = event.get("mark_price")
+        if isinstance(event_ts, bool) or not isinstance(event_ts, int) or event_ts < 0:
+            raise ValueError("funding_time must be a nonnegative integer timestamp")
+        if previous_funding_ts is not None and event_ts <= previous_funding_ts:
+            raise ValueError("funding events must be strictly chronological")
+        if not isinstance(rate, (int, float)) or not math.isfinite(rate):
+            raise ValueError("funding_rate must be finite")
+        if not isinstance(mark_price, (int, float)) or not math.isfinite(mark_price) or mark_price <= 0:
+            raise ValueError("funding mark_price must be finite and positive")
+        previous_funding_ts = event_ts
 
     equity = initial_equity
     peak = equity
@@ -214,7 +232,29 @@ def run_v12_backtest(
             exits.append({"t": bar["t"], "kind": "END_OF_DATA", "price": fill, "qty": remaining})
             remaining = 0.0
 
-        net_pnl = gross_pnl - fees
+        funding_pnl = 0.0
+        funding_applied = []
+        exit_time = exits[-1]["t"]
+        for event in funding_events:
+            event_ts = event["funding_time"]
+            # Settlement exactly at entry is excluded as a boundary ambiguity.
+            # Settlement at an exit candle's open is applied before that candle's
+            # OHLC exit, because the position existed at the settlement instant.
+            if not (entry_row["t"] < event_ts <= exit_time):
+                continue
+            exited_before_event = sum(exit_row["qty"] for exit_row in exits if exit_row["t"] < event_ts)
+            quantity_at_event = max(0.0, qty - exited_before_event)
+            if quantity_at_event <= 0:
+                continue
+            cashflow = -direction * quantity_at_event * event["mark_price"] * event["funding_rate"]
+            funding_pnl += cashflow
+            funding_applied.append({
+                "funding_time": event_ts, "funding_rate": event["funding_rate"],
+                "mark_price": event["mark_price"], "quantity": quantity_at_event,
+                "cashflow": cashflow,
+            })
+
+        net_pnl = gross_pnl - fees + funding_pnl
         equity_before = equity
         equity += net_pnl
         if equity <= 0:
@@ -227,6 +267,7 @@ def run_v12_backtest(
             "signal_time": signal_row["t"], "entry_time": entry_row["t"],
             "entry_price": entry, "stop": stop, "tp1": tp1, "tp2": tp2,
             "signal_score": result["score"], "gross_pnl": gross_pnl, "fees": fees,
+            "funding_pnl": funding_pnl, "funding_events": funding_applied,
             "net_pnl": net_pnl, "equity_before": equity_before, "equity_after": equity,
             "return_on_equity_pct": net_pnl / equity_before * 100 if equity_before else None,
             "exit_time": exits[-1]["t"], "exit_kind": outcome, "exits": exits,
@@ -248,6 +289,7 @@ def run_v12_backtest(
         "wins": len(wins), "losses": len(losses),
         "win_rate_pct": round(len(wins) / len(trades) * 100, 4) if trades else None,
         "profit_factor": round(gross_profit / gross_loss, 4) if gross_loss else (None if not gross_profit else "INF"),
+        "funding_pnl_total": round(sum(t["funding_pnl"] for t in trades), 8),
         "net_return_pct": round((equity / initial_equity - 1) * 100, 4),
         "max_drawdown_pct": round(max_dd * 100, 4),
         "equity_final": round(equity, 8),
@@ -255,7 +297,8 @@ def run_v12_backtest(
                         "risk_fraction": risk_fraction, "max_leverage": max_leverage,
                         "entry": "next candle open", "same_bar_stop_target": "stop first",
                         "partial_targets": "50% at 2R, remaining 50% at 3R",
-                        "funding_costs_included": False},
+                        "funding_costs_included": bool(funding_events),
+                        "funding_boundary_policy": "exclude event at entry timestamp; include event at exit candle open before OHLC exit"},
         "trade_log": trades, "equity_curve": equity_curve,
     }
 
