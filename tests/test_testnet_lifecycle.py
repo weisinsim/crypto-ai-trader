@@ -59,6 +59,35 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertEqual(adapter.snapshot_count, 2)
         self.assertTrue(result["requires_post_fill_sibling_cancellation"])
 
+    def test_stop_submission_timeout_requires_reconciliation_without_retry(self):
+        class TimeoutStopAdapter(FakeAdapter):
+            def submit_testnet_protective_exit(self, symbol, kind, quantity, price, client_id):
+                self.submissions.append((symbol, kind, str(quantity), str(price), client_id))
+                raise TimeoutError("exchange response lost")
+
+        adapter = TimeoutStopAdapter()
+        result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-timeout")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "stop_submission_outcome_unknown")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual([item[1] for item in adapter.submissions], ["stop_loss"])
+
+    def test_target_submission_timeout_preserves_stop_and_requires_reconciliation(self):
+        class TimeoutTargetAdapter(FakeAdapter):
+            def submit_testnet_protective_exit(self, symbol, kind, quantity, price, client_id):
+                self.submissions.append((symbol, kind, str(quantity), str(price), client_id))
+                if kind == "take_profit":
+                    raise TimeoutError("exchange response lost")
+                return super().submit_testnet_protective_exit(symbol, kind, quantity, price, client_id)
+
+        adapter = TimeoutTargetAdapter()
+        result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-target-timeout")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "take_profit_submission_outcome_unknown_stop_remains")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual([item[1] for item in adapter.submissions], ["stop_loss", "take_profit"])
+        self.assertEqual(sum(1 for order in adapter.orders if order["type"] == "STOP_MARKET"), 1)
+
     def test_target_failure_leaves_stop_and_demands_reconciliation(self):
         adapter = FakeAdapter(fail_kind="take_profit")
         result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-02")
