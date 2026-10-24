@@ -57,7 +57,17 @@ def execute_guarded_testnet_entry(
     except Exception as exc:
         submission_error = type(exc).__name__
     if submission is not None and (not isinstance(submission, dict) or not submission.get("accepted")):
-        return {"ok": False, "reason": "market_order_rejected", "detail": submission}
+        # A structured ambiguous result means the POST may have reached the
+        # exchange. Reconcile by the same client ID rather than treating it as
+        # a definite rejection; only explicit, unambiguous rejection stops here.
+        ambiguous = (
+            isinstance(submission, dict)
+            and submission.get("reason") == "order_submission_outcome_unknown"
+            and submission.get("client_order_id") == client_order_id
+            and submission.get("symbol") == intent.symbol
+        )
+        if not ambiguous:
+            return {"ok": False, "reason": "market_order_rejected", "detail": submission}
 
     # Even after a timeout, reconcile by the same client ID; never issue a second POST.
     try:
