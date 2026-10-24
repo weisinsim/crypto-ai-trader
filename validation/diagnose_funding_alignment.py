@@ -6,6 +6,7 @@ timestamp or funding_time_ms/fundingTime columns. Reports UTC ranges and nearest
 candle-open deltas; never snaps or shifts funding events.
 """
 import argparse
+import bisect
 import csv
 import json
 from datetime import datetime, timezone
@@ -59,7 +60,8 @@ def diagnose(candle_path, funding_path):
     deltas = []
     outside = 0
     for event in sorted(funding):
-        nearest = min(candle_sorted, key=lambda candle: abs(candle - event))
+        candidates = candle_sorted[max(0, index - 1):min(len(candle_sorted), index + 1)]
+        nearest = min(candidates, key=lambda candle: (abs(candle - event), candle))
         delta = event - nearest
         if event < candle_sorted[0] or event > candle_sorted[-1]:
             outside += 1
