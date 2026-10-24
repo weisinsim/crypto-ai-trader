@@ -35,6 +35,12 @@ Repeat per symbol. Do not mix symbols or exchanges in one input file. Funding in
 - When historical funding events are supplied, cash flows are applied as `-direction × open quantity × settlement mark price × funding rate`. Funding exactly at entry time is excluded as a boundary ambiguity; an event at the exit candle open is applied before OHLC exit handling. Endpoint mark prices have not been reconciled against an account ledger.
 - Historical OI change, CVD, and spread are not currently available in the feature builder and are explicitly left unknown/empty, not fabricated.
 
+## Calibration and drawdown accounting
+- The validation runner tests score/edge thresholds on the training partition only. A candidate is selected only when it has at least 20 training trades, PF > 1, positive net return, and max drawdown <= 15%; if no candidate qualifies, the default threshold is retained.
+- The final chronological holdout is never used to choose thresholds. The calibrated holdout is reported separately from the default holdout.
+- Maximum drawdown is computed from candle-close mark-to-market equity while positions are open, not only from closed-trade balances.
+- These are initial screening gates, not proof of an edge; 20 trades is not enough for statistical confidence and must be followed by larger sample / paper-trading checks.
+
 ## Validation gates
 The feature builder is causal but still needs review against independent fixtures. Before model promotion, require:
 - Verified source lineage and continuous candle timestamps
