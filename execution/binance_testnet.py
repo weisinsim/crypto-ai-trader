@@ -82,11 +82,19 @@ class BinanceFuturesTestnet:
                     symbol_notional += notional
         except (InvalidOperation, TypeError, ValueError):
             return {"ok": False, "reason": "invalid_position_risk_values"}
+        try:
+            symbol_notional_float = float(symbol_notional)
+            total_notional_float = float(total_notional)
+        except (OverflowError, ValueError):
+            return {"ok": False, "reason": "position_notional_out_of_range"}
+        from math import isfinite
+        if not isfinite(symbol_notional_float) or not isfinite(total_notional_float):
+            return {"ok": False, "reason": "position_notional_out_of_range"}
         return {
             "ok": True, "mode": "testnet_account_risk_metrics",
             "open_positions": open_positions,
-            "symbol_notional_usdt": float(symbol_notional),
-            "total_notional_usdt": float(total_notional),
+            "symbol_notional_usdt": symbol_notional_float,
+            "total_notional_usdt": total_notional_float,
         }
 
     def symbol_rules(self, symbol):
