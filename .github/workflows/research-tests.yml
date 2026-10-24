@@ -29,7 +29,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install focused test dependencies
-        run: python -m pip install --upgrade pytest
+        run: python -m pip install --upgrade pytest httpx
       - name: Run V12 hybrid unit tests
         run: python -m pytest -q tests/test_v12_hybrid_engine.py tests/test_v12_backtest.py tests/test_v12_features.py tests/test_v12_validation.py tests/test_v12_pipeline.py
       - name: Compile application and research modules
