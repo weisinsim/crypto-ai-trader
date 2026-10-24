@@ -7,7 +7,7 @@ V12 is a research-only model. It is not approved for live trading and the simula
 1. Download and validate continuous closed 1h and 4h candle CSVs.
 2. Optionally download historical funding settlements from the same venue and symbol.
 3. Build causal features:
-   `python -m research.v12_features --candles-1h data/BTCUSDT_1h.csv --candles-4h data/BTCUSDT_4h.csv --funding-csv data/BTCUSDT_funding.csv --output data/BTCUSDT_v12_features.csv`
+   `python -m research.v12_features --symbol BTCUSDT --candles-1h data/BTCUSDT_1h.csv --candles-4h data/BTCUSDT_4h.csv --funding-csv data/BTCUSDT_funding.csv --output data/BTCUSDT_v12_features.csv`
 4. Run chronological holdout, forward-fold, and cost-stress evaluation (this calls the next-open simulator internally):
    `python -m research.v12_validation --csv data/BTCUSDT_v12_features.csv --symbol BTCUSDT --holdout-fraction 0.2 --folds 4 --fee-rate 0.0005 --slippage-rate 0.0002 --output reports/BTCUSDT_v12_validation.json`
 
