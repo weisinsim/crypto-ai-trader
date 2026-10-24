@@ -125,16 +125,29 @@ class BinanceFuturesTestnet:
         )
         response.raise_for_status()
         account = response.json()
-        if not isinstance(account, dict) or "canTrade" not in account:
+        if (
+            not isinstance(account, dict)
+            or not isinstance(account.get("canTrade"), bool)
+            or not isinstance(account.get("positions"), list)
+        ):
             raise ValueError("invalid_testnet_account_response")
+        open_position_count = 0
+        for position in account["positions"]:
+            if not isinstance(position, dict):
+                raise ValueError("invalid_testnet_position_record")
+            try:
+                amount = Decimal(str(position.get("positionAmt", "0")))
+            except (InvalidOperation, TypeError, ValueError) as exc:
+                raise ValueError("invalid_testnet_position_amount") from exc
+            if not amount.is_finite():
+                raise ValueError("invalid_testnet_position_amount")
+            if amount != 0:
+                open_position_count += 1
         return {
             "connected": True,
             "mode": "testnet",
-            "can_trade": bool(account["canTrade"]),
-            "open_position_count": sum(
-                1 for position in account.get("positions", [])
-                if float(position.get("positionAmt", 0) or 0) != 0
-            ),
+            "can_trade": account["canTrade"],
+            "open_position_count": open_position_count,
         }
 
     def validate_order(self, intent: OrderIntent, config=None):
