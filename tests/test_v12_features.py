@@ -1,6 +1,6 @@
 import unittest
 
-from research.v12_features import build_v12_features
+from research.v12_features import _ema, build_v12_features
 
 
 def candles(count, interval_ms, start=100.0):
@@ -27,7 +27,7 @@ class V12FeatureBuilderTests(unittest.TestCase):
         signal_close = first["t"] + 3_600_000
         eligible_4h = [row for row in four_hour if row["t"] + 14_400_000 <= signal_close]
         self.assertGreaterEqual(len(eligible_4h), 50)
-        expected = sum(row["c"] for row in eligible_4h[:20]) / 20
+        expected = _ema([row["c"] for row in eligible_4h], 20)
         self.assertAlmostEqual(first["ema20_4h"], expected, places=6)
         self.assertTrue(first["candle_closed"])
         self.assertTrue(first["data_fresh"])
