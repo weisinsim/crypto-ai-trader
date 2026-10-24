@@ -21,7 +21,7 @@ def run_pipeline(symbol, start_date, end_date, output_dir, *, holdout_fraction=0
     root.mkdir(parents=True, exist_ok=True)
     prefix = f"{symbol}_{start_date}_{end_date}"
 
-    one_hour = download_klines(symbol, "1h", start_ms, end_ms)
+    one_hour = download_klines(symbol, "1h", start_ms, end_ms, include_taker_flow=True)
     four_hour = download_klines(symbol, "4h", start_ms, end_ms)
     funding = download_funding_history(symbol, start_ms, end_ms)
 
@@ -48,6 +48,8 @@ def run_pipeline(symbol, start_date, end_date, output_dir, *, holdout_fraction=0
         "end_date_utc_exclusive": end_date,
         "candle_1h_rows": len(one_hour), "candle_4h_rows": len(four_hour),
         "funding_events": len(funding), "feature_rows": len(features),
+        "taker_flow_1h_rows": sum(1 for row in one_hour if "tb" in row and "tq" in row),
+        "cvd_proxy_source": "Binance kline taker-buy base volume; 12h/24h rolling aggressor-delta proxy, not tick-level CVD",
         "files": {
             "candles_1h": str(candles_1h_path),
             "candles_4h": str(candles_4h_path),
