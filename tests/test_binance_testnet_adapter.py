@@ -472,6 +472,37 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(result["client_order_id"], "stop-ambiguous-0001")
         self.assertEqual(len(client.calls), 1)
 
+    def test_cancel_transport_error_requires_reconciliation(self):
+        class AmbiguousDeleteClient(FakeClient):
+            def delete(self, path, params):
+                self.calls.append((path, params))
+                raise TimeoutError("cancel response timed out")
+
+        client = AmbiguousDeleteClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.cancel_testnet_order("BTCUSDT", "stop-0001")
+        self.assertFalse(result["cancelled"])
+        self.assertEqual(result["reason"], "order_cancellation_outcome_unknown")
+        self.assertEqual(result["mode"], "testnet_reconciliation_required")
+        self.assertEqual(result["client_order_id"], "stop-0001")
+        self.assertEqual(len(client.calls), 1)
+
+    def test_cancel_rejects_mismatched_order_identity(self):
+        class MismatchedDeleteClient(FakeClient):
+            def delete(self, path, params):
+                self.calls.append((path, params))
+                return FakeResponse({
+                    "symbol": "BTCUSDT", "clientOrderId": "other-order",
+                    "orderId": 99, "status": "CANCELED",
+                })
+
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=MismatchedDeleteClient()
+        )
+        result = adapter.cancel_testnet_order("BTCUSDT", "stop-0001")
+        self.assertFalse(result["cancelled"])
+        self.assertEqual(result["reason"], "testnet_order_identity_mismatch")
+
     def test_signed_request_uses_hmac_sha256(self):
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=FakeClient())
         params = adapter._signed_params({"symbol": "BTCUSDT", "side": "BUY"})
