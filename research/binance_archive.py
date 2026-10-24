@@ -80,7 +80,8 @@ def _archive_rows(client: httpx.Client, symbol: str, data_type: str,
 
 
 def download_archive_klines(symbol: str, interval: str, start_ms: int,
-                            end_ms: int, interval_ms: int) -> list[dict]:
+                            end_ms: int, interval_ms: int, *,
+                            include_taker_flow: bool = False) -> list[dict]:
     """Download and strictly validate closed futures candles from monthly ZIPs."""
     with httpx.Client(follow_redirects=True) as client:
         raw = _archive_rows(client, symbol.upper(), "klines", interval, start_ms, end_ms)
@@ -91,7 +92,7 @@ def download_archive_klines(symbol: str, interval: str, start_ms: int,
         # Archive columns match the futures kline endpoint's array layout.
         normalized.append(row)
     from research.binance_data import parse_klines
-    parsed = parse_klines(normalized, interval_ms, end_ms)
+    parsed = parse_klines(normalized, interval_ms, end_ms, include_taker_flow=include_taker_flow)
     parsed = [r for r in parsed if start_ms <= r["t"] < end_ms]
     expected = list(range(start_ms, end_ms, interval_ms))
     actual = [r["t"] for r in parsed]
