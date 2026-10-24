@@ -236,6 +236,26 @@ def vwap(highs, lows, closes, volumes, period=48):
         pv += typ*v; vv += v
     return pv/vv if vv else None
 
+def cvd_proxy_features(rows):
+    def ratio(lookback):
+        sample=rows[-lookback:]
+        if len(sample)<lookback or any("tb" not in row for row in sample):
+            return None
+        total=sum(float(row.get("v",0.0)) for row in sample)
+        if total<=0: return None
+        delta=sum(2.0*float(row["tb"])-float(row["v"]) for row in sample)
+        return delta/total
+    r12=ratio(12); r24=ratio(24)
+    if r12 is None or r24 is None:
+        direction="UNKNOWN"
+    elif r12>=0.02 and r24>0:
+        direction="UP"
+    elif r12<=-0.02 and r24<0:
+        direction="DOWN"
+    else:
+        direction="FLAT"
+    return direction,r12,r24
+
 def sr_levels(highs, lows, closes, lookback=48):
     n=min(lookback,len(closes))
     if n<5: return None,None
@@ -252,12 +272,21 @@ def round_price(x):
     if x >= 1: return round(x, 4)
     return round(x, 6)
 
-def kline_to_obj(x):
-    return {"t": normalize_timestamp_ms(x[0]), "o": float(x[1]), "h": float(x[2]), "l": float(x[3]),
-            "c": float(x[4]), "v": float(x[5]), "q": float(x[7])}
+def kline_to_obj(x, *, include_taker_flow=False):
+    row = {"t": normalize_timestamp_ms(x[0]), "o": float(x[1]), "h": float(x[2]), "l": float(x[3]),
+           "c": float(x[4]), "v": float(x[5]), "q": float(x[7])}
+    if include_taker_flow and len(x) >= 11:
+        try:
+            tb, tq = float(x[9]), float(x[10])
+            if (math.isfinite(tb) and math.isfinite(tq) and 0 <= tb <= row["v"] * 1.000001
+                    and 0 <= tq <= row["q"] * 1.000001):
+                row["tb"], row["tq"] = tb, tq
+        except (TypeError, ValueError, OverflowError):
+            pass
+    return row
 
 def set_series(s, interval, klines):
-    rows = [kline_to_obj(x) for x in klines]
+    rows = [kline_to_obj(x, include_taker_flow=True) for x in klines]
     series[s][interval] = validate_candle_series(rows, limit=210)
 
 def closed_series_rows(s, interval, now_ms=None):
@@ -451,6 +480,7 @@ async def analyze_symbol(s):
                 and 0 <= age_4h_ms <= 4 * 60 * 60_000 + 10 * 60_000
             )
             macd_hist_value = macd_histogram(c1)
+            cvd_direction, cvd_ratio_12, cvd_ratio_24 = cvd_proxy_features(k1)
             hybrid_features = {
                 "price": p, "ema20_1h": e20, "ema50_1h": e50, "ema200_1h": e200,
                 "ema20_4h": e20_4, "ema50_4h": e50_4, "ema200_4h": e200_4,
@@ -463,7 +493,7 @@ async def analyze_symbol(s):
                 "retest_long": bool(support is not None and a and abs(p-support) <= 0.4*a and p >= c1[-2]),
                 "retest_short": bool(resistance is not None and a and abs(p-resistance) <= 0.4*a and p <= c1[-2]),
                 "macd_hist": macd_hist_value,
-                "cvd_direction": "UNKNOWN",
+                "cvd_direction": cvd_direction, "cvd_ratio_12": cvd_ratio_12, "cvd_ratio_24": cvd_ratio_24,
                 "market_regime": "RANGE" if trend4 == "RANGE" else trend4,
                 "data_fresh": candles_fresh,
                 "candle_closed": bool(age_1h_ms >= 0 and age_4h_ms >= 0),
