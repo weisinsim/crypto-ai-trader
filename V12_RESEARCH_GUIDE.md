@@ -3,6 +3,13 @@
 ## Current status
 V12 is a research-only model. It is not approved for live trading and the simulator does not submit exchange orders.
 
+## One-command research run
+For a single symbol and UTC date range, the end-to-end runner downloads Binance USD-M 1h/4h candles and funding events, builds causal features, and writes a holdout/forward-fold/cost-stress report:
+
+`python -m research.run_v12_research --symbol BTCUSDT --start 2025-01-01 --end 2026-01-01 --output-dir reports/v12/BTCUSDT`
+
+Run separately for each symbol. The script is a research workflow, not an approval or live execution command.
+
 ## Pipeline
 1. Download and validate continuous closed 1h and 4h candle CSVs.
 2. Optionally download historical funding settlements from the same venue and symbol.
