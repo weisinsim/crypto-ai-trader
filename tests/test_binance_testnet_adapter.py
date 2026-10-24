@@ -129,6 +129,28 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(client.get_calls[0][0], "/fapi/v1/exchangeInfo")
         self.assertEqual(client.calls, [])
 
+    def test_symbol_rules_rejects_malformed_exchange_info_payload(self):
+        class BadExchangeInfoClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/exchangeInfo":
+                    return FakeResponse({"symbols": "not-a-list"})
+                return super().get(path, params)
+
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=BadExchangeInfoClient()
+        )
+        with self.assertRaisesRegex(ValueError, "invalid_exchange_info_response"):
+            adapter.symbol_rules("BTCUSDT")
+
+    def test_symbol_rules_rejects_missing_quantity_filter_fields(self):
+        payload = {"symbols": [{"symbol": "BTCUSDT", "status": "TRADING",
+                                "filters": [{"filterType": "LOT_SIZE", "stepSize": "0.001"}]}]}
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=FakeClient(exchange_payload=payload)
+        )
+        with self.assertRaisesRegex(ValueError, "invalid_exchange_quantity_filters"):
+            adapter.symbol_rules("BTCUSDT")
+
     def test_symbol_rules_rejects_invalid_symbol(self):
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=FakeClient())
         with self.assertRaises(ValueError):
