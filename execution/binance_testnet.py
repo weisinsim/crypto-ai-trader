@@ -122,22 +122,41 @@ class BinanceFuturesTestnet:
             raise ValueError("market_lot_size_filter_missing")
         if any(field not in lot for field in ("stepSize", "minQty", "maxQty")):
             raise ValueError("invalid_exchange_quantity_filters")
-        min_notional_filter = filters.get("MIN_NOTIONAL") or filters.get("NOTIONAL")
-        if min_notional_filter is not None and not any(
-            min_notional_filter.get(field) not in (None, "") for field in ("notional", "minNotional")
+        try:
+            step = Decimal(str(lot["stepSize"]))
+            minimum = Decimal(str(lot["minQty"]))
+            maximum = Decimal(str(lot["maxQty"]))
+        except (InvalidOperation, TypeError, ValueError) as exc:
+            raise ValueError("invalid_exchange_quantity_filters") from exc
+        if (
+            not step.is_finite() or not minimum.is_finite() or not maximum.is_finite()
+            or step <= 0 or minimum <= 0 or maximum < minimum
         ):
-            min_notional_filter = None
+            raise ValueError("invalid_exchange_quantity_filters")
+
+        min_notional_filter = filters.get("MIN_NOTIONAL") or filters.get("NOTIONAL")
+        min_notional = None
+        if min_notional_filter is not None:
+            raw_notional = next(
+                (min_notional_filter.get(field) for field in ("notional", "minNotional")
+                 if min_notional_filter.get(field) not in (None, "")),
+                None,
+            )
+            if raw_notional is not None:
+                try:
+                    parsed_notional = Decimal(str(raw_notional))
+                except (InvalidOperation, TypeError, ValueError) as exc:
+                    raise ValueError("invalid_exchange_min_notional") from exc
+                if not parsed_notional.is_finite() or parsed_notional <= 0:
+                    raise ValueError("invalid_exchange_min_notional")
+                min_notional = raw_notional
         return {
             "symbol": symbol,
             "status": matches[0].get("status"),
             "quantity_step": lot.get("stepSize"),
             "min_quantity": lot.get("minQty"),
             "max_quantity": lot.get("maxQty"),
-            "min_notional": (
-                min_notional_filter.get("notional")
-                or min_notional_filter.get("minNotional")
-                if min_notional_filter else None
-            ),
+            "min_notional": min_notional,
         }
 
     def account_preflight(self):
