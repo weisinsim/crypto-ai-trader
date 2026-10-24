@@ -20,6 +20,15 @@ class BinanceArchiveTests(unittest.TestCase):
         self.assertEqual(rows[1]["c"], 101.0)
 
     @patch("research.binance_archive._archive_rows")
+    def test_archive_klines_preserve_optional_taker_flow(self, archive_rows):
+        archive_rows.return_value = [kline(0)]
+        rows = download_archive_klines(
+            "BTCUSDT", "1h", 0, HOUR, HOUR, include_taker_flow=True
+        )
+        self.assertEqual(rows[0]["tb"], 6.0)
+        self.assertEqual(rows[0]["tq"], 600.0)
+
+    @patch("research.binance_archive._archive_rows")
     def test_archive_funding_labels_mark_price_as_proxy(self, archive_rows):
         funding_ts = 8 * HOUR
         archive_rows.side_effect = [
