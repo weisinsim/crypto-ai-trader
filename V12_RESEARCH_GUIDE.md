@@ -27,6 +27,9 @@ Repeat per symbol. Do not mix symbols or exchanges in one input file. Funding in
 - Coin-specific profile and market-regime discount
 
 ## Simulator assumptions
+- After TP1, the remaining position uses a 1.5 ATR trailing stop updated only after a candle closes; the new stop becomes active on the next candle.
+- If the model produces an opposite-direction candidate at a candle close, the remaining position exits at the next candle open.
+- A 72-bar (72-hour) maximum holding time exits at the next candle open if no earlier exit occurs.
 - Signals use the current closed 1h candle; entry occurs at the next 1h candle open.
 - Initial stop is 1.5 ATR; TP1 is 2R for 50% of size; TP2 is 3R for the remaining size.
 - Stop is assumed to execute before targets if both stop and target are touched in one OHLC candle.
