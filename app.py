@@ -5,6 +5,7 @@ from validation.candle_closure import filter_closed_candles, normalize_timestamp
 from validation.dashboard_health import build_health_payload
 from validation.signal_confirmation import invalidate_stale_confirmation
 from validation.xrp_model import evaluate_xrp_signal
+from research.v12_hybrid_engine import evaluate_hybrid, MODEL_VERSION as HYBRID_MODEL_VERSION
 from pathlib import Path
 
 import httpx
@@ -59,7 +60,7 @@ confirmed_state = {s: "NO-TRADE" for s in SYMBOLS}
 http_client = None
 
 MODEL_NAME = "Crypto AI Trader Multi-Asset Adaptive"
-MODEL_VERSION = "V28.2-Validated Execution Gate"
+MODEL_VERSION = "V28.3-V12 Adaptive Hybrid Research + Validated Execution Gate"
 XRP_PARAMS = {"kill_slope": 0.0077, "atr_max": 0.0135, "shock_max": 0.025, "sl_atr": 1.7, "tp_atr": 2.8, "direction": "LONG_ONLY"}
 MODEL_LIBRARY = {
     "BTCUSDT": {"name":"BTC Trend Tactical", "status":"RESEARCH", "direction":"LONG/SHORT", "horizon":"1–3H tactical", "family":"trend_tactical"},
@@ -401,6 +402,55 @@ async def analyze_symbol(s):
                 signal="WATCH-LONG" if direction==1 else "WATCH-SHORT"
             if cfg["status"]=="NO-PRODUCTION":
                 signal="NO-TRADE"; direction=0; entry=sl=tp1=tp2=None
+
+        # V12 hybrid integration: only research assets are routed through the
+        # four-model ensemble. Frozen XRP and blocked ETH retain their safeguards.
+        hybrid_result = None
+        if s in ("BTCUSDT", "SOLUSDT", "AVAXUSDT"):
+            now_s = time.time()
+            hybrid_features = {
+                "price": p, "ema20_1h": e20, "ema50_1h": e50, "ema200_1h": e200,
+                "ema20_4h": e20_4, "ema50_4h": e50_4, "ema200_4h": e200_4,
+                "rsi_1h": r, "atr_1h": a, "atr_pct": atr_pct, "adx_1h": adx_v,
+                "vol_ratio": vr, "vwap_1h": vwap_v, "support": support, "resistance": resistance,
+                "funding_rate": cache[s].get("funding"), "oi_change_pct": cache[s].get("oi_change"),
+                "momentum_pct": ((c1[-1] / c1[-4]) - 1.0) * 100 if len(c1) >= 4 and c1[-4] else None,
+                "breakout_up": bool(resistance is not None and p > resistance and c1[-2] <= resistance),
+                "breakout_down": bool(support is not None and p < support and c1[-2] >= support),
+                "retest_long": bool(support is not None and a and abs(p-support) <= 0.4*a and p >= c1[-2]),
+                "retest_short": bool(resistance is not None and a and abs(p-resistance) <= 0.4*a and p <= c1[-2]),
+                "cvd_direction": "UNKNOWN",
+                "market_regime": "RANGE" if trend4 == "RANGE" else trend4,
+                "data_fresh": bool(cache[s].get("ts") and now_s-cache[s]["ts"] <= 60),
+                "candle_closed": True,
+                "spread_bps": cache[s].get("spread_bps"),
+            }
+            hybrid_result = evaluate_hybrid(s, hybrid_features)
+            signal = hybrid_result["signal"] if hybrid_result["signal"] in ("LONG", "SHORT") else "NO-TRADE"
+            direction = 1 if signal == "LONG" else -1 if signal == "SHORT" else 0
+            score = int(hybrid_result.get("score", 0))
+            score_label = "A" if score >= 75 else "B" if score >= 65 else "C" if score >= 50 else "NO-TRADE"
+            score_breakdown = {
+                "model": HYBRID_MODEL_VERSION,
+                "hybrid_status": hybrid_result.get("status"),
+                "components": hybrid_result.get("components", {}),
+                "reasons": hybrid_result.get("reasons", []),
+                "legacy_score_reference": score_breakdown.get("trend"),
+            }
+            if direction:
+                entry = p
+                stop_distance = 1.5 * (a or p * 0.005)
+                sl = p - direction * stop_distance
+                tp1 = p + direction * (2.0 * stop_distance)
+                tp2 = p + direction * (3.0 * stop_distance)
+                entry_location = "OPTIMAL" if (
+                    direction == 1 and support is not None and a and abs(p-support)/a <= 1.5
+                    or direction == -1 and resistance is not None and a and abs(resistance-p)/a <= 1.5
+                ) else "TACTICAL"
+            else:
+                entry = sl = tp1 = tp2 = None
+                entry_location = "—"
+
         if signal in ("LONG","SHORT") and score >= 75:
             opportunity_tier = "A"
         elif signal in ("LONG","SHORT","WATCH-LONG","WATCH-SHORT") and score >= 65:
