@@ -169,6 +169,7 @@ def run_v12_backtest(
     trailing_atr_multiple: float = 1.5,
     max_holding_bars: int = 72,
     signal_reversal_exit: bool = True,
+    component_weights_override: dict | None = None,
 ) -> dict:
     """Run next-open V12 simulation with partial targets, ATR trailing, reversal and time exits."""
     if len(rows) < 3:
@@ -219,7 +220,7 @@ def run_v12_backtest(
     i = 0
     while i < len(rows) - 1:
         signal_row = rows[i]
-        result = evaluate_hybrid(symbol, _features(signal_row), min_score_override=min_score_override, min_edge_override=min_edge_override, short_rsi_floor=short_rsi_floor)
+        result = evaluate_hybrid(symbol, _features(signal_row), min_score_override=min_score_override, min_edge_override=min_edge_override, short_rsi_floor=short_rsi_floor, component_weights_override=component_weights_override)
         if result["signal"] not in ("LONG", "SHORT") or result.get("status") != "RESEARCH_CANDIDATE":
             i += 1
             continue
@@ -337,6 +338,7 @@ def run_v12_backtest(
                 close_signal = evaluate_hybrid(
                     symbol, _features(bar), min_score_override=min_score_override,
                     min_edge_override=min_edge_override, short_rsi_floor=short_rsi_floor,
+                    component_weights_override=component_weights_override,
                 )
                 opposite = "SHORT" if direction == 1 else "LONG"
                 if close_signal["signal"] == opposite and close_signal.get("status") == "RESEARCH_CANDIDATE":
