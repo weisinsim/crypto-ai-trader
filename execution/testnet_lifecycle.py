@@ -96,22 +96,45 @@ def ensure_testnet_protective_exits(
     quantity = abs(position)
     actions = []
     if not stops:
-        result = adapter.submit_testnet_protective_exit(
-            symbol, "stop_loss", quantity, stop, f"{client_order_prefix}-sl"
-        )
-        if not result.get("accepted"):
-            return {"ok": False, "reason": "stop_submission_failed", "detail": result, "actions": actions}
-        actions.append({"kind": "stop_loss", "result": result})
-    if not targets:
-        result = adapter.submit_testnet_protective_exit(
-            symbol, "take_profit", quantity, target, f"{client_order_prefix}-tp"
-        )
-        if not result.get("accepted"):
+        try:
+            result = adapter.submit_testnet_protective_exit(
+                symbol, "stop_loss", quantity, stop, f"{client_order_prefix}-sl"
+            )
+        except Exception as exc:
+            return {
+                "ok": False, "reason": "stop_submission_outcome_unknown",
+                "error_type": type(exc).__name__, "actions": actions,
+                "requires_reconciliation": True,
+            }
+        if not isinstance(result, dict) or not result.get("accepted"):
+            ambiguous = isinstance(result, dict) and result.get("reason") == "order_submission_outcome_unknown"
             return {
                 "ok": False,
-                "reason": "take_profit_submission_failed_stop_remains",
-                "detail": result,
-                "actions": actions,
+                "reason": "stop_submission_outcome_unknown" if ambiguous else "stop_submission_failed",
+                "detail": result, "actions": actions,
+                "requires_reconciliation": ambiguous,
+            }
+        actions.append({"kind": "stop_loss", "result": result})
+    if not targets:
+        try:
+            result = adapter.submit_testnet_protective_exit(
+                symbol, "take_profit", quantity, target, f"{client_order_prefix}-tp"
+            )
+        except Exception as exc:
+            return {
+                "ok": False, "reason": "take_profit_submission_outcome_unknown_stop_remains",
+                "error_type": type(exc).__name__, "actions": actions,
+                "requires_reconciliation": True,
+            }
+        if not isinstance(result, dict) or not result.get("accepted"):
+            ambiguous = isinstance(result, dict) and result.get("reason") == "order_submission_outcome_unknown"
+            return {
+                "ok": False,
+                "reason": (
+                    "take_profit_submission_outcome_unknown_stop_remains"
+                    if ambiguous else "take_profit_submission_failed_stop_remains"
+                ),
+                "detail": result, "actions": actions,
                 "requires_reconciliation": True,
             }
         actions.append({"kind": "take_profit", "result": result})
