@@ -392,6 +392,48 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(too_large["reason"], "exit_quantity_exceeds_position")
         self.assertEqual(client.calls, [])
 
+    def test_market_order_transport_error_requires_reconciliation(self):
+        class AmbiguousPostClient(FakeClient):
+            def post(self, path, params):
+                self.calls.append((path, params))
+                raise TimeoutError("response timed out after request may have reached exchange")
+
+        client = AmbiguousPostClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "market-ambiguous-0001", ExecutionConfig(mode="testnet")
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "order_submission_outcome_unknown")
+        self.assertEqual(result["mode"], "testnet_reconciliation_required")
+        self.assertEqual(result["client_order_id"], "market-ambiguous-0001")
+        self.assertEqual(len(client.calls), 1)
+
+    def test_protective_exit_transport_error_requires_reconciliation(self):
+        class AmbiguousPostClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"canTrade": True, "positions": [
+                        {"symbol": "BTCUSDT", "positionAmt": "0.5", "entryPrice": "100"},
+                    ]})
+                return super().get(path, params)
+
+            def post(self, path, params):
+                self.calls.append((path, params))
+                raise TimeoutError("response timed out after request may have reached exchange")
+
+        client = AmbiguousPostClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99", "stop-ambiguous-0001"
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "order_submission_outcome_unknown")
+        self.assertEqual(result["mode"], "testnet_reconciliation_required")
+        self.assertEqual(result["client_order_id"], "stop-ambiguous-0001")
+        self.assertEqual(len(client.calls), 1)
+
     def test_signed_request_uses_hmac_sha256(self):
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=FakeClient())
         params = adapter._signed_params({"symbol": "BTCUSDT", "side": "BUY"})
