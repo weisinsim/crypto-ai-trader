@@ -1,4 +1,5 @@
 name: V12 Historical Research Evaluation
+# Includes train-only threshold calibration, expanding walk-forward and four-module ablation
 
 on:
   push:
