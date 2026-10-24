@@ -34,6 +34,10 @@ def recover_testnet_position(adapter, symbol, stop_loss, take_profit, client_ord
     # silently treat an order as inactive during restart recovery.
     if any(order.get("status") not in _KNOWN_STATUSES for order in open_orders):
         return {"ok": False, "reason": "recovery_order_status_unknown", "requires_manual_reconciliation": True}
+    # This field represents the exchange open-orders snapshot. A terminal
+    # status here contradicts that contract and may indicate stale or mixed data.
+    if any(order.get("status") in _TERMINAL_STATUSES for order in open_orders):
+        return {"ok": False, "reason": "recovery_open_orders_contains_terminal_status", "requires_manual_reconciliation": True}
     active_orders = [order for order in open_orders if order.get("status") in _ACTIVE_STATUSES]
     if amount == 0:
         if active_orders:
