@@ -1,5 +1,5 @@
 name: V12 Historical Research Evaluation
-# Includes train-only threshold calibration, expanding walk-forward and four-module ablation
+# Includes train-only threshold calibration, expanding walk-forward, four-module ablation and per-coin weight-profile selection
 
 on:
   push:
