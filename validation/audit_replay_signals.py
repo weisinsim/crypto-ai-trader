@@ -41,6 +41,12 @@ def read_close_map(path):
 
 
 def audit(symbol, candle_path, signal_path, entry_tolerance_bps=0.1):
+    # Direct Python callers must receive the same validation as CLI callers.
+    if (isinstance(entry_tolerance_bps, bool)
+            or not isinstance(entry_tolerance_bps, (int, float))
+            or not math.isfinite(entry_tolerance_bps)
+            or entry_tolerance_bps < 0):
+        raise ValueError("entry_tolerance_bps must be finite and >= 0")
     closes = read_close_map(candle_path)
     rows = []
     with open(signal_path, newline="", encoding="utf-8-sig") as stream:
