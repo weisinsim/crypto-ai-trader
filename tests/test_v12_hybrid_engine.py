@@ -15,6 +15,18 @@ def strong_long_features():
         "data_fresh": True, "candle_closed": True, "spread_bps": 3.0,
     }
 
+def strong_short_features():
+    return {
+        "price": 99.0, "ema20_1h": 100.0, "ema50_1h": 101.0, "ema200_1h": 102.0,
+        "ema20_4h": 100.0, "ema50_4h": 102.0, "ema200_4h": 103.0,
+        "rsi_1h": 25.0, "atr_1h": 1.0, "atr_pct": 1.0, "adx_1h": 26.0,
+        "vol_ratio": 1.5, "vwap_1h": 100.0, "support": 90.0, "resistance": 103.0,
+        "funding_rate": 0.0005, "oi_change_pct": 4.0, "momentum_pct": -2.0,
+        "breakout_up": False, "breakout_down": True, "retest_long": False, "retest_short": True,
+        "cvd_direction": "DOWN", "market_regime": "BEAR",
+        "data_fresh": True, "candle_closed": True, "spread_bps": 3.0,
+    }
+
 
 class V12HybridEngineTests(unittest.TestCase):
     def test_missing_required_features_fail_closed(self):
@@ -56,6 +68,13 @@ class V12HybridEngineTests(unittest.TestCase):
         result = evaluate_hybrid("BTCUSDT", strong_long_features(), min_score_override=10)
         self.assertEqual(result["signal"], "NO-TRADE")
         self.assertEqual(result["status"], "INVALID_THRESHOLD_OVERRIDE")
+
+    def test_short_rsi_exhaustion_filter_blocks_oversold_short(self):
+        baseline = evaluate_hybrid("BTCUSDT", strong_short_features())
+        filtered = evaluate_hybrid("BTCUSDT", strong_short_features(), short_rsi_floor=30)
+        self.assertEqual(baseline["signal"], "SHORT")
+        self.assertEqual(filtered["signal"], "NO-TRADE")
+        self.assertEqual(filtered["status"], "SHORT_EXHAUSTION_FILTER")
 
 
 if __name__ == "__main__":
