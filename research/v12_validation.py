@@ -208,6 +208,109 @@ def _component_ablation(rows, symbol, *, split, folds, wf_start, common, initial
     }
 
 
+WEIGHT_PROFILE_CANDIDATES = {
+    "default": dict(WEIGHTS),
+    "trend_light": {
+        "momentum_funding": 0.35, "trend_breakout": 0.15,
+        "confluence": 0.30, "asset_adaptive": 0.20,
+    },
+    "trend_off": {
+        "momentum_funding": 0.4285714286, "trend_breakout": 0.0,
+        "confluence": 0.3571428571, "asset_adaptive": 0.2142857143,
+    },
+}
+
+
+def _select_weight_profile(train_rows, symbol, common):
+    candidates = []
+    eligible = []
+    for name, weights in WEIGHT_PROFILE_CANDIDATES.items():
+        result = run_v12_backtest(
+            train_rows, symbol, **common, component_weights_override=weights,
+        )
+        pf = result["profit_factor"]
+        item = {
+            "profile": name, "weights": weights,
+            "trades": result["trades"], "win_rate_pct": result["win_rate_pct"],
+            "profit_factor": pf, "net_return_pct": result["net_return_pct"],
+            "max_drawdown_pct": result["max_drawdown_pct"],
+        }
+        candidates.append(item)
+        if (
+            result["trades"] >= 20
+            and isinstance(pf, (int, float)) and math.isfinite(pf) and pf > 1.0
+            and result["net_return_pct"] > 0
+            and result["max_drawdown_pct"] <= 15
+        ):
+            eligible.append(item)
+    selected = max(
+        eligible,
+        key=lambda item: (item["profit_factor"], item["net_return_pct"], -item["max_drawdown_pct"]),
+        default=None,
+    )
+    return {
+        "selected": selected or next(item for item in candidates if item["profile"] == "default"),
+        "selection_status": "TRAINING_CANDIDATE_SELECTED" if selected else "DEFAULT_PROFILE_RETAINED",
+        "eligibility": "at least 20 trades, PF > 1, positive return, max drawdown <= 15%",
+        "candidates": candidates,
+    }
+
+
+def _weight_profile_walk_forward(rows, symbol, *, split, folds, wf_start, common, initial_equity):
+    available = split - wf_start
+    if available < folds * 3:
+        raise ValueError("not enough pre-holdout rows for weight-profile walk-forward")
+    current_equity = initial_equity
+    aggregate_curve = [{"t": rows[wf_start]["t"], "equity": initial_equity, "kind": "initial"}]
+    all_trades = []
+    fold_reports = []
+    for fold in range(folds):
+        start = wf_start + (available * fold) // folds
+        end = wf_start + (available * (fold + 1)) // folds
+        selection = _select_weight_profile(rows[:start], symbol, common)
+        selected = selection["selected"]
+        fold_common = dict(common)
+        fold_common["initial_equity"] = current_equity
+        result = run_v12_backtest(
+            rows[start:end], symbol, **fold_common,
+            component_weights_override=selected["weights"],
+        )
+        current_equity = result["equity_final"]
+        all_trades.extend(result["trade_log"])
+        aggregate_curve.extend(result["equity_curve"][1:])
+        fold_reports.append({
+            "fold": fold + 1,
+            "train_rows": start, "test_rows": end - start,
+            "test_start_ts": rows[start]["t"], "test_end_ts": rows[end - 1]["t"],
+            "selection_status": selection["selection_status"],
+            "selected_profile": selected["profile"],
+            "selected_training_metrics": {k: selected[k] for k in (
+                "trades", "profit_factor", "net_return_pct", "max_drawdown_pct",
+            )},
+            "test_metrics": _metrics(result),
+        })
+    peak = initial_equity
+    max_drawdown = 0.0
+    for point in aggregate_curve:
+        peak = max(peak, point["equity"])
+        dd = (peak - point["equity"]) / peak if peak > 0 else 1.0
+        max_drawdown = max(max_drawdown, dd)
+    wins = [trade for trade in all_trades if trade["net_pnl"] > 0]
+    losses = [trade for trade in all_trades if trade["net_pnl"] < 0]
+    gross_profit = sum(trade["net_pnl"] for trade in wins)
+    gross_loss = -sum(trade["net_pnl"] for trade in losses)
+    aggregate = {
+        "trades": len(all_trades), "wins": len(wins), "losses": len(losses),
+        "win_rate_pct": round(len(wins) / len(all_trades) * 100, 4) if all_trades else None,
+        "profit_factor": round(gross_profit / gross_loss, 4) if gross_loss else (None if not gross_profit else "INF"),
+        "funding_pnl_total": round(sum(trade["funding_pnl"] for trade in all_trades), 8),
+        "net_return_pct": round((current_equity / initial_equity - 1) * 100, 4),
+        "max_drawdown_pct": round(max_drawdown * 100, 4),
+        "equity_final": round(current_equity, 8),
+    }
+    return fold_reports, aggregate
+
+
 def run_v12_validation(rows, symbol, *, holdout_fraction=0.2, folds=4,
                        fee_rate=0.0005, slippage_rate=0.0002,
                        initial_equity=1.0, risk_fraction=0.005, max_leverage=3.0,
@@ -251,6 +354,16 @@ def run_v12_validation(rows, symbol, *, holdout_fraction=0.2, folds=4,
         common=common, initial_equity=initial_equity,
     )
     component_ablation = _component_ablation(
+        rows, symbol, split=split, folds=folds, wf_start=wf_start,
+        common=common, initial_equity=initial_equity,
+    )
+    weight_profile_selection = _select_weight_profile(train_rows, symbol, common)
+    selected_weight_profile = weight_profile_selection["selected"]
+    weight_profile_holdout = run_v12_backtest(
+        holdout_rows, symbol, **common,
+        component_weights_override=selected_weight_profile["weights"],
+    )
+    weight_profile_folds, weight_profile_aggregate = _weight_profile_walk_forward(
         rows, symbol, split=split, folds=folds, wf_start=wf_start,
         common=common, initial_equity=initial_equity,
     )
@@ -299,6 +412,13 @@ def run_v12_validation(rows, symbol, *, holdout_fraction=0.2, folds=4,
         "walk_forward_folds": walk_forward,
         "walk_forward_aggregate": walk_forward_aggregate,
         "component_ablation": component_ablation,
+        "weight_profile_selection": weight_profile_selection,
+        "weight_profile_holdout": {key: weight_profile_holdout[key] for key in (
+            "trades", "win_rate_pct", "profit_factor", "funding_pnl_total", "net_return_pct",
+            "max_drawdown_pct", "equity_final",
+        )},
+        "weight_profile_walk_forward_folds": weight_profile_folds,
+        "weight_profile_walk_forward_aggregate": weight_profile_aggregate,
         "holdout_cost_stress": cost_stress,
         "limitations": [
             "Funding cash flows are included when validated funding events are supplied; endpoint mark prices are not reconciled against an account ledger.",
