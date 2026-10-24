@@ -545,24 +545,45 @@ class BinanceFuturesTestnet:
             return {"cancelled": False, "reason": "invalid_client_order_id"}
         if not client_order_id.replace("-", "").replace("_", "").isalnum():
             return {"cancelled": False, "reason": "invalid_client_order_id"}
-        response = self._client.delete(
-            "/fapi/v1/order",
-            params=self._signed_params({
+        try:
+            response = self._client.delete(
+                "/fapi/v1/order",
+                params=self._signed_params({
+                    "symbol": symbol,
+                    "origClientOrderId": client_order_id,
+                }),
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except Exception:
+            # Cancellation may have succeeded even if the response was lost.
+            return {
+                "cancelled": False,
+                "reason": "order_cancellation_outcome_unknown",
+                "mode": "testnet_reconciliation_required",
                 "symbol": symbol,
-                "origClientOrderId": client_order_id,
-            }),
-        )
-        response.raise_for_status()
-        payload = response.json()
+                "client_order_id": client_order_id,
+            }
         if not isinstance(payload, dict) or "orderId" not in payload:
-            return {"cancelled": False, "reason": "unexpected_testnet_cancel_response"}
+            return {
+                "cancelled": False,
+                "reason": "order_cancellation_outcome_unknown",
+                "mode": "testnet_reconciliation_required",
+                "symbol": symbol,
+                "client_order_id": client_order_id,
+            }
+        if payload.get("symbol") != symbol or payload.get("clientOrderId") != client_order_id:
+            return {"cancelled": False, "reason": "testnet_order_identity_mismatch"}
+        status = payload.get("status")
+        if not isinstance(status, str) or not status:
+            return {"cancelled": False, "reason": "invalid_testnet_cancel_status"}
         return {
-            "cancelled": payload.get("status") == "CANCELED",
-            "mode": "testnet_order_cancelled",
-            "symbol": payload.get("symbol", symbol),
-            "client_order_id": payload.get("clientOrderId", client_order_id),
+            "cancelled": status == "CANCELED",
+            "mode": "testnet_order_cancel_result",
+            "symbol": symbol,
+            "client_order_id": client_order_id,
             "exchange_order_id": str(payload["orderId"]),
-            "status": payload.get("status", "UNKNOWN"),
+            "status": status,
         }
 
     def close(self):
