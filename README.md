@@ -20,7 +20,7 @@ python -m research.binance_data --symbol BTCUSDT --interval 1h --start 2025-01-0
 python -m research.run_backtest --csv data/BTCUSDT_1h.csv --symbol BTCUSDT --interval 1h --output reports/BTCUSDT_1h_baseline.json
 ```
 
-The runner rejects missing or irregular candle timestamps. Reports are marked `RESEARCH_ONLY`; the EMA baseline is a software/data-pipeline smoke test, not an optimized or approved trading model. The current funding input is a constant assumption, not historical realized funding.
+The runner rejects missing or irregular candle timestamps. Direct callers of `run_ema_cross_backtest()` can enforce the same continuity rule with `interval_ms=3_600_000` for 1-hour candles (or the matching interval in milliseconds); when omitted, the backtest accepts irregular spacing and should only be used when that is intentional. Reports are marked `RESEARCH_ONLY`; the EMA baseline is a software/data-pipeline smoke test, not an optimized or approved trading model. The current funding input is a constant assumption, not historical realized funding.
 
 Download Binance USD-M historical funding events for a UTC range (end date exclusive) and pass the resulting CSV to the backtest:
 
