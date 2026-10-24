@@ -717,6 +717,23 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class FundingInputModeValidationTests(unittest.TestCase):
+    def test_rejects_mixing_explicit_funding_events_with_per_bar_rate(self):
+        rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(80)])
+        event = {
+            "funding_time": rows[10]["t"],
+            "funding_rate": 0.001,
+            "mark_price": 100.0,
+        }
+        with self.assertRaisesRegex(
+            ValueError, "funding_rate_per_bar must be zero when explicit funding_rates are supplied"
+        ):
+            run_ema_cross_backtest(
+                rows, fast=3, slow=9, atr_period=3,
+                funding_rates=[event], funding_rate_per_bar=0.0001,
+            )
+
+
 class FundingNumericValidationOverflowTests(unittest.TestCase):
     def test_funding_numeric_overflow_is_normalized_to_value_error(self):
         rows = candles_from_closes([100 + ((i % 8) - 4) * 2 for i in range(80)])
