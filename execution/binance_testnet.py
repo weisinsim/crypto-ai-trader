@@ -320,11 +320,13 @@ class BinanceFuturesTestnet:
         if len(matching) != 1:
             return {"ok": False, "reason": "position_not_found_or_ambiguous"}
         position = matching[0]
-        if "positionAmt" not in position or "entryPrice" not in position:
+        if "positionAmt" not in position:
             return {"ok": False, "reason": "invalid_testnet_position_values"}
         try:
             amount = Decimal(str(position["positionAmt"]))
-            entry_price = Decimal(str(position["entryPrice"]))
+            if amount != 0 and "entryPrice" not in position:
+                raise InvalidOperation
+            entry_price = Decimal(str(position.get("entryPrice", "0")))
             if not amount.is_finite() or not entry_price.is_finite() or entry_price < 0:
                 raise InvalidOperation
         except (InvalidOperation, TypeError, ValueError):
