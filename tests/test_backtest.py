@@ -763,6 +763,25 @@ class CausalBacktestRegressionTests(unittest.TestCase):
 
         self.assertEqual(completed_before_cutoff(baseline), completed_before_cutoff(altered))
 
+    def test_does_not_open_unclosed_position_on_final_candle(self):
+        from unittest.mock import patch
+
+        rows = [
+            {"t": i * 3_600_000, "o": 100.0 + i, "h": 102.0 + i,
+             "l": 99.0 + i, "c": 101.0 + i, "v": 10}
+            for i in range(8)
+        ]
+        fast = [None, 1.0, 2.0, 2.0, 2.0, 2.0, 4.0, 4.0]
+        slow = [None, 2.0, 2.0, 3.0, 3.0, 3.0, 3.0, 3.0]
+        with patch("research.backtest._ema", side_effect=lambda values, period: fast if period == 2 else slow), patch("research.backtest._atr", return_value=[1.0] * len(rows)):
+            result = run_ema_cross_backtest(
+                rows, fast=2, slow=3, atr_period=1, stop_atr=1.0,
+                target_atr=2.0, fee_rate=0, slippage_rate=0, allow_short=False,
+            )
+        self.assertTrue(result["trade_log"])
+        self.assertFalse(any(trade["entry_time"] == rows[-1]["t"] for trade in result["trade_log"]))
+        self.assertTrue(all(trade["exit_time"] <= rows[-1]["t"] for trade in result["trade_log"]))
+
     def test_signal_entry_is_filled_at_next_bar_open_not_signal_close(self):
         from unittest.mock import patch
 
