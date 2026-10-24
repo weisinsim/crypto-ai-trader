@@ -54,7 +54,8 @@ def load_feature_csv(path: str) -> list[dict]:
             try:
                 if not str(raw["t"]).isdigit():
                     raise ValueError("timestamp must be integer milliseconds")
-                row = {"t": int(raw["t"])}
+                source_symbol = str(raw.get("symbol") or "").strip().upper()
+                row = {"t": int(raw["t"]), "symbol": source_symbol or None}
                 if previous_ts is not None and row["t"] <= previous_ts:
                     raise ValueError("timestamps must be strictly increasing")
                 previous_ts = row["t"]
@@ -115,6 +116,11 @@ def run_v12_backtest(
     """Run a single-position, next-open simulator with 50/50 TP1/TP2 exits."""
     if len(rows) < 3:
         raise ValueError("at least three rows are required")
+    source_symbols = {row.get("symbol") for row in rows if row.get("symbol")}
+    if len(source_symbols) > 1:
+        raise ValueError("feature CSV must not mix symbols")
+    if source_symbols and source_symbols != {str(symbol).upper()}:
+        raise ValueError("requested --symbol does not match feature CSV symbol")
     for name, value in (("fee_rate", fee_rate), ("slippage_rate", slippage_rate),
                         ("initial_equity", initial_equity), ("risk_fraction", risk_fraction),
                         ("max_leverage", max_leverage)):
