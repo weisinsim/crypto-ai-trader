@@ -1,5 +1,6 @@
 import asyncio
 import json
+import math
 import time
 from validation.candle_closure import filter_closed_candles, normalize_timestamp_ms, upsert_candle, validate_candle_series
 from validation.dashboard_health import build_health_payload
