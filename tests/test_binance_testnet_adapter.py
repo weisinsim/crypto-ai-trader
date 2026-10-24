@@ -397,5 +397,38 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(client.calls, [])
 
 
+    def test_account_risk_metrics_rejects_notional_that_overflows_float(self):
+        class HugeNotionalClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"positions": [
+                        {"symbol": "BTCUSDT", "positionAmt": "0.1", "notional": "1e9999"},
+                    ]})
+                return super().get(path, params)
+
+        client = HugeNotionalClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.account_risk_metrics("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "position_notional_out_of_range")
+
+    def test_account_risk_metrics_returns_finite_notional(self):
+        class ValidRiskClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"positions": [
+                        {"symbol": "BTCUSDT", "positionAmt": "0.1", "notional": "-100.5"},
+                    ]})
+                return super().get(path, params)
+
+        client = ValidRiskClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.account_risk_metrics("BTCUSDT")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["symbol_notional_usdt"], 100.5)
+        self.assertEqual(result["total_notional_usdt"], 100.5)
+
 if __name__ == "__main__":
     unittest.main()
