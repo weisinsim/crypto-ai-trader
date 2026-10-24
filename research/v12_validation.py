@@ -14,7 +14,7 @@ from research.run_backtest import load_funding_csv
 def _metrics(result):
     return {key: result[key] for key in (
         "trades", "wins", "losses", "win_rate_pct", "profit_factor",
-        "net_return_pct", "max_drawdown_pct", "equity_final",
+        "funding_pnl_total", "net_return_pct", "max_drawdown_pct", "equity_final",
     )}
 
 
