@@ -130,6 +130,29 @@ def _funding_asof(events, timestamp):
     return found
 
 
+def _cvd_proxy_ratio(rows, lookback):
+    sample = rows[-lookback:]
+    if len(sample) < lookback or any("tb" not in row for row in sample):
+        return None
+    total_volume = sum(float(row.get("v", 0.0)) for row in sample)
+    if total_volume <= 0:
+        return None
+    # Binance kline taker-buy base volume approximates buyer-initiated volume;
+    # seller-initiated volume is approximated as total base volume minus taker buy.
+    delta = sum(2.0 * float(row["tb"]) - float(row["v"]) for row in sample)
+    return delta / total_volume
+
+
+def _cvd_proxy_direction(ratio_12, ratio_24):
+    if ratio_12 is None or ratio_24 is None:
+        return "UNKNOWN"
+    if ratio_12 >= 0.02 and ratio_24 > 0:
+        return "UP"
+    if ratio_12 <= -0.02 and ratio_24 < 0:
+        return "DOWN"
+    return "FLAT"
+
+
 def build_v12_features(candles_1h, candles_4h, funding_events=None, *, symbol=None):
     """Return one causally aligned feature row per 1h candle with sufficient history."""
     output = []
@@ -173,6 +196,9 @@ def build_v12_features(candles_1h, candles_4h, funding_events=None, *, symbol=No
         volume_base = [x.get("q", 0.0) for x in h1[-21:-1]]
         volume_mean = sum(volume_base) / len(volume_base) if volume_base else 0.0
         vol_ratio = candle.get("q", 0.0) / volume_mean if volume_mean > 0 else None
+        cvd_ratio_12 = _cvd_proxy_ratio(h1, 12)
+        cvd_ratio_24 = _cvd_proxy_ratio(h1, 24)
+        cvd_direction = _cvd_proxy_direction(cvd_ratio_12, cvd_ratio_24)
         output.append({
             "symbol": str(symbol).upper() if symbol else "",
             "t": candle["t"], "o": candle["o"], "h": candle["h"], "l": candle["l"], "c": price,
@@ -188,7 +214,8 @@ def build_v12_features(candles_1h, candles_4h, funding_events=None, *, symbol=No
             "breakout_down": bool(support is not None and price < support and previous_close >= support),
             "retest_long": bool(support is not None and abs(price - support) <= 0.4 * atr_value and price >= previous_close),
             "retest_short": bool(resistance is not None and abs(price - resistance) <= 0.4 * atr_value and price <= previous_close),
-            "cvd_direction": "UNKNOWN", "market_regime": regime,
+            "cvd_direction": cvd_direction, "cvd_ratio_12": cvd_ratio_12,
+            "cvd_ratio_24": cvd_ratio_24, "market_regime": regime,
             "data_fresh": True, "candle_closed": True, "spread_bps": None,
         })
     return output
