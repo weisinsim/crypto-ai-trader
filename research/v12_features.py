@@ -122,7 +122,9 @@ def _vwap(rows, period=48):
 def _funding_asof(events, timestamp):
     found = None
     for event in events or []:
-        if event["funding_time"] > timestamp:
+        # Strictly earlier settlement only; do not use a settlement result that
+        # occurs at the exact signal-candle close timestamp.
+        if event["funding_time"] >= timestamp:
             break
         found = event["funding_rate"]
     return found
