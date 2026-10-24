@@ -70,6 +70,16 @@ def diagnose(candle_path, funding_path):
     counts = {}
     for delta in deltas:
         counts[str(delta)] = counts.get(str(delta), 0) + 1
+    candle_sorted_all = sorted(candles)
+    funding_sorted = sorted(funding)
+    candle_mod_hour_counts = {}
+    for timestamp in candles:
+        key = str(timestamp % 3_600_000)
+        candle_mod_hour_counts[key] = candle_mod_hour_counts.get(key, 0) + 1
+    funding_mod_hour_counts = {}
+    for timestamp in funding:
+        key = str(timestamp % 3_600_000)
+        funding_mod_hour_counts[key] = funding_mod_hour_counts.get(key, 0) + 1
     return {
         'candle_file': str(candle_path), 'funding_file': str(funding_path),
         'candle_timestamp_field': candle_field, 'funding_timestamp_field': funding_field,
@@ -79,6 +89,12 @@ def diagnose(candle_path, funding_path):
         'funding_first_utc': _iso(min(funding)), 'funding_last_utc': _iso(max(funding)),
         'candle_first_mod_hour_ms': min(candles) % 3600000,
         'funding_first_mod_hour_ms': min(funding) % 3600000,
+        'candle_mod_hour_ms_counts': candle_mod_hour_counts,
+        'funding_mod_hour_ms_counts': funding_mod_hour_counts,
+        'candle_first_10_utc': [_iso(ts) for ts in candle_sorted_all[:10]],
+        'candle_last_10_utc': [_iso(ts) for ts in candle_sorted_all[-10:]],
+        'funding_first_10_utc': [_iso(ts) for ts in funding_sorted[:10]],
+        'funding_last_10_utc': [_iso(ts) for ts in funding_sorted[-10:]],
         'funding_events_outside_candle_timestamp_range': outside,
         'nearest_candle_delta_ms_counts': counts,
         'nearest_delta_examples_ms': deltas[:20],
