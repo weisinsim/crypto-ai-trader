@@ -138,9 +138,9 @@ class RuntimeStateStore:
         Returns True for a newly recorded event and False for a duplicate ID.
         """
         amount = self._finite_number(amount_usdt, "amount_usdt")
-        instant = now or datetime.now(timezone.utc)
-        if instant.tzinfo is None:
-            raise ValueError("now must be timezone-aware")
+        instant = datetime.now(timezone.utc) if now is None else now
+        if not isinstance(instant, datetime) or instant.tzinfo is None:
+            raise ValueError("now must be a timezone-aware datetime")
         instant = instant.astimezone(timezone.utc)
         day, timestamp = instant.date().isoformat(), instant.timestamp()
         if event_id is not None:
