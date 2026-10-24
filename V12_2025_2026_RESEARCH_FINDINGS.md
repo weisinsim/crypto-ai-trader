@@ -10,7 +10,7 @@
 - Fees: 0.05% per side; slippage: 0.02% per side.
 - Risk: 0.5% equity budget per trade, 3x notional cap; initial stop 1.5 ATR; 50% TP1 at 2R and remaining 50% at 3R.
 - Historical funding cash flows are included using settlement rate × position quantity × endpoint mark price. Open-position mark-to-market is included in drawdown.
-- Threshold selection uses training data only. Expanding-window walk-forward tests cover 50%–80% of the series; the last 20% is reported separately.
+- Threshold selection uses training data only. Expanding-window walk-forward tests cover 50%–80% of the series; the last 20% is reported separately. Because these results have now been reviewed during iterative development, this holdout is considered consumed for future model tuning and is not a pristine final test set.
 - The optional short-side RSI floor of 30 was evaluated during training; it was not selected for any of the four symbols.
 
 ## Results
