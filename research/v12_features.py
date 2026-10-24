@@ -65,14 +65,18 @@ def _adx(rows, period=14):
         plus_values.append(up if up > down and up > 0 else 0.0)
         minus_values.append(down if down > up and down > 0 else 0.0)
     dx = []
-    for end in range(period, len(tr_values) + 1):
+    # Only the latest period of DX values contributes to the final ADX
+    # approximation. Computing older DX values for every candle made the
+    # full-history feature builder unnecessarily quadratic-to-cubic in work.
+    first_end = max(period, len(tr_values) - period + 1)
+    for end in range(first_end, len(tr_values) + 1):
         tr = sum(tr_values[end-period:end]) / period
         if tr <= 0:
             continue
         pdi = 100 * (sum(plus_values[end-period:end]) / period) / tr
         mdi = 100 * (sum(minus_values[end-period:end]) / period) / tr
         dx.append(100 * abs(pdi - mdi) / max(pdi + mdi, 1e-12))
-    return sum(dx[-period:]) / len(dx[-period:]) if dx else None
+    return sum(dx) / len(dx) if dx else None
 
 
 def _macd_hist(values, fast=12, slow=26, signal=9):
