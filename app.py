@@ -12,7 +12,7 @@ from pathlib import Path
 
 import httpx
 import websockets
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -139,8 +139,12 @@ async def models():
 
 
 @app.get("/api/chatgpt/alerts")
-async def chatgpt_alerts():
+async def chatgpt_alerts(response: Response):
     """Read-only notification feed; never authorizes exchange execution."""
+    # Alert freshness is time-sensitive; prevent browsers and intermediaries from caching it.
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
     now = time.time()
     payload = build_alert_payload(market_status, cache, SYMBOLS, now)
     payload["model_version"] = MODEL_VERSION
