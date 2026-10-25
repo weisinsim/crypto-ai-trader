@@ -14,6 +14,8 @@ class ChatGPTAlertFeedTests(unittest.TestCase):
         for symbol, item in dashboard.cache.items():
             item.update({
                 "confirmed_signal": "NO-TRADE",
+                "ts": now,
+                "price": 100.0,
                 "confirmed_signal_time": None,
                 "analysis_ts": 0,
                 "confirmed_entry": None,
@@ -136,6 +138,22 @@ class ChatGPTAlertFeedTests(unittest.TestCase):
         dashboard.market_status["updated"] = time.time() + 60
         payload = asyncio.run(dashboard.chatgpt_alert_feed())
         self.assertEqual(payload["count"], 0)
+
+    def test_suppresses_candidate_when_its_symbol_ticker_is_stale_or_invalid(self):
+        item = dashboard.cache["BTCUSDT"]
+        item["ts"] = time.time() - 121
+        payload = asyncio.run(dashboard.chatgpt_alert_feed())
+        self.assertEqual(payload["alerts"], [])
+
+        item["ts"] = time.time()
+        item["price"] = float("nan")
+        payload = asyncio.run(dashboard.chatgpt_alert_feed())
+        self.assertEqual(payload["alerts"], [])
+
+        item["price"] = 100.0
+        item["ts"] = time.time() + 60
+        payload = asyncio.run(dashboard.chatgpt_alert_feed())
+        self.assertEqual(payload["alerts"], [])
 
     def test_rejects_invalid_scores(self):
         item = dashboard.cache["BTCUSDT"]
