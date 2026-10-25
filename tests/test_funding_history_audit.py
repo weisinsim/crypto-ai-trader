@@ -70,10 +70,6 @@ class FundingHistoryAuditTests(unittest.TestCase):
             audit_funding_events(rows, symbol="BTCUSDT", start_ts_ms=0, end_ts_ms=2000)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 
 class FundingNotionalPathTests(unittest.TestCase):
     def test_partial_exit_reduces_notional_for_later_settlements(self):
@@ -142,6 +138,9 @@ class FundingNotionalPathTests(unittest.TestCase):
         )
         self.assertAlmostEqual(result["funding_cost"], 1.0)
 
+
+if __name__ == "__main__":
+    unittest.main()
 
 if __name__ == "__main__":
     unittest.main()
