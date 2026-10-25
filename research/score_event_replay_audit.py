@@ -72,6 +72,8 @@ def build_frozen_score_event(*, symbol, side, timeframe, candle_close_ts, model_
         "timeframe": timeframe,
         "candle_close_ts": candle_close_ts,
         "model_version": model_version,
+        "event_schema_version": 1,
+        "score_definition": "0_to_100_model_score",
         "research_only": True,
         "auto_trade_authorized": False,
     }
@@ -86,6 +88,7 @@ def compare_replayed_score_events(first, second):
     fields = (
         "signal_id", "symbol", "side", "timeframe", "candle_close_ts",
         "signal_ts", "model_version", "score", "score_breakdown",
+        "event_schema_version", "score_definition",
     )
     if not isinstance(first, dict) or not isinstance(second, dict):
         raise ValueError("both replay events must be mappings")
