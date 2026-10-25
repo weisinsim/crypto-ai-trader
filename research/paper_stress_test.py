@@ -99,6 +99,9 @@ def run_paper_stress_scenarios(candidates, *, scenarios=DEFAULT_SCENARIOS,
                 "net_return": outcome["net_return_on_entry_notional"],
                 "exit_timestamp_ms": exit_ts,
                 "exit_reason": outcome["exit_reason"],
+                "funding_model": outcome.get("funding_model", "UNSPECIFIED"),
+                "funding_history_verified": outcome.get("funding_history_verified", False),
+                "funding_intervals": outcome.get("funding_intervals"),
                 "costs_verified": False,
                 "fill_prices_verified": False,
             })
@@ -117,6 +120,8 @@ def run_paper_stress_scenarios(candidates, *, scenarios=DEFAULT_SCENARIOS,
         reports.append({
             "scenario_id": scenario_id,
             "assumptions": settings,
+            "funding_model": "CANDLE_BUCKET_ASSUMPTION_NOT_EXCHANGE_SETTLEMENT",
+            "funding_history_verified": False,
             "report": report,
             "coverage": {
                 "input_candidate_count": len(candidates),
