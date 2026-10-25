@@ -156,6 +156,46 @@ class ScoreEventStore:
             "auto_trade_authorized": False,
         }
 
+    def integrity_audit(self):
+        """Audit SQLite integrity and linkage coverage without changing stored data."""
+        with closing(self._connect()) as conn, conn:
+            integrity_rows = conn.execute("PRAGMA integrity_check").fetchall()
+            foreign_key_rows = conn.execute("PRAGMA foreign_key_check").fetchall()
+            event_count = conn.execute("SELECT COUNT(*) FROM score_events").fetchone()[0]
+            trade_count = conn.execute("SELECT COUNT(*) FROM realized_trades").fetchone()[0]
+            orphan_count = conn.execute("""
+                SELECT COUNT(*) FROM realized_trades t
+                LEFT JOIN score_events e USING(signal_id)
+                WHERE e.signal_id IS NULL
+            """).fetchone()[0]
+            duplicate_event_ids = conn.execute("""
+                SELECT COUNT(*) FROM (
+                    SELECT signal_id FROM score_events GROUP BY signal_id HAVING COUNT(*) > 1
+                )
+            """).fetchone()[0]
+            duplicate_trade_ids = conn.execute("""
+                SELECT COUNT(*) FROM (
+                    SELECT signal_id FROM realized_trades GROUP BY signal_id HAVING COUNT(*) > 1
+                )
+            """).fetchone()[0]
+        integrity_messages = [row[0] for row in integrity_rows]
+        foreign_key_violations = [dict(row) for row in foreign_key_rows]
+        return {
+            "status": "PASS" if integrity_messages == ["ok"] and not foreign_key_violations
+                      and orphan_count == 0 and duplicate_event_ids == 0
+                      and duplicate_trade_ids == 0 else "FAIL",
+            "sqlite_integrity_check": integrity_messages,
+            "foreign_key_violations": foreign_key_violations,
+            "score_event_count": event_count,
+            "realized_trade_count": trade_count,
+            "uncompleted_score_event_count": event_count - trade_count,
+            "orphan_realized_trade_count": orphan_count,
+            "duplicate_score_event_id_groups": duplicate_event_ids,
+            "duplicate_realized_trade_id_groups": duplicate_trade_ids,
+            "research_only": True,
+            "auto_trade_authorized": False,
+        }
+
     def calibration_report(self, *, min_samples=30):
         """Summarize persisted completed outcomes without hiding incomplete events."""
         ledger = self.calibration_rows()
