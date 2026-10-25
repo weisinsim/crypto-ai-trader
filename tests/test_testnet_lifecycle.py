@@ -1,6 +1,6 @@
 import unittest
 
-from execution.testnet_lifecycle import cancel_testnet_sibling_after_flatten, ensure_testnet_protective_exits
+from execution.testnet_lifecycle import cancel_testnet_sibling_after_flatten, ensure_testnet_protective_exits, reconcile_testnet_restart
 
 
 class FakeAdapter:
@@ -174,6 +174,61 @@ class TestnetLifecycleTests(unittest.TestCase):
         result = cancel_testnet_sibling_after_flatten(nonflat, "BTCUSDT", "btc-sl", "btc-tp")
         self.assertEqual(result["reason"], "position_not_flat_sibling_must_remain")
         self.assertEqual(nonflat.cancel_calls, [])
+
+
+    def test_restart_reconciliation_queries_known_ids_without_mutation(self):
+        import time
+
+        class RestartAdapter:
+            def __init__(self):
+                self.query_calls = []
+            def testnet_position_snapshot(self, symbol):
+                now = int(time.time() * 1000)
+                return {
+                    "ok": True, "symbol": symbol, "position_amount": "0.5",
+                    "entry_price": "100",
+                    "snapshot_started_at_ms": now - 10,
+                    "snapshot_completed_at_ms": now,
+                    "snapshot_duration_ms": 10.0,
+                    "open_orders": [{"client_order_id": "btc-sl", "status": "NEW"}],
+                }
+            def query_testnet_order(self, symbol, client_id):
+                self.query_calls.append((symbol, client_id))
+                return {"found": True, "client_order_id": client_id,
+                        "exchange_order_id": "123", "status": "NEW"}
+            def submit_testnet_protective_exit(self, *args):
+                raise AssertionError("restart reconciliation must never submit orders")
+            def cancel_testnet_order(self, *args):
+                raise AssertionError("restart reconciliation must never cancel orders")
+
+        adapter = RestartAdapter()
+        result = reconcile_testnet_restart(adapter, "BTCUSDT", ["btc-sl"])
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["automatic_order_submission_authorized"])
+        self.assertFalse(result["requires_reconciliation"])
+        self.assertEqual(adapter.query_calls, [("BTCUSDT", "btc-sl")])
+
+    def test_restart_reconciliation_fails_closed_on_unknown_or_mismatched_state(self):
+        import time
+
+        class RestartAdapter:
+            def testnet_position_snapshot(self, symbol):
+                now = int(time.time() * 1000)
+                return {
+                    "ok": True, "symbol": symbol, "position_amount": "0.5",
+                    "entry_price": "100",
+                    "snapshot_started_at_ms": now - 10,
+                    "snapshot_completed_at_ms": now,
+                    "snapshot_duration_ms": 10.0,
+                    "open_orders": [{"client_order_id": "btc-sl", "status": "NEW"}],
+                }
+            def query_testnet_order(self, symbol, client_id):
+                return {"found": True, "client_order_id": client_id, "status": "FILLED"}
+
+        result = reconcile_testnet_restart(RestartAdapter(), "BTCUSDT", ["btc-sl"])
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["reason"], "ORDER_QUERY_SNAPSHOT_MISMATCH")
 
 
 if __name__ == "__main__":
