@@ -10,6 +10,7 @@ import csv
 import hashlib
 import io
 import json
+import math
 from datetime import datetime, timezone
 
 from research.funding_history_audit import audit_funding_events
@@ -72,6 +73,8 @@ def import_funding_csv(csv_text, *, symbol, start_ts_ms, end_ts_ms,
                 rate = float(rate_text)
             except ValueError as exc:
                 raise ValueError(f"row {line_number} fundingRate must be numeric") from exc
+            if not math.isfinite(rate):
+                raise ValueError(f"row {line_number} fundingRate must be finite")
             events.append({
                 "symbol": symbol.strip().upper(),
                 "funding_timestamp_ms": _timestamp_ms(row.get("fundingTime", "")),
