@@ -9,8 +9,8 @@ Do not wire persistence into `app.py` in this PR yet. The current dashboard is a
 ### Stage A — observe confirmed signals (future, disabled by default)
 - Add a separately configured research-only observer, with persistence disabled unless an explicit local configuration flag is enabled.
 - Emit an event only on a genuine transition into a newly confirmed signal; do not emit on every dashboard refresh.
-- Stable ID must be deterministic and collision-resistant, based on symbol, direction, closed-candle timestamp, and model/version identity. Repeated processing of the same closed candle must be idempotent.
-- Freeze the exact score and score-breakdown at confirmation time. Never reconstruct the score from later candles or trade outcomes.
+- Stable ID must be deterministic and collision-resistant, based on symbol, direction, timeframe, closed-candle timestamp, and model/version identity. Keep the ID independent of the score value so replayed score drift is reported as a mismatch for the same logical signal rather than as unrelated missing/extra events.
+- Freeze the exact score and score-breakdown at confirmation time. The research replay helper now canonicalizes JSON-compatible breakdowns and compares them field-for-field; this is an audit primitive only, not a runtime observer or model replay engine.
 - Store the model version, signal timestamp in UTC milliseconds, closed-candle timestamp, source/exchange, score definition/version, and event schema version.
 - Persistence errors must be visible in diagnostics. They must not alter signal calculations, signal status, or any execution/risk decision.
 
@@ -45,4 +45,4 @@ Implemented research utilities:
 - Read-only SQLite integrity audit reporting database integrity, foreign-key violations, orphan outcomes, duplicate-ID groups, and uncompleted score events.
 - Unit tests for restart persistence, duplicate rejection, invalid outcomes, incomplete/non-finite cost fields, cost coverage counts, and clean integrity-audit cases.
 
-These utilities are not connected to the dashboard or an outcome source, so no live score/outcome dataset is being collected. The integrity audit checks storage/linkage invariants; it does not verify that a net return reconciles to exchange fills, fees, slippage, or funding. Runtime observer and fill ingestion remain unimplemented. This document specifies a safe next implementation path; it does not claim any of the stages above are implemented.
+These utilities are not connected to the dashboard or an outcome source, so no live score/outcome dataset is being collected. The integrity audit checks storage/linkage invariants; it does not verify that a net return reconciles to exchange fills, fees, slippage, or funding. Runtime observer, real model-scoring replay adapter, historical candle replay runner, and fill ingestion remain unimplemented. The app currently computes per-asset scores inside analyze_symbol; wiring this into a research replay requires first extracting a pure scorer or introducing a controlled historical-data dependency so tests cannot accidentally use live candles or mutate runtime cache. This document specifies a safe next implementation path; it does not claim any of the stages above are implemented.
