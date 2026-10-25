@@ -124,6 +124,18 @@ class ChatGPTAlertFeedTests(unittest.TestCase):
         self.assertEqual(payload["count"], 0)
         self.assertEqual(payload["alerts"], [])
 
+    def test_suppresses_candidates_when_model_status_is_unknown_or_missing(self):
+        item = dashboard.cache["BTCUSDT"]
+        for status in ("UNKNOWN", "", None):
+            item["model_status"] = status
+            payload = asyncio.run(dashboard.chatgpt_alert_feed())
+            self.assertEqual(payload["count"], 0, msg=f"status should be rejected: {status!r}")
+            self.assertEqual(payload["alerts"], [])
+        item.pop("model_status", None)
+        payload = asyncio.run(dashboard.chatgpt_alert_feed())
+        self.assertEqual(payload["count"], 0)
+        self.assertEqual(payload["alerts"], [])
+
     def test_suppresses_cached_candidates_when_market_is_not_live(self):
         dashboard.market_status["status"] = "DELAYED"
         payload = asyncio.run(dashboard.chatgpt_alert_feed())
