@@ -100,6 +100,30 @@ def simulate_tactical_candidate(*, observation, future_candles,
     entry = first["o"] * (1 + slip if side == "LONG" else 1 - slip)
     if entry <= 0:
         raise ValueError("slippage-adjusted entry must be positive")
+    # Slippage itself can consume the entire planned entry-to-risk/target gap.
+    # Never record an entry whose modeled fill has already crossed a guardrail.
+    slipped_entry_invalidated = (
+        entry <= stop or entry >= tp1
+        if side == "LONG"
+        else entry >= stop or entry <= tp1
+    )
+    if slipped_entry_invalidated:
+        return {
+            "status": "NO_TRADE",
+            "reason": "ENTRY_SLIPPAGE_INVALIDATED",
+            "symbol": observation.get("symbol"),
+            "side": side,
+            "signal_candle_close_ms": signal_close,
+            "entry_timestamp_ms": first["t"],
+            "entry_reference": entry_ref,
+            "observed_entry_open": first["o"],
+            "entry_price_assumption": entry,
+            "stop_loss": stop,
+            "take_profit_1": tp1,
+            "outcome_complete": False,
+            "research_only": True,
+            "auto_trade_authorized": False,
+        }
     direction = 1 if side == "LONG" else -1
     # Exit orders are assumed to fill adversely: sell exits lower for longs,
     # buy-to-cover exits higher for shorts.
