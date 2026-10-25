@@ -111,6 +111,29 @@ class ScoreEventStoreTests(unittest.TestCase):
         self.assertEqual(report["completed_trade_count"], 0)
         self.assertEqual(report["uncompleted_score_event_count"], 1)
 
+    def test_boolean_and_non_finite_cost_values_are_not_counted_as_coverage(self):
+        invalid_values = (True, float("nan"), float("inf"), "0.001")
+        for index, value in enumerate(invalid_values, start=1):
+            signal_id = f"SOL-170000000000{index}-SHORT"
+            event = dict(self.event, signal_id=signal_id, signal_ts=1700000000000 + index)
+            trade = dict(
+                self.trade, signal_id=signal_id, exit_ts=1700003600000 + index,
+                fees=value, slippage=0.002, funding=0.0
+            )
+            self.store.record_score_event(event)
+            self.store.record_realized_trade(trade)
+
+        report = self.store.calibration_rows()
+        self.assertEqual(report["cost_fields_present_count"], 0)
+        self.assertEqual(report["cost_fields_incomplete_count"], len(invalid_values))
+        self.assertTrue(all(
+            row["cost_coverage_status"] == "INCOMPLETE_COST_FIELDS"
+            for row in report["trades"]
+        ))
+        calibration = self.store.calibration_report(min_samples=1)
+        self.assertEqual(calibration["calibration"]["trade_count_in_bands"], 0)
+        self.assertEqual(calibration["calibration"]["cost_incomplete_excluded_count"], len(invalid_values))
+
 
 if __name__ == "__main__":
     unittest.main()
