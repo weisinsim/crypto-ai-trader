@@ -205,6 +205,26 @@ async def chatgpt_alert_feed():
         candle_time = item.get("confirmed_signal_time")
         analysis_time = item.get("analysis_ts")
         model_status = item.get("model_status", "UNKNOWN")
+        # A fresh global heartbeat does not prove this symbol ticker is fresh.
+        # Suppress candidates for an individually stalled symbol.
+        symbol_ts = item.get("ts")
+        symbol_price = item.get("price")
+        if (
+            not isinstance(symbol_ts, (int, float))
+            or isinstance(symbol_ts, bool)
+            or not math.isfinite(symbol_ts)
+            or symbol_ts <= 0
+            or symbol_ts > now
+            or now - symbol_ts > 120
+        ):
+            continue
+        if (
+            not isinstance(symbol_price, (int, float))
+            or isinstance(symbol_price, bool)
+            or not math.isfinite(symbol_price)
+            or symbol_price <= 0
+        ):
+            continue
         if side not in ("LONG", "SHORT"):
             continue
         if model_status not in ("RESEARCH", "FROZEN", "PRODUCTION"):
