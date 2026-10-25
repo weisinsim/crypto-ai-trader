@@ -181,6 +181,7 @@ async def chatgpt_alert_feed():
     status_updated = market_status.get("updated")
     status_is_fresh = (
         isinstance(status_updated, (int, float))
+        and not isinstance(status_updated, bool)
         and math.isfinite(status_updated)
         and 0 < status_updated <= now
         and now - status_updated <= 120
