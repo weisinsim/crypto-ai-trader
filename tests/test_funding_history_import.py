@@ -79,6 +79,34 @@ class FundingHistoryImportTests(unittest.TestCase):
         self.assertFalse(manifest["coverage_verified"])
         self.assertFalse(manifest["source_verified"])
 
+    def test_anchored_cadence_detects_missing_trailing_window_settlement(self):
+        source = (
+            "fundingTime,fundingRate\\n"
+            "2025-01-01T00:00:00Z,0.001\\n"
+            "2025-01-01T08:00:00Z,0.001\\n"
+            "2025-01-01T16:00:00Z,0.001\\n"
+        )
+        result = import_funding_csv(
+            source, symbol="BTCUSDT",
+            start_ts_ms=1735689600000, end_ts_ms=1735776000000 + 28_800_000,
+            expected_interval_ms=28_800_000,
+            expected_anchor_ts_ms=1735689600000,
+        )
+        manifest = result["manifest"]
+        self.assertEqual(manifest["missing_expected_timestamps_ms"], [1735776000000])
+        self.assertEqual(manifest["cadence_check_status"], "WINDOW_GAPS_FOUND")
+        self.assertFalse(manifest["cadence_check_passed"])
+
+    def test_rejects_non_finite_funding_rates(self):
+        for invalid_rate in ("nan", "inf", "-inf"):
+            with self.subTest(invalid_rate=invalid_rate):
+                source = f"fundingTime,fundingRate\\n2025-01-01T00:00:00Z,{invalid_rate}\\n"
+                with self.assertRaisesRegex(ValueError, "must be finite"):
+                    import_funding_csv(
+                        source, symbol="BTCUSDT",
+                        start_ts_ms=1735689600000, end_ts_ms=1735776000000,
+                    )
+
     def test_anchor_requires_expected_interval(self):
         with self.assertRaisesRegex(ValueError, "requires expected_interval_ms"):
             import_funding_csv(
