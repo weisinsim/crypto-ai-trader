@@ -33,6 +33,11 @@ class ScoreEventStoreTests(unittest.TestCase):
         self.assertEqual(report["trades"][0]["score"], 91)
         self.assertEqual(report["trades"][0]["net_return"], 0.025)
         self.assertFalse(report["auto_trade_authorized"])
+        full_report = restarted.calibration_report(min_samples=1)
+        self.assertEqual(full_report["coverage"]["completed_trade_count"], 1)
+        self.assertEqual(full_report["calibration"]["buckets"][0]["sample_count"], 1)
+        self.assertEqual(full_report["calibration"]["status"], "RESEARCH_ONLY")
+        self.assertFalse(full_report["auto_trade_authorized"])
 
     def test_duplicate_events_and_outcomes_are_rejected(self):
         self.store.record_score_event(self.event)
@@ -54,6 +59,9 @@ class ScoreEventStoreTests(unittest.TestCase):
         report = self.store.calibration_rows()
         self.assertEqual(report["uncompleted_score_event_count"], 1)
         self.assertEqual(report["trades"], [])
+        full_report = self.store.calibration_report()
+        self.assertEqual(full_report["coverage"]["uncompleted_score_event_count"], 1)
+        self.assertEqual(full_report["calibration"]["buckets"], [])
 
     def test_invalid_outcome_is_rejected_without_partial_write(self):
         self.store.record_score_event(self.event)
