@@ -1,12 +1,13 @@
-import asyncio
-import sys
+import importlib.util
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-# The lightweight CI test job installs pytest/httpx, but not the app's
-# production websocket dependency. The endpoint test does not open sockets.
-sys.modules.setdefault("websockets", MagicMock())
+# The lightweight research CI job installs pytest/httpx only. Run this
+# integration test when the application's runtime dependencies are present.
+if importlib.util.find_spec("fastapi") is None or importlib.util.find_spec("websockets") is None:
+    raise unittest.SkipTest("FastAPI/websockets runtime dependencies are not installed in this test job")
 
+import asyncio
 import app as app_module
 
 
