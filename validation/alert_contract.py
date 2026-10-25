@@ -114,11 +114,13 @@ def build_alert_payload(market_status, symbol_cache, symbols, now):
         and now - updated <= 120
     )
     alerts = []
+    seen_event_ids = set()
     if heartbeat_fresh and isinstance(symbol_cache, dict):
         for symbol in symbols if isinstance(symbols, (list, tuple)) else ():
             alert = validate_alert_candidate(symbol, symbol_cache.get(symbol), now)
-            if alert is not None:
+            if alert is not None and alert["event_id"] not in seen_event_ids:
                 alerts.append(alert)
+                seen_event_ids.add(alert["event_id"])
 
     return {
         "generated_at": now,
