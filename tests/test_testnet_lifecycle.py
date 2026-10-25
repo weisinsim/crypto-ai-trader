@@ -91,6 +91,22 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertEqual([s[1] for s in adapter.submissions], ["stop_loss", "take_profit"])
         self.assertTrue(result["requires_reconciliation"])
 
+    def test_repeated_lifecycle_with_same_prefix_is_idempotent(self):
+        adapter = FakeAdapter()
+        first = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-repeat-01")
+        self.assertTrue(first["ok"])
+        first_submission_count = len(adapter.submissions)
+        self.assertEqual(first_submission_count, 2)
+
+        second = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-repeat-01")
+        self.assertTrue(second["ok"])
+        self.assertEqual(len(adapter.submissions), first_submission_count)
+        self.assertEqual(len(second["verified_orders"]), 2)
+        self.assertEqual(
+            {order["client_order_id"] for order in second["verified_orders"].values()},
+            {"btc-repeat-01-sl", "btc-repeat-01-tp"},
+        )
+
     def test_existing_matching_stop_is_reused(self):
         adapter = FakeAdapter(orders=[{
             "status": "NEW", "reduce_only": True, "type": "STOP_MARKET",
