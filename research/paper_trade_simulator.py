@@ -1,7 +1,7 @@
 """Explicit-assumption paper trade lifecycle simulator; never submits orders.
 
 This is a research approximation, not an exchange fill model. It enters at the
-next candle open, applies adverse slippage and fees, processes stop before target
+next candle open, applies adverse entry and exit slippage plus fees, processes stop before target
 when one OHLC bar touches both, takes 50% off at TP1, and closes the remainder
 at TP2, stop, or the holding limit. Funding is a configurable adverse cost per
 8-hour holding interval because historical funding is not ingested here.
@@ -76,6 +76,11 @@ def simulate_tactical_candidate(*, observation, future_candles,
     if entry <= 0:
         raise ValueError("slippage-adjusted entry must be positive")
     direction = 1 if side == "LONG" else -1
+    # Exit orders are assumed to fill adversely: sell exits lower for longs,
+    # buy-to-cover exits higher for shorts.
+    def adverse_exit_price(reference_price):
+        return reference_price * (1 - slip if side == "LONG" else 1 + slip)
+
     quantity_remaining = 1.0
     realized_gross = 0.0
     exits = []
@@ -91,27 +96,31 @@ def simulate_tactical_candidate(*, observation, future_candles,
         tp2_hit = candle["h"] >= tp2 if side == "LONG" else candle["l"] <= tp2
         # Ambiguous OHLC bars are resolved conservatively: stop takes priority.
         if stop_hit:
-            realized_gross += quantity_remaining * direction * (stop - entry)
-            exits.append({"reason": "STOP", "price": stop, "quantity": quantity_remaining, "bar_index": index})
+            fill = adverse_exit_price(stop)
+            realized_gross += quantity_remaining * direction * (fill - entry)
+            exits.append({"reason": "STOP", "price": fill, "reference_price": stop, "quantity": quantity_remaining, "bar_index": index})
             quantity_remaining = 0.0
             exit_reason, exit_price, bars_used = "STOP", stop, index + 1
             break
         if not tp1_done and tp1_hit:
             take = min(0.5, quantity_remaining)
-            realized_gross += take * direction * (tp1 - entry)
+            fill = adverse_exit_price(tp1)
+            realized_gross += take * direction * (fill - entry)
             quantity_remaining -= take
             tp1_done = True
-            exits.append({"reason": "TP1", "price": tp1, "quantity": take, "bar_index": index})
+            exits.append({"reason": "TP1", "price": fill, "reference_price": tp1, "quantity": take, "bar_index": index})
         if tp2_hit and tp1_done and quantity_remaining > 0:
-            realized_gross += quantity_remaining * direction * (tp2 - entry)
-            exits.append({"reason": "TP2", "price": tp2, "quantity": quantity_remaining, "bar_index": index})
+            fill = adverse_exit_price(tp2)
+            realized_gross += quantity_remaining * direction * (fill - entry)
+            exits.append({"reason": "TP2", "price": fill, "reference_price": tp2, "quantity": quantity_remaining, "bar_index": index})
             quantity_remaining = 0.0
             exit_reason, exit_price, bars_used = "TP2", tp2, index + 1
             break
         if index == holding_limit - 1:
-            realized_gross += quantity_remaining * direction * (candle["c"] - entry)
+            fill = adverse_exit_price(candle["c"])
+            realized_gross += quantity_remaining * direction * (fill - entry)
             reason = "MAX_HOLD" if reached_holding_limit else "DATA_END"
-            exits.append({"reason": reason, "price": candle["c"], "quantity": quantity_remaining, "bar_index": index})
+            exits.append({"reason": reason, "price": fill, "reference_price": candle["c"], "quantity": quantity_remaining, "bar_index": index})
             quantity_remaining = 0.0
             exit_reason, exit_price, bars_used = reason, candle["c"], index + 1
 
