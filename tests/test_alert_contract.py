@@ -36,7 +36,7 @@ class AlertContractTests(unittest.TestCase):
                 self.assertIsNone(validate_alert_candidate(symbol, self.item, self.now))
 
     def test_frozen_or_unknown_model_is_rejected(self):
-        for status in ("FROZEN", "UNKNOWN", None, "NO-PRODUCTION"):
+        for status in ("FROZEN", "UNKNOWN", None, "NO-PRODUCTION", [], {}):
             with self.subTest(status=status):
                 item = {**self.item, "model_status": status}
                 self.assertIsNone(validate_alert_candidate("BTCUSDT", item, self.now))
@@ -125,6 +125,22 @@ class AlertContractTests(unittest.TestCase):
         )
         self.assertEqual(len(payload["alerts"]), 1)
         self.assertEqual(payload["alerts"][0]["symbol"], "BTCUSDT")
+
+    def test_malformed_symbol_entries_and_status_types_fail_closed(self):
+        for status in ([], {}, 123):
+            with self.subTest(status=status):
+                item = {**self.item, "model_status": status}
+                self.assertIsNone(validate_alert_candidate("BTCUSDT", item, self.now))
+
+        payload = build_alert_payload(
+            {"status": "LIVE", "updated": self.now - 2},
+            {"BTCUSDT": self.item},
+            [["BTCUSDT"], {}, "BTCUSDT"],
+            self.now,
+        )
+        self.assertEqual(payload["status"], "LIVE")
+        self.assertEqual([a["symbol"] for a in payload["alerts"]], ["BTCUSDT"])
+        self.assertIs(payload["auto_trade_authorized"], False)
 
     def test_non_dict_cache_and_invalid_clock_fail_closed(self):
         payload = build_alert_payload(
