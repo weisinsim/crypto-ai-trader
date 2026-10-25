@@ -88,6 +88,19 @@ class FundingPaginationAuditTests(unittest.TestCase):
         self.assertIn("normalization_page_count_mismatch", result["errors"])
         self.assertFalse(result["normalization_verified"])
 
+
+    def test_invalid_normalized_row_cannot_be_marked_verified(self):
+        pages = self.pages()
+        pages[0]["events"][0]["funding_rate"] = float("nan")
+        parsed = [
+            [{"symbol": "BTCUSDT", "funding_timestamp_ms": 1000, "funding_rate": 0.001}],
+            [{"symbol": "BTCUSDT", "funding_timestamp_ms": 2000, "funding_rate": -0.0005}],
+        ]
+        result = self.audit(pages, parsed)
+        self.assertEqual(result["status"], "FAIL")
+        self.assertFalse(result["normalization_verified"])
+        self.assertFalse(result["normalized_events_match_raw_payload"])
+
     def test_rejects_cursor_gaps_and_unfinished_final_page(self):
         pages = self.pages()
         pages[1]["request_cursor"] = "wrong-cursor"
