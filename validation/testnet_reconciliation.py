@@ -99,6 +99,15 @@ def reconcile_testnet_state(
         if isinstance(required, (str, bytes)) or not isinstance(required, (list, tuple, set, frozenset)):
             symbol_reasons.append("REQUIRED_PROTECTIVE_ORDERS_INVALID")
             required = []
+        valid_required_ids = {
+            item for item in required if isinstance(item, str) and item.strip()
+        }
+        for order in orders:
+            if not isinstance(order, Mapping):
+                continue
+            order_id = order.get("client_order_id", order.get("clientOrderId"))
+            if order_id not in valid_required_ids:
+                symbol_reasons.append("UNEXPECTED_OPEN_ORDER")
         for order_id in required:
             if not isinstance(order_id, str) or not order_id.strip():
                 symbol_reasons.append("REQUIRED_PROTECTIVE_ORDER_ID_INVALID")
