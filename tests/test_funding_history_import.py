@@ -42,9 +42,9 @@ class FundingHistoryImportTests(unittest.TestCase):
 
     def test_anchored_cadence_detects_missing_window_boundaries(self):
         source = (
-            "fundingTime,fundingRate\\n"
-            "2025-01-01T08:00:00Z,0.001\\n"
-            "2025-01-01T16:00:00Z,0.001\\n"
+            "fundingTime,fundingRate\n"
+            "2025-01-01T08:00:00Z,0.001\n"
+            "2025-01-01T16:00:00Z,0.001\n"
         )
         result = import_funding_csv(
             source, symbol="BTCUSDT",
@@ -61,10 +61,10 @@ class FundingHistoryImportTests(unittest.TestCase):
 
     def test_anchored_cadence_passes_only_when_full_window_grid_is_present(self):
         source = (
-            "fundingTime,fundingRate\\n"
-            "2025-01-01T00:00:00Z,0.001\\n"
-            "2025-01-01T08:00:00Z,0.001\\n"
-            "2025-01-01T16:00:00Z,0.001\\n"
+            "fundingTime,fundingRate\n"
+            "2025-01-01T00:00:00Z,0.001\n"
+            "2025-01-01T08:00:00Z,0.001\n"
+            "2025-01-01T16:00:00Z,0.001\n"
         )
         result = import_funding_csv(
             source, symbol="BTCUSDT",
@@ -82,7 +82,7 @@ class FundingHistoryImportTests(unittest.TestCase):
     def test_anchor_requires_expected_interval(self):
         with self.assertRaisesRegex(ValueError, "requires expected_interval_ms"):
             import_funding_csv(
-                "fundingTime,fundingRate\\n", symbol="BTCUSDT",
+                "fundingTime,fundingRate\n", symbol="BTCUSDT",
                 start_ts_ms=1735689600000, end_ts_ms=1735776000000,
                 expected_anchor_ts_ms=1735689600000,
             )
