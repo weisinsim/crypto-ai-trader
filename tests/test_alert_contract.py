@@ -195,5 +195,40 @@ class AlertContractTests(unittest.TestCase):
         self.assertFalse(alert["research_only"])
 
 
+    def test_malformed_signal_field_types_fail_closed(self):
+        malformed = (
+            ("confirmed_signal", []),
+            ("confirmed_signal", {}),
+            ("ts", []),
+            ("price", {}),
+            ("confirmed_signal_time", []),
+            ("analysis_ts", {}),
+            ("confirmed_entry", []),
+            ("confirmed_sl", {}),
+            ("confirmed_tp1", []),
+            ("confirmed_tp2", {}),
+            ("confirmed_score", []),
+        )
+        for field, value in malformed:
+            with self.subTest(field=field, value=value):
+                item = {**self.item, field: value}
+                self.assertIsNone(validate_alert_candidate("BTCUSDT", item, self.now))
+
+    def test_malformed_envelope_types_fail_closed_without_exception(self):
+        for market_status, symbol_cache, symbols in (
+            ([], {"BTCUSDT": self.item}, ["BTCUSDT"]),
+            ({}, [], ["BTCUSDT"]),
+            ({"status": [], "updated": self.now}, {"BTCUSDT": self.item}, ["BTCUSDT"]),
+            ({"status": "LIVE", "updated": []}, {"BTCUSDT": self.item}, ["BTCUSDT"]),
+            ({"status": "LIVE", "updated": self.now - 2}, {"BTCUSDT": self.item}, {}),
+        ):
+            with self.subTest(market_status=market_status, symbol_cache=symbol_cache, symbols=symbols):
+                payload = build_alert_payload(market_status, symbol_cache, symbols, self.now)
+                self.assertIn(payload["status"], ("LIVE", "DELAYED"))
+                self.assertEqual(payload["alerts"], [])
+                self.assertIs(payload["notification_only"], True)
+                self.assertIs(payload["auto_trade_authorized"], False)
+
+
 if __name__ == "__main__":
     unittest.main()
