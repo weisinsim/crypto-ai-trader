@@ -78,7 +78,7 @@ class ScoreEventReplayAuditTests(unittest.TestCase):
                     self.build(candle_close_ts=1_800_000_007_200)]
         report = audit_replay_series(expected, replayed)
         self.assertEqual(report["status"], "FAIL")
-        self.assertEqual(len(report["missing_signal_ids"]), 0)
+        self.assertEqual(len(report["missing_signal_ids"]), 1)
         self.assertEqual(len(report["unexpected_signal_ids"]), 1)
         self.assertEqual(len(report["mismatched_events"]), 1)
 
