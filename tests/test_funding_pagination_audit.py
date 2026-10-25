@@ -164,6 +164,18 @@ class FundingPaginationAuditTests(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("page_0:event_0_invalid_rate", result["errors"])
 
+    def test_extremely_large_integer_in_independent_parse_fails_cleanly(self):
+        pages = self.pages()
+        parsed = [
+            [{"symbol": "BTCUSDT", "funding_timestamp_ms": 1000, "funding_rate": 10 ** 10000}],
+            [{"symbol": "BTCUSDT", "funding_timestamp_ms": 2000, "funding_rate": -0.0005}],
+        ]
+        result = self.audit(pages, parsed)
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("page_0:invalid_parsed_raw_event", result["errors"])
+        self.assertFalse(result["normalization_verified"])
+        self.assertFalse(result["normalized_events_match_raw_payload"])
+
     def test_rejects_missing_raw_bytes_and_early_pagination_end(self):
         pages = self.pages()
         pages[0]["raw_payload"] = "not bytes"
