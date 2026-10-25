@@ -216,6 +216,11 @@ def simulate_tactical_candidate(*, observation, future_candles,
         "funding_model": "CANDLE_BUCKET_ASSUMPTION_NOT_EXCHANGE_SETTLEMENT",
         "funding_assumption_bps_per_8h": funding_bps_per_8h,
         "funding_history_verified": False,
+        "funding_assumption_status": "ASSUMPTION_ONLY_NOT_HISTORICAL",
+        "funding_warning": (
+            "A zero funding assumption means no funding cost was modeled; it does not mean "
+            "the trade had zero exchange funding. Historical settlement events are not integrated."
+        ),
         "net_pnl_per_unit": net_pnl,
         "net_return_on_entry_notional": net_pnl / traded_notional,
         "costs_verified": False,
