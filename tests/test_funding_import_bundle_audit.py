@@ -25,8 +25,9 @@ class FundingImportBundleAuditTests(unittest.TestCase):
             "source_endpoint": "/fapi/v1/fundingRate",
             "timestamp_unit": "ms_utc", "requested_start_ts_ms": 1000,
             "requested_end_ts_ms": 3000, "retrieved_at_ms": 4000,
-            "raw_payload_sha256": aggregate, "page_count": len(pages),
-            "pagination_complete": True,
+            "raw_payload_sha256": "a" * 64,
+            "raw_pages_aggregate_sha256": aggregate,
+            "page_count": len(pages), "pagination_complete": True,
         }
         value.update(overrides)
         return value
@@ -43,6 +44,7 @@ class FundingImportBundleAuditTests(unittest.TestCase):
         result = self.audit()
         self.assertEqual(result["status"], "PASS")
         self.assertTrue(result["page_count_matches_manifest"])
+        self.assertTrue(result["aggregate_digest_present"])
         self.assertTrue(result["aggregate_digest_verified"])
         self.assertFalse(result["source_verified"])
         self.assertFalse(result["event_coverage_verified"])
@@ -54,7 +56,7 @@ class FundingImportBundleAuditTests(unittest.TestCase):
         self.assertIn("manifest_page_count_mismatch", result["errors"])
 
     def test_aggregate_digest_mismatch_fails(self):
-        result = self.audit(self.manifest(raw_payload_sha256="0" * 64))
+        result = self.audit(self.manifest(raw_pages_aggregate_sha256="0" * 64))
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("manifest_aggregate_digest_mismatch", result["errors"])
 
@@ -64,6 +66,14 @@ class FundingImportBundleAuditTests(unittest.TestCase):
         result = self.audit(self.manifest(pages), pages)
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("page_audit_failed", result["errors"])
+
+    def test_aggregate_digest_is_optional_but_not_claimed_as_verified(self):
+        manifest = self.manifest()
+        del manifest["raw_pages_aggregate_sha256"]
+        result = self.audit(manifest)
+        self.assertEqual(result["status"], "PASS")
+        self.assertFalse(result["aggregate_digest_present"])
+        self.assertFalse(result["aggregate_digest_verified"])
 
 
 if __name__ == "__main__":
