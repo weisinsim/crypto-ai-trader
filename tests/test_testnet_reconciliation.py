@@ -1,6 +1,6 @@
 import unittest
 
-from validation.testnet_reconciliation import reconcile_testnet_state, validate_snapshot_timing
+from validation.testnet_reconciliation import reconcile_testnet_state, validate_snapshot_timing, reconcile_restart_order_ledger
 
 
 class TestnetReconciliationTests(unittest.TestCase):
@@ -49,6 +49,50 @@ class TestnetReconciliationTests(unittest.TestCase):
         self.assertEqual(stale["reason"], "SNAPSHOT_STALE")
         self.assertEqual(future["reason"], "SNAPSHOT_TIMESTAMP_IN_FUTURE")
         self.assertEqual(wide["reason"], "SNAPSHOT_OBSERVATION_WINDOW_TOO_WIDE")
+
+    def test_restart_ledger_accepts_matching_active_order_and_snapshot(self):
+        snapshot = {
+            "ok": True,
+            "position_amount": "0.5",
+            "open_orders": [{"client_order_id": "btc-sl", "status": "NEW"}],
+            "snapshot_started_at_ms": 1000,
+            "snapshot_completed_at_ms": 1100,
+            "snapshot_duration_ms": 100.0,
+        }
+        result = reconcile_restart_order_ledger(
+            ["btc-sl"],
+            {"btc-sl": {"found": True, "client_order_id": "btc-sl", "exchange_order_id": "123", "status": "NEW"}},
+            snapshot,
+            now_ms=1200,
+        )
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["automatic_order_submission_authorized"])
+
+    def test_restart_ledger_fails_closed_on_query_mismatch_or_untracked_order(self):
+        snapshot = {
+            "ok": True,
+            "position_amount": "0.5",
+            "open_orders": [{"client_order_id": "btc-sl", "status": "NEW"}],
+            "snapshot_started_at_ms": 1000,
+            "snapshot_completed_at_ms": 1100,
+            "snapshot_duration_ms": 100.0,
+        }
+        mismatch = reconcile_restart_order_ledger(
+            ["btc-sl"],
+            {"btc-sl": {"found": True, "client_order_id": "btc-sl", "status": "FILLED"}},
+            snapshot,
+            now_ms=1200,
+        )
+        untracked = reconcile_restart_order_ledger(
+            ["btc-sl"],
+            {"btc-sl": {"found": True, "client_order_id": "btc-sl", "status": "NEW"}},
+            {**snapshot, "open_orders": snapshot["open_orders"] + [{"client_order_id": "unknown", "status": "NEW"}]},
+            now_ms=1200,
+        )
+        missing = reconcile_restart_order_ledger(["btc-sl"], {}, snapshot, now_ms=1200)
+        self.assertEqual(mismatch["reason"], "ORDER_QUERY_SNAPSHOT_MISMATCH")
+        self.assertEqual(untracked["reason"], "UNTRACKED_ACTIVE_ORDER_ON_RESTART")
+        self.assertEqual(missing["reason"], "ORDER_QUERY_MISSING_OR_AMBIGUOUS")
 
     def test_exact_flat_snapshot_passes(self):
         result = reconcile_testnet_state(
