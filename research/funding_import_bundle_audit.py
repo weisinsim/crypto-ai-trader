@@ -13,7 +13,8 @@ from research.funding_pagination_audit import audit_funding_pages
 def audit_funding_import_bundle(manifest, pages, *, symbol, venue,
                                 start_ts_ms, end_ts_ms,
                                 expected_first_cursor=None,
-                                raw_manifest_payload=None):
+                                raw_manifest_payload=None,
+                                parsed_raw_events_by_page=None):
     """Fail closed unless metadata and page-level checks agree.
 
     ``raw_payload_sha256`` retains its original meaning: digest of the exact
@@ -32,6 +33,7 @@ def audit_funding_import_bundle(manifest, pages, *, symbol, venue,
     page_audit = audit_funding_pages(
         pages, symbol=symbol, start_ts_ms=start_ts_ms, end_ts_ms=end_ts_ms,
         expected_first_cursor=expected_first_cursor,
+        parsed_raw_events_by_page=parsed_raw_events_by_page,
     )
     raw_digest_audit = None
     if raw_manifest_payload is not None:
@@ -72,10 +74,10 @@ def audit_funding_import_bundle(manifest, pages, *, symbol, venue,
         "aggregate_digest_present": isinstance(manifest, dict) and manifest.get("raw_pages_aggregate_sha256") is not None,
         "aggregate_digest_verified": aggregate_verified,
         "raw_digest_verified": raw_digest_audit is not None and raw_digest_audit["status"] == "PASS",
-        "normalization_verified": False,
-        "normalized_events_match_raw_payload": False,
+        "normalization_verified": page_audit["normalization_verified"],
+        "normalized_events_match_raw_payload": page_audit["normalized_events_match_raw_payload"],
         "source_verified": False,
         "event_coverage_verified": False,
         "auto_trade_authorized": False,
-        "warning": "PASS means metadata and supplied envelopes are internally consistent only. Raw page bytes are hashed but not parsed or reconciled against normalized events; exchange provenance and API event completeness remain unverified.",
+        "warning": "PASS means metadata and supplied envelopes are internally consistent only. Normalization is verified only if independently parsed raw events were supplied and matched; exchange provenance and API event completeness remain unverified.",
     }
