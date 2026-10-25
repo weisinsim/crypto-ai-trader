@@ -28,7 +28,7 @@ def _max_drawdown(returns):
     return worst
 
 
-def summarize_score_calibration(trades, *, min_samples=30, bands=DEFAULT_BANDS):
+def summarize_score_calibration(trades, *, min_samples=30, bands=DEFAULT_BANDS, split_by_side=False):
     """Group realized holdout trades by symbol and score band.
 
     Returns a JSON-serializable report. A bucket is not marked validated unless
@@ -42,6 +42,12 @@ def summarize_score_calibration(trades, *, min_samples=30, bands=DEFAULT_BANDS):
         if not (_number(lower) and _number(upper) and 0 <= lower < upper <= 101):
             raise ValueError("each score band must satisfy 0 <= lower < upper <= 101")
         normalized_bands.append((float(lower), float(upper)))
+    if not isinstance(split_by_side, bool):
+        raise ValueError("split_by_side must be a boolean")
+    ordered_bands = sorted(normalized_bands)
+    for previous, current in zip(ordered_bands, ordered_bands[1:]):
+        if current[0] < previous[1]:
+            raise ValueError("score bands must not overlap")
     groups = defaultdict(list)
     for index, trade in enumerate(trades):
         if not isinstance(trade, dict):
@@ -50,6 +56,9 @@ def summarize_score_calibration(trades, *, min_samples=30, bands=DEFAULT_BANDS):
             trade.get("symbol"), trade.get("score"),
             trade.get("net_return"), trade.get("exit_ts"),
         )
+        side = trade.get("side")
+        if split_by_side and side not in ("LONG", "SHORT"):
+            raise ValueError(f"trade {index} side must be LONG or SHORT when split_by_side=True")
         if not isinstance(symbol, str) or not symbol.strip():
             raise ValueError(f"trade {index} has invalid symbol")
         if not _number(score) or not 0 <= score <= 100:
@@ -61,20 +70,21 @@ def summarize_score_calibration(trades, *, min_samples=30, bands=DEFAULT_BANDS):
         match = next((i for i, (lo, hi) in enumerate(normalized_bands)
                       if lo <= score < hi or (score == 100 and hi > 100)), None)
         if match is not None:
-            groups[(symbol.strip().upper(), match)].append(
-                (float(exit_ts), float(net_return), float(score))
-            )
+            key = (symbol.strip().upper(), match, side) if split_by_side else (symbol.strip().upper(), match)
+            groups[key].append((float(exit_ts), float(net_return), float(score)))
 
     report = []
-    for symbol, band_index in sorted(groups):
-        rows = sorted(groups[(symbol, band_index)], key=lambda row: row[0])
+    for key in sorted(groups):
+        symbol, band_index = key[:2]
+        side = key[2] if split_by_side else None
+        rows = sorted(groups[key], key=lambda row: row[0])
         returns = [row[1] for row in rows]
         n = len(rows)
         wins = sum(value > 0 for value in returns)
         gross_profit = sum(value for value in returns if value > 0)
         gross_loss = -sum(value for value in returns if value < 0)
         lower, upper = normalized_bands[band_index]
-        report.append({
+        bucket = {
             "symbol": symbol,
             "score_band": f"{lower:g}-{min(upper, 100):g}" if upper <= 100 else f"{lower:g}-100",
             "sample_count": n,
@@ -88,11 +98,15 @@ def summarize_score_calibration(trades, *, min_samples=30, bands=DEFAULT_BANDS):
             "costs_included_by_input_contract": True,
             "out_of_sample_required": True,
             "score_is_probability": False,
-        })
+        }
+        if split_by_side:
+            bucket["side"] = side
+        report.append(bucket)
     return {
         "status": "RESEARCH_ONLY",
         "trade_count_in_bands": sum(len(rows) for rows in groups.values()),
         "min_samples_required": min_samples,
+        "split_by_side": split_by_side,
         "buckets": report,
         "warning": "Use untouched chronological holdout trades only; net_return must include fees, slippage and applicable funding. Score is not a win-probability estimate.",
         "auto_trade_authorized": False,
