@@ -214,3 +214,62 @@ def validate_snapshot_timing(
         "observed_age_ms": str(now - completed),
         "observation_window_ms": str(completed - started),
     }
+
+
+def reconcile_restart_order_ledger(expected_client_order_ids, order_queries, snapshot):
+    """Read-only restart decision from known client IDs plus a fresh snapshot.
+
+    This helper never submits or cancels orders. Any missing/ambiguous query or
+    mismatch between queried active orders and the open-order snapshot blocks
+    automatic recovery.
+    """
+    if (
+        not isinstance(expected_client_order_ids, (list, tuple, set, frozenset))
+        or isinstance(expected_client_order_ids, (str, bytes))
+        or not expected_client_order_ids
+        or any(not isinstance(item, str) or not item.strip() for item in expected_client_order_ids)
+        or len(set(expected_client_order_ids)) != len(expected_client_order_ids)
+    ):
+        return {"ok": False, "reason": "EXPECTED_CLIENT_ORDER_IDS_INVALID"}
+    if not isinstance(order_queries, Mapping):
+        return {"ok": False, "reason": "ORDER_QUERIES_INVALID"}
+    timing = validate_snapshot_timing(snapshot, now_ms=int(__import__("time").time() * 1000))
+    if not timing.get("ok"):
+        return {"ok": False, "reason": "SNAPSHOT_TIMING_REJECTED", "detail": timing.get("reason")}
+    orders = snapshot.get("open_orders")
+    if not isinstance(orders, list) or any(not isinstance(order, Mapping) for order in orders):
+        return {"ok": False, "reason": "OPEN_ORDERS_INVALID"}
+    active_snapshot_ids = {
+        order.get("client_order_id", order.get("clientOrderId"))
+        for order in orders
+        if order.get("status") in {"NEW", "PARTIALLY_FILLED"}
+    }
+    if any(not isinstance(item, str) or not item for item in active_snapshot_ids):
+        return {"ok": False, "reason": "OPEN_ORDER_CLIENT_ID_INVALID"}
+    decisions = {}
+    for client_id in expected_client_order_ids:
+        query = order_queries.get(client_id)
+        if not isinstance(query, Mapping) or query.get("found") is not True:
+            return {"ok": False, "reason": "ORDER_QUERY_MISSING_OR_AMBIGUOUS", "client_order_id": client_id}
+        status = query.get("status")
+        if status not in {"NEW", "PARTIALLY_FILLED", "FILLED", "CANCELED", "EXPIRED", "REJECTED"}:
+            return {"ok": False, "reason": "ORDER_STATUS_UNKNOWN", "client_order_id": client_id}
+        if query.get("client_order_id", client_id) != client_id:
+            return {"ok": False, "reason": "ORDER_CLIENT_ID_MISMATCH", "client_order_id": client_id}
+        is_active = status in {"NEW", "PARTIALLY_FILLED"}
+        if is_active != (client_id in active_snapshot_ids):
+            return {"ok": False, "reason": "ORDER_QUERY_SNAPSHOT_MISMATCH", "client_order_id": client_id}
+        decisions[client_id] = {
+            "status": status,
+            "active": is_active,
+            "exchange_order_id": str(query.get("exchange_order_id", "")),
+        }
+    untracked = active_snapshot_ids - set(expected_client_order_ids)
+    if untracked:
+        return {"ok": False, "reason": "UNTRACKED_ACTIVE_ORDER_ON_RESTART", "client_order_ids": sorted(untracked)}
+    return {
+        "ok": True,
+        "mode": "read_only_restart_reconciliation",
+        "automatic_order_submission_authorized": False,
+        "orders": decisions,
+    }
