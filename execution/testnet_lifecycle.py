@@ -7,7 +7,7 @@ trading; callers must reconcile the returned state before retrying.
 from decimal import Decimal, InvalidOperation
 
 
-def ensure_testnet_protective_exits(
+def _ensure_testnet_protective_exits_impl(
     adapter,
     symbol: str,
     stop_price,
@@ -194,7 +194,7 @@ def ensure_testnet_protective_exits(
 
 
 
-def cancel_testnet_sibling_after_flatten(
+def _cancel_testnet_sibling_after_flatten_impl(
     adapter,
     symbol: str,
     filled_exit_client_order_id: str,
@@ -295,3 +295,47 @@ def cancel_testnet_sibling_after_flatten(
         "sibling_exit_client_order_id": sibling_exit_client_order_id,
         "cancel_result": cancelled,
     }
+
+
+
+def ensure_testnet_protective_exits(
+    adapter,
+    symbol: str,
+    stop_price,
+    take_profit_price,
+    client_order_prefix: str,
+):
+    """Fail closed on adapter exceptions; never retry an ambiguous submission."""
+    try:
+        return _ensure_testnet_protective_exits_impl(
+            adapter, symbol, stop_price, take_profit_price, client_order_prefix
+        )
+    except Exception as exc:
+        return {
+            "ok": False,
+            "reason": "adapter_exception_requires_reconciliation",
+            "error_type": type(exc).__name__,
+            "requires_reconciliation": True,
+            "automatic_retry": False,
+        }
+
+
+def cancel_testnet_sibling_after_flatten(
+    adapter,
+    symbol: str,
+    filled_exit_client_order_id: str,
+    sibling_exit_client_order_id: str,
+):
+    """Treat read/cancel exceptions as ambiguous; never retry a cancel blindly."""
+    try:
+        return _cancel_testnet_sibling_after_flatten_impl(
+            adapter, symbol, filled_exit_client_order_id, sibling_exit_client_order_id
+        )
+    except Exception as exc:
+        return {
+            "ok": False,
+            "reason": "adapter_exception_requires_reconciliation",
+            "error_type": type(exc).__name__,
+            "requires_reconciliation": True,
+            "automatic_retry": False,
+        }
