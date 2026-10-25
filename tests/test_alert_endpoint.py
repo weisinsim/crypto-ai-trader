@@ -57,5 +57,24 @@ class ChatGPTAlertEndpointTests(unittest.TestCase):
         self.assertEqual(payload["model_version"], app_module.MODEL_VERSION)
 
 
+    def test_http_endpoint_fails_closed_with_malformed_market_status_types(self):
+        # JSON-like malformed values must not raise a TypeError in the live route.
+        for market_status in ([], {}):
+            with self.subTest(market_status=market_status):
+                with patch.object(
+                    app_module.time, "time", return_value=1_800_000_000.0
+                ), patch.object(app_module, "market_status", market_status), patch.object(
+                    app_module, "cache", {"BTCUSDT": {}}
+                ):
+                    response = TestClient(app_module.app).get("/api/chatgpt/alerts")
+
+                self.assertEqual(response.status_code, 200)
+                payload = response.json()
+                self.assertEqual(payload["status"], "DELAYED")
+                self.assertEqual(payload["alerts"], [])
+                self.assertIs(payload["notification_only"], True)
+                self.assertIs(payload["auto_trade_authorized"], False)
+
+
 if __name__ == "__main__":
     unittest.main()
