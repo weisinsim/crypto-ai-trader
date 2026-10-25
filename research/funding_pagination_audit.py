@@ -1,8 +1,10 @@
 """Exchange-agnostic pagination and page-payload audit for funding imports.
 
 This validates a normalized page envelope supplied by an exchange-specific
-adapter. It does not fetch pages, parse raw JSON, reconcile normalized events
-against raw bytes, or prove that the adapter requested every page.
+adapter. It does not fetch pages or parse raw JSON. When the caller supplies
+events independently parsed from each raw response, it compares those events
+with the normalized rows; the audit cannot verify that parser provenance itself
+is genuine or prove that the adapter requested every page.
 """
 from __future__ import annotations
 
@@ -89,6 +91,11 @@ def audit_funding_pages(pages, *, symbol, start_ts_ms, end_ts_ms,
             # Without the exact response bytes, a supplied parser result cannot
             # be tied to an auditable page artifact. Do not claim normalization
             # verification for this page.
+            if parsed_raw_events_by_page is not None:
+                normalization_verified = False
+        elif not raw_payload:
+            errors.append(f"page_{index}:raw_payload_empty")
+            digest = hashlib.sha256(raw_payload).hexdigest()
             if parsed_raw_events_by_page is not None:
                 normalization_verified = False
         else:
