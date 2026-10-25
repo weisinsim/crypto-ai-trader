@@ -27,6 +27,8 @@ class ScoreEventReplayAuditTests(unittest.TestCase):
         self.assertTrue(first["signal_id"].startswith("replay_"))
         self.assertTrue(first["research_only"])
         self.assertFalse(first["auto_trade_authorized"])
+        self.assertEqual(first["event_schema_version"], 1)
+        self.assertEqual(first["score_definition"], "0_to_100_model_score")
 
     def test_identity_is_stable_across_score_drift_but_changes_with_model_or_candle(self):
         base = self.build()
