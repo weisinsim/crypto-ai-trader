@@ -11,7 +11,8 @@ import math
 
 
 def audit_funding_pages(pages, *, symbol, start_ts_ms, end_ts_ms,
-                        expected_first_cursor=None):
+                        expected_first_cursor=None,
+                        parsed_raw_events_by_page=None):
     """Audit ordered page envelopes, raw-byte digests, and normalized events.
 
     Each page must contain: page_index (0-based), request_cursor, next_cursor,
@@ -20,9 +21,11 @@ def audit_funding_pages(pages, *, symbol, start_ts_ms, end_ts_ms,
     cursor-based API, each page's next_cursor must equal the next page's
     request_cursor, and the final next_cursor must be None.
 
-    A PASS means the supplied envelope is internally consistent only. Because
-    the exchange-specific raw payload schema is unknown here, this function
-    does not prove that ``events`` were faithfully normalized from raw_payload.
+    A PASS without parsed_raw_events_by_page means envelope consistency only.
+    When supplied, parsed_raw_events_by_page must be a parallel list of event
+    lists independently parsed from each raw payload by a source-specific
+    parser. The parsed rows are compared to normalized events by symbol,
+    timestamp, and numeric funding rate.
     """
     if not isinstance(pages, (list, tuple)) or not pages:
         raise ValueError("pages must be a non-empty list or tuple")
@@ -33,6 +36,8 @@ def audit_funding_pages(pages, *, symbol, start_ts_ms, end_ts_ms,
             raise ValueError(f"{name} must be a nonnegative integer timestamp")
     if end_ts_ms <= start_ts_ms:
         raise ValueError("end_ts_ms must be greater than start_ts_ms")
+    if parsed_raw_events_by_page is not None and not isinstance(parsed_raw_events_by_page, (list, tuple)):
+        raise ValueError("parsed_raw_events_by_page must be a list or tuple when supplied")
 
     errors = []
     page_reports = []
@@ -40,6 +45,10 @@ def audit_funding_pages(pages, *, symbol, start_ts_ms, end_ts_ms,
     seen_timestamps = set()
     seen_request_cursors = []
     previous_cursor = expected_first_cursor
+    normalization_verified = parsed_raw_events_by_page is not None
+    if parsed_raw_events_by_page is not None and len(parsed_raw_events_by_page) != len(pages):
+        errors.append("normalization_page_count_mismatch")
+        normalization_verified = False
 
     for index, page in enumerate(pages):
         if not isinstance(page, dict):
@@ -84,6 +93,7 @@ def audit_funding_pages(pages, *, symbol, start_ts_ms, end_ts_ms,
             events = []
 
         page_event_count = 0
+        normalized_keys = []
         for event_index, event in enumerate(events):
             if not isinstance(event, dict):
                 errors.append(f"page_{index}:event_{event_index}_not_a_mapping")
@@ -100,6 +110,7 @@ def audit_funding_pages(pages, *, symbol, start_ts_ms, end_ts_ms,
             if isinstance(rate, bool) or not isinstance(rate, (int, float)) or not math.isfinite(rate):
                 errors.append(f"page_{index}:event_{event_index}_invalid_rate")
                 continue
+            normalized_keys.append((event_symbol.strip().upper(), ts, float(rate)))
             if ts in seen_timestamps:
                 errors.append(f"duplicate_funding_timestamp:{ts}")
                 continue
@@ -108,6 +119,35 @@ def audit_funding_pages(pages, *, symbol, start_ts_ms, end_ts_ms,
                                "funding_timestamp_ms": ts,
                                "funding_rate": float(rate)})
             page_event_count += 1
+
+        if parsed_raw_events_by_page is not None and index < len(parsed_raw_events_by_page):
+            raw_events = parsed_raw_events_by_page[index]
+            if not isinstance(raw_events, (list, tuple)):
+                errors.append(f"page_{index}:parsed_raw_events_not_a_sequence")
+                normalization_verified = False
+            else:
+                raw_keys = []
+                for raw_event in raw_events:
+                    if not isinstance(raw_event, dict):
+                        raw_keys.append(None)
+                        continue
+                    raw_symbol = raw_event.get("symbol")
+                    raw_ts = raw_event.get("funding_timestamp_ms")
+                    raw_rate = raw_event.get("funding_rate")
+                    if (not isinstance(raw_symbol, str)
+                        or raw_symbol.strip().upper() != symbol.strip().upper()
+                        or isinstance(raw_ts, bool) or not isinstance(raw_ts, int) or raw_ts < 0
+                        or isinstance(raw_rate, bool) or not isinstance(raw_rate, (int, float))
+                        or not math.isfinite(raw_rate)):
+                        raw_keys.append(None)
+                    else:
+                        raw_keys.append((raw_symbol.strip().upper(), raw_ts, float(raw_rate)))
+                if any(key is None for key in raw_keys):
+                    errors.append(f"page_{index}:invalid_parsed_raw_event")
+                    normalization_verified = False
+                elif raw_keys != normalized_keys:
+                    errors.append(f"page_{index}:normalized_events_do_not_match_raw")
+                    normalization_verified = False
 
         page_reports.append({"page_index": index, "raw_payload_sha256": digest,
                              "event_count": page_event_count})
@@ -132,10 +172,18 @@ def audit_funding_pages(pages, *, symbol, start_ts_ms, end_ts_ms,
         "events": all_events,
         "pagination_chain_consistent": not any("cursor" in e or "pagination" in e or "final_page" in e for e in errors),
         "raw_page_digests_computed": all(p["raw_payload_sha256"] is not None for p in page_reports),
-        "normalization_verified": False,
-        "normalized_events_match_raw_payload": False,
+        "normalization_verified": normalization_verified and not any(
+            "normalization" in error or "normalized_events_do_not_match_raw" in error
+            or "parsed_raw_events" in error or "invalid_parsed_raw_event" in error
+            for error in errors
+        ),
+        "normalized_events_match_raw_payload": normalization_verified and not any(
+            "normalization" in error or "normalized_events_do_not_match_raw" in error
+            or "parsed_raw_events" in error or "invalid_parsed_raw_event" in error
+            for error in errors
+        ),
         "source_verified": False,
         "event_coverage_verified": False,
         "auto_trade_authorized": False,
-        "warning": "PASS means envelope consistency only. Raw bytes are hashed but not parsed or reconciled against normalized events; completeness and provenance depend on a source-specific adapter and trusted exchange evidence.",
+        "warning": "Raw bytes are hashed. Normalization is verified only when independently parsed raw events are supplied and match; exchange provenance and API event completeness remain unverified.",
     }
