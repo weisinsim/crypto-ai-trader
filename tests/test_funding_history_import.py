@@ -41,7 +41,7 @@ class FundingHistoryImportTests(unittest.TestCase):
         self.assertFalse(result["manifest"]["cadence_check_passed"])
 
     def test_empty_window_does_not_pass_expected_cadence(self):
-        source = "fundingTime,fundingRate\\n"
+        source = "fundingTime,fundingRate\n"
         result = import_funding_csv(
             source, symbol="BTCUSDT",
             start_ts_ms=1735689600000, end_ts_ms=1735776000000,
