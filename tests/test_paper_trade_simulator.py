@@ -98,6 +98,26 @@ class PaperTradeSimulatorTests(unittest.TestCase):
         self.assertAlmostEqual(result["exited_quantity"], 1.0)
         self.assertTrue(result["exit_quantity_conserved"])
 
+    def test_funding_interval_assumption_boundaries(self):
+        # The model uses candle-count buckets, not exchange settlement timestamps.
+        # Under this conservative approximation, any started 8-candle bucket is charged.
+        cases = [(1, 1), (8, 1), (9, 2), (16, 2), (17, 3)]
+        for bars, expected_intervals in cases:
+            with self.subTest(bars_held=bars):
+                candles = [self.candle(3_600_000 + i * 3_600_000) for i in range(bars)]
+                result = simulate_tactical_candidate(
+                    observation=self.candidate(), future_candles=candles,
+                    fee_bps_per_side=0, slippage_bps_per_side=0,
+                    funding_bps_per_8h=10, max_holding_candles=bars,
+                )
+                self.assertEqual(result["bars_held"], bars)
+                self.assertEqual(result["funding_intervals"], expected_intervals)
+                self.assertAlmostEqual(
+                    result["funding_cost_assumption"],
+                    result["entry_price_assumption"] * 0.001 * expected_intervals,
+                )
+                self.assertFalse(result["costs_verified"])
+
     def test_rejects_invalid_levels_and_future_timestamps(self):
         with self.assertRaisesRegex(ValueError, "risk levels"):
             simulate_tactical_candidate(
