@@ -52,3 +52,6 @@ A simulation report builder now exists in `research/paper_backtest_report.py`. I
 
 
 Follow-up audit hardening: the paper report now distinguishes true right-censored rows (`CENSORED`/`DATA_END`) from other incomplete or non-simulation rows, which are rejected rather than counted as censored. It fails closed if a row claims both a censored exit and `outcome_complete=True`. Dedicated regression tests cover both cases.
+
+
+Chronological holdout utility added: `research/chronological_holdout.py` partitions rows by the frozen signal timestamp (`signal_ts < cutoff` for development; the exact cutoff belongs to holdout), validates integer millisecond timestamps and exit-after-signal ordering, rejects duplicate trade IDs, and returns sorted disjoint cohorts. Its tests cover the cutoff boundary, trades that exit after the cutoff but were signaled before it, duplicate IDs, invalid timestamps, and empty input. This verifies temporal partition mechanics only; it cannot prove that the holdout was unseen/untuned or that upstream features are free of leakage.
