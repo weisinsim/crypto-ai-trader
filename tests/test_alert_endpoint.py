@@ -1,6 +1,11 @@
 import asyncio
+import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+
+# The lightweight CI test job installs pytest/httpx, but not the app's
+# production websocket dependency. The endpoint test does not open sockets.
+sys.modules.setdefault("websockets", MagicMock())
 
 import app as app_module
 
