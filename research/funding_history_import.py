@@ -33,7 +33,7 @@ def _timestamp_ms(value):
 
 
 def import_funding_csv(csv_text, *, symbol, start_ts_ms, end_ts_ms,
-                       expected_interval_ms=None):
+                       expected_interval_ms=None, expected_anchor_ts_ms=None):
     """Parse CSV with columns fundingTime and fundingRate (symbol optional).
 
     Returns normalized events plus an audit manifest. If expected cadence is
@@ -47,6 +47,13 @@ def import_funding_csv(csv_text, *, symbol, start_ts_ms, end_ts_ms,
         not isinstance(expected_interval_ms, int) or expected_interval_ms <= 0
     ):
         raise ValueError("expected_interval_ms must be a positive integer")
+    if expected_anchor_ts_ms is not None and (
+        isinstance(expected_anchor_ts_ms, bool) or
+        not isinstance(expected_anchor_ts_ms, int) or expected_anchor_ts_ms < 0
+    ):
+        raise ValueError("expected_anchor_ts_ms must be a nonnegative integer")
+    if expected_anchor_ts_ms is not None and expected_interval_ms is None:
+        raise ValueError("expected_anchor_ts_ms requires expected_interval_ms")
     raw_bytes = csv_text.encode("utf-8")
     try:
         reader = csv.DictReader(io.StringIO(csv_text))
@@ -81,12 +88,23 @@ def import_funding_csv(csv_text, *, symbol, start_ts_ms, end_ts_ms,
     missing_intervals = []
     cadence_status = "NOT_REQUESTED"
     if expected_interval_ms is not None:
-        if not window_events:
-            # An empty requested window cannot pass a cadence check merely because
-            # there are no observed timestamps between which to detect a gap.
+        observed = {event["funding_timestamp_ms"] for event in window_events}
+        if expected_anchor_ts_ms is not None:
+            # Anchor defines the expected UTC settlement grid. This checks the
+            # complete requested window, including leading/trailing omissions.
+            first_expected = start_ts_ms + (
+                (expected_anchor_ts_ms - start_ts_ms) % expected_interval_ms
+            )
+            expected = list(range(first_expected, end_ts_ms, expected_interval_ms))
+            missing_intervals = [timestamp for timestamp in expected if timestamp not in observed]
+            cadence_status = (
+                "WINDOW_GAPS_FOUND" if missing_intervals
+                else "ANCHORED_WINDOW_SEQUENCE_OK"
+            ) if expected else "EMPTY_EXPECTED_WINDOW"
+        elif not window_events:
+            # Without an anchor, an empty window cannot establish cadence.
             cadence_status = "INSUFFICIENT_EVENTS"
         else:
-            observed = {event["funding_timestamp_ms"] for event in window_events}
             first = min(observed)
             last = max(observed)
             cursor = first
@@ -112,10 +130,16 @@ def import_funding_csv(csv_text, *, symbol, start_ts_ms, end_ts_ms,
             "last_event_ts_ms": audit["last_event_ts_ms"],
             "in_window_event_count": audit["in_window_event_count"],
             "expected_interval_ms": expected_interval_ms,
+            "expected_anchor_ts_ms": expected_anchor_ts_ms,
             "missing_expected_timestamps_ms": missing_intervals,
-            "cadence_check_passed": expected_interval_ms is not None and bool(window_events) and not missing_intervals,
+            "cadence_check_passed": (
+                expected_interval_ms is not None
+                and (bool(window_events) if expected_anchor_ts_ms is None else True)
+                and cadence_status in ("ANCHORED_WINDOW_SEQUENCE_OK", "INTERNAL_SEQUENCE_OK_BOUNDARIES_UNVERIFIED")
+                and not missing_intervals
+            ),
             "cadence_check_status": cadence_status,
-            "cadence_boundary_coverage_verified": False,
+            "cadence_boundary_coverage_verified": expected_anchor_ts_ms is not None and cadence_status == "ANCHORED_WINDOW_SEQUENCE_OK",
             "source_verified": False,
             "coverage_verified": False,
             "notice": "SHA-256 identifies these exact CSV bytes; it does not authenticate exchange provenance or prove complete history.",
