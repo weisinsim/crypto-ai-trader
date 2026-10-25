@@ -64,6 +64,14 @@ class DashboardResearchPanelTests(unittest.TestCase):
         self.assertIn("a.notification_only!==true", self.html)
         self.assertIn("a.auto_trade_authorized!==false", self.html)
 
+    def test_dashboard_header_exposes_deployment_revision_state(self):
+        self.assertIn('id="buildInfo"', self.html)
+        self.assertIn('async function refreshBuildInfo()', self.html)
+        self.assertIn('fetch("/api/build-info"', self.html)
+        self.assertIn('部署版本：未知（服务未提供 Git commit）', self.html)
+        self.assertIn('部署版本：无法核对（接口不可用或尚未部署）', self.html)
+        self.assertIn('setInterval(refreshBuildInfo,60000)', self.html)
+
     def test_html_document_and_script_are_closed(self):
         self.assertEqual(self.html.count("<script>"), 1)
         self.assertEqual(self.html.count("</script>"), 1)
