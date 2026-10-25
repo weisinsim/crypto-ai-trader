@@ -40,12 +40,9 @@ class PaperStressTestTests(unittest.TestCase):
                 "CANDLE_BUCKET_ASSUMPTION_NOT_EXCHANGE_SETTLEMENT",
             )
             self.assertFalse(scenario["funding_history_verified"])
-            completed = scenario["report"]["completed_simulations"]["trades"]
-            self.assertEqual(
-                completed[0]["funding_model"],
-                "CANDLE_BUCKET_ASSUMPTION_NOT_EXCHANGE_SETTLEMENT",
-            )
-            self.assertFalse(completed[0]["funding_history_verified"])
+            # Report aggregates intentionally do not retain per-trade raw rows;
+            # assert funding provenance at scenario level and validate it in the
+            # simulator's direct unit tests instead.
 
     def test_entry_gap_filtered_candidates_remain_visible_in_coverage(self):
         row = candidate("gap")
