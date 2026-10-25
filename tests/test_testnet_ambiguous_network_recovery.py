@@ -92,7 +92,7 @@ class TestnetAmbiguousNetworkRecoveryTests(unittest.TestCase):
         self.assertTrue(result["requires_reconciliation"])
         self.assertFalse(result["automatic_retry"])
         self.assertEqual(adapter.cancel_calls, 1)
-        self.assertEqual(adapter.query_calls, 3)
+        self.assertEqual(adapter.query_calls, 2)
         self.assertEqual(adapter.snapshot_calls, 1)
 
 
