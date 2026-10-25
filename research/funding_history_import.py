@@ -1,0 +1,113 @@
+"""Deterministic CSV importer and coverage audit for historical funding events.
+
+This module does not download data. It ingests a locally supplied CSV export,
+normalizes it to the event schema used by funding_history_audit, and records a
+content digest. A digest proves file identity, not exchange provenance.
+"""
+from __future__ import annotations
+
+import csv
+import hashlib
+import io
+import json
+from datetime import datetime, timezone
+
+from research.funding_history_audit import audit_funding_events
+
+
+def _timestamp_ms(value):
+    text = str(value).strip()
+    if not text:
+        raise ValueError("funding timestamp is required")
+    if text.isdigit():
+        # CSV exports may use seconds or milliseconds; require an unambiguous unit.
+        raise ValueError("numeric timestamps are ambiguous; use ISO-8601 UTC timestamps")
+    normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise ValueError("funding timestamp must be ISO-8601") from exc
+    if parsed.tzinfo is None:
+        raise ValueError("funding timestamp must include timezone")
+    return int(parsed.astimezone(timezone.utc).timestamp() * 1000)
+
+
+def import_funding_csv(csv_text, *, symbol, start_ts_ms, end_ts_ms,
+                       expected_interval_ms=None):
+    """Parse CSV with columns fundingTime and fundingRate (symbol optional).
+
+    Returns normalized events plus an audit manifest. If expected cadence is
+    supplied, any missing interval in the requested window is reported, but
+    coverage remains unverified until reconciled with the exchange source.
+    """
+    if not isinstance(csv_text, str) or not csv_text.strip():
+        raise ValueError("csv_text must be non-empty text")
+    if expected_interval_ms is not None and (
+        isinstance(expected_interval_ms, bool) or
+        not isinstance(expected_interval_ms, int) or expected_interval_ms <= 0
+    ):
+        raise ValueError("expected_interval_ms must be a positive integer")
+    raw_bytes = csv_text.encode("utf-8")
+    try:
+        reader = csv.DictReader(io.StringIO(csv_text))
+        required = {"fundingTime", "fundingRate"}
+        if reader.fieldnames is None or not required.issubset(set(reader.fieldnames)):
+            raise ValueError("CSV requires fundingTime and fundingRate columns")
+        events = []
+        for line_number, row in enumerate(reader, start=2):
+            if not row or all(value is None or not value.strip() for value in row.values()):
+                continue
+            row_symbol = row.get("symbol")
+            if row_symbol and row_symbol.strip().upper() != symbol.strip().upper():
+                raise ValueError(f"row {line_number} symbol mismatch")
+            rate_text = (row.get("fundingRate") or "").strip()
+            try:
+                rate = float(rate_text)
+            except ValueError as exc:
+                raise ValueError(f"row {line_number} fundingRate must be numeric") from exc
+            events.append({
+                "symbol": symbol.strip().upper(),
+                "funding_timestamp_ms": _timestamp_ms(row.get("fundingTime", "")),
+                "funding_rate": rate,
+            })
+    except csv.Error as exc:
+        raise ValueError("invalid CSV data") from exc
+
+    audit = audit_funding_events(
+        events, symbol=symbol, start_ts_ms=start_ts_ms, end_ts_ms=end_ts_ms,
+    )
+    window_events = [event for event in audit["events"]
+                     if start_ts_ms <= event["funding_timestamp_ms"] < end_ts_ms]
+    missing_intervals = []
+    if expected_interval_ms is not None and window_events:
+        observed = {event["funding_timestamp_ms"] for event in window_events}
+        first = min(observed)
+        last = max(observed)
+        cursor = first
+        while cursor <= last:
+            if cursor not in observed:
+                missing_intervals.append(cursor)
+            cursor += expected_interval_ms
+
+    return {
+        "symbol": symbol.strip().upper(),
+        "events": audit["events"],
+        "manifest": {
+            "sha256": hashlib.sha256(raw_bytes).hexdigest(),
+            "size_bytes": len(raw_bytes),
+            "row_count": len(events),
+            "requested_start_ts_ms": start_ts_ms,
+            "requested_end_ts_ms": end_ts_ms,
+            "first_event_ts_ms": audit["first_event_ts_ms"],
+            "last_event_ts_ms": audit["last_event_ts_ms"],
+            "in_window_event_count": audit["in_window_event_count"],
+            "expected_interval_ms": expected_interval_ms,
+            "missing_expected_timestamps_ms": missing_intervals,
+            "cadence_check_passed": expected_interval_ms is None or not missing_intervals,
+            "source_verified": False,
+            "coverage_verified": False,
+            "notice": "SHA-256 identifies these exact CSV bytes; it does not authenticate exchange provenance or prove complete history.",
+        },
+        "research_only": True,
+        "auto_trade_authorized": False,
+    }
