@@ -10,6 +10,7 @@ import sqlite3
 from contextlib import closing
 from pathlib import Path
 
+from research.score_calibration import summarize_score_calibration
 from research.score_event_ledger import _finite_number, validate_score_event
 
 
@@ -121,5 +122,20 @@ class ScoreEventStore:
             "completed_trade_count": total_trades,
             "uncompleted_score_event_count": total_events - total_trades,
             "trades": trades,
+            "auto_trade_authorized": False,
+        }
+
+    def calibration_report(self, *, min_samples=30):
+        """Summarize persisted completed outcomes without hiding incomplete events."""
+        ledger = self.calibration_rows()
+        summary = summarize_score_calibration(ledger["trades"], min_samples=min_samples)
+        return {
+            "status": "RESEARCH_ONLY",
+            "coverage": {
+                "score_event_count": ledger["score_event_count"],
+                "completed_trade_count": ledger["completed_trade_count"],
+                "uncompleted_score_event_count": ledger["uncompleted_score_event_count"],
+            },
+            "calibration": summary,
             "auto_trade_authorized": False,
         }
