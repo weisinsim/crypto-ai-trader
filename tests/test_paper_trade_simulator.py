@@ -101,5 +101,29 @@ class PaperTradeSimulatorTests(unittest.TestCase):
         self.assertNotEqual(long_slip["exits"][-1]["price"], long_slip["exits"][-1]["reference_price"])
 
 
+
+    def test_gap_through_stop_uses_worse_open_reference(self):
+        long_result = simulate_tactical_candidate(
+            observation=self.candidate(),
+            future_candles=[self.candle(3_600_001, o=90, h=92, l=89, c=91)],
+            fee_bps_per_side=0, slippage_bps_per_side=0, funding_bps_per_8h=0,
+        )
+        self.assertEqual(long_result["exit_reason"], "STOP")
+        self.assertEqual(long_result["exits"][0]["reference_price"], 90)
+        self.assertTrue(long_result["exits"][0]["gap_through_stop"])
+        self.assertAlmostEqual(long_result["gross_pnl_per_unit"], -10.0)
+
+        short_result = simulate_tactical_candidate(
+            observation=self.candidate(
+                signal="SHORT", entry=100, sl=105, tp1=95, tp2=90,
+            ),
+            future_candles=[self.candle(3_600_001, o=110, h=111, l=108, c=109)],
+            fee_bps_per_side=0, slippage_bps_per_side=0, funding_bps_per_8h=0,
+        )
+        self.assertEqual(short_result["exits"][0]["reference_price"], 110)
+        self.assertTrue(short_result["exits"][0]["gap_through_stop"])
+        self.assertAlmostEqual(short_result["gross_pnl_per_unit"], -10.0)
+
+
 if __name__ == "__main__":
     unittest.main()
