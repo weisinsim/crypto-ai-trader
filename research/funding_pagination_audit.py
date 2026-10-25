@@ -86,6 +86,11 @@ def audit_funding_pages(pages, *, symbol, start_ts_ms, end_ts_ms,
         if not isinstance(raw_payload, bytes):
             errors.append(f"page_{index}:raw_payload_not_bytes")
             digest = None
+            # Without the exact response bytes, a supplied parser result cannot
+            # be tied to an auditable page artifact. Do not claim normalization
+            # verification for this page.
+            if parsed_raw_events_by_page is not None:
+                normalization_verified = False
         else:
             digest = hashlib.sha256(raw_payload).hexdigest()
         events = page.get("events")
