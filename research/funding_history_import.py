@@ -122,6 +122,13 @@ def import_funding_csv(csv_text, *, symbol, start_ts_ms, end_ts_ms,
         else:
             first = min(observed)
             last = max(observed)
+            internal_expected_count = ((last - first) // expected_interval_ms) + 1
+            max_expected_events = 100_000
+            if internal_expected_count > max_expected_events:
+                raise ValueError(
+                    "expected cadence grid exceeds 100000 events; narrow the window "
+                    "or use a larger expected_interval_ms"
+                )
             cursor = first
             while cursor <= last:
                 if cursor not in observed:
