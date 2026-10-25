@@ -40,9 +40,22 @@ class FundingPaginationAuditTests(unittest.TestCase):
         self.assertEqual(result["event_count"], 2)
         self.assertTrue(result["raw_page_digests_computed"])
         self.assertEqual(result["page_reports"][0]["raw_payload_sha256"], hashlib.sha256(b'{"page":1}').hexdigest())
+        self.assertFalse(result["normalization_verified"])
+        self.assertFalse(result["normalized_events_match_raw_payload"])
+        self.assertIn("not parsed or reconciled", result["warning"])
         self.assertFalse(result["source_verified"])
         self.assertFalse(result["event_coverage_verified"])
         self.assertFalse(result["auto_trade_authorized"])
+
+    def test_normalized_event_mutation_is_not_misreported_as_verified(self):
+        pages = self.pages()
+        pages[0]["events"][0]["funding_rate"] = 0.25
+        result = self.audit(pages)
+        # The envelope can be internally consistent even when normalized data
+        # does not match the opaque raw payload. The audit must not imply otherwise.
+        self.assertEqual(result["status"], "PASS")
+        self.assertFalse(result["normalization_verified"])
+        self.assertFalse(result["normalized_events_match_raw_payload"])
 
     def test_rejects_cursor_gaps_and_unfinished_final_page(self):
         pages = self.pages()
