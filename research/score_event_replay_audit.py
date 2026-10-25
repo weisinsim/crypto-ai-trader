@@ -10,7 +10,7 @@ import json
 import math
 
 
-def build_frozen_score_event(*, symbol, side, timeframe, candle_close_ts, model_version, score):
+def build_frozen_score_event(*, symbol, side, timeframe, candle_close_ts, model_version, score, score_breakdown=None):
     """Build a stable signal ID and normalized immutable event payload.
 
     The same logical signal (symbol, side, timeframe, closed-candle timestamp,
@@ -38,6 +38,19 @@ def build_frozen_score_event(*, symbol, side, timeframe, candle_close_ts, model_
     if not 0 <= score <= 100:
         raise ValueError("score must be in [0, 100]")
 
+    if score_breakdown is None:
+        score_breakdown = {}
+    if not isinstance(score_breakdown, dict):
+        raise ValueError("score_breakdown must be a mapping")
+    try:
+        # Canonicalize JSON-compatible values and reject NaN/Infinity.
+        score_breakdown = json.loads(json.dumps(
+            score_breakdown, sort_keys=True, separators=(",", ":"),
+            ensure_ascii=True, allow_nan=False,
+        ))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("score_breakdown must contain finite JSON-compatible values") from exc
+
     identity = {
         "symbol": symbol,
         "side": side,
@@ -55,6 +68,7 @@ def build_frozen_score_event(*, symbol, side, timeframe, candle_close_ts, model_
         "side": side,
         "signal_ts": candle_close_ts,
         "score": score,
+        "score_breakdown": score_breakdown,
         "timeframe": timeframe,
         "candle_close_ts": candle_close_ts,
         "model_version": model_version,
