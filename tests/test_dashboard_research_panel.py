@@ -43,6 +43,17 @@ class DashboardResearchPanelTests(unittest.TestCase):
         self.assertIn("未批准实盘", self.html)
         self.assertIn("RESEARCH ONLY", self.html)
 
+    def test_dashboard_alert_panel_shows_basic_levels_and_safe_status(self):
+        self.assertIn('fetch("/api/chatgpt/alerts"', self.html)
+        self.assertIn('a.entry??"—"', self.html)
+        self.assertIn('a.stop_loss??a.sl??"—"', self.html)
+        self.assertIn('a.take_profit_1??a.tp1??"—"', self.html)
+        self.assertIn('a.take_profit_2??a.tp2??"—"', self.html)
+        self.assertIn("研究候选：未批准实盘", self.html)
+        self.assertIn("自动交易：", self.html)
+        self.assertIn("信号K线：", self.html)
+        self.assertIn('a.auto_trade_authorized===false', self.html)
+
     def test_html_document_and_script_are_closed(self):
         self.assertEqual(self.html.count("<script>"), 1)
         self.assertEqual(self.html.count("</script>"), 1)
