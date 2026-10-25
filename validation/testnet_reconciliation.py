@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
+import time
 
 
 def _decimal(value, field):
@@ -216,7 +217,7 @@ def validate_snapshot_timing(
     }
 
 
-def reconcile_restart_order_ledger(expected_client_order_ids, order_queries, snapshot):
+def reconcile_restart_order_ledger(expected_client_order_ids, order_queries, snapshot, *, now_ms=None):
     """Read-only restart decision from known client IDs plus a fresh snapshot.
 
     This helper never submits or cancels orders. Any missing/ambiguous query or
@@ -233,7 +234,7 @@ def reconcile_restart_order_ledger(expected_client_order_ids, order_queries, sna
         return {"ok": False, "reason": "EXPECTED_CLIENT_ORDER_IDS_INVALID"}
     if not isinstance(order_queries, Mapping):
         return {"ok": False, "reason": "ORDER_QUERIES_INVALID"}
-    timing = validate_snapshot_timing(snapshot, now_ms=int(__import__("time").time() * 1000))
+    timing = validate_snapshot_timing(snapshot, now_ms=int(time.time() * 1000) if now_ms is None else now_ms)
     if not timing.get("ok"):
         return {"ok": False, "reason": "SNAPSHOT_TIMING_REJECTED", "detail": timing.get("reason")}
     orders = snapshot.get("open_orders")
