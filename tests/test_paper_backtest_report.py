@@ -51,6 +51,20 @@ class PaperBacktestReportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "score"):
             build_paper_backtest_report([trade("bad", score=101)])
 
+    def test_incomplete_non_censored_row_is_rejected_not_censored(self):
+        report = build_paper_backtest_report([
+            trade("partial", status="NO_TRADE", complete=False, reason="SIGNAL_REJECTED")
+        ])
+        self.assertEqual(report["right_censored_count"], 0)
+        self.assertEqual(report["rejected_count"], 1)
+        self.assertEqual(report["rejected"][0]["reason"], "NOT_A_COMPLETED_SIMULATION")
+
+    def test_censored_row_cannot_claim_complete(self):
+        with self.assertRaisesRegex(ValueError, "censored but marked"):
+            build_paper_backtest_report([
+                trade("contradiction", status="CENSORED", complete=True, reason="DATA_END")
+            ])
+
     def test_score_band_100_is_included(self):
         report = build_paper_backtest_report([trade("max", score=100)])
         self.assertEqual(report["by_score_band"][0]["score_band"], "90-100")
