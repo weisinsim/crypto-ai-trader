@@ -77,6 +77,10 @@ class DashboardResearchPanelTests(unittest.TestCase):
         self.assertIn('setStatus(j.status?.status==="LIVE"?"LIVE":j.status?.status==="DELAYED"?"DELAYED":"FALLBACK")', self.html)
         self.assertIn('setStatus(m.status?.status==="LIVE"?"LIVE":m.status?.status==="DELAYED"?"DELAYED":"FALLBACK")', self.html)
 
+    def test_websocket_status_events_fail_closed_on_unknown_values(self):
+        self.assertIn('if(m.type==="status"){setStatus(m.status==="LIVE"?"LIVE":m.status==="DELAYED"?"DELAYED":"FALLBACK");}', self.html)
+        self.assertNotIn('if(m.type==="status")setStatus(m.status);', self.html)
+
     def test_html_document_and_script_are_closed(self):
         self.assertEqual(self.html.count("<script>"), 1)
         self.assertEqual(self.html.count("</script>"), 1)
