@@ -247,6 +247,46 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertFalse(result["requires_reconciliation"])
         self.assertEqual(adapter.query_calls, [("BTCUSDT", "btc-sl")])
 
+    def test_restart_reconciliation_rejects_snapshot_for_wrong_symbol(self):
+        import time
+
+        class WrongSymbolAdapter:
+            def __init__(self):
+                self.query_calls = 0
+
+            def testnet_position_snapshot(self, symbol):
+                now = int(time.time() * 1000)
+                return {
+                    "ok": True, "symbol": "ETHUSDT", "position_amount": "0.5",
+                    "snapshot_started_at_ms": now - 10,
+                    "snapshot_completed_at_ms": now,
+                    "snapshot_duration_ms": 10.0,
+                    "open_orders": [{"client_order_id": "btc-sl", "status": "NEW"}],
+                }
+
+            def query_testnet_order(self, symbol, client_id):
+                self.query_calls += 1
+                return {"found": True, "client_order_id": client_id, "status": "NEW"}
+
+        adapter = WrongSymbolAdapter()
+        result = reconcile_testnet_restart(adapter, "BTCUSDT", ["btc-sl"])
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "restart_snapshot_symbol_mismatch")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertFalse(result["automatic_retry"])
+        self.assertEqual(adapter.query_calls, 0)
+
+    def test_restart_reconciliation_rejects_malformed_symbol_before_adapter_call(self):
+        class NoCallAdapter:
+            def testnet_position_snapshot(self, symbol):
+                raise AssertionError("invalid symbol must be rejected before adapter call")
+
+        result = reconcile_testnet_restart(NoCallAdapter(), "../BTCUSDT", ["btc-sl"])
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "restart_symbol_invalid")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertFalse(result["automatic_retry"])
+
     def test_restart_reconciliation_query_timeout_fails_closed_without_mutation(self):
         import time
 
