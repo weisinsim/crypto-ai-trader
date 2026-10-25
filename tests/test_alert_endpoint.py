@@ -41,6 +41,21 @@ class ChatGPTAlertEndpointTests(unittest.TestCase):
         self.assertIs(payload["notification_only"], True)
         self.assertIs(payload["auto_trade_authorized"], False)
 
+    def test_http_endpoint_fails_closed_with_invalid_market_status(self):
+        with patch.object(app_module.time, "time", return_value=1_800_000_000.0), patch.object(
+            app_module, "market_status", "UNKNOWN"
+        ), patch.object(app_module, "cache", {}):
+            # Exercise the real validator through the HTTP route, not a mocked builder.
+            response = TestClient(app_module.app).get("/api/chatgpt/alerts")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["status"], "DELAYED")
+        self.assertEqual(payload["alerts"], [])
+        self.assertIs(payload["notification_only"], True)
+        self.assertIs(payload["auto_trade_authorized"], False)
+        self.assertEqual(payload["model_version"], app_module.MODEL_VERSION)
+
 
 if __name__ == "__main__":
     unittest.main()
