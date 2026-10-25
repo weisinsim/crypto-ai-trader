@@ -385,9 +385,36 @@ def reconcile_testnet_restart(adapter, symbol: str, expected_client_order_ids):
     stale snapshot, or disagreement requires manual reconciliation.
     """
     try:
+        if not isinstance(symbol, str) or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
+            return {
+                "ok": False,
+                "reason": "restart_symbol_invalid",
+                "requires_reconciliation": True,
+                "automatic_retry": False,
+            }
+        if (
+            isinstance(expected_client_order_ids, (str, bytes))
+            or not isinstance(expected_client_order_ids, (list, tuple, set, frozenset))
+            or not expected_client_order_ids
+        ):
+            return {
+                "ok": False,
+                "reason": "restart_client_order_ids_invalid",
+                "requires_reconciliation": True,
+                "automatic_retry": False,
+            }
         snapshot = adapter.testnet_position_snapshot(symbol)
-        if not snapshot.get("ok"):
+        if not isinstance(snapshot, dict) or not snapshot.get("ok"):
             return {"ok": False, "reason": "restart_snapshot_failed", "requires_reconciliation": True, "automatic_retry": False}
+        snapshot_symbol = snapshot.get("symbol")
+        if snapshot_symbol is not None and snapshot_symbol != symbol:
+            return {
+                "ok": False,
+                "reason": "restart_snapshot_symbol_mismatch",
+                "snapshot_symbol": snapshot_symbol,
+                "requires_reconciliation": True,
+                "automatic_retry": False,
+            }
         timing = validate_snapshot_timing(
             snapshot,
             now_ms=int(time.time() * 1000),
