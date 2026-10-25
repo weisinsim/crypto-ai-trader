@@ -403,6 +403,26 @@ def reconcile_testnet_restart(adapter, symbol: str, expected_client_order_ids):
                 "requires_reconciliation": True,
                 "automatic_retry": False,
             }
+        ids = list(expected_client_order_ids)
+        if (
+            any(
+                not isinstance(item, str)
+                or not item
+                or len(item) > 36
+                or any(not (char.isalnum() or char in "-_") for char in item)
+                for item in ids
+            )
+            or len(set(ids)) != len(ids)
+        ):
+            return {
+                "ok": False,
+                "reason": "restart_client_order_ids_invalid",
+                "requires_reconciliation": True,
+                "automatic_retry": False,
+            }
+        # Validate all caller-supplied IDs before any adapter call. In particular,
+        # duplicate IDs must not trigger duplicate exchange queries.
+        expected_client_order_ids = ids
         snapshot = adapter.testnet_position_snapshot(symbol)
         if not isinstance(snapshot, dict) or not snapshot.get("ok"):
             return {"ok": False, "reason": "restart_snapshot_failed", "requires_reconciliation": True, "automatic_retry": False}
