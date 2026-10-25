@@ -109,9 +109,9 @@ class FundingHistoryImportTests(unittest.TestCase):
 
     def test_unanchored_cadence_rejects_excessive_internal_grid(self):
         source = (
-            "fundingTime,fundingRate\\n"
-            "1970-01-01T00:00:00Z,0.001\\n"
-            "1970-01-02T03:46:40Z,0.001\\n"
+            "fundingTime,fundingRate\n"
+            "1970-01-01T00:00:00Z,0.001\n"
+            "1970-01-02T03:46:40Z,0.001\n"
         )
         with self.assertRaisesRegex(ValueError, "exceeds 100000 events"):
             import_funding_csv(
