@@ -4,6 +4,7 @@ import math
 import time
 from validation.candle_closure import filter_closed_candles, normalize_timestamp_ms, upsert_candle, validate_candle_series
 from validation.dashboard_health import build_health_payload
+from validation.alert_contract import build_alert_payload
 from validation.signal_confirmation import invalidate_stale_confirmation
 from validation.xrp_model import evaluate_xrp_signal
 from research.v12_hybrid_engine import evaluate_hybrid, MODEL_VERSION as HYBRID_MODEL_VERSION
@@ -135,6 +136,15 @@ async def snapshot():
 @app.get("/api/models")
 async def models():
     return {"model_name": MODEL_NAME, "version": MODEL_VERSION, "models": MODEL_LIBRARY}
+
+
+@app.get("/api/chatgpt/alerts")
+async def chatgpt_alerts():
+    """Read-only notification feed; never authorizes exchange execution."""
+    now = time.time()
+    payload = build_alert_payload(market_status, cache, SYMBOLS, now)
+    payload["model_version"] = MODEL_VERSION
+    return payload
 
 @app.get("/api/signals")
 async def signals():
