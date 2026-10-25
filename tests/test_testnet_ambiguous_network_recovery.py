@@ -18,6 +18,9 @@ class SnapshotThenSubmissionTimeout:
             "ok": True,
             "position_amount": "0.5",
             "entry_price": "100",
+            "snapshot_started_at_ms": int(__import__("time").time() * 1000) - 10,
+            "snapshot_completed_at_ms": int(__import__("time").time() * 1000),
+            "snapshot_duration_ms": 10.0,
             "open_orders": [],
         }
 
@@ -38,6 +41,9 @@ class PostSubmissionSnapshotTimeout:
                 "ok": True,
                 "position_amount": "0.5",
                 "entry_price": "100",
+                "snapshot_started_at_ms": int(__import__("time").time() * 1000) - 10,
+                "snapshot_completed_at_ms": int(__import__("time").time() * 1000),
+                "snapshot_duration_ms": 10.0,
                 "open_orders": [],
             }
         raise TimeoutError("simulated verification snapshot timeout")
