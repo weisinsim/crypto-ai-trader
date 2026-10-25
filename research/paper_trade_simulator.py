@@ -71,6 +71,31 @@ def simulate_tactical_candidate(*, observation, future_candles,
         valid.append({"t": timestamp, "o": float(o), "h": float(h), "l": float(l), "c": float(c)})
 
     first = valid[0]
+    # Do not chase a signal when the first executable open has already crossed
+    # the planned stop or first target. Such a gap invalidates the planned
+    # entry/risk geometry; it is a filtered candidate, not a simulated trade.
+    first_open = first["o"]
+    entry_invalidated = (
+        first_open <= stop or first_open >= tp1
+        if side == "LONG"
+        else first_open >= stop or first_open <= tp1
+    )
+    if entry_invalidated:
+        return {
+            "status": "NO_TRADE",
+            "reason": "ENTRY_GAP_INVALIDATED",
+            "symbol": observation.get("symbol"),
+            "side": side,
+            "signal_candle_close_ms": signal_close,
+            "entry_timestamp_ms": first["t"],
+            "entry_reference": entry_ref,
+            "observed_entry_open": first_open,
+            "stop_loss": stop,
+            "take_profit_1": tp1,
+            "outcome_complete": False,
+            "research_only": True,
+            "auto_trade_authorized": False,
+        }
     slip = slippage_bps_per_side / 10_000
     entry = first["o"] * (1 + slip if side == "LONG" else 1 - slip)
     if entry <= 0:
