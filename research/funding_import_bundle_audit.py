@@ -17,11 +17,13 @@ def audit_funding_import_bundle(manifest, pages, *, symbol, venue,
     """Fail closed unless metadata and page-level checks agree.
 
     ``raw_payload_sha256`` retains its original meaning: digest of the exact
-    raw payload represented by the manifest. Pass ``raw_manifest_payload`` to
-    verify those exact bytes. The optional ``raw_pages_aggregate_sha256`` is a
-    separate bundle digest over concatenated per-page SHA-256 hex strings in
-    page order. Neither digest authenticates venue provenance or proves source
-    API event completeness.
+    raw payload represented by the manifest. Pass ``raw_manifest_payload``
+    to verify those exact bytes. The optional ``raw_pages_aggregate_sha256``
+    is a separate bundle digest over concatenated per-page SHA-256 hex strings
+    in page order.
+
+    PASS means supplied metadata and envelope checks agree. It does not prove
+    that normalized events were parsed faithfully from raw page bytes.
     """
     metadata = audit_funding_import_manifest(
         manifest, symbol=symbol, venue=venue,
@@ -70,8 +72,10 @@ def audit_funding_import_bundle(manifest, pages, *, symbol, venue,
         "aggregate_digest_present": isinstance(manifest, dict) and manifest.get("raw_pages_aggregate_sha256") is not None,
         "aggregate_digest_verified": aggregate_verified,
         "raw_digest_verified": raw_digest_audit is not None and raw_digest_audit["status"] == "PASS",
+        "normalization_verified": False,
+        "normalized_events_match_raw_payload": False,
         "source_verified": False,
         "event_coverage_verified": False,
         "auto_trade_authorized": False,
-        "warning": "Bundle checks compare supplied metadata and bytes/pages; they do not authenticate exchange provenance or prove the source API returned every event.",
+        "warning": "PASS means metadata and supplied envelopes are internally consistent only. Raw page bytes are hashed but not parsed or reconciled against normalized events; exchange provenance and API event completeness remain unverified.",
     }
