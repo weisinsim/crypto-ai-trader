@@ -85,7 +85,7 @@ def compare_replayed_score_events(first, second):
     """
     fields = (
         "signal_id", "symbol", "side", "timeframe", "candle_close_ts",
-        "signal_ts", "model_version", "score",
+        "signal_ts", "model_version", "score", "score_breakdown",
     )
     if not isinstance(first, dict) or not isinstance(second, dict):
         raise ValueError("both replay events must be mappings")
