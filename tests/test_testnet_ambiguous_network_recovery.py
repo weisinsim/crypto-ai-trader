@@ -79,6 +79,42 @@ class CancelAcceptedThenTimeout:
         raise TimeoutError("simulated cancel response lost after request")
 
 
+class PartialFillLeavesExposure:
+    def __init__(self):
+        self.cancel_calls = 0
+
+    def query_testnet_order(self, symbol, client_order_id):
+        return {"found": True, "status": "PARTIALLY_FILLED", "executed_quantity": "0.2"}
+
+    def testnet_position_snapshot(self, symbol):
+        return {"ok": True, "position_amount": "0.3"}
+
+    def cancel_testnet_order(self, symbol, client_order_id):
+        self.cancel_calls += 1
+        return {"cancelled": True}
+
+
+class SiblingFillsDuringCancelRace:
+    def __init__(self):
+        self.query_calls = 0
+        self.cancel_calls = 0
+
+    def query_testnet_order(self, symbol, client_order_id):
+        self.query_calls += 1
+        if client_order_id == "btc-sl":
+            return {"found": True, "status": "FILLED", "executed_quantity": "0.5"}
+        if self.query_calls == 3:
+            return {"found": True, "status": "FILLED", "executed_quantity": "0.5"}
+        return {"found": True, "status": "NEW"}
+
+    def testnet_position_snapshot(self, symbol):
+        return {"ok": True, "position_amount": "0"}
+
+    def cancel_testnet_order(self, symbol, client_order_id):
+        self.cancel_calls += 1
+        return {"cancelled": True}
+
+
 class TestnetAmbiguousNetworkRecoveryTests(unittest.TestCase):
     def test_protective_submission_timeout_requires_reconciliation_and_no_retry(self):
         adapter = SnapshotThenSubmissionTimeout()
@@ -113,6 +149,25 @@ class TestnetAmbiguousNetworkRecoveryTests(unittest.TestCase):
         self.assertEqual(result["reason"], "adapter_exception_requires_reconciliation")
         self.assertTrue(result["requires_reconciliation"])
         self.assertFalse(result["automatic_retry"])
+
+    def test_partial_exit_never_cancels_sibling_while_exposure_remains(self):
+        adapter = PartialFillLeavesExposure()
+        result = cancel_testnet_sibling_after_flatten(
+            adapter, "BTCUSDT", "btc-sl", "btc-tp"
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "exit_not_fully_filled")
+        self.assertEqual(adapter.cancel_calls, 0)
+
+    def test_sibling_fill_race_requires_reconciliation_after_cancel_ack(self):
+        adapter = SiblingFillsDuringCancelRace()
+        result = cancel_testnet_sibling_after_flatten(
+            adapter, "BTCUSDT", "btc-sl", "btc-tp"
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "post_cancel_sibling_not_confirmed_inactive")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(adapter.cancel_calls, 1)
 
     def test_cancel_timeout_after_possible_acceptance_is_not_retried(self):
         adapter = CancelAcceptedThenTimeout()
