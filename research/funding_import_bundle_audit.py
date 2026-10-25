@@ -3,20 +3,25 @@ from __future__ import annotations
 
 import hashlib
 
-from research.funding_import_manifest import audit_funding_import_manifest
+from research.funding_import_manifest import (
+    audit_funding_import_manifest,
+    verify_raw_payload_sha256,
+)
 from research.funding_pagination_audit import audit_funding_pages
 
 
 def audit_funding_import_bundle(manifest, pages, *, symbol, venue,
                                 start_ts_ms, end_ts_ms,
-                                expected_first_cursor=None):
+                                expected_first_cursor=None,
+                                raw_manifest_payload=None):
     """Fail closed unless metadata and page-level checks agree.
 
-    ``raw_payload_sha256`` in the base manifest remains the digest of the exact
-    raw payload defined by that manifest. The optional ``raw_pages_aggregate_sha256``
-    is a distinct bundle digest: SHA-256 over the concatenated per-page SHA-256
-    hex strings in page order. Neither digest authenticates the venue or proves
-    that the source API returned every expected settlement.
+    ``raw_payload_sha256`` retains its original meaning: digest of the exact
+    raw payload represented by the manifest. Pass ``raw_manifest_payload`` to
+    verify those exact bytes. The optional ``raw_pages_aggregate_sha256`` is a
+    separate bundle digest over concatenated per-page SHA-256 hex strings in
+    page order. Neither digest authenticates venue provenance or proves source
+    API event completeness.
     """
     metadata = audit_funding_import_manifest(
         manifest, symbol=symbol, venue=venue,
@@ -26,11 +31,18 @@ def audit_funding_import_bundle(manifest, pages, *, symbol, venue,
         pages, symbol=symbol, start_ts_ms=start_ts_ms, end_ts_ms=end_ts_ms,
         expected_first_cursor=expected_first_cursor,
     )
+    raw_digest_audit = None
+    if raw_manifest_payload is not None:
+        raw_digest_audit = verify_raw_payload_sha256(manifest, raw_manifest_payload)
+
     errors = []
     if metadata["status"] != "PASS":
         errors.append("manifest_metadata_invalid")
     if page_audit["status"] != "PASS":
         errors.append("page_audit_failed")
+    if raw_digest_audit is not None and raw_digest_audit["status"] != "PASS":
+        errors.append("raw_payload_digest_failed")
+
     expected_count = manifest.get("page_count") if isinstance(manifest, dict) else None
     if isinstance(expected_count, bool) or not isinstance(expected_count, int) or expected_count != page_audit["page_count"]:
         errors.append("manifest_page_count_mismatch")
@@ -52,13 +64,14 @@ def audit_funding_import_bundle(manifest, pages, *, symbol, venue,
         "status": "PASS" if not errors else "FAIL",
         "errors": errors,
         "metadata_audit": metadata,
+        "raw_digest_audit": raw_digest_audit,
         "page_audit": page_audit,
         "page_count_matches_manifest": "manifest_page_count_mismatch" not in errors,
         "aggregate_digest_present": isinstance(manifest, dict) and manifest.get("raw_pages_aggregate_sha256") is not None,
         "aggregate_digest_verified": aggregate_verified,
-        "raw_digest_verified": False,
+        "raw_digest_verified": raw_digest_audit is not None and raw_digest_audit["status"] == "PASS",
         "source_verified": False,
         "event_coverage_verified": False,
         "auto_trade_authorized": False,
-        "warning": "Bundle checks compare supplied metadata and pages; they do not authenticate exchange provenance or prove the source API returned every event.",
+        "warning": "Bundle checks compare supplied metadata and bytes/pages; they do not authenticate exchange provenance or prove the source API returned every event.",
     }
