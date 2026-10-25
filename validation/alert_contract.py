@@ -80,3 +80,39 @@ def validate_alert_candidate(symbol, item, now, max_age_seconds=90 * 60):
         "notification_only": True,
         "auto_trade_authorized": False,
     }
+
+
+def build_alert_payload(market_status, symbol_cache, symbols, now):
+    """Build a read-only alerts envelope; any unhealthy heartbeat fails closed."""
+    if not isinstance(market_status, dict) or not _finite_number(now) or now <= 0:
+        return {
+            "generated_at": now if _finite_number(now) else None,
+            "status": "DELAYED",
+            "alerts": [],
+            "notification_only": True,
+            "auto_trade_authorized": False,
+        }
+
+    heartbeat_status = market_status.get("status")
+    updated = market_status.get("updated")
+    heartbeat_fresh = (
+        heartbeat_status == "LIVE"
+        and _finite_number(updated)
+        and updated > 0
+        and updated <= now
+        and now - updated <= 120
+    )
+    alerts = []
+    if heartbeat_fresh and isinstance(symbol_cache, dict):
+        for symbol in symbols if isinstance(symbols, (list, tuple)) else ():
+            alert = validate_alert_candidate(symbol, symbol_cache.get(symbol), now)
+            if alert is not None:
+                alerts.append(alert)
+
+    return {
+        "generated_at": now,
+        "status": "LIVE" if heartbeat_fresh else "DELAYED",
+        "alerts": alerts,
+        "notification_only": True,
+        "auto_trade_authorized": False,
+    }
