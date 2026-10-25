@@ -118,6 +118,12 @@ class ChatGPTAlertFeedTests(unittest.TestCase):
         payload = asyncio.run(dashboard.chatgpt_alert_feed())
         self.assertEqual(payload["alerts"], [])
 
+    def test_suppresses_candidates_from_frozen_models(self):
+        dashboard.cache["BTCUSDT"]["model_status"] = "FROZEN"
+        payload = asyncio.run(dashboard.chatgpt_alert_feed())
+        self.assertEqual(payload["count"], 0)
+        self.assertEqual(payload["alerts"], [])
+
     def test_suppresses_cached_candidates_when_market_is_not_live(self):
         dashboard.market_status["status"] = "DELAYED"
         payload = asyncio.run(dashboard.chatgpt_alert_feed())
