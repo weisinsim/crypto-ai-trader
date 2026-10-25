@@ -49,3 +49,6 @@ These utilities are not connected to the dashboard or an outcome source, so no l
 
 
 A simulation report builder now exists in `research/paper_backtest_report.py`. It reports completed simulator outcomes separately from right-censored `CENSORED/DATA_END` outcomes, rejects duplicate trade IDs and invalid scores/returns, and summarizes completed simulations by symbol/side and score band. The report deliberately returns no verified calibration result and marks cost/fill verification and out-of-sample purity as unverified, even when input flags are present. Tests cover empty inputs, censored exclusion, duplicate IDs, invalid values, score 100, grouping, and non-completed statuses. This is a reporting layer only; it does not ingest historical market data, prove profitability, verify real fills, or authorize trading.
+
+
+Follow-up audit hardening: the paper report now distinguishes true right-censored rows (`CENSORED`/`DATA_END`) from other incomplete or non-simulation rows, which are rejected rather than counted as censored. It fails closed if a row claims both a censored exit and `outcome_complete=True`. Dedicated regression tests cover both cases.
