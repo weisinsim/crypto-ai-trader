@@ -74,6 +74,15 @@ Before enabling exchange execution, separately implement and validate idempotent
 
 The backtest report includes `funding_interpretation_gate` and `funding_data.audit_status`. Missing funding history, duplicate raw event timestamps, events outside the candle coverage, or raw event times that do not align to candle opens set the gate to `FUNDING_DATA_REVIEW_REQUIRED` / `REVIEW_REQUIRED`. A clean timestamp-alignment diagnostic is only `TIMESTAMP_ALIGNMENT_ONLY_NOT_RECONCILED`; it does not prove complete venue history, source authenticity, or account cashflow reconciliation. The gate is an interpretation warning, not a claim that funding is fully audited and not a production approval.
 
+
+## Read-only entry-alert contract
+
+The `GET /api/chatgpt/alerts` endpoint is a notification feed, not an order API. The validator in `validation/alert_contract.py` emits an alert only when the symbol, model status, ticker heartbeat, closed-candle timestamp, analysis timestamp, score, and entry/stop/target geometry pass validation. The envelope and every alert explicitly set `notification_only: true` and `auto_trade_authorized: false`.
+
+The feed fails closed: an unhealthy or stale market heartbeat produces `DELAYED` with no alerts; malformed candidate fields are rejected individually; duplicate event IDs are suppressed. The browser performs independent validation of freshness, status, event IDs, numeric fields, and stop/target geometry before rendering. Untrusted model metadata is bounded on the server and is not inserted into the alert HTML.
+
+A `LIVE` feed status means only that the feed heartbeat is recent and structurally valid. It is not a claim that an exchange order can be placed, that a signal is profitable, or that a model is production-approved. Current model research status remains governed by the research/promotion criteria below. Keep automatic order submission disabled until a separately reviewed execution and risk-control system exists.
+
 ## V12 adaptive hybrid research
 - [V12 research guide](V12_RESEARCH_GUIDE.md): data pipeline, cost assumptions, calibration policy, and validation commands.
 - [Pre-exit baseline findings](V12_2025_2026_RESEARCH_FINDINGS.md): initial four-coin results before ATR trailing/reversal/time exits.
