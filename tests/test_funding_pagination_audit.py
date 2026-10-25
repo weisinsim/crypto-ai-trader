@@ -27,10 +27,11 @@ class FundingPaginationAuditTests(unittest.TestCase):
             },
         ]
 
-    def audit(self, pages):
+    def audit(self, pages, parsed_raw_events_by_page=None):
         return audit_funding_pages(
             pages, symbol="BTCUSDT", start_ts_ms=1000, end_ts_ms=3000,
             expected_first_cursor="start",
+            parsed_raw_events_by_page=parsed_raw_events_by_page,
         )
 
     def test_valid_pages_compute_each_raw_digest_and_keep_provenance_unverified(self):
@@ -42,7 +43,7 @@ class FundingPaginationAuditTests(unittest.TestCase):
         self.assertEqual(result["page_reports"][0]["raw_payload_sha256"], hashlib.sha256(b'{"page":1}').hexdigest())
         self.assertFalse(result["normalization_verified"])
         self.assertFalse(result["normalized_events_match_raw_payload"])
-        self.assertIn("not parsed or reconciled", result["warning"])
+        self.assertIn("independently parsed raw events", result["warning"])
         self.assertFalse(result["source_verified"])
         self.assertFalse(result["event_coverage_verified"])
         self.assertFalse(result["auto_trade_authorized"])
@@ -56,6 +57,36 @@ class FundingPaginationAuditTests(unittest.TestCase):
         self.assertEqual(result["status"], "PASS")
         self.assertFalse(result["normalization_verified"])
         self.assertFalse(result["normalized_events_match_raw_payload"])
+
+
+    def test_verifies_normalization_when_independently_parsed_raw_events_match(self):
+        pages = self.pages()
+        parsed = [
+            [{"symbol": "BTCUSDT", "funding_timestamp_ms": 1000, "funding_rate": 0.001}],
+            [{"symbol": "BTCUSDT", "funding_timestamp_ms": 2000, "funding_rate": -0.0005}],
+        ]
+        result = self.audit(pages, parsed)
+        self.assertEqual(result["status"], "PASS")
+        self.assertTrue(result["normalization_verified"])
+        self.assertTrue(result["normalized_events_match_raw_payload"])
+
+    def test_fails_when_normalized_events_differ_from_independent_raw_parse(self):
+        pages = self.pages()
+        parsed = [
+            [{"symbol": "BTCUSDT", "funding_timestamp_ms": 1000, "funding_rate": 0.002}],
+            [{"symbol": "BTCUSDT", "funding_timestamp_ms": 2000, "funding_rate": -0.0005}],
+        ]
+        result = self.audit(pages, parsed)
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("page_0:normalized_events_do_not_match_raw", result["errors"])
+        self.assertFalse(result["normalization_verified"])
+        self.assertFalse(result["normalized_events_match_raw_payload"])
+
+    def test_fails_when_raw_parse_page_count_does_not_match(self):
+        result = self.audit(self.pages(), [])
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("normalization_page_count_mismatch", result["errors"])
+        self.assertFalse(result["normalization_verified"])
 
     def test_rejects_cursor_gaps_and_unfinished_final_page(self):
         pages = self.pages()
