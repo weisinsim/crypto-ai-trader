@@ -28,6 +28,20 @@ def _max_drawdown(returns):
     return worst
 
 
+def _wilson_interval(successes, trials, *, z=1.96):
+    """Return a two-sided Wilson score interval for a binomial proportion."""
+    if trials <= 0:
+        return None, None
+    proportion = successes / trials
+    z2 = z * z
+    denominator = 1.0 + z2 / trials
+    center = (proportion + z2 / (2.0 * trials)) / denominator
+    margin = (z * math.sqrt(
+        proportion * (1.0 - proportion) / trials + z2 / (4.0 * trials * trials)
+    )) / denominator
+    return max(0.0, center - margin), min(1.0, center + margin)
+
+
 def summarize_score_calibration(trades, *, min_samples=30, bands=DEFAULT_BANDS, split_by_side=False):
     """Group realized holdout trades by symbol and score band.
 
@@ -101,6 +115,7 @@ def summarize_score_calibration(trades, *, min_samples=30, bands=DEFAULT_BANDS, 
             "score_band": f"{lower:g}-{min(upper, 100):g}" if upper <= 100 else f"{lower:g}-100",
             "sample_count": n,
             "win_rate": wins / n,
+            "win_rate_ci_95_wilson": list(_wilson_interval(wins, n)),
             "mean_net_expectancy": sum(returns) / n,
             "profit_factor": gross_profit / gross_loss if gross_loss else (None if gross_profit == 0 else "infinity"),
             "max_drawdown": _max_drawdown(returns),
