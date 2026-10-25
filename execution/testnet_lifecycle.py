@@ -7,7 +7,7 @@ trading; callers must reconcile the returned state before retrying.
 from decimal import Decimal, InvalidOperation
 import time
 
-from validation.testnet_reconciliation import validate_snapshot_timing
+from validation.testnet_reconciliation import validate_snapshot_timing, reconcile_restart_order_ledger
 
 
 def _ensure_testnet_protective_exits_impl(
@@ -365,6 +365,56 @@ def cancel_testnet_sibling_after_flatten(
         return {
             "ok": False,
             "reason": "adapter_exception_requires_reconciliation",
+            "error_type": type(exc).__name__,
+            "requires_reconciliation": True,
+            "automatic_retry": False,
+        }
+
+
+def reconcile_testnet_restart(adapter, symbol: str, expected_client_order_ids):
+    """Read-only restart recovery: query known IDs and compare with a fresh snapshot.
+
+    This function never submits or cancels orders. Any exception, unknown order,
+    stale snapshot, or disagreement requires manual reconciliation.
+    """
+    try:
+        snapshot = adapter.testnet_position_snapshot(symbol)
+        if not snapshot.get("ok"):
+            return {"ok": False, "reason": "restart_snapshot_failed", "requires_reconciliation": True}
+        timing = validate_snapshot_timing(
+            snapshot,
+            now_ms=int(time.time() * 1000),
+            max_age_ms=2000,
+            max_observation_window_ms=2000,
+        )
+        if not timing.get("ok"):
+            return {
+                "ok": False,
+                "reason": "restart_snapshot_timing_rejected",
+                "timing_reason": timing.get("reason"),
+                "requires_reconciliation": True,
+            }
+        queries = {}
+        for client_id in expected_client_order_ids:
+            queries[client_id] = adapter.query_testnet_order(symbol, client_id)
+        result = reconcile_restart_order_ledger(
+            expected_client_order_ids,
+            queries,
+            snapshot,
+            now_ms=int(time.time() * 1000),
+        )
+        if not result.get("ok"):
+            return {**result, "requires_reconciliation": True}
+        return {
+            **result,
+            "symbol": symbol,
+            "position_amount": str(snapshot.get("position_amount")),
+            "requires_reconciliation": False,
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "reason": "restart_reconciliation_exception",
             "error_type": type(exc).__name__,
             "requires_reconciliation": True,
             "automatic_retry": False,
