@@ -84,3 +84,55 @@ def compare_replayed_score_events(first, second):
         "research_only": True,
         "auto_trade_authorized": False,
     }
+
+
+def audit_replay_series(expected_events, replayed_events):
+    """Compare two replay sequences by deterministic signal ID and report coverage.
+
+    Inputs must be event mappings produced from the same declared replay window.
+    Missing, extra, duplicate, or changed events are surfaced rather than silently
+    dropped. This is a structural replay audit, not proof of model profitability.
+    """
+    if not isinstance(expected_events, (list, tuple)) or not isinstance(replayed_events, (list, tuple)):
+        raise ValueError("expected_events and replayed_events must be sequences")
+
+    def index_events(events, label):
+        indexed = {}
+        invalid = []
+        for i, event in enumerate(events):
+            if not isinstance(event, dict):
+                invalid.append({"index": i, "reason": "event is not a mapping"})
+                continue
+            signal_id = event.get("signal_id")
+            if not isinstance(signal_id, str) or not signal_id:
+                invalid.append({"index": i, "reason": "missing signal_id"})
+                continue
+            if signal_id in indexed:
+                invalid.append({"index": i, "reason": "duplicate signal_id", "signal_id": signal_id})
+                continue
+            indexed[signal_id] = event
+        return indexed, invalid
+
+    expected, expected_invalid = index_events(expected_events, "expected")
+    replayed, replayed_invalid = index_events(replayed_events, "replayed")
+    missing_ids = sorted(set(expected) - set(replayed))
+    unexpected_ids = sorted(set(replayed) - set(expected))
+    mismatches = []
+    for signal_id in sorted(set(expected) & set(replayed)):
+        comparison = compare_replayed_score_events(expected[signal_id], replayed[signal_id])
+        if comparison["status"] != "DETERMINISTIC":
+            mismatches.append({"signal_id": signal_id, "differences": comparison["differences"]})
+    passed = not (expected_invalid or replayed_invalid or missing_ids or unexpected_ids or mismatches)
+    return {
+        "status": "PASS" if passed else "FAIL",
+        "expected_event_count": len(expected_events),
+        "replayed_event_count": len(replayed_events),
+        "matched_event_count": len(set(expected) & set(replayed)),
+        "missing_signal_ids": missing_ids,
+        "unexpected_signal_ids": unexpected_ids,
+        "mismatched_events": mismatches,
+        "expected_input_errors": expected_invalid,
+        "replayed_input_errors": replayed_invalid,
+        "research_only": True,
+        "auto_trade_authorized": False,
+    }
