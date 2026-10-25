@@ -164,6 +164,49 @@ def adx(h, l, c, n=14):
     return sum(dxs)/len(dxs) if dxs else None
 
 
+def adx_series(h, l, c, n=14):
+    """Compute the existing rolling ADX approximation once for every prefix.
+
+    Values match adx(h[:i+1], l[:i+1], c[:i+1], n) while avoiding rebuilding
+    true-range/directional-movement arrays for every historical candle.
+    """
+    size = len(c)
+    out = [None] * size
+    if size < 2 * n + 1:
+        return out
+    tr = []
+    plus = []
+    minus = []
+    for i in range(1, size):
+        up = h[i] - h[i - 1]
+        down = l[i - 1] - l[i]
+        tr.append(max(h[i] - l[i], abs(h[i] - c[i - 1]), abs(l[i] - c[i - 1])))
+        plus.append(up if up > down and up > 0 else 0)
+        minus.append(down if down > up and down > 0 else 0)
+
+    dx = []
+    for j in range(len(tr)):
+        if j < n:
+            dx.append(None)
+            continue
+        start = j - n + 1
+        true_range = sum(tr[start:j + 1]) / n
+        if true_range > 0:
+            p = sum(plus[start:j + 1]) / n
+            m = sum(minus[start:j + 1]) / n
+            pdi = 100 * p / true_range
+            mdi = 100 * m / true_range
+            dx.append(100 * abs(pdi - mdi) / max(pdi + mdi, 1e-9))
+        else:
+            dx.append(None)
+
+    for i in range(2 * n, size):
+        recent = [value for value in dx[i - 1 - n + 1:i] if value is not None]
+        if recent:
+            out[i] = sum(recent) / len(recent)
+    return out
+
+
 def vwap(h,l,c,q,n=48):
     m=min(n,len(c))
     den=sum(q[-m:])
@@ -239,6 +282,7 @@ def replay(symbol, one, four, *, include_states=False):
     lo_all=[x["l"] for x in one]; q_all=[x["q"] for x in one]
     ema20_all=ema_series(c_all,20); ema50_all=ema_series(c_all,50); ema200_all=ema_series(c_all,200)
     rsi_all=rsi_series(c_all)
+    adx_all=adx_series(hi_all,lo_all,c_all)
     c4_all=[x["c"] for x in four]
     ema20_4_all=ema_series(c4_all,20); ema50_4_all=ema_series(c4_all,50)
     four_index=0
@@ -255,7 +299,7 @@ def replay(symbol, one, four, *, include_states=False):
         c=c_all[max(0,i-29):i+1]; hi=hi_all[max(0,i-29):i+1]; lo=lo_all[max(0,i-29):i+1]
         h48=hi_all[max(0,i-47):i+1]; l48=lo_all[max(0,i-47):i+1]; c48=c_all[max(0,i-47):i+1]
         q=q_all[max(0,i-47):i+1]
-        a=atr(hi,lo,c); r=rsi_all[i]; ad=adx(hi_all[:i+1],lo_all[:i+1],c_all[:i+1])
+        a=atr(hi,lo,c); r=rsi_all[i]; ad=adx_all[i]
         vw=vwap(h48,l48,c48,q); sup,res=levels(h48,l48,c48)
         if None in (e20,e50,e200,e20_4,e50_4,a,r): continue
         side=""; entry=sl=target=None; score=0; direction=0; reason="NO-TRADE"
