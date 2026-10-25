@@ -2,7 +2,7 @@ name: Historical multi-asset research
 
 on:
   push:
-    branches: [main]
+    branches: [main, research/replay-series-optimization]
     paths:
       - "validation/audit_funding_history.py"
       - "validation/audit_research_input_inventory.py"
