@@ -126,6 +126,32 @@ def audit_replay_series(expected_events, replayed_events):
             if not isinstance(signal_id, str) or not signal_id:
                 invalid.append({"index": i, "reason": "missing signal_id"})
                 continue
+            # Fail closed on legacy, malformed, or potentially actionable rows.
+            required = {
+                "symbol", "side", "timeframe", "candle_close_ts", "signal_ts",
+                "model_version", "score", "score_breakdown", "event_schema_version",
+                "score_definition", "research_only", "auto_trade_authorized",
+            }
+            missing = sorted(required - set(event))
+            if missing:
+                invalid.append({"index": i, "reason": "missing required fields", "fields": missing})
+                continue
+            if event.get("event_schema_version") != 1:
+                invalid.append({"index": i, "reason": "unsupported event_schema_version"})
+                continue
+            if event.get("score_definition") != "0_to_100_model_score":
+                invalid.append({"index": i, "reason": "unsupported score_definition"})
+                continue
+            if event.get("research_only") is not True or event.get("auto_trade_authorized") is not False:
+                invalid.append({"index": i, "reason": "unsafe authorization flags"})
+                continue
+            score = event.get("score")
+            if isinstance(score, bool) or not isinstance(score, (int, float)) or not math.isfinite(score) or not 0 <= score <= 100:
+                invalid.append({"index": i, "reason": "invalid score"})
+                continue
+            if not isinstance(event.get("score_breakdown"), dict):
+                invalid.append({"index": i, "reason": "invalid score_breakdown"})
+                continue
             if signal_id in indexed:
                 invalid.append({"index": i, "reason": "duplicate signal_id", "signal_id": signal_id})
                 continue
