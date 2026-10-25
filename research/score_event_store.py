@@ -121,8 +121,15 @@ class ScoreEventStore:
         for row in rows:
             trade = dict(row)
             recorded = json.loads(trade.pop("recorded_json"))
-            present = [field for field in required_cost_fields
-                       if field in recorded and _finite_number(recorded[field], field) is not None]
+            present = []
+            for field in required_cost_fields:
+                if field not in recorded:
+                    continue
+                try:
+                    _finite_number(recorded[field], field)
+                except ValueError:
+                    continue
+                present.append(field)
             # Cost fields are audit evidence only; net_return remains caller-supplied.
             # Missing fields are not inferred or silently treated as zero.
             trade["cost_fields_present"] = present
