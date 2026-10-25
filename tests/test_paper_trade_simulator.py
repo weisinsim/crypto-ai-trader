@@ -72,5 +72,34 @@ class PaperTradeSimulatorTests(unittest.TestCase):
             )
 
 
+
+    def test_exit_slippage_reduces_long_and_short_returns(self):
+        long_no_slip = simulate_tactical_candidate(
+            observation=self.candidate(),
+            future_candles=[self.candle(3_600_001, o=100, h=106, l=99, c=105)],
+            fee_bps_per_side=0, slippage_bps_per_side=0, funding_bps_per_8h=0,
+        )
+        long_slip = simulate_tactical_candidate(
+            observation=self.candidate(),
+            future_candles=[self.candle(3_600_001, o=100, h=106, l=99, c=105)],
+            fee_bps_per_side=0, slippage_bps_per_side=10, funding_bps_per_8h=0,
+        )
+        short_observation = self.candidate(
+            signal="SHORT", entry=100.0, sl=105.0, tp1=95.0, tp2=90.0,
+        )
+        short_candles = [self.candle(3_600_001, o=100, h=101, l=94, c=95)]
+        short_no_slip = simulate_tactical_candidate(
+            observation=short_observation, future_candles=short_candles,
+            fee_bps_per_side=0, slippage_bps_per_side=0, funding_bps_per_8h=0,
+        )
+        short_slip = simulate_tactical_candidate(
+            observation=short_observation, future_candles=short_candles,
+            fee_bps_per_side=0, slippage_bps_per_side=10, funding_bps_per_8h=0,
+        )
+        self.assertLess(long_slip["net_return_on_entry_notional"], long_no_slip["net_return_on_entry_notional"])
+        self.assertLess(short_slip["net_return_on_entry_notional"], short_no_slip["net_return_on_entry_notional"])
+        self.assertNotEqual(long_slip["exits"][-1]["price"], long_slip["exits"][-1]["reference_price"])
+
+
 if __name__ == "__main__":
     unittest.main()
