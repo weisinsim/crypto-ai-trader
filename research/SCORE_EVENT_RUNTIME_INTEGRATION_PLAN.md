@@ -39,4 +39,10 @@ Do not wire persistence into `app.py` in this PR yet. The current dashboard is a
 
 ## Current status
 
-Only the local SQLite store and calibration helper exist. They are not connected to the dashboard or an outcome source, so no live score/outcome dataset is being collected. This document specifies a safe next implementation path; it does not claim any of the stages above are implemented.
+Implemented research utilities:
+- SQLite-backed score-event and realized-outcome store with restart persistence and strict signal-ID linkage.
+- Cost-field presence/type coverage diagnostics; presence is explicitly unverified evidence, not proof of correct cost accounting.
+- Read-only SQLite integrity audit reporting database integrity, foreign-key violations, orphan outcomes, duplicate-ID groups, and uncompleted score events.
+- Unit tests for restart persistence, duplicate rejection, invalid outcomes, incomplete/non-finite cost fields, cost coverage counts, and clean integrity-audit cases.
+
+These utilities are not connected to the dashboard or an outcome source, so no live score/outcome dataset is being collected. The integrity audit checks storage/linkage invariants; it does not verify that a net return reconciles to exchange fills, fees, slippage, or funding. Runtime observer and fill ingestion remain unimplemented. This document specifies a safe next implementation path; it does not claim any of the stages above are implemented.
