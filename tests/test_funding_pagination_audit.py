@@ -66,6 +66,18 @@ class FundingPaginationAuditTests(unittest.TestCase):
         self.assertIn("page_1:cursor_chain_mismatch", result["errors"])
         self.assertIn("page_1:repeated_request_cursor", result["errors"])
 
+    def test_rejects_invalid_cursor_types(self):
+        pages = self.pages()
+        pages[0]["next_cursor"] = {"cursor": "bad"}
+        result = self.audit(pages)
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("page_0:invalid_next_cursor_type", result["errors"])
+        pages = self.pages()
+        pages[1]["request_cursor"] = ["bad"]
+        result = self.audit(pages)
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("page_1:invalid_request_cursor_type", result["errors"])
+
     def test_rejects_duplicate_and_out_of_order_events(self):
         pages = self.pages()
         pages[1]["events"] = [
