@@ -234,6 +234,9 @@ def reconcile_restart_order_ledger(expected_client_order_ids, order_queries, sna
         return {"ok": False, "reason": "EXPECTED_CLIENT_ORDER_IDS_INVALID"}
     if not isinstance(order_queries, Mapping):
         return {"ok": False, "reason": "ORDER_QUERIES_INVALID"}
+    expected_ids = set(expected_client_order_ids)
+    if set(order_queries.keys()) != expected_ids:
+        return {"ok": False, "reason": "ORDER_QUERY_KEYS_MISMATCH"}
     timing = validate_snapshot_timing(snapshot, now_ms=int(time.time() * 1000) if now_ms is None else now_ms)
     if not timing.get("ok"):
         return {"ok": False, "reason": "SNAPSHOT_TIMING_REJECTED", "detail": timing.get("reason")}
