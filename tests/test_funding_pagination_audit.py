@@ -167,6 +167,18 @@ class FundingPaginationAuditTests(unittest.TestCase):
         self.assertIn("page_0:pagination_ended_early", result["errors"])
         self.assertFalse(result["raw_page_digests_computed"])
 
+    def test_missing_raw_bytes_prevents_normalization_verification(self):
+        pages = self.pages()
+        pages[0]["raw_payload"] = "not bytes"
+        parsed = [
+            [{"symbol": "BTCUSDT", "funding_timestamp_ms": 1000, "funding_rate": 0.001}],
+            [{"symbol": "BTCUSDT", "funding_timestamp_ms": 2000, "funding_rate": -0.0005}],
+        ]
+        result = self.audit(pages, parsed)
+        self.assertEqual(result["status"], "FAIL")
+        self.assertFalse(result["normalization_verified"])
+        self.assertFalse(result["normalized_events_match_raw_payload"])
+
     def test_rejects_empty_pages_and_invalid_window(self):
         with self.assertRaisesRegex(ValueError, "non-empty"):
             audit_funding_pages([], symbol="BTCUSDT", start_ts_ms=0, end_ts_ms=1)
