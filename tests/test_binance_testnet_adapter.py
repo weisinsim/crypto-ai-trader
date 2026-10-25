@@ -223,6 +223,11 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(result["position_amount"], "0")
         self.assertEqual(result["open_orders"][0]["type"], "STOP_MARKET")
         self.assertTrue(result["open_orders"][0]["reduce_only"])
+        self.assertIsInstance(result["snapshot_started_at_ms"], int)
+        self.assertIsInstance(result["snapshot_completed_at_ms"], int)
+        self.assertGreaterEqual(result["snapshot_completed_at_ms"], result["snapshot_started_at_ms"])
+        self.assertIsInstance(result["snapshot_duration_ms"], float)
+        self.assertGreaterEqual(result["snapshot_duration_ms"], 0)
         self.assertEqual([call[0] for call in client.get_calls[:2]], ["/fapi/v2/account", "/fapi/v1/openOrders"])
         self.assertEqual(client.calls, [])
 
