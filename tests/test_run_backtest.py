@@ -122,7 +122,7 @@ class FundingDataQualitySummaryTests(unittest.TestCase):
             lines = ["t,o,h,l,c,v,q,tb,tq"]
             for i in range(180):
                 lines.append(f"{i * 3600000},100,101,99,100,1,100,0.6,60")
-            path.write_text("\\n".join(lines) + "\\n", encoding="utf-8")
+            path.write_text("\n".join(lines) + "\n", encoding="utf-8")
             rows = load_csv(str(path), 3_600_000)
             self.assertEqual(rows[0]["tb"], 0.6)
             self.assertEqual(rows[0]["tq"], 60.0)
