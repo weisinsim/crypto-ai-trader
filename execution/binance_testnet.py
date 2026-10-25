@@ -283,6 +283,8 @@ class BinanceFuturesTestnet:
         """Read authoritative TESTNET position and open orders; no mutations."""
         if not isinstance(symbol, str) or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
             return {"ok": False, "reason": "invalid_symbol"}
+        snapshot_started_at_ms = int(time.time() * 1000)
+        snapshot_started_monotonic = time.monotonic()
         account_response = self._client.get(
             "/fapi/v2/account",
             params=self._signed_params({}),
@@ -310,6 +312,8 @@ class BinanceFuturesTestnet:
         )
         orders_response.raise_for_status()
         orders = orders_response.json()
+        snapshot_completed_at_ms = int(time.time() * 1000)
+        snapshot_duration_ms = round((time.monotonic() - snapshot_started_monotonic) * 1000, 3)
         if not isinstance(orders, list) or any(not isinstance(order, dict) for order in orders):
             return {"ok": False, "reason": "invalid_testnet_open_orders_response"}
         required_order_fields = ("orderId", "side", "type", "status", "reduceOnly")
@@ -326,6 +330,11 @@ class BinanceFuturesTestnet:
             "symbol": symbol,
             "position_amount": str(amount),
             "entry_price": str(entry_price),
+            # These are local observation bounds, not an atomic exchange snapshot.
+            # Consumers must fail closed when the interval is too wide or too old.
+            "snapshot_started_at_ms": snapshot_started_at_ms,
+            "snapshot_completed_at_ms": snapshot_completed_at_ms,
+            "snapshot_duration_ms": snapshot_duration_ms,
             "open_orders": [
                 {
                     "order_id": str(order.get("orderId", "")),
