@@ -96,6 +96,32 @@ class TestnetReconciliationTests(unittest.TestCase):
         self.assertIn("ETHUSDT:UNEXPECTED_NONZERO_POSITION", position["reasons"])
         self.assertIn("ETHUSDT:UNEXPECTED_OPEN_ORDERS", orders["reasons"])
 
+    def test_unlisted_open_order_is_rejected_even_if_required_protection_exists(self):
+        result = reconcile_testnet_state(
+            {"BTCUSDT": "0.5"},
+            {"BTCUSDT": self.snapshot("0.5", [
+                self.protective(),
+                {
+                    "client_order_id": "unexpected-entry",
+                    "type": "LIMIT",
+                    "status": "NEW",
+                    "reduce_only": False,
+                    "side": "BUY",
+                    "orig_quantity": "0.5",
+                    "stop_price": "100",
+                },
+            ])},
+            {"BTCUSDT": ["btc-stop-1"]},
+        )
+        self.assertIn("BTCUSDT:UNEXPECTED_OPEN_ORDER", result["reasons"])
+
+    def test_flat_position_with_any_open_order_is_not_reconciled(self):
+        result = reconcile_testnet_state(
+            {"BTCUSDT": "0"},
+            {"BTCUSDT": self.snapshot("0", [self.protective()])},
+        )
+        self.assertIn("BTCUSDT:UNEXPECTED_OPEN_ORDER", result["reasons"])
+
     def test_invalid_numeric_and_boolean_values_fail_closed(self):
         for value in (True, "NaN", "Infinity", None):
             with self.subTest(value=value):
