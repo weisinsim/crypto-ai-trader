@@ -81,6 +81,12 @@ class DashboardResearchPanelTests(unittest.TestCase):
         self.assertIn('if(m.type==="status"){setStatus(m.status==="LIVE"?"LIVE":m.status==="DELAYED"?"DELAYED":"FALLBACK");}', self.html)
         self.assertNotIn('if(m.type==="status")setStatus(m.status);', self.html)
 
+    def test_alert_feed_requires_fresh_envelope_and_blocks_frozen_models(self):
+        self.assertIn('const generatedMs=typeof payload.generated_at==="number"&&Number.isFinite(payload.generated_at)?payload.generated_at*1000:NaN;', self.html)
+        self.assertIn('nowMs-generatedMs<=120000', self.html)
+        self.assertIn('const feedLive=payload.status==="LIVE"&&envelopeFresh;', self.html)
+        self.assertIn('a.model_status==="FROZEN"', self.html)
+
     def test_malformed_websocket_message_fails_closed_and_closes_socket(self):
         self.assertIn('try{m=JSON.parse(e.data)}catch(err){setStatus("FALLBACK");try{ws.close()}catch(closeErr){}return;}', self.html)
         self.assertNotIn('const m=JSON.parse(e.data);', self.html)
