@@ -43,8 +43,9 @@ def build_frozen_score_event(*, symbol, side, timeframe, candle_close_ts, model_
         "timeframe": timeframe,
         "candle_close_ts": candle_close_ts,
         "model_version": model_version,
-        "score": score,
     }
+    # Keep identity independent of score so replay detects score drift for the same
+    # candle/model event instead of reporting one missing and one unexpected event.
     canonical = json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     signal_id = "replay_" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     return {
