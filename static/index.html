@@ -214,7 +214,8 @@ function connect(){
   const ws=new WebSocket(proto+"://"+location.host+"/ws"); state.ws=ws;
   ws.onopen=()=>{setStatus("CONNECTING");ws.send("hello");snapshot()};
   ws.onmessage=e=>{
-   const m=JSON.parse(e.data);
+   let m;
+   try{m=JSON.parse(e.data)}catch(err){setStatus("FALLBACK");try{ws.close()}catch(closeErr){}return;}
    if(m.type==="status"){setStatus(m.status==="LIVE"?"LIVE":m.status==="DELAYED"?"DELAYED":"FALLBACK");}
    if(m.type==="snapshot"){(m.data||[]).forEach(x=>state.data[x.symbol]=x);loadSignals().then(render);setStatus(m.status?.status==="LIVE"?"LIVE":m.status?.status==="DELAYED"?"DELAYED":"FALLBACK");setDiag(m)}
    if(m.type==="ticker"){state.data[m.data.symbol]={...(state.data[m.data.symbol]||{}),...m.data};render()}
