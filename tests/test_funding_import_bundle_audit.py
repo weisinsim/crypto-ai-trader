@@ -17,6 +17,7 @@ class FundingImportBundleAuditTests(unittest.TestCase):
 
     def manifest(self, pages=None, **overrides):
         pages = self.pages() if pages is None else pages
+        raw_manifest_payload = b'{"manifest":"bundle-test"}'
         digests = [hashlib.sha256(p["raw_payload"]).hexdigest() for p in pages]
         aggregate = hashlib.sha256("".join(digests).encode("ascii")).hexdigest()
         value = {
@@ -25,19 +26,20 @@ class FundingImportBundleAuditTests(unittest.TestCase):
             "source_endpoint": "/fapi/v1/fundingRate",
             "timestamp_unit": "ms_utc", "requested_start_ts_ms": 1000,
             "requested_end_ts_ms": 3000, "retrieved_at_ms": 4000,
-            "raw_payload_sha256": "a" * 64,
+            "raw_payload_sha256": hashlib.sha256(raw_manifest_payload).hexdigest(),
             "raw_pages_aggregate_sha256": aggregate,
             "page_count": len(pages), "pagination_complete": True,
         }
         value.update(overrides)
         return value
 
-    def audit(self, manifest=None, pages=None):
+    def audit(self, manifest=None, pages=None, raw_manifest_payload=None):
         pages = self.pages() if pages is None else pages
         manifest = self.manifest(pages) if manifest is None else manifest
         return audit_funding_import_bundle(
             manifest, pages, symbol="BTCUSDT", venue="Binance",
             start_ts_ms=1000, end_ts_ms=3000, expected_first_cursor="start",
+            raw_manifest_payload=raw_manifest_payload,
         )
 
     def test_valid_bundle_passes_internal_consistency_only(self):
@@ -50,6 +52,20 @@ class FundingImportBundleAuditTests(unittest.TestCase):
         self.assertFalse(result["source_verified"])
         self.assertFalse(result["event_coverage_verified"])
         self.assertFalse(result["auto_trade_authorized"])
+
+    def test_exact_raw_manifest_payload_is_verified_when_supplied(self):
+        payload = b'{"manifest":"bundle-test"}'
+        result = self.audit(raw_manifest_payload=payload)
+        self.assertEqual(result["status"], "PASS")
+        self.assertTrue(result["raw_digest_verified"])
+        self.assertEqual(result["raw_digest_audit"]["status"], "PASS")
+
+    def test_changed_raw_manifest_payload_fails(self):
+        payload = b'{"manifest":"bundle-test"} '
+        result = self.audit(raw_manifest_payload=payload)
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("raw_payload_digest_failed", result["errors"])
+        self.assertFalse(result["raw_digest_verified"])
 
     def test_manifest_page_count_mismatch_fails(self):
         result = self.audit(self.manifest(page_count=3))
