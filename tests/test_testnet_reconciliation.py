@@ -94,6 +94,32 @@ class TestnetReconciliationTests(unittest.TestCase):
         self.assertEqual(untracked["reason"], "UNTRACKED_ACTIVE_ORDER_ON_RESTART")
         self.assertEqual(missing["reason"], "ORDER_QUERY_MISSING_OR_AMBIGUOUS")
 
+    def test_restart_ledger_rejects_unexpected_order_query_keys(self):
+        snapshot = {
+            "ok": True,
+            "position_amount": "0.5",
+            "open_orders": [{"client_order_id": "btc-sl", "status": "NEW"}],
+            "snapshot_started_at_ms": 1000,
+            "snapshot_completed_at_ms": 1100,
+            "snapshot_duration_ms": 100.0,
+        }
+        result = reconcile_restart_order_ledger(
+            ["btc-sl"],
+            {
+                "btc-sl": {
+                    "found": True,
+                    "client_order_id": "btc-sl",
+                    "exchange_order_id": "123",
+                    "status": "NEW",
+                },
+                "unexpected-id": {"found": True, "status": "NEW"},
+            },
+            snapshot,
+            now_ms=1200,
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "ORDER_QUERY_KEYS_MISMATCH")
+
     def test_restart_ledger_rejects_duplicate_active_client_ids(self):
         snapshot = {
             "ok": True,
