@@ -184,28 +184,20 @@ def adx_series(h, l, c, n=14):
         plus.append(up if up > down and up > 0 else 0)
         minus.append(down if down > up and down > 0 else 0)
 
-    dx = []
-    for j in range(len(tr)):
-        if j < n:
-            dx.append(None)
-            continue
+    valid_dx = []
+    for j in range(n, len(tr)):
         start = j - n + 1
         true_range = sum(tr[start:j + 1]) / n
-        if true_range > 0:
-            p = sum(plus[start:j + 1]) / n
-            m = sum(minus[start:j + 1]) / n
-            pdi = 100 * p / true_range
-            mdi = 100 * m / true_range
-            dx.append(100 * abs(pdi - mdi) / max(pdi + mdi, 1e-9))
-        else:
-            dx.append(None)
-
-    for i in range(2 * n, size):
-        recent = [value for value in dx[i - 1 - n + 1:i] if value is not None]
-        if recent:
-            out[i] = sum(recent) / len(recent)
+        if true_range <= 0:
+            continue
+        p = sum(plus[start:j + 1]) / n
+        m = sum(minus[start:j + 1]) / n
+        pdi = 100 * p / true_range
+        mdi = 100 * m / true_range
+        valid_dx.append(100 * abs(pdi - mdi) / max(pdi + mdi, 1e-9))
+        if len(valid_dx) >= n:
+            out[j + 1] = sum(valid_dx[-n:]) / n
     return out
-
 
 def vwap(h,l,c,q,n=48):
     m=min(n,len(c))
