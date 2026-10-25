@@ -49,9 +49,11 @@ def audit_funding_import_manifest(
     elif manifest["requested_end_ts_ms"] != end_ts_ms:
         errors.append("requested_end_mismatch")
 
-    if manifest.get("symbol", "").strip().upper() != symbol.strip().upper():
+    manifest_symbol = manifest.get("symbol")
+    if not isinstance(manifest_symbol, str) or manifest_symbol.strip().upper() != symbol.strip().upper():
         errors.append("symbol_mismatch")
-    if manifest.get("venue", "").strip().lower() != venue.strip().lower():
+    manifest_venue = manifest.get("venue")
+    if not isinstance(manifest_venue, str) or manifest_venue.strip().lower() != venue.strip().lower():
         errors.append("venue_mismatch")
     if manifest.get("contract_type") != "linear_perpetual":
         errors.append("unsupported_contract_type")
