@@ -287,6 +287,42 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertTrue(result["requires_reconciliation"])
         self.assertFalse(result["automatic_retry"])
 
+    def test_restart_reconciliation_rejects_duplicate_client_ids_before_adapter_calls(self):
+        class NoCallAdapter:
+            def __init__(self):
+                self.snapshot_calls = 0
+                self.query_calls = 0
+
+            def testnet_position_snapshot(self, symbol):
+                self.snapshot_calls += 1
+                raise AssertionError("invalid IDs must be rejected before snapshot query")
+
+            def query_testnet_order(self, symbol, client_id):
+                self.query_calls += 1
+                raise AssertionError("invalid IDs must be rejected before order query")
+
+        adapter = NoCallAdapter()
+        result = reconcile_testnet_restart(adapter, "BTCUSDT", ["btc-sl", "btc-sl"])
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "restart_client_order_ids_invalid")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertFalse(result["automatic_retry"])
+        self.assertEqual(adapter.snapshot_calls, 0)
+        self.assertEqual(adapter.query_calls, 0)
+
+    def test_restart_reconciliation_rejects_malformed_client_ids_before_adapter_calls(self):
+        class NoCallAdapter:
+            def testnet_position_snapshot(self, symbol):
+                raise AssertionError("malformed IDs must be rejected before adapter call")
+
+        for invalid_ids in (["btc sl"], ["bad/id"], ["x" * 37], [None], [""]):
+            with self.subTest(invalid_ids=invalid_ids):
+                result = reconcile_testnet_restart(NoCallAdapter(), "BTCUSDT", invalid_ids)
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["reason"], "restart_client_order_ids_invalid")
+                self.assertTrue(result["requires_reconciliation"])
+                self.assertFalse(result["automatic_retry"])
+
     def test_restart_reconciliation_query_timeout_fails_closed_without_mutation(self):
         import time
 
