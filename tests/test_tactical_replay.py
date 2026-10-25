@@ -43,8 +43,8 @@ class TacticalReplayTests(unittest.TestCase):
 
     def test_open_candles_are_excluded(self):
         one_hour, four_hour, now_ms = self.inputs()
-        one_hour.append({**one_hour[-1], "t": one_hour[-1]["t"] + 3_600_000, "c": 999.0, "h": 999.0})
-        four_hour.append({**four_hour[-1], "t": four_hour[-1]["t"] + 14_400_000, "c": 999.0, "h": 999.0})
+        one_hour.append({**one_hour[-1], "t": now_ms - now_ms % 3_600_000, "c": 999.0, "h": 999.0})
+        four_hour.append({**four_hour[-1], "t": now_ms - now_ms % 14_400_000, "c": 999.0, "h": 999.0})
         result = replay_tactical_setup(
             symbol="SOLUSDT", candles_1h=one_hour,
             candles_4h=four_hour, now_ms=now_ms,
