@@ -19,7 +19,7 @@ class PaperTradeSimulatorTests(unittest.TestCase):
     def test_no_trade_for_watch_signal(self):
         result = simulate_tactical_candidate(
             observation=self.candidate(signal="WATCH-LONG"),
-            future_candles=[self.candle(3_600_000)],
+            future_candles=[self.candle(3_600_001)],
         )
         self.assertEqual(result["status"], "NO_TRADE")
         self.assertFalse(result["auto_trade_authorized"])
@@ -27,7 +27,7 @@ class PaperTradeSimulatorTests(unittest.TestCase):
     def test_stop_wins_when_stop_and_target_touched_same_bar(self):
         result = simulate_tactical_candidate(
             observation=self.candidate(),
-            future_candles=[self.candle(3_600_000, o=100, h=106, l=94, c=101)],
+            future_candles=[self.candle(3_600_001, o=100, h=106, l=94, c=101)],
             fee_bps_per_side=0, slippage_bps_per_side=0, funding_bps_per_8h=0,
         )
         self.assertEqual(result["exit_reason"], "STOP")
@@ -37,7 +37,7 @@ class PaperTradeSimulatorTests(unittest.TestCase):
         result = simulate_tactical_candidate(
             observation=self.candidate(),
             future_candles=[
-                self.candle(3_600_000, o=100, h=106, l=99, c=105),
+                self.candle(3_600_001, o=100, h=106, l=99, c=105),
                 self.candle(7_200_000, o=105, h=111, l=104, c=110),
             ],
             fee_bps_per_side=0, slippage_bps_per_side=0, funding_bps_per_8h=0,
@@ -51,7 +51,7 @@ class PaperTradeSimulatorTests(unittest.TestCase):
     def test_end_of_available_data_is_censored_not_a_completed_max_hold(self):
         result = simulate_tactical_candidate(
             observation=self.candidate(),
-            future_candles=[self.candle(3_600_000, o=100, h=102, l=99, c=101)],
+            future_candles=[self.candle(3_600_001, o=100, h=102, l=99, c=101)],
             fee_bps_per_side=0, slippage_bps_per_side=0, funding_bps_per_8h=0,
             max_holding_candles=12,
         )
@@ -63,12 +63,12 @@ class PaperTradeSimulatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "risk levels"):
             simulate_tactical_candidate(
                 observation=self.candidate(sl=101),
-                future_candles=[self.candle(3_600_000)],
+                future_candles=[self.candle(3_600_001)],
             )
-        with self.assertRaisesRegex(ValueError, "precedes signal close"):
+        with self.assertRaisesRegex(ValueError, "must be after signal close"):
             simulate_tactical_candidate(
                 observation=self.candidate(),
-                future_candles=[self.candle(0)],
+                future_candles=[self.candle(3_600_000)],
             )
 
 
