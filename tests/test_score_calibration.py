@@ -55,6 +55,17 @@ class ScoreCalibrationTests(unittest.TestCase):
             with self.subTest(row=row), self.assertRaises(ValueError):
                 summarize_score_calibration([row])
 
+    def test_reports_trades_outside_configured_score_bands(self):
+        trades = [
+            {"symbol": "BTCUSDT", "score": 65, "net_return": 0.02, "exit_ts": 1},
+            {"symbol": "BTCUSDT", "score": 75, "net_return": -0.01, "exit_ts": 2},
+            {"symbol": "BTCUSDT", "score": 100, "net_return": 0.03, "exit_ts": 3},
+        ]
+        report = summarize_score_calibration(trades)
+        self.assertEqual(report["input_trade_count"], 3)
+        self.assertEqual(report["trade_count_in_bands"], 2)
+        self.assertEqual(report["trade_count_outside_bands"], 1)
+
     def test_empty_input_does_not_fabricate_results(self):
         report = summarize_score_calibration([])
         self.assertEqual(report["trade_count_in_bands"], 0)
