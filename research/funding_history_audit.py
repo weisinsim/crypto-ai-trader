@@ -99,7 +99,14 @@ def calculate_position_funding(*, events, symbol, side, entry_timestamp_ms,
     applied = [e for e in audit["events"]
                if entry_timestamp_ms <= e["funding_timestamp_ms"] < exit_timestamp_ms]
     side_sign = 1.0 if side == "LONG" else -1.0
-    total_cost = sum(float(entry_notional) * e["funding_rate"] * side_sign for e in applied)
+    total_cost = 0.0
+    for event in applied:
+        event_cost = float(entry_notional) * event["funding_rate"] * side_sign
+        if not math.isfinite(event_cost):
+            raise ValueError("funding cost calculation overflowed; check rate and notional magnitudes")
+        total_cost += event_cost
+        if not math.isfinite(total_cost):
+            raise ValueError("total funding cost overflowed; check event count and notional magnitudes")
     return {
         "symbol": symbol.strip().upper(),
         "side": side,
@@ -179,7 +186,11 @@ def calculate_position_funding_with_notional_path(
         if segment is None:
             raise ValueError("funding event has no matching notional segment")
         cost = segment["notional"] * event["funding_rate"] * side_sign
+        if not math.isfinite(cost):
+            raise ValueError("funding cost calculation overflowed; check rate and notional magnitudes")
         total_cost += cost
+        if not math.isfinite(total_cost):
+            raise ValueError("total funding cost overflowed; check event count and notional magnitudes")
         applied.append({
             **event,
             "applied_notional": segment["notional"],
