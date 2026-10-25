@@ -130,6 +130,26 @@ class AlertContractTests(unittest.TestCase):
         self.assertEqual(payload["alerts"], [])
         self.assertFalse(payload["auto_trade_authorized"])
 
+
+    def test_invalid_max_age_windows_fail_closed(self):
+        for age in (0, -1, True, float("nan"), float("inf")):
+            with self.subTest(age=age):
+                self.assertIsNone(
+                    validate_alert_candidate("BTCUSDT", self.item, self.now, max_age_seconds=age)
+                )
+
+    def test_untrusted_metadata_is_bounded_and_string_only(self):
+        item = {
+            **self.item,
+            "model_name": "<script>" + ("x" * 200),
+            "confirmed_score_label": {"unexpected": "object"},
+        }
+        alert = validate_alert_candidate("BTCUSDT", item, self.now)
+        self.assertIsNotNone(alert)
+        self.assertEqual(len(alert["model_name"]), 80)
+        self.assertTrue(alert["model_name"].startswith("<script>"))
+        self.assertIsNone(alert["score_label"])
+
     def test_production_status_is_not_marked_research_only(self):
         item = {**self.item, "model_status": "PRODUCTION"}
         alert = validate_alert_candidate("BTCUSDT", item, self.now)
