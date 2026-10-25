@@ -1,14 +1,52 @@
 """Strict metadata gate for funding-history imports (research-only).
 
-This validates an import manifest's shape and consistency. It does not contact an
-exchange, verify a claimed endpoint, or prove that a digest matches raw bytes.
+This validates import-manifest shape and consistency and can verify a digest
+against caller-supplied exact raw bytes. It does not contact an exchange or
+prove source authenticity or event coverage.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 
 
 _SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+
+
+def verify_raw_payload_sha256(manifest, raw_payload):
+    """Compare the manifest SHA-256 with the exact raw response bytes.
+
+    The caller is responsible for passing the unmodified bytes as received,
+    not parsed/re-serialized JSON. This proves byte-level digest agreement only;
+    it does not prove where those bytes originated or that all pages were fetched.
+    """
+    if not isinstance(manifest, dict):
+        raise ValueError("manifest must be a mapping")
+    if not isinstance(raw_payload, bytes):
+        raise ValueError("raw_payload must be bytes from the unmodified response")
+    claimed = manifest.get("raw_payload_sha256")
+    if not isinstance(claimed, str) or not _SHA256_RE.fullmatch(claimed):
+        return {
+            "status": "FAIL",
+            "error": "invalid_raw_payload_sha256",
+            "computed_sha256": hashlib.sha256(raw_payload).hexdigest(),
+            "raw_digest_verified": False,
+            "source_verified": False,
+            "event_coverage_verified": False,
+            "auto_trade_authorized": False,
+        }
+    computed = hashlib.sha256(raw_payload).hexdigest()
+    matches = computed.lower() == claimed.lower()
+    return {
+        "status": "PASS" if matches else "FAIL",
+        "error": None if matches else "raw_payload_digest_mismatch",
+        "computed_sha256": computed,
+        "raw_digest_verified": matches,
+        "source_verified": False,
+        "event_coverage_verified": False,
+        "auto_trade_authorized": False,
+        "warning": "Digest agreement verifies bytes only, not exchange provenance or pagination completeness.",
+    }
 
 
 def audit_funding_import_manifest(
@@ -16,9 +54,9 @@ def audit_funding_import_manifest(
 ):
     """Validate provenance metadata before funding events can be considered.
 
-    The caller must separately hash the exact raw response bytes and reconcile
-    every page with the source API. PASS means metadata is internally consistent,
-    not that exchange provenance or event completeness has been independently proved.
+    The caller must separately verify the digest against exact raw bytes and
+    reconcile every page with the source API. PASS means metadata is internally
+    consistent, not that exchange provenance or event completeness is proved.
     """
     errors = []
     if not isinstance(manifest, dict):
@@ -87,5 +125,5 @@ def audit_funding_import_manifest(
         "raw_digest_verified": False,
         "event_coverage_verified": False,
         "auto_trade_authorized": False,
-        "warning": "Metadata validation only; independently hash raw bytes and reconcile exchange pagination, contract identity, and event coverage.",
+        "warning": "Metadata validation only; independently verify raw bytes and reconcile exchange pagination, contract identity, and event coverage.",
     }
