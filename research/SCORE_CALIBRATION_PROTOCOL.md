@@ -40,8 +40,7 @@ research.score_calibration.summarize_score_calibration expects one row per compl
 5. Report count, win rate, mean net expectancy, profit factor, maximum drawdown, costs/funding assumptions and date range.
 6. Buckets below 30 trades are INSUFFICIENT_SAMPLE; 30 is not proof of significance.
 7. Report the 95% Wilson confidence interval for each bucket's win rate. Treat wide intervals as high uncertainty; do not interpret the point estimate alone as stable performance.
-7. Use multiple walk-forward folds and cost stress tests. Do not call scores probabilities without separate independent calibration and validation.
-7. Use multiple walk-forward folds and cost stress tests. Do not call scores probabilities without separate independent calibration and validation.
+8. Use multiple walk-forward folds and cost stress tests. Do not call scores probabilities without separate independent calibration and validation.
 
 ## Safety boundary
 
