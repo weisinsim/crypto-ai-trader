@@ -81,6 +81,10 @@ class DashboardResearchPanelTests(unittest.TestCase):
         self.assertIn('if(m.type==="status"){setStatus(m.status==="LIVE"?"LIVE":m.status==="DELAYED"?"DELAYED":"FALLBACK");}', self.html)
         self.assertNotIn('if(m.type==="status")setStatus(m.status);', self.html)
 
+    def test_malformed_websocket_message_fails_closed_and_closes_socket(self):
+        self.assertIn('try{m=JSON.parse(e.data)}catch(err){setStatus("FALLBACK");try{ws.close()}catch(closeErr){}return;}', self.html)
+        self.assertNotIn('const m=JSON.parse(e.data);', self.html)
+
     def test_html_document_and_script_are_closed(self):
         self.assertEqual(self.html.count("<script>"), 1)
         self.assertEqual(self.html.count("</script>"), 1)
