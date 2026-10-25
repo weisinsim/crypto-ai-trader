@@ -13,6 +13,9 @@ class TestnetReconciliationTests(unittest.TestCase):
             "type": "STOP_MARKET",
             "status": "NEW",
             "reduce_only": True,
+            "side": "SELL",
+            "orig_quantity": "0.5",
+            "stop_price": "99",
             **overrides,
         }
 
@@ -108,6 +111,42 @@ class TestnetReconciliationTests(unittest.TestCase):
             {"BTCUSDT": self.snapshot()},
         )
         self.assertIn("DUPLICATE_NORMALIZED_SYMBOL", result["reasons"])
+
+    def test_required_protective_order_side_quantity_and_type_are_checked(self):
+        wrong_side = reconcile_testnet_state(
+            {"BTCUSDT": "0.5"},
+            {"BTCUSDT": self.snapshot("0.5", [self.protective(side="BUY")])},
+            {"BTCUSDT": ["btc-stop-1"]},
+        )
+        wrong_quantity = reconcile_testnet_state(
+            {"BTCUSDT": "0.5"},
+            {"BTCUSDT": self.snapshot("0.5", [self.protective(orig_quantity="0.4")])},
+            {"BTCUSDT": ["btc-stop-1"]},
+        )
+        wrong_type = reconcile_testnet_state(
+            {"BTCUSDT": "0.5"},
+            {"BTCUSDT": self.snapshot("0.5", [self.protective(type="LIMIT")])},
+            {"BTCUSDT": ["btc-stop-1"]},
+        )
+        invalid_trigger = reconcile_testnet_state(
+            {"BTCUSDT": "0.5"},
+            {"BTCUSDT": self.snapshot("0.5", [self.protective(stop_price="NaN")])},
+            {"BTCUSDT": ["btc-stop-1"]},
+        )
+        self.assertIn("BTCUSDT:PROTECTIVE_ORDER_SIDE_MISMATCH", wrong_side["reasons"])
+        self.assertIn("BTCUSDT:PROTECTIVE_ORDER_QUANTITY_MISMATCH", wrong_quantity["reasons"])
+        self.assertIn("BTCUSDT:PROTECTIVE_ORDER_TYPE_INVALID", wrong_type["reasons"])
+        self.assertIn("BTCUSDT:PROTECTIVE_ORDER_TRIGGER_PRICE_INVALID", invalid_trigger["reasons"])
+
+    def test_short_position_requires_buy_protective_side(self):
+        result = reconcile_testnet_state(
+            {"BTCUSDT": "-0.5"},
+            {"BTCUSDT": self.snapshot("-0.5", [
+                self.protective(side="BUY")
+            ])},
+            {"BTCUSDT": ["btc-stop-1"]},
+        )
+        self.assertTrue(result["ok"])
 
 
 if __name__ == "__main__":
