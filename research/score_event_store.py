@@ -128,7 +128,7 @@ class ScoreEventStore:
     def calibration_report(self, *, min_samples=30):
         """Summarize persisted completed outcomes without hiding incomplete events."""
         ledger = self.calibration_rows()
-        summary = summarize_score_calibration(ledger["trades"], min_samples=min_samples)
+        summary = summarize_score_calibration(ledger["trades"], min_samples=min_samples, split_by_side=True)
         return {
             "status": "RESEARCH_ONLY",
             "coverage": {
