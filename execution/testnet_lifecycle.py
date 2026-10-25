@@ -387,7 +387,7 @@ def reconcile_testnet_restart(adapter, symbol: str, expected_client_order_ids):
     try:
         snapshot = adapter.testnet_position_snapshot(symbol)
         if not snapshot.get("ok"):
-            return {"ok": False, "reason": "restart_snapshot_failed", "requires_reconciliation": True}
+            return {"ok": False, "reason": "restart_snapshot_failed", "requires_reconciliation": True, "automatic_retry": False}
         timing = validate_snapshot_timing(
             snapshot,
             now_ms=int(time.time() * 1000),
@@ -400,6 +400,7 @@ def reconcile_testnet_restart(adapter, symbol: str, expected_client_order_ids):
                 "reason": "restart_snapshot_timing_rejected",
                 "timing_reason": timing.get("reason"),
                 "requires_reconciliation": True,
+                "automatic_retry": False,
             }
         queries = {}
         for client_id in expected_client_order_ids:
@@ -411,7 +412,7 @@ def reconcile_testnet_restart(adapter, symbol: str, expected_client_order_ids):
             now_ms=int(time.time() * 1000),
         )
         if not result.get("ok"):
-            return {**result, "requires_reconciliation": True}
+            return {**result, "requires_reconciliation": True, "automatic_retry": False}
         return {
             **result,
             "symbol": symbol,
