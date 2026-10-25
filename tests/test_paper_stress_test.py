@@ -35,6 +35,17 @@ class PaperStressTestTests(unittest.TestCase):
             self.assertEqual(scenario["coverage"]["input_candidate_count"], 1)
             self.assertEqual(scenario["coverage"]["classified_count"], 1)
             self.assertTrue(scenario["coverage"]["coverage_complete"])
+            self.assertEqual(
+                scenario["funding_model"],
+                "CANDLE_BUCKET_ASSUMPTION_NOT_EXCHANGE_SETTLEMENT",
+            )
+            self.assertFalse(scenario["funding_history_verified"])
+            completed = scenario["report"]["completed_simulations"]["trades"]
+            self.assertEqual(
+                completed[0]["funding_model"],
+                "CANDLE_BUCKET_ASSUMPTION_NOT_EXCHANGE_SETTLEMENT",
+            )
+            self.assertFalse(completed[0]["funding_history_verified"])
 
     def test_entry_gap_filtered_candidates_remain_visible_in_coverage(self):
         row = candidate("gap")
