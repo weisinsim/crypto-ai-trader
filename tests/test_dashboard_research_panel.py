@@ -85,7 +85,8 @@ class DashboardResearchPanelTests(unittest.TestCase):
         self.assertIn('const generatedMs=typeof payload.generated_at==="number"&&Number.isFinite(payload.generated_at)?payload.generated_at*1000:NaN;', self.html)
         self.assertIn('nowMs-generatedMs<=120000', self.html)
         self.assertIn('const feedLive=payload.status==="LIVE"&&envelopeFresh;', self.html)
-        self.assertIn('a.model_status==="FROZEN"', self.html)
+        self.assertIn('!["RESEARCH","PRODUCTION"].includes(a.model_status)', self.html)
+        self.assertNotIn('a.model_status==="FROZEN"', self.html)
 
     def test_malformed_websocket_message_fails_closed_and_closes_socket(self):
         self.assertIn('try{m=JSON.parse(e.data)}catch(err){setStatus("FALLBACK");try{ws.close()}catch(closeErr){}return;}', self.html)
