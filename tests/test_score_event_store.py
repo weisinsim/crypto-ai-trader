@@ -24,7 +24,8 @@ class ScoreEventStoreTests(unittest.TestCase):
 
     def test_persists_across_store_restart_and_joins_frozen_score(self):
         self.store.record_score_event(self.event)
-        self.store.record_realized_trade(self.trade)
+        # Primary calibration includes only records with all required cost fields present.
+        self.store.record_realized_trade(dict(self.trade, fees=0.001, slippage=0.002, funding=0.0))
         restarted = ScoreEventStore(self.path)
         report = restarted.calibration_rows()
         self.assertEqual(report["score_event_count"], 1)
