@@ -1,6 +1,6 @@
 import unittest
 
-from validation.alert_contract import validate_alert_candidate
+from validation.alert_contract import build_alert_payload, validate_alert_candidate
 
 
 class AlertContractTests(unittest.TestCase):
@@ -80,6 +80,37 @@ class AlertContractTests(unittest.TestCase):
             with self.subTest(field=field, value=value):
                 item = {**self.item, field: value}
                 self.assertIsNone(validate_alert_candidate("BTCUSDT", item, self.now))
+
+
+    def test_alert_envelope_fails_closed_for_stale_or_non_live_heartbeat(self):
+        for status, updated in (
+            ("STARTING", self.now),
+            ("LIVE", self.now - 121),
+            ("LIVE", self.now + 1),
+            ("LIVE", True),
+        ):
+            with self.subTest(status=status, updated=updated):
+                payload = build_alert_payload(
+                    {"status": status, "updated": updated},
+                    {"BTCUSDT": self.item},
+                    ["BTCUSDT"],
+                    self.now,
+                )
+                self.assertEqual(payload["status"], "DELAYED")
+                self.assertEqual(payload["alerts"], [])
+                self.assertFalse(payload["auto_trade_authorized"])
+
+    def test_alert_envelope_includes_valid_signal_only_with_fresh_live_heartbeat(self):
+        payload = build_alert_payload(
+            {"status": "LIVE", "updated": self.now - 2},
+            {"BTCUSDT": self.item},
+            ["BTCUSDT"],
+            self.now,
+        )
+        self.assertEqual(payload["status"], "LIVE")
+        self.assertEqual(len(payload["alerts"]), 1)
+        self.assertTrue(payload["notification_only"])
+        self.assertIs(payload["auto_trade_authorized"], False)
 
     def test_production_status_is_not_marked_research_only(self):
         item = {**self.item, "model_status": "PRODUCTION"}
