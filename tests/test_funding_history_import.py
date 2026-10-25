@@ -108,7 +108,7 @@ class FundingHistoryImportTests(unittest.TestCase):
                     )
 
     def test_anchored_cadence_rejects_excessive_expected_grid(self):
-        source = "fundingTime,fundingRate\\n"
+        source = "fundingTime,fundingRate\n"
         with self.assertRaisesRegex(ValueError, "exceeds 100000 events"):
             import_funding_csv(
                 source, symbol="BTCUSDT",
