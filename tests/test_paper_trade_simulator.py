@@ -102,6 +102,26 @@ class PaperTradeSimulatorTests(unittest.TestCase):
 
 
 
+    def test_entry_gap_beyond_stop_or_first_target_is_filtered(self):
+        cases = [
+            (self.candidate(), self.candle(3_600_001, o=94, h=96, l=93, c=95)),
+            (self.candidate(), self.candle(3_600_001, o=106, h=108, l=105, c=107)),
+            (self.candidate(signal="SHORT", entry=100, sl=105, tp1=95, tp2=90),
+             self.candle(3_600_001, o=106, h=108, l=105, c=107)),
+            (self.candidate(signal="SHORT", entry=100, sl=105, tp1=95, tp2=90),
+             self.candle(3_600_001, o=94, h=96, l=93, c=95)),
+        ]
+        for observation, first_candle in cases:
+            with self.subTest(side=observation["signal"], open=first_candle["o"]):
+                result = simulate_tactical_candidate(
+                    observation=observation, future_candles=[first_candle],
+                    fee_bps_per_side=0, slippage_bps_per_side=0, funding_bps_per_8h=0,
+                )
+                self.assertEqual(result["status"], "NO_TRADE")
+                self.assertEqual(result["reason"], "ENTRY_GAP_INVALIDATED")
+                self.assertFalse(result["outcome_complete"])
+                self.assertFalse(result["auto_trade_authorized"])
+
     def test_gap_through_stop_uses_worse_open_reference(self):
         long_result = simulate_tactical_candidate(
             observation=self.candidate(),
