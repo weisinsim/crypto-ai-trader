@@ -122,6 +122,25 @@ class PaperTradeSimulatorTests(unittest.TestCase):
                 self.assertFalse(result["outcome_complete"])
                 self.assertFalse(result["auto_trade_authorized"])
 
+    def test_entry_slippage_that_crosses_stop_or_target_filters_candidate(self):
+        long_result = simulate_tactical_candidate(
+            observation=self.candidate(),
+            future_candles=[self.candle(3_600_001, o=100, h=101, l=99, c=100)],
+            fee_bps_per_side=0, slippage_bps_per_side=600, funding_bps_per_8h=0,
+        )
+        self.assertEqual(long_result["status"], "NO_TRADE")
+        self.assertEqual(long_result["reason"], "ENTRY_SLIPPAGE_INVALIDATED")
+        self.assertFalse(long_result["outcome_complete"])
+
+        short_result = simulate_tactical_candidate(
+            observation=self.candidate(signal="SHORT", entry=100, sl=105, tp1=95, tp2=90),
+            future_candles=[self.candle(3_600_001, o=100, h=101, l=99, c=100)],
+            fee_bps_per_side=0, slippage_bps_per_side=600, funding_bps_per_8h=0,
+        )
+        self.assertEqual(short_result["status"], "NO_TRADE")
+        self.assertEqual(short_result["reason"], "ENTRY_SLIPPAGE_INVALIDATED")
+        self.assertFalse(short_result["outcome_complete"])
+
     def test_gap_through_stop_uses_worse_open_reference(self):
         long_result = simulate_tactical_candidate(
             observation=self.candidate(),
