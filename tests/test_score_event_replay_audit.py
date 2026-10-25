@@ -57,6 +57,22 @@ class ScoreEventReplayAuditTests(unittest.TestCase):
         self.assertEqual(report["differences"]["score"]["first"], 78.5)
         self.assertEqual(report["differences"]["score"]["second"], 79.0)
 
+    def test_score_breakdown_is_frozen_and_compared(self):
+        first = self.build(score_breakdown={"trend": 30, "rsi": 20})
+        second = self.build(score_breakdown={"rsi": 20, "trend": 30})
+        self.assertEqual(first["score_breakdown"], second["score_breakdown"])
+        self.assertEqual(first["signal_id"], second["signal_id"])
+        changed = self.build(score_breakdown={"trend": 20, "rsi": 20})
+        report = compare_replayed_score_events(first, changed)
+        self.assertEqual(report["status"], "MISMATCH")
+        self.assertIn("score_breakdown", report["differences"])
+
+    def test_score_breakdown_rejects_non_json_finite_values(self):
+        with self.assertRaisesRegex(ValueError, "JSON-compatible"):
+            self.build(score_breakdown={"trend": float("nan")})
+        with self.assertRaisesRegex(ValueError, "mapping"):
+            self.build(score_breakdown=["not", "a", "mapping"])
+
     def test_replay_comparison_rejects_non_mapping_inputs(self):
         with self.assertRaisesRegex(ValueError, "mappings"):
             compare_replayed_score_events(self.build(), None)
