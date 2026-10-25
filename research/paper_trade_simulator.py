@@ -58,8 +58,8 @@ def simulate_tactical_candidate(*, observation, future_candles,
         if not isinstance(candle, dict):
             raise ValueError(f"future candle {index} must be a mapping")
         timestamp = candle.get("t")
-        if isinstance(timestamp, bool) or not isinstance(timestamp, int) or timestamp < signal_close:
-            raise ValueError(f"future candle {index} timestamp precedes signal close")
+        if isinstance(timestamp, bool) or not isinstance(timestamp, int) or timestamp <= signal_close:
+            raise ValueError(f"future candle {index} timestamp must be after signal close")
         values = [candle.get(key) for key in ("o", "h", "l", "c")]
         if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v > 0 for v in values):
             raise ValueError(f"future candle {index} has invalid OHLC values")
