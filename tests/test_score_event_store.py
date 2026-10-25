@@ -60,6 +60,24 @@ class ScoreEventStoreTests(unittest.TestCase):
         self.assertEqual(report["trades"][1]["cost_coverage_status"], "INCOMPLETE_COST_FIELDS")
         self.assertEqual(report["trades"][1]["cost_fields_missing"], ["fees", "funding"])
 
+    def test_primary_calibration_excludes_incomplete_cost_records_but_reports_them(self):
+        self.store.record_score_event(self.event)
+        self.store.record_realized_trade(dict(self.trade, fees=0.001, slippage=0.002, funding=0.0))
+        other_event = dict(self.event, signal_id="SOL-1700000000001-SHORT", signal_ts=1700000000001)
+        self.store.record_score_event(other_event)
+        self.store.record_realized_trade(dict(
+            self.trade, signal_id=other_event["signal_id"], exit_ts=1700003600001,
+            fees=0.001, slippage=0.002
+        ))
+        report = self.store.calibration_report(min_samples=1)
+        self.assertEqual(report["coverage"]["completed_trade_count"], 2)
+        self.assertEqual(report["coverage"]["cost_fields_present_count"], 1)
+        self.assertEqual(report["coverage"]["cost_fields_incomplete_count"], 1)
+        self.assertEqual(report["calibration"]["trade_count_in_bands"], 1)
+        self.assertEqual(report["calibration"]["cost_eligible_trade_count"], 1)
+        self.assertEqual(report["calibration"]["cost_incomplete_excluded_count"], 1)
+        self.assertTrue(report["calibration"]["cost_fields_present_means_unverified"])
+
     def test_duplicate_events_and_outcomes_are_rejected(self):
         self.store.record_score_event(self.event)
         with self.assertRaisesRegex(ValueError, "already exists"):
