@@ -118,6 +118,27 @@ def reconcile_testnet_state(
                 symbol_reasons.append("PROTECTIVE_ORDER_NOT_REDUCE_ONLY")
             if status not in {"NEW", "PARTIALLY_FILLED"}:
                 symbol_reasons.append("PROTECTIVE_ORDER_NOT_OPEN")
+            if order.get("type") not in {"STOP_MARKET", "TAKE_PROFIT_MARKET"}:
+                symbol_reasons.append("PROTECTIVE_ORDER_TYPE_INVALID")
+            expected_side = "SELL" if expected > 0 else "BUY" if expected < 0 else None
+            if expected_side is None or order.get("side") != expected_side:
+                symbol_reasons.append("PROTECTIVE_ORDER_SIDE_MISMATCH")
+            try:
+                order_quantity = _decimal(
+                    order.get("orig_quantity", order.get("origQty")), "protective order quantity"
+                )
+                if order_quantity <= 0 or abs(order_quantity - abs(expected)) > tolerance:
+                    symbol_reasons.append("PROTECTIVE_ORDER_QUANTITY_MISMATCH")
+            except ValueError:
+                symbol_reasons.append("PROTECTIVE_ORDER_QUANTITY_INVALID")
+            try:
+                trigger_price = _decimal(
+                    order.get("stop_price", order.get("stopPrice")), "protective order trigger price"
+                )
+                if trigger_price <= 0:
+                    symbol_reasons.append("PROTECTIVE_ORDER_TRIGGER_PRICE_INVALID")
+            except ValueError:
+                symbol_reasons.append("PROTECTIVE_ORDER_TRIGGER_PRICE_INVALID")
         results[symbol] = {
             "ok": not symbol_reasons,
             "expected_position_amount": str(expected),
