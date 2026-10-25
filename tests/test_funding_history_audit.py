@@ -165,6 +165,23 @@ class FundingNotionalPathTests(unittest.TestCase):
                 }],
             )
 
+    def test_segmented_funding_cost_overflow_is_rejected(self):
+        from research.funding_history_audit import calculate_position_funding_with_notional_path
+
+        with self.assertRaisesRegex(ValueError, "funding cost calculation overflowed"):
+            calculate_position_funding_with_notional_path(
+                events=[{
+                    "symbol": "BTCUSDT", "funding_timestamp_ms": 1500,
+                    "funding_rate": 1e308,
+                }],
+                symbol="BTCUSDT", side="LONG",
+                entry_timestamp_ms=1000, exit_timestamp_ms=2000,
+                notional_segments=[{
+                    "start_ts_ms": 1000, "end_ts_ms": 2000,
+                    "notional": 1e308,
+                }],
+            )
+
     def test_negative_rate_and_short_side_reverse_cashflow(self):
         from research.funding_history_audit import calculate_position_funding_with_notional_path
 
