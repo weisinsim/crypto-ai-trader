@@ -2,7 +2,7 @@ import unittest
 import tempfile
 from pathlib import Path
 
-from validation.replay_dashboard_signals import ema, rsi, atr, adx, replay, ts_ms, read_rows, closed_rows_at, closed_four_count_at, signal_state_for, replay_model_status, risk_levels, validate_candle_cadence, utc_timestamp_iso
+from validation.replay_dashboard_signals import ema, rsi, atr, adx, adx_series, replay, ts_ms, read_rows, closed_rows_at, closed_four_count_at, signal_state_for, replay_model_status, risk_levels, validate_candle_cadence, utc_timestamp_iso
 
 
 class ReplayDashboardSignalsTests(unittest.TestCase):
@@ -51,6 +51,20 @@ class ReplayDashboardSignalsTests(unittest.TestCase):
         high = [v + (0 if i < 40 else 0.5) for i, v in enumerate(close)]
         low = [v - (0 if i < 40 else 0.5) for i, v in enumerate(close)]
         self.assertAlmostEqual(adx(high, low, close), original_adx(high, low, close), places=10)
+
+    def test_precomputed_adx_matches_every_prefix_including_flat_ranges(self):
+        close = [100.0] * 40 + [100.5, 101, 100.7, 102, 101.4, 102.2, 103]
+        close += [close[-1] + ((i % 5) - 2) * 0.17 for i in range(80)]
+        high = [v + (0 if i < 40 else 0.5 + (i % 3) * 0.1) for i, v in enumerate(close)]
+        low = [v - (0 if i < 40 else 0.5 + (i % 4) * 0.1) for i, v in enumerate(close)]
+        series = adx_series(high, low, close)
+        for end in range(1, len(close) + 1):
+            expected = adx(high[:end], low[:end], close[:end])
+            actual = series[end - 1]
+            if expected is None:
+                self.assertIsNone(actual, msg=f"prefix={end}")
+            else:
+                self.assertAlmostEqual(actual, expected, places=10, msg=f"prefix={end}")
 
     def test_zero_atr_uses_live_model_fallback_for_risk_levels(self):
         btc_stop, btc_target, btc_target2 = risk_levels("BTCUSDT", 100, 1, 0, 1.2, 1.5)
