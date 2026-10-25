@@ -52,7 +52,7 @@ class FundingImportBundleAuditTests(unittest.TestCase):
         self.assertFalse(result["raw_digest_verified"])
         self.assertFalse(result["normalization_verified"])
         self.assertFalse(result["normalized_events_match_raw_payload"])
-        self.assertIn("not parsed or reconciled", result["warning"])
+        self.assertIn("independently parsed raw events", result["warning"])
         self.assertFalse(result["source_verified"])
         self.assertFalse(result["event_coverage_verified"])
         self.assertFalse(result["auto_trade_authorized"])
