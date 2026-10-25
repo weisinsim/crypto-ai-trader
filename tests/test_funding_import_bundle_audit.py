@@ -46,6 +46,7 @@ class FundingImportBundleAuditTests(unittest.TestCase):
         self.assertTrue(result["page_count_matches_manifest"])
         self.assertTrue(result["aggregate_digest_present"])
         self.assertTrue(result["aggregate_digest_verified"])
+        self.assertFalse(result["raw_digest_verified"])
         self.assertFalse(result["source_verified"])
         self.assertFalse(result["event_coverage_verified"])
         self.assertFalse(result["auto_trade_authorized"])
@@ -74,6 +75,7 @@ class FundingImportBundleAuditTests(unittest.TestCase):
         self.assertEqual(result["status"], "PASS")
         self.assertFalse(result["aggregate_digest_present"])
         self.assertFalse(result["aggregate_digest_verified"])
+        self.assertFalse(result["raw_digest_verified"])
 
 
 if __name__ == "__main__":
