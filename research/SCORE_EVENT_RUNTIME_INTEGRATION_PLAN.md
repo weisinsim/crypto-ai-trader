@@ -64,3 +64,6 @@ Cost-sensitivity stress runner added in `research/paper_stress_test.py`. It repl
 
 
 Execution-cost audit refinement: the paper lifecycle simulator now applies adverse slippage to both entry and every exit fill (long exits lower, short exits higher), while retaining the reference trigger price separately for audit. Regression tests verify exit slippage worsens returns for both LONG and SHORT. These remain modeled fills, not order-book or exchange-fill verification.
+
+
+Look-ahead boundary hardening: the paper simulator now rejects any future candle whose timestamp is less than or equal to the signal candle close. This prevents accidental reuse of the signal candle as the post-signal entry/outcome candle. Regression tests cover the exact-boundary rejection; this validates timestamp ordering only and does not prove the upstream candle timestamps themselves are correctly defined.
