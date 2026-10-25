@@ -12,6 +12,14 @@ import hashlib
 import math
 
 
+def _is_finite_number(value):
+    """Return False for numeric values that cannot be represented finitely."""
+    try:
+        return math.isfinite(float(value))
+    except (OverflowError, TypeError, ValueError):
+        return False
+
+
 def audit_funding_pages(pages, *, symbol, start_ts_ms, end_ts_ms,
                         expected_first_cursor=None,
                         parsed_raw_events_by_page=None):
@@ -126,7 +134,7 @@ def audit_funding_pages(pages, *, symbol, start_ts_ms, end_ts_ms,
                 if parsed_raw_events_by_page is not None:
                     normalization_verified = False
                 continue
-            if isinstance(rate, bool) or not isinstance(rate, (int, float)) or not math.isfinite(rate):
+            if isinstance(rate, bool) or not isinstance(rate, (int, float)) or not _is_finite_number(rate):
                 errors.append(f"page_{index}:event_{event_index}_invalid_rate")
                 if parsed_raw_events_by_page is not None:
                     normalization_verified = False
@@ -159,7 +167,7 @@ def audit_funding_pages(pages, *, symbol, start_ts_ms, end_ts_ms,
                         or raw_symbol.strip().upper() != symbol.strip().upper()
                         or isinstance(raw_ts, bool) or not isinstance(raw_ts, int) or raw_ts < 0
                         or isinstance(raw_rate, bool) or not isinstance(raw_rate, (int, float))
-                        or not math.isfinite(raw_rate)):
+                        or not _is_finite_number(raw_rate)):
                         raw_keys.append(None)
                     else:
                         raw_keys.append((raw_symbol.strip().upper(), raw_ts, float(raw_rate)))
