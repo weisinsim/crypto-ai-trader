@@ -103,11 +103,31 @@ def run_paper_stress_scenarios(candidates, *, scenarios=DEFAULT_SCENARIOS,
                 "fill_prices_verified": False,
             })
         report = build_paper_backtest_report(rows)
+        completed_count = report["completed_simulation_count"]
+        censored_count = report["right_censored_count"]
+        rejected_count = report["rejected_count"]
+        filtered_count = len(filtered_candidates)
+        # Every supplied candidate must be visible in exactly one coverage bucket.
+        classified_count = completed_count + censored_count + rejected_count + filtered_count
+        if classified_count != len(candidates):
+            raise RuntimeError(
+                "candidate coverage invariant failed: "
+                f"{classified_count} classified vs {len(candidates)} supplied"
+            )
         reports.append({
             "scenario_id": scenario_id,
             "assumptions": settings,
             "report": report,
-            "filtered_candidate_count": len(filtered_candidates),
+            "coverage": {
+                "input_candidate_count": len(candidates),
+                "completed_count": completed_count,
+                "right_censored_count": censored_count,
+                "rejected_count": rejected_count,
+                "filtered_count": filtered_count,
+                "classified_count": classified_count,
+                "coverage_complete": classified_count == len(candidates),
+            },
+            "filtered_candidate_count": filtered_count,
             "filtered_candidates": filtered_candidates,
             "simulated_candidate_count": len(rows),
             "simulation_only": True,
