@@ -60,6 +60,37 @@ class ScoreEventReplayAuditTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "mappings"):
             compare_replayed_score_events(self.build(), None)
 
+    def test_replay_series_passes_when_events_match(self):
+        expected = [self.build(), self.build(score=81.0, candle_close_ts=1_800_000_003_600)]
+        replayed = [self.build(score=81.0, candle_close_ts=1_800_000_003_600), self.build()]
+        report = audit_replay_series(expected, replayed)
+        self.assertEqual(report["status"], "PASS")
+        self.assertEqual(report["matched_event_count"], 2)
+        self.assertEqual(report["missing_signal_ids"], [])
+        self.assertEqual(report["unexpected_signal_ids"], [])
+        self.assertTrue(report["research_only"])
+        self.assertFalse(report["auto_trade_authorized"])
+
+    def test_replay_series_reports_missing_unexpected_and_changed_events(self):
+        expected = [self.build(), self.build(score=81.0, candle_close_ts=1_800_000_003_600)]
+        replayed = [self.build(score=82.0, candle_close_ts=1_800_000_003_600),
+                    self.build(candle_close_ts=1_800_000_007_200)]
+        report = audit_replay_series(expected, replayed)
+        self.assertEqual(report["status"], "FAIL")
+        self.assertEqual(len(report["missing_signal_ids"]), 2)
+        self.assertEqual(len(report["unexpected_signal_ids"]), 2)
+
+    def test_replay_series_rejects_duplicate_ids_and_invalid_rows(self):
+        event = self.build()
+        report = audit_replay_series([event, event], [event, None])
+        self.assertEqual(report["status"], "FAIL")
+        self.assertTrue(report["expected_input_errors"])
+        self.assertTrue(report["replayed_input_errors"])
+
+    def test_replay_series_requires_sequences(self):
+        with self.assertRaisesRegex(ValueError, "sequences"):
+            audit_replay_series(None, [])
+
     def test_normalizes_symbol_side_and_timeframe(self):
         first = self.build()
         normalized = self.build(symbol=" btcusdt ", side="long", timeframe="1H")
