@@ -187,8 +187,10 @@ def simulate_tactical_candidate(*, observation, future_candles,
     # Entry fee plus exit fees on each executed unit fraction's exit notional.
     exit_fee_notional = sum(item["quantity"] * item["price"] for item in exits)
     fee_cost = (fee_bps_per_side / 10_000) * (traded_notional + exit_fee_notional)
-    # Conservative fixed funding debit per elapsed 8-hour interval, applied to entry notional.
-    funding_intervals = max(0, math.ceil((bars_used - 1) / 8))
+    # Conservative candle-count bucket approximation: charge for every started
+    # 8-candle bucket. This is NOT exchange funding settlement accounting; real
+    # funding requires the position's exact open/close times and settlement events.
+    funding_intervals = math.ceil(bars_used / 8)
     funding_cost = traded_notional * (funding_bps_per_8h / 10_000) * funding_intervals
     net_pnl = realized_gross - fee_cost - funding_cost
     return {
