@@ -84,7 +84,7 @@ class PartialFillLeavesExposure:
         self.cancel_calls = 0
 
     def query_testnet_order(self, symbol, client_order_id):
-        return {"found": True, "status": "PARTIALLY_FILLED", "executed_quantity": "0.2"}
+        return {"found": True, "status": "FILLED", "executed_quantity": "0.5"}
 
     def testnet_position_snapshot(self, symbol):
         return {"ok": True, "position_amount": "0.3"}
@@ -156,7 +156,7 @@ class TestnetAmbiguousNetworkRecoveryTests(unittest.TestCase):
             adapter, "BTCUSDT", "btc-sl", "btc-tp"
         )
         self.assertFalse(result["ok"])
-        self.assertEqual(result["reason"], "exit_not_fully_filled")
+        self.assertEqual(result["reason"], "position_not_flat_sibling_must_remain")
         self.assertEqual(adapter.cancel_calls, 0)
 
     def test_sibling_fill_race_requires_reconciliation_after_cancel_ack(self):
