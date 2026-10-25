@@ -3,6 +3,7 @@ import unittest
 from research.score_event_replay_audit import (
     build_frozen_score_event,
     compare_replayed_score_events,
+    audit_replay_series,
 )
 
 
