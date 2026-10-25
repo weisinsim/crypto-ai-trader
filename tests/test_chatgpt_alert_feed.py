@@ -157,6 +157,12 @@ class ChatGPTAlertFeedTests(unittest.TestCase):
         payload = asyncio.run(dashboard.chatgpt_alert_feed())
         self.assertEqual(payload["count"], 0)
 
+        # bool is a subclass of int in Python; it must not pass timestamp validation.
+        dashboard.market_status["updated"] = True
+        payload = asyncio.run(dashboard.chatgpt_alert_feed())
+        self.assertEqual(payload["count"], 0)
+        self.assertEqual(payload["alerts"], [])
+
     def test_suppresses_candidate_when_its_symbol_ticker_is_stale_or_invalid(self):
         item = dashboard.cache["BTCUSDT"]
         item["ts"] = time.time() - 121
