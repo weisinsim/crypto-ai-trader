@@ -31,6 +31,10 @@ class PaperStressTestTests(unittest.TestCase):
         self.assertGreater(base, high)
         self.assertFalse(result["historical_funding_verified"])
         self.assertIsNone(result["verified_score_calibration"])
+        for scenario in result["scenarios"]:
+            self.assertEqual(scenario["coverage"]["input_candidate_count"], 1)
+            self.assertEqual(scenario["coverage"]["classified_count"], 1)
+            self.assertTrue(scenario["coverage"]["coverage_complete"])
 
     def test_entry_gap_filtered_candidates_remain_visible_in_coverage(self):
         row = candidate("gap")
@@ -42,6 +46,9 @@ class PaperStressTestTests(unittest.TestCase):
         for scenario in result["scenarios"]:
             self.assertEqual(scenario["filtered_candidate_count"], 1)
             self.assertEqual(scenario["simulated_candidate_count"], 0)
+            self.assertEqual(scenario["coverage"]["filtered_count"], 1)
+            self.assertEqual(scenario["coverage"]["classified_count"], 1)
+            self.assertTrue(scenario["coverage"]["coverage_complete"])
             self.assertEqual(scenario["filtered_candidates"][0]["reason"], "ENTRY_GAP_INVALIDATED")
 
     def test_duplicate_candidate_ids_after_whitespace_normalization_rejected(self):
