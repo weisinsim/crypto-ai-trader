@@ -40,6 +40,53 @@ class FundingHistoryImportTests(unittest.TestCase):
         )
         self.assertFalse(result["manifest"]["cadence_check_passed"])
 
+    def test_anchored_cadence_detects_missing_window_boundaries(self):
+        source = (
+            "fundingTime,fundingRate\\n"
+            "2025-01-01T08:00:00Z,0.001\\n"
+            "2025-01-01T16:00:00Z,0.001\\n"
+        )
+        result = import_funding_csv(
+            source, symbol="BTCUSDT",
+            start_ts_ms=1735689600000, end_ts_ms=1735776000000,
+            expected_interval_ms=28_800_000,
+            expected_anchor_ts_ms=1735689600000,
+        )
+        manifest = result["manifest"]
+        self.assertEqual(manifest["missing_expected_timestamps_ms"], [1735689600000])
+        self.assertEqual(manifest["cadence_check_status"], "WINDOW_GAPS_FOUND")
+        self.assertFalse(manifest["cadence_check_passed"])
+        self.assertFalse(manifest["cadence_boundary_coverage_verified"])
+        self.assertFalse(manifest["coverage_verified"])
+
+    def test_anchored_cadence_passes_only_when_full_window_grid_is_present(self):
+        source = (
+            "fundingTime,fundingRate\\n"
+            "2025-01-01T00:00:00Z,0.001\\n"
+            "2025-01-01T08:00:00Z,0.001\\n"
+            "2025-01-01T16:00:00Z,0.001\\n"
+        )
+        result = import_funding_csv(
+            source, symbol="BTCUSDT",
+            start_ts_ms=1735689600000, end_ts_ms=1735776000000,
+            expected_interval_ms=28_800_000,
+            expected_anchor_ts_ms=1735689600000,
+        )
+        manifest = result["manifest"]
+        self.assertTrue(manifest["cadence_check_passed"])
+        self.assertEqual(manifest["cadence_check_status"], "ANCHORED_WINDOW_SEQUENCE_OK")
+        self.assertTrue(manifest["cadence_boundary_coverage_verified"])
+        self.assertFalse(manifest["coverage_verified"])
+        self.assertFalse(manifest["source_verified"])
+
+    def test_anchor_requires_expected_interval(self):
+        with self.assertRaisesRegex(ValueError, "requires expected_interval_ms"):
+            import_funding_csv(
+                "fundingTime,fundingRate\\n", symbol="BTCUSDT",
+                start_ts_ms=1735689600000, end_ts_ms=1735776000000,
+                expected_anchor_ts_ms=1735689600000,
+            )
+
     def test_empty_window_does_not_pass_expected_cadence(self):
         source = "fundingTime,fundingRate\n"
         result = import_funding_csv(
