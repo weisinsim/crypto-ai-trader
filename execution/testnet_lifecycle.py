@@ -5,6 +5,9 @@ the take-profit. It does not cancel sibling orders, manage fills, or enable live
 trading; callers must reconcile the returned state before retrying.
 """
 from decimal import Decimal, InvalidOperation
+import time
+
+from validation.testnet_reconciliation import validate_snapshot_timing
 
 
 def _ensure_testnet_protective_exits_impl(
@@ -30,6 +33,19 @@ def _ensure_testnet_protective_exits_impl(
         return {"ok": False, "reason": "invalid_protective_prices"}
 
     snapshot = adapter.testnet_position_snapshot(symbol)
+    timing = validate_snapshot_timing(
+        snapshot,
+        now_ms=int(time.time() * 1000),
+        max_age_ms=2000,
+        max_observation_window_ms=2000,
+    )
+    if not timing.get("ok"):
+        return {
+            "ok": False,
+            "reason": "position_snapshot_timing_rejected",
+            "timing_reason": timing.get("reason"),
+            "requires_reconciliation": True,
+        }
     if not snapshot.get("ok"):
         return {"ok": False, "reason": "position_snapshot_failed"}
     try:
@@ -118,6 +134,20 @@ def _ensure_testnet_protective_exits_impl(
 
     # Confirm the exchange state after requests; a successful HTTP response is not enough.
     final_snapshot = adapter.testnet_position_snapshot(symbol)
+    final_timing = validate_snapshot_timing(
+        final_snapshot,
+        now_ms=int(time.time() * 1000),
+        max_age_ms=2000,
+        max_observation_window_ms=2000,
+    )
+    if not final_timing.get("ok"):
+        return {
+            "ok": False,
+            "reason": "post_submission_snapshot_timing_rejected",
+            "timing_reason": final_timing.get("reason"),
+            "actions": actions,
+            "requires_reconciliation": True,
+        }
     if not final_snapshot.get("ok"):
         return {"ok": False, "reason": "post_submission_snapshot_failed", "actions": actions, "requires_reconciliation": True}
     try:
