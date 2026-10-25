@@ -33,6 +33,7 @@ def audit_funding_pages(pages, *, symbol, start_ts_ms, end_ts_ms,
     page_reports = []
     all_events = []
     seen_timestamps = set()
+    seen_request_cursors = []
     previous_cursor = expected_first_cursor
 
     for index, page in enumerate(pages):
@@ -46,7 +47,12 @@ def audit_funding_pages(pages, *, symbol, start_ts_ms, end_ts_ms,
             errors.append("first_request_cursor_mismatch")
         if index > 0 and request_cursor != previous_cursor:
             errors.append(f"page_{index}:cursor_chain_mismatch")
+        if any(request_cursor == prior for prior in seen_request_cursors):
+            errors.append(f"page_{index}:repeated_request_cursor")
+        seen_request_cursors.append(request_cursor)
         next_cursor = page.get("next_cursor")
+        if next_cursor is not None and next_cursor == request_cursor:
+            errors.append(f"page_{index}:cursor_did_not_advance")
         if index == len(pages) - 1 and next_cursor is not None:
             errors.append("final_page_has_next_cursor")
         if index < len(pages) - 1 and next_cursor is None:
