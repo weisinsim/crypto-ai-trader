@@ -79,15 +79,25 @@ def import_funding_csv(csv_text, *, symbol, start_ts_ms, end_ts_ms,
     window_events = [event for event in audit["events"]
                      if start_ts_ms <= event["funding_timestamp_ms"] < end_ts_ms]
     missing_intervals = []
-    if expected_interval_ms is not None and window_events:
-        observed = {event["funding_timestamp_ms"] for event in window_events}
-        first = min(observed)
-        last = max(observed)
-        cursor = first
-        while cursor <= last:
-            if cursor not in observed:
-                missing_intervals.append(cursor)
-            cursor += expected_interval_ms
+    cadence_status = "NOT_REQUESTED"
+    if expected_interval_ms is not None:
+        if not window_events:
+            # An empty requested window cannot pass a cadence check merely because
+            # there are no observed timestamps between which to detect a gap.
+            cadence_status = "INSUFFICIENT_EVENTS"
+        else:
+            observed = {event["funding_timestamp_ms"] for event in window_events}
+            first = min(observed)
+            last = max(observed)
+            cursor = first
+            while cursor <= last:
+                if cursor not in observed:
+                    missing_intervals.append(cursor)
+                cursor += expected_interval_ms
+            cadence_status = (
+                "INTERNAL_GAPS_FOUND" if missing_intervals
+                else "INTERNAL_SEQUENCE_OK_BOUNDARIES_UNVERIFIED"
+            )
 
     return {
         "symbol": symbol.strip().upper(),
@@ -103,7 +113,9 @@ def import_funding_csv(csv_text, *, symbol, start_ts_ms, end_ts_ms,
             "in_window_event_count": audit["in_window_event_count"],
             "expected_interval_ms": expected_interval_ms,
             "missing_expected_timestamps_ms": missing_intervals,
-            "cadence_check_passed": expected_interval_ms is None or not missing_intervals,
+            "cadence_check_passed": expected_interval_ms is not None and bool(window_events) and not missing_intervals,
+            "cadence_check_status": cadence_status,
+            "cadence_boundary_coverage_verified": False,
             "source_verified": False,
             "coverage_verified": False,
             "notice": "SHA-256 identifies these exact CSV bytes; it does not authenticate exchange provenance or prove complete history.",
