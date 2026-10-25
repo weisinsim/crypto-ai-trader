@@ -2,47 +2,28 @@
 
 ## Current limitation
 
-The existing EMA-cross research backtest records side, entry/exit times, prices,
-exit reason, costs, PnL and return, but it does not record a model confidence score
-for each trade. Therefore its trade log cannot be used to validate the dashboard's
-`confirmed_score` threshold. Do not map EMA parameters, PnL, or an arbitrary indicator
-to that score after the fact; that would create a misleading calibration result.
+The existing EMA-cross research backtest records outcomes but no frozen entry-time model score. The dashboard's confirmed_score is visible at runtime, but signal_history is in-memory and capped, not a durable historical ledger. Neither source currently provides a complete, verified score-to-realized-trade dataset. Do not map EMA parameters, PnL, or arbitrary indicators to scores after the fact.
+
+## Strict linkage helper
+
+research/score_event_ledger.py adds link_realized_trades(score_events, realized_trades). It requires a stable signal_id, frozen entry-time score, symbol, side, signal timestamp, exit timestamp and net return. It fails closed on duplicate IDs, unmatched realized trades, symbol/side mismatches, invalid timestamps and invalid numbers. It explicitly counts score events with no realized trade. Unit coverage is in tests/test_score_event_ledger.py.
+
+**Important:** this helper does not persist events and is not wired into the running dashboard or execution layer. It validates caller-supplied records only. No production score/outcome linkage exists until a durable, restart-safe ledger is implemented and tested. Score calibration has not yet been established.
 
 ## Required input schema
 
-The helper `research.score_calibration.summarize_score_calibration` expects one
-row per completed trade:
+research.score_calibration.summarize_score_calibration expects one row per completed trade: symbol; score (frozen at entry, 0–100); net_return (after entry/exit fees, slippage and applicable historical funding); and exit_ts (milliseconds). Link using the stable signal/trade ID, never future-derived scores.
 
-- `symbol`: canonical market symbol, e.g. `BTCUSDT`
-- `score`: score generated at entry time, frozen before the trade outcome is known,
-  in the range 0–100
-- `net_return`: decimal return on the trade's defined risk/equity basis, after
-  entry and exit fees, slippage and applicable historical funding
-- `exit_ts`: exit candle timestamp in milliseconds
+## Evaluation design
 
-The score must be captured at the time the signal is produced, not reconstructed
-from future data. A stable signal/trade identifier should be retained in the
-upstream event log to join score, execution assumptions and outcome without
-duplicating or dropping trades.
-
-## Required evaluation design
-
-1. Freeze the score definition and threshold on training/validation data.
-2. Keep a strictly chronological, untouched holdout; do not tune on it.
-3. For BTC, ETH, SOL, AVAX and XRP, report score bands 70–79, 80–89 and 90–100
-   separately, and report long/short direction separately where sample sizes permit.
-4. Include all completed trades and disclose rejected/filtered signals so that
-   selective reporting cannot inflate results.
-5. Report sample count, win rate, mean net expectancy, profit factor, maximum
-   drawdown, fee/slippage/funding assumptions and the exact date range.
-6. Mark any bucket with fewer than 30 trades as `INSUFFICIENT_SAMPLE`. Thirty is
-   only a minimum reporting gate, not proof of statistical significance.
-7. Repeat over multiple walk-forward folds and cost-stress assumptions. Do not
-   call the score a probability unless a separate calibration method is fitted on
-   prior data and validated on independent data.
+1. Freeze score definition and threshold using training/validation data.
+2. Keep a chronological, untouched holdout; do not tune on it.
+3. Report BTC, ETH, SOL, AVAX and XRP score bands 70–79, 80–89 and 90–100; separate LONG/SHORT where sample size permits.
+4. Include all completed trades and disclose filtered/rejected signals.
+5. Report count, win rate, mean net expectancy, profit factor, maximum drawdown, costs/funding assumptions and date range.
+6. Buckets below 30 trades are INSUFFICIENT_SAMPLE; 30 is not proof of significance.
+7. Use multiple walk-forward folds and cost stress tests. Do not call scores probabilities without separate independent calibration and validation.
 
 ## Safety boundary
 
-This helper is a report utility only. It neither retrieves market data nor executes
-orders. No result from this report enables live trading. Merging, deployment and
-live execution require separate explicit authorization and independent risk gates.
+These helpers do not retrieve market data, persist records, authorize trading, or execute orders. No result enables live trading. Merge, deployment and live execution require separate explicit authorization and independent risk gates.
