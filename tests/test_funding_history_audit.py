@@ -140,6 +140,19 @@ class FundingNotionalPathTests(unittest.TestCase):
             with self.subTest(path=path), self.assertRaises(ValueError):
                 calculate_position_funding_with_notional_path(**base, notional_segments=path)
 
+    def test_overflowing_notional_segment_is_rejected_cleanly(self):
+        from research.funding_history_audit import calculate_position_funding_with_notional_path
+
+        with self.assertRaisesRegex(ValueError, "notional must be finite"):
+            calculate_position_funding_with_notional_path(
+                events=[], symbol="BTCUSDT", side="LONG",
+                entry_timestamp_ms=1000, exit_timestamp_ms=2000,
+                notional_segments=[{
+                    "start_ts_ms": 1000, "end_ts_ms": 2000,
+                    "notional": 10 ** 10000,
+                }],
+            )
+
     def test_negative_rate_and_short_side_reverse_cashflow(self):
         from research.funding_history_audit import calculate_position_funding_with_notional_path
 
