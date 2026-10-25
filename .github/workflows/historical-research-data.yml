@@ -15,6 +15,14 @@ on:
       - "validation/run_multi_asset_exit_audit.py"
       - "validation/replay_dashboard_signals.py"
       - ".github/workflows/historical-research-data.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "validation/diagnose_funding_alignment.py"
+      - "validation/audit_research_input_inventory.py"
+      - "validation/run_multi_asset_exit_audit.py"
+      - "validation/replay_dashboard_signals.py"
+      - ".github/workflows/historical-research-data.yml"
   workflow_dispatch:
     inputs:
       start_date:
