@@ -43,6 +43,10 @@ def audit_funding_pages(pages, *, symbol, start_ts_ms, end_ts_ms,
         if page.get("page_index") != index or isinstance(page.get("page_index"), bool):
             errors.append(f"page_{index}:index_mismatch")
         request_cursor = page.get("request_cursor")
+        if request_cursor is not None and (
+            isinstance(request_cursor, bool) or not isinstance(request_cursor, (str, int))
+        ):
+            errors.append(f"page_{index}:invalid_request_cursor_type")
         if index == 0 and expected_first_cursor is not None and request_cursor != expected_first_cursor:
             errors.append("first_request_cursor_mismatch")
         if index > 0 and request_cursor != previous_cursor:
@@ -51,6 +55,10 @@ def audit_funding_pages(pages, *, symbol, start_ts_ms, end_ts_ms,
             errors.append(f"page_{index}:repeated_request_cursor")
         seen_request_cursors.append(request_cursor)
         next_cursor = page.get("next_cursor")
+        if next_cursor is not None and (
+            isinstance(next_cursor, bool) or not isinstance(next_cursor, (str, int))
+        ):
+            errors.append(f"page_{index}:invalid_next_cursor_type")
         if next_cursor is not None and next_cursor == request_cursor:
             errors.append(f"page_{index}:cursor_did_not_advance")
         if index == len(pages) - 1 and next_cursor is not None:
