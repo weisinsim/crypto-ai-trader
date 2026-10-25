@@ -72,6 +72,11 @@ class DashboardResearchPanelTests(unittest.TestCase):
         self.assertIn('部署版本：无法核对（接口不可用或尚未部署）', self.html)
         self.assertIn('setInterval(refreshBuildInfo,60000)', self.html)
 
+    def test_websocket_open_does_not_claim_live_before_backend_confirmation(self):
+        self.assertIn('ws.onopen=()=>{setStatus("CONNECTING");ws.send("hello");snapshot()}', self.html)
+        self.assertIn('setStatus(j.status?.status==="LIVE"?"LIVE":j.status?.status==="DELAYED"?"DELAYED":"FALLBACK")', self.html)
+        self.assertIn('setStatus(m.status?.status==="LIVE"?"LIVE":m.status?.status==="DELAYED"?"DELAYED":"FALLBACK")', self.html)
+
     def test_html_document_and_script_are_closed(self):
         self.assertEqual(self.html.count("<script>"), 1)
         self.assertEqual(self.html.count("</script>"), 1)
