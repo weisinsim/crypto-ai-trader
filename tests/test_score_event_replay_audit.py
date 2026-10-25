@@ -28,9 +28,9 @@ class ScoreEventReplayAuditTests(unittest.TestCase):
         self.assertTrue(first["research_only"])
         self.assertFalse(first["auto_trade_authorized"])
 
-    def test_identity_changes_when_score_or_model_or_candle_changes(self):
+    def test_identity_is_stable_across_score_drift_but_changes_with_model_or_candle(self):
         base = self.build()
-        self.assertNotEqual(base["signal_id"], self.build(score=78.6)["signal_id"])
+        self.assertEqual(base["signal_id"], self.build(score=78.6)["signal_id"])
         self.assertNotEqual(base["signal_id"], self.build(model_version="v26.2")["signal_id"])
         self.assertNotEqual(
             base["signal_id"],
@@ -53,7 +53,7 @@ class ScoreEventReplayAuditTests(unittest.TestCase):
         report = compare_replayed_score_events(first, second)
         self.assertEqual(report["status"], "MISMATCH")
         self.assertIn("score", report["differences"])
-        self.assertIn("signal_id", report["differences"])
+        self.assertNotIn("signal_id", report["differences"])
         self.assertEqual(report["differences"]["score"]["first"], 78.5)
         self.assertEqual(report["differences"]["score"]["second"], 79.0)
 
@@ -78,8 +78,9 @@ class ScoreEventReplayAuditTests(unittest.TestCase):
                     self.build(candle_close_ts=1_800_000_007_200)]
         report = audit_replay_series(expected, replayed)
         self.assertEqual(report["status"], "FAIL")
-        self.assertEqual(len(report["missing_signal_ids"]), 2)
-        self.assertEqual(len(report["unexpected_signal_ids"]), 2)
+        self.assertEqual(len(report["missing_signal_ids"]), 0)
+        self.assertEqual(len(report["unexpected_signal_ids"]), 1)
+        self.assertEqual(len(report["mismatched_events"]), 1)
 
     def test_replay_series_rejects_duplicate_ids_and_invalid_rows(self):
         event = self.build()
