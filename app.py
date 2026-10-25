@@ -110,6 +110,30 @@ async def bybit_json(path, params=None, timeout=3.0):
 async def index():
     return FileResponse(str(STATIC_DIR / "index.html"))
 
+@app.get("/api/build-info")
+async def build_info():
+    # Render exposes RENDER_GIT_COMMIT; generic variables support other deploy targets.
+    # Never guess a revision: an absent value is explicitly reported as unknown.
+    revision = (
+        os.environ.get("RENDER_GIT_COMMIT")
+        or os.environ.get("SOURCE_VERSION")
+        or os.environ.get("GIT_COMMIT")
+    )
+    return {
+        "service": "crypto-ai-trader",
+        "revision": revision[:40] if revision else None,
+        "revision_source": (
+            "RENDER_GIT_COMMIT" if os.environ.get("RENDER_GIT_COMMIT")
+            else "SOURCE_VERSION" if os.environ.get("SOURCE_VERSION")
+            else "GIT_COMMIT" if os.environ.get("GIT_COMMIT")
+            else None
+        ),
+        "revision_known": bool(revision),
+        "mode": "research-gated",
+        "auto_trade_enabled": False,
+    }
+
+
 @app.get("/api/health")
 async def health():
     # Health must reflect the least healthy tracked market, not just one fresh symbol.
