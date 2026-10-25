@@ -176,6 +176,13 @@ def simulate_tactical_candidate(*, observation, future_candles,
             quantity_remaining = 0.0
             exit_reason, exit_price, bars_used = reason, candle["c"], index + 1
 
+    # Position accounting must conserve the initial unit quantity on every
+    # simulated/censored path, including partial exits followed by a stop.
+    exited_quantity = sum(item["quantity"] for item in exits)
+    exit_quantity_conserved = math.isclose(exited_quantity, 1.0, rel_tol=0.0, abs_tol=1e-9)
+    if any(item["quantity"] <= 0 for item in exits) or not exit_quantity_conserved or not math.isclose(quantity_remaining, 0.0, rel_tol=0.0, abs_tol=1e-9):
+        raise RuntimeError("simulated exits do not conserve the initial position quantity")
+
     traded_notional = entry
     # Entry fee plus exit fees on each executed unit fraction's exit notional.
     exit_fee_notional = sum(item["quantity"] * item["price"] for item in exits)
@@ -196,6 +203,10 @@ def simulate_tactical_candidate(*, observation, future_candles,
         "stop_loss": stop, "take_profit_1": tp1, "take_profit_2": tp2,
         "exit_reason": exit_reason, "exit_price_assumption": exit_price,
         "bars_held": bars_used, "exits": exits,
+        "initial_quantity": 1.0,
+        "exited_quantity": exited_quantity,
+        "remaining_quantity": quantity_remaining,
+        "exit_quantity_conserved": exit_quantity_conserved,
         "gross_pnl_per_unit": realized_gross,
         "fee_cost_assumption": fee_cost,
         "funding_cost_assumption": funding_cost,
