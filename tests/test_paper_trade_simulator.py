@@ -48,6 +48,17 @@ class PaperTradeSimulatorTests(unittest.TestCase):
         self.assertFalse(result["costs_verified"])
         self.assertFalse(result["fill_prices_verified"])
 
+    def test_end_of_available_data_is_censored_not_a_completed_max_hold(self):
+        result = simulate_tactical_candidate(
+            observation=self.candidate(),
+            future_candles=[self.candle(3_600_000, o=100, h=102, l=99, c=101)],
+            fee_bps_per_side=0, slippage_bps_per_side=0, funding_bps_per_8h=0,
+            max_holding_candles=12,
+        )
+        self.assertEqual(result["status"], "CENSORED")
+        self.assertEqual(result["exit_reason"], "DATA_END")
+        self.assertFalse(result["outcome_complete"])
+
     def test_rejects_invalid_levels_and_future_timestamps(self):
         with self.assertRaisesRegex(ValueError, "risk levels"):
             simulate_tactical_candidate(
