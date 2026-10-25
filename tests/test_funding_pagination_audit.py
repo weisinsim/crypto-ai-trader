@@ -157,6 +157,13 @@ class FundingPaginationAuditTests(unittest.TestCase):
         self.assertIn("page_1:event_1_invalid_rate", result["errors"])
         self.assertIn("events_outside_requested_window", result["errors"])
 
+    def test_extremely_large_integer_rate_fails_without_overflow_exception(self):
+        pages = self.pages()
+        pages[0]["events"][0]["funding_rate"] = 10 ** 10000
+        result = self.audit(pages)
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("page_0:event_0_invalid_rate", result["errors"])
+
     def test_rejects_missing_raw_bytes_and_early_pagination_end(self):
         pages = self.pages()
         pages[0]["raw_payload"] = "not bytes"
