@@ -53,6 +53,7 @@ def audit_funding_pages(pages, *, symbol, start_ts_ms, end_ts_ms,
     for index, page in enumerate(pages):
         if not isinstance(page, dict):
             errors.append(f"page_{index}:not_a_mapping")
+            normalization_verified = False
             continue
         if page.get("page_index") != index or isinstance(page.get("page_index"), bool):
             errors.append(f"page_{index}:index_mismatch")
@@ -97,18 +98,26 @@ def audit_funding_pages(pages, *, symbol, start_ts_ms, end_ts_ms,
         for event_index, event in enumerate(events):
             if not isinstance(event, dict):
                 errors.append(f"page_{index}:event_{event_index}_not_a_mapping")
+                if parsed_raw_events_by_page is not None:
+                    normalization_verified = False
                 continue
             event_symbol = event.get("symbol")
             ts = event.get("funding_timestamp_ms")
             rate = event.get("funding_rate")
             if not isinstance(event_symbol, str) or event_symbol.strip().upper() != symbol.strip().upper():
                 errors.append(f"page_{index}:event_{event_index}_symbol_mismatch")
+                if parsed_raw_events_by_page is not None:
+                    normalization_verified = False
                 continue
             if isinstance(ts, bool) or not isinstance(ts, int) or ts < 0:
                 errors.append(f"page_{index}:event_{event_index}_invalid_timestamp")
+                if parsed_raw_events_by_page is not None:
+                    normalization_verified = False
                 continue
             if isinstance(rate, bool) or not isinstance(rate, (int, float)) or not math.isfinite(rate):
                 errors.append(f"page_{index}:event_{event_index}_invalid_rate")
+                if parsed_raw_events_by_page is not None:
+                    normalization_verified = False
                 continue
             normalized_keys.append((event_symbol.strip().upper(), ts, float(rate)))
             if ts in seen_timestamps:
