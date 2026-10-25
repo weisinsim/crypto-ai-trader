@@ -92,6 +92,8 @@ class AlertContractTests(unittest.TestCase):
             ("LIVE", self.now - 121),
             ("LIVE", self.now + 1),
             ("LIVE", True),
+            ([], self.now),
+            ({}, self.now),
         ):
             with self.subTest(status=status, updated=updated):
                 payload = build_alert_payload(
@@ -153,6 +155,16 @@ class AlertContractTests(unittest.TestCase):
         self.assertEqual(payload["alerts"], [])
         payload = build_alert_payload({"status": "LIVE"}, {}, ["BTCUSDT"], float("nan"))
         self.assertEqual(payload["status"], "DELAYED")
+        for updated in ([], {}, "1800000000"):
+            with self.subTest(updated=updated):
+                payload = build_alert_payload(
+                    {"status": "LIVE", "updated": updated},
+                    {"BTCUSDT": self.item},
+                    ["BTCUSDT"],
+                    self.now,
+                )
+                self.assertEqual(payload["status"], "DELAYED")
+                self.assertEqual(payload["alerts"], [])
         self.assertEqual(payload["alerts"], [])
         self.assertFalse(payload["auto_trade_authorized"])
 
