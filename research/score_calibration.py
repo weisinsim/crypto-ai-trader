@@ -71,14 +71,21 @@ def summarize_score_calibration(trades, *, min_samples=30, bands=DEFAULT_BANDS, 
                       if lo <= score < hi or (score == 100 and hi > 100)), None)
         if match is not None:
             key = (symbol.strip().upper(), match, side) if split_by_side else (symbol.strip().upper(), match)
-            groups[key].append((float(exit_ts), float(net_return), float(score)))
+            tie_id = trade.get("signal_id", trade.get("trade_id", ""))
+            if tie_id is None:
+                tie_id = ""
+            if not isinstance(tie_id, str):
+                tie_id = str(tie_id)
+            # Stable tie-breaking prevents input row order from changing drawdown
+            # when multiple trades share the same millisecond exit timestamp.
+            groups[key].append((float(exit_ts), tie_id, float(score), float(net_return)))
 
     report = []
     for key in sorted(groups):
         symbol, band_index = key[:2]
         side = key[2] if split_by_side else None
-        rows = sorted(groups[key], key=lambda row: row[0])
-        returns = [row[1] for row in rows]
+        rows = sorted(groups[key], key=lambda row: (row[0], row[1], row[2], row[3]))
+        returns = [row[3] for row in rows]
         n = len(rows)
         wins = sum(value > 0 for value in returns)
         gross_profit = sum(value for value in returns if value > 0)
