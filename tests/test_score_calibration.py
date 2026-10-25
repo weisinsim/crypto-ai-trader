@@ -55,6 +55,13 @@ class ScoreCalibrationTests(unittest.TestCase):
             with self.subTest(row=row), self.assertRaises(ValueError):
                 summarize_score_calibration([row])
 
+    def test_report_discloses_that_cost_coverage_is_not_independently_verified(self):
+        report = summarize_score_calibration([
+            {"symbol": "BTCUSDT", "score": 75, "net_return": 0.01, "exit_ts": 1}
+        ])
+        self.assertFalse(report["buckets"][0]["costs_verified_from_ledger"])
+        self.assertIn("cannot independently verify cost inputs", report["warning"])
+
     def test_reports_trades_outside_configured_score_bands(self):
         trades = [
             {"symbol": "BTCUSDT", "score": 65, "net_return": 0.02, "exit_ts": 1},
