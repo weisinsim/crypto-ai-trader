@@ -1,6 +1,6 @@
 import unittest
 
-from validation.testnet_reconciliation import reconcile_testnet_state
+from validation.testnet_reconciliation import reconcile_testnet_state, validate_snapshot_timing
 
 
 class TestnetReconciliationTests(unittest.TestCase):
@@ -18,6 +18,37 @@ class TestnetReconciliationTests(unittest.TestCase):
             "stop_price": "99",
             **overrides,
         }
+
+    def test_snapshot_timing_accepts_fresh_bounded_observation(self):
+        result = validate_snapshot_timing({
+            "ok": True,
+            "snapshot_started_at_ms": 1000,
+            "snapshot_completed_at_ms": 1150,
+            "snapshot_duration_ms": 150.0,
+        }, now_ms=1200)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["observation_window_ms"], "150")
+
+    def test_snapshot_timing_rejects_missing_stale_future_and_wide_windows(self):
+        base = {
+            "ok": True,
+            "snapshot_started_at_ms": 1000,
+            "snapshot_completed_at_ms": 1100,
+            "snapshot_duration_ms": 100.0,
+        }
+        missing = validate_snapshot_timing({"ok": True}, now_ms=1200)
+        stale = validate_snapshot_timing(base, now_ms=5000, max_age_ms=1000)
+        future = validate_snapshot_timing(base, now_ms=900)
+        wide = validate_snapshot_timing({
+            **base,
+            "snapshot_started_at_ms": 1000,
+            "snapshot_completed_at_ms": 4000,
+            "snapshot_duration_ms": 3000.0,
+        }, now_ms=4100)
+        self.assertEqual(missing["reason"], "SNAPSHOT_TIMING_INVALID")
+        self.assertEqual(stale["reason"], "SNAPSHOT_STALE")
+        self.assertEqual(future["reason"], "SNAPSHOT_TIMESTAMP_IN_FUTURE")
+        self.assertEqual(wide["reason"], "SNAPSHOT_OBSERVATION_WINDOW_TOO_WIDE")
 
     def test_exact_flat_snapshot_passes(self):
         result = reconcile_testnet_state(
