@@ -47,6 +47,7 @@ class ScoreEventStoreTests(unittest.TestCase):
         report = self.store.calibration_rows()
         self.assertEqual(report["cost_fields_present_count"], 1)
         self.assertEqual(report["cost_fields_incomplete_count"], 0)
+        self.assertEqual(report["cost_field_valid_counts"], {"fees": 1, "slippage": 1, "funding": 1})
         self.assertEqual(report["trades"][0]["cost_coverage_status"], "FIELDS_PRESENT_UNVERIFIED")
         self.assertEqual(report["trades"][0]["cost_fields_missing"], [])
 
@@ -58,6 +59,7 @@ class ScoreEventStoreTests(unittest.TestCase):
         report = self.store.calibration_rows()
         self.assertEqual(report["cost_fields_present_count"], 1)
         self.assertEqual(report["cost_fields_incomplete_count"], 1)
+        self.assertEqual(report["cost_field_valid_counts"], {"fees": 1, "slippage": 2, "funding": 1})
         self.assertEqual(report["trades"][1]["cost_coverage_status"], "INCOMPLETE_COST_FIELDS")
         self.assertEqual(report["trades"][1]["cost_fields_missing"], ["fees", "funding"])
 
