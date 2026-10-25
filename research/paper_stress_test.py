@@ -38,9 +38,10 @@ def run_paper_stress_scenarios(candidates, *, scenarios=DEFAULT_SCENARIOS,
         trade_id = candidate.get("trade_id")
         if not isinstance(trade_id, str) or not trade_id.strip():
             raise ValueError(f"candidate {i} requires a non-empty trade_id")
+        trade_id = trade_id.strip()
         if trade_id in seen_candidates:
-            raise ValueError(f"duplicate candidate trade_id: {trade_id.strip()}")
-        seen_candidates.add(trade_id.strip())
+            raise ValueError(f"duplicate candidate trade_id: {trade_id}")
+        seen_candidates.add(trade_id)
         score = candidate.get("score")
         if isinstance(score, bool) or not isinstance(score, (int, float)) or not math.isfinite(score) or not 0 <= score <= 100:
             raise ValueError(f"candidate {trade_id} score must be finite and in [0, 100]")
@@ -71,6 +72,7 @@ def run_paper_stress_scenarios(candidates, *, scenarios=DEFAULT_SCENARIOS,
             settings[field] = float(value)
 
         rows = []
+        filtered_candidates = []
         for candidate in candidates:
             observation = candidate["observation"]
             candles = candidate["future_candles"]
@@ -78,6 +80,11 @@ def run_paper_stress_scenarios(candidates, *, scenarios=DEFAULT_SCENARIOS,
                 observation=observation, future_candles=candles,
                 max_holding_candles=max_holding_candles, **settings)
             if outcome.get("status") == "NO_TRADE":
+                filtered_candidates.append({
+                    "trade_id": candidate["trade_id"].strip(),
+                    "status": "NO_TRADE",
+                    "reason": outcome.get("reason", "NON_ACTIONABLE_SIGNAL"),
+                })
                 continue
             bars_held = outcome["bars_held"]
             exit_index = min(bars_held, len(candles)) - 1
@@ -100,6 +107,9 @@ def run_paper_stress_scenarios(candidates, *, scenarios=DEFAULT_SCENARIOS,
             "scenario_id": scenario_id,
             "assumptions": settings,
             "report": report,
+            "filtered_candidate_count": len(filtered_candidates),
+            "filtered_candidates": filtered_candidates,
+            "simulated_candidate_count": len(rows),
             "simulation_only": True,
             "costs_verified": False,
             "fills_verified": False,
