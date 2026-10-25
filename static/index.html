@@ -164,7 +164,7 @@ async function refreshChatGPTAlerts(){
   // non-trading events. A malformed or unexpectedly authorized event is hidden.
   const alerts=envelopeFresh?rawAlerts.filter(a=>{
    if(!a||a.notification_only!==true||a.auto_trade_authorized!==false||
-      a.model_status==="FROZEN"||
+      !["RESEARCH","PRODUCTION"].includes(a.model_status)||
       typeof a.symbol!=="string"||!/^[A-Z0-9]{2,}USDT$/.test(a.symbol)||
       !["LONG","SHORT"].includes(a.side)) return false;
    const entry=a.entry, stop=a.stop_loss??a.sl, tp1=a.take_profit_1??a.tp1, tp2=a.take_profit_2??a.tp2;
