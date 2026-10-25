@@ -155,11 +155,16 @@ async function refreshChatGPTAlerts(){
   if(!r.ok) throw new Error("HTTP "+r.status);
   const payload=await r.json();
   const rawAlerts=Array.isArray(payload)?payload:(Array.isArray(payload.alerts)?payload.alerts:[]);
+  // Require a fresh server-generated envelope as well as fresh individual signals.
+  // Fail closed if the response timestamp is absent, malformed, future-dated or stale.
+  const nowMs=Date.now();
+  const generatedMs=typeof payload.generated_at==="number"&&Number.isFinite(payload.generated_at)?payload.generated_at*1000:NaN;
+  const envelopeFresh=Number.isFinite(generatedMs)&&generatedMs>0&&generatedMs<=nowMs&&nowMs-generatedMs<=120000;
   // Fail closed in the browser too: only render explicit notification-only,
   // non-trading events. A malformed or unexpectedly authorized event is hidden.
-  const nowMs=Date.now();
-  const alerts=rawAlerts.filter(a=>{
+  const alerts=envelopeFresh?rawAlerts.filter(a=>{
    if(!a||a.notification_only!==true||a.auto_trade_authorized!==false||
+      a.model_status==="FROZEN"||
       typeof a.symbol!=="string"||!/^[A-Z0-9]{2,}USDT$/.test(a.symbol)||
       !["LONG","SHORT"].includes(a.side)) return false;
    const entry=a.entry, stop=a.stop_loss??a.sl, tp1=a.take_profit_1??a.tp1, tp2=a.take_profit_2??a.tp2;
@@ -171,8 +176,8 @@ async function refreshChatGPTAlerts(){
    if(typeof candleMs!=="number"||!Number.isFinite(candleMs)||candleMs<=0||
       candleMs>nowMs||nowMs-candleMs>90*60*1000) return false;
    return true;
-  });
-  const feedLive=payload.status==="LIVE";
+  }):[];
+  const feedLive=payload.status==="LIVE"&&envelopeFresh;
   statusEl.className="alertIntro "+(feedLive?"alertLive":"alertFail");
   statusEl.textContent=(feedLive?"行情状态 LIVE":"行情状态 "+String(payload.status||"UNKNOWN")+" · 已阻止展示候选信号")+
    " · 安全有效候选 "+(feedLive?alerts.length:0)+" · 检查时间 "+new Date().toLocaleTimeString();
