@@ -30,6 +30,35 @@ class AlertContractTests(unittest.TestCase):
         self.assertTrue(alert["research_only"])
         self.assertEqual(alert["side"], "LONG")
 
+    def test_candidate_score_threshold_is_70_and_not_a_probability_claim(self):
+        from validation.alert_contract import MIN_ENTRY_CANDIDATE_SCORE
+
+        self.assertEqual(MIN_ENTRY_CANDIDATE_SCORE, 70.0)
+        for score in (0, 59.9, 60, 69.99):
+            with self.subTest(score=score):
+                self.assertIsNone(
+                    validate_alert_candidate(
+                        "BTCUSDT", {**self.item, "confirmed_score": score}, self.now
+                    )
+                )
+
+        alert = validate_alert_candidate(
+            "BTCUSDT", {**self.item, "confirmed_score": 70.0}, self.now
+        )
+        self.assertIsNotNone(alert)
+        self.assertTrue(alert["entry_candidate"])
+        self.assertIs(alert["score_is_probability"], False)
+        self.assertEqual(alert["minimum_candidate_score"], 70.0)
+        self.assertIs(alert["auto_trade_authorized"], False)
+
+    def test_high_score_never_overrides_notification_only_safety_boundary(self):
+        alert = validate_alert_candidate(
+            "BTCUSDT", {**self.item, "confirmed_score": 100.0}, self.now
+        )
+        self.assertIsNotNone(alert)
+        self.assertIs(alert["auto_trade_authorized"], False)
+        self.assertTrue(alert["notification_only"])
+
     def test_malformed_symbols_are_rejected(self):
         for symbol in ("BTC/USDT", "btcUSDT", "USDT", "A" * 21 + "USDT", "BTC-USDT", None):
             with self.subTest(symbol=symbol):
