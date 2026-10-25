@@ -67,3 +67,6 @@ Execution-cost audit refinement: the paper lifecycle simulator now applies adver
 
 
 Look-ahead boundary hardening: the paper simulator now rejects any future candle whose timestamp is less than or equal to the signal candle close. This prevents accidental reuse of the signal candle as the post-signal entry/outcome candle. Regression tests cover the exact-boundary rejection; this validates timestamp ordering only and does not prove the upstream candle timestamps themselves are correctly defined.
+
+
+Stop-gap conservatism added to the paper simulator: if a candle opens through the configured stop, the simulated stop reference is the worse opening price rather than the stop trigger, then adverse exit slippage is applied. Regression tests cover gaps against both LONG and SHORT positions. This remains an OHLC approximation; it does not model intrabar order-book liquidity, exchange stop-order mechanics, or guaranteed fills.
