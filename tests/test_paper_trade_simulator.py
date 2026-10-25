@@ -32,6 +32,8 @@ class PaperTradeSimulatorTests(unittest.TestCase):
         )
         self.assertEqual(result["exit_reason"], "STOP")
         self.assertAlmostEqual(result["gross_pnl_per_unit"], -5.0)
+        self.assertAlmostEqual(result["exited_quantity"], 1.0)
+        self.assertTrue(result["exit_quantity_conserved"])
 
     def test_partial_tp1_then_tp2_and_costs_are_explicit(self):
         result = simulate_tactical_candidate(
@@ -47,6 +49,9 @@ class PaperTradeSimulatorTests(unittest.TestCase):
         self.assertEqual(result["exit_reason"], "TP2")
         self.assertFalse(result["costs_verified"])
         self.assertFalse(result["fill_prices_verified"])
+        self.assertAlmostEqual(result["exited_quantity"], 1.0)
+        self.assertAlmostEqual(result["remaining_quantity"], 0.0)
+        self.assertTrue(result["exit_quantity_conserved"])
 
     def test_end_of_available_data_is_censored_not_a_completed_max_hold(self):
         result = simulate_tactical_candidate(
@@ -58,6 +63,40 @@ class PaperTradeSimulatorTests(unittest.TestCase):
         self.assertEqual(result["status"], "CENSORED")
         self.assertEqual(result["exit_reason"], "DATA_END")
         self.assertFalse(result["outcome_complete"])
+        self.assertAlmostEqual(result["exited_quantity"], 1.0)
+        self.assertTrue(result["exit_quantity_conserved"])
+
+    def test_partial_tp1_then_stop_conserves_remaining_quantity(self):
+        result = simulate_tactical_candidate(
+            observation=self.candidate(),
+            future_candles=[
+                self.candle(3_600_001, o=100, h=106, l=99, c=105),
+                self.candle(7_200_000, o=100, h=102, l=94, c=96),
+            ],
+            fee_bps_per_side=0, slippage_bps_per_side=0, funding_bps_per_8h=0,
+        )
+        self.assertEqual([item["reason"] for item in result["exits"]], ["TP1", "STOP"])
+        self.assertAlmostEqual(result["exits"][0]["quantity"], 0.5)
+        self.assertAlmostEqual(result["exits"][1]["quantity"], 0.5)
+        self.assertAlmostEqual(result["exited_quantity"], 1.0)
+        self.assertAlmostEqual(result["remaining_quantity"], 0.0)
+        self.assertTrue(result["exit_quantity_conserved"])
+
+    def test_max_hold_after_partial_tp1_conserves_remaining_quantity(self):
+        result = simulate_tactical_candidate(
+            observation=self.candidate(),
+            future_candles=[
+                self.candle(3_600_001, o=100, h=106, l=99, c=105),
+                self.candle(7_200_000, o=105, h=106, l=103, c=104),
+            ],
+            fee_bps_per_side=0, slippage_bps_per_side=0, funding_bps_per_8h=0,
+            max_holding_candles=2,
+        )
+        self.assertEqual([item["reason"] for item in result["exits"]], ["TP1", "MAX_HOLD"])
+        self.assertAlmostEqual(result["exits"][0]["quantity"], 0.5)
+        self.assertAlmostEqual(result["exits"][1]["quantity"], 0.5)
+        self.assertAlmostEqual(result["exited_quantity"], 1.0)
+        self.assertTrue(result["exit_quantity_conserved"])
 
     def test_rejects_invalid_levels_and_future_timestamps(self):
         with self.assertRaisesRegex(ValueError, "risk levels"):
