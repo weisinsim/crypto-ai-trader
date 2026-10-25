@@ -49,9 +49,12 @@ def summarize_score_calibration(trades, *, min_samples=30, bands=DEFAULT_BANDS, 
         if current[0] < previous[1]:
             raise ValueError("score bands must not overlap")
     groups = defaultdict(list)
+    input_trade_count = 0
+    out_of_band_trade_count = 0
     for index, trade in enumerate(trades):
         if not isinstance(trade, dict):
             raise ValueError(f"trade {index} must be a mapping")
+        input_trade_count += 1
         symbol, score, net_return, exit_ts = (
             trade.get("symbol"), trade.get("score"),
             trade.get("net_return"), trade.get("exit_ts"),
@@ -79,6 +82,8 @@ def summarize_score_calibration(trades, *, min_samples=30, bands=DEFAULT_BANDS, 
             # Stable tie-breaking prevents input row order from changing drawdown
             # when multiple trades share the same millisecond exit timestamp.
             groups[key].append((float(exit_ts), tie_id, float(score), float(net_return)))
+        else:
+            out_of_band_trade_count += 1
 
     report = []
     for key in sorted(groups):
@@ -111,7 +116,9 @@ def summarize_score_calibration(trades, *, min_samples=30, bands=DEFAULT_BANDS, 
         report.append(bucket)
     return {
         "status": "RESEARCH_ONLY",
+        "input_trade_count": input_trade_count,
         "trade_count_in_bands": sum(len(rows) for rows in groups.values()),
+        "trade_count_outside_bands": out_of_band_trade_count,
         "min_samples_required": min_samples,
         "split_by_side": split_by_side,
         "buckets": report,
