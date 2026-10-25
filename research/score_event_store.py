@@ -156,7 +156,16 @@ class ScoreEventStore:
     def calibration_report(self, *, min_samples=30):
         """Summarize persisted completed outcomes without hiding incomplete events."""
         ledger = self.calibration_rows()
-        summary = summarize_score_calibration(ledger["trades"], min_samples=min_samples, split_by_side=True)
+        # Exclude incomplete-cost records from the primary calibration metrics.
+        # Keep them visible in coverage and return their count explicitly.
+        eligible_trades = [
+            trade for trade in ledger["trades"]
+            if trade["cost_coverage_status"] == "FIELDS_PRESENT_UNVERIFIED"
+        ]
+        summary = summarize_score_calibration(eligible_trades, min_samples=min_samples, split_by_side=True)
+        summary["cost_eligible_trade_count"] = len(eligible_trades)
+        summary["cost_incomplete_excluded_count"] = ledger["cost_fields_incomplete_count"]
+        summary["cost_fields_present_means_unverified"] = True
         return {
             "status": "RESEARCH_ONLY",
             "coverage": {
