@@ -227,7 +227,8 @@ async def chatgpt_alert_feed():
             continue
         if side not in ("LONG", "SHORT"):
             continue
-        if model_status not in ("RESEARCH", "FROZEN", "PRODUCTION"):
+        if model_status not in ("RESEARCH", "PRODUCTION"):
+            # Frozen models are retained for audit/display only; never emit actionable alerts.
             continue
         if not isinstance(candle_time, (int, float)) or not math.isfinite(candle_time) or candle_time <= 0 or candle_time > now * 1000:
             continue
