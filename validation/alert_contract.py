@@ -24,6 +24,8 @@ def validate_alert_candidate(symbol, item, now, max_age_seconds=90 * 60):
         return None
     if not isinstance(item, dict) or not _finite_number(now) or now <= 0:
         return None
+    if not _finite_number(max_age_seconds) or max_age_seconds <= 0:
+        return None
 
     side = item.get("confirmed_signal")
     model_status = item.get("model_status")
@@ -63,7 +65,14 @@ def validate_alert_candidate(symbol, item, now, max_age_seconds=90 * 60):
     if not _finite_number(score) or not 0 <= score <= 100:
         return None
 
-    event_material = f"{symbol}|{side}|{int(candle_ms)}|{item.get('model_name', '')}"
+    # Metadata is untrusted input. Keep it bounded and string-only; the UI
+    # must still render it as text rather than injecting it into HTML.
+    raw_model_name = item.get("model_name")
+    model_name = raw_model_name[:80] if isinstance(raw_model_name, str) else None
+    raw_score_label = item.get("confirmed_score_label")
+    score_label = raw_score_label[:40] if isinstance(raw_score_label, str) else None
+
+    event_material = f"{symbol}|{side}|{int(candle_ms)}|{model_name or ''}"
     return {
         "event_id": hashlib.sha256(event_material.encode("utf-8")).hexdigest()[:24],
         "symbol": symbol,
@@ -75,8 +84,8 @@ def validate_alert_candidate(symbol, item, now, max_age_seconds=90 * 60):
         "take_profit_1": tp1,
         "take_profit_2": tp2,
         "score": score,
-        "score_label": item.get("confirmed_score_label"),
-        "model_name": item.get("model_name"),
+        "score_label": score_label,
+        "model_name": model_name,
         "model_status": model_status,
         "research_only": model_status != "PRODUCTION",
         "notification_only": True,
