@@ -108,19 +108,40 @@ class ScoreEventStore:
         with closing(self._connect()) as conn, conn:
             rows = conn.execute("""
                 SELECT e.signal_id,e.symbol,e.side,e.signal_ts,e.score,
-                       t.exit_ts,t.net_return
+                       t.exit_ts,t.net_return,t.recorded_json
                 FROM score_events e
                 JOIN realized_trades t USING(signal_id)
                 ORDER BY t.exit_ts,e.signal_id
             """).fetchall()
             total_events = conn.execute("SELECT COUNT(*) FROM score_events").fetchone()[0]
             total_trades = conn.execute("SELECT COUNT(*) FROM realized_trades").fetchone()[0]
-        trades = [dict(row) for row in rows]
+        trades = []
+        cost_complete_count = 0
+        required_cost_fields = ("fees", "slippage", "funding")
+        for row in rows:
+            trade = dict(row)
+            recorded = json.loads(trade.pop("recorded_json"))
+            present = [field for field in required_cost_fields
+                       if field in recorded and _finite_number(recorded[field], field) is not None]
+            # Cost fields are audit evidence only; net_return remains caller-supplied.
+            # Missing fields are not inferred or silently treated as zero.
+            trade["cost_fields_present"] = present
+            trade["cost_fields_missing"] = [field for field in required_cost_fields if field not in present]
+            trade["cost_coverage_status"] = (
+                "FIELDS_PRESENT_UNVERIFIED" if len(present) == len(required_cost_fields)
+                else "INCOMPLETE_COST_FIELDS"
+            )
+            if trade["cost_coverage_status"] == "FIELDS_PRESENT_UNVERIFIED":
+                cost_complete_count += 1
+            trades.append(trade)
         return {
             "status": "RESEARCH_ONLY",
             "score_event_count": total_events,
             "completed_trade_count": total_trades,
             "uncompleted_score_event_count": total_events - total_trades,
+            "cost_fields_required": list(required_cost_fields),
+            "cost_fields_present_count": cost_complete_count,
+            "cost_fields_incomplete_count": total_trades - cost_complete_count,
             "trades": trades,
             "auto_trade_authorized": False,
         }
@@ -135,6 +156,9 @@ class ScoreEventStore:
                 "score_event_count": ledger["score_event_count"],
                 "completed_trade_count": ledger["completed_trade_count"],
                 "uncompleted_score_event_count": ledger["uncompleted_score_event_count"],
+                "cost_fields_required": ledger["cost_fields_required"],
+                "cost_fields_present_count": ledger["cost_fields_present_count"],
+                "cost_fields_incomplete_count": ledger["cost_fields_incomplete_count"],
             },
             "calibration": summary,
             "auto_trade_authorized": False,
