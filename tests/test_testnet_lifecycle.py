@@ -60,6 +60,15 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertEqual(adapter.snapshot_count, 2)
         self.assertTrue(result["requires_post_fill_sibling_cancellation"])
 
+    def test_stop_submission_failure_requires_reconciliation_and_forbids_retry(self):
+        adapter = FakeAdapter(fail_kind="stop_loss")
+        result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-02a")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "stop_submission_failed_requires_reconciliation")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertFalse(result["automatic_retry"])
+        self.assertEqual(len(adapter.submissions), 1)
+
     def test_target_failure_leaves_stop_and_demands_reconciliation(self):
         adapter = FakeAdapter(fail_kind="take_profit")
         result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-02")
