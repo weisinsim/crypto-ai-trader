@@ -58,3 +58,6 @@ Chronological holdout utility added: `research/chronological_holdout.py` partiti
 
 
 Chronological cohort reporting added in `research/chronological_backtest_report.py`: rows are partitioned by signal timestamp first, then development and holdout simulation reports are generated independently. Tests cover cohort isolation, trades signaled before cutoff but exiting after it, censored holdout coverage, duplicate IDs, invalid timestamps, and empty cohorts. Reports explicitly retain simulation-only status and do not claim holdout secrecy, verified costs/fills, or verified score calibration.
+
+
+Cost-sensitivity stress runner added in `research/paper_stress_test.py`. It replays the same frozen candidate set under named base/moderate/high fee, slippage, and funding-cost assumptions, reporting each scenario independently. It keeps right-censored outcomes out of performance metrics and explicitly marks historical funding, fills, costs, and calibration as unverified. This is sensitivity analysis, not evidence of actual exchange costs and not permission to tune on a holdout.
