@@ -33,6 +33,16 @@ class ScoreCalibrationTests(unittest.TestCase):
         self.assertAlmostEqual(bucket["max_drawdown"], 0.20)
         self.assertAlmostEqual(bucket["mean_net_expectancy"], -0.05)
 
+    def test_same_exit_timestamp_drawdown_is_independent_of_input_order(self):
+        trades = [
+            {"signal_id": "b", "symbol": "BTCUSDT", "score": 92, "net_return": -0.20, "exit_ts": 10},
+            {"signal_id": "a", "symbol": "BTCUSDT", "score": 92, "net_return": 0.10, "exit_ts": 10},
+        ]
+        forward = summarize_score_calibration(trades)["buckets"][0]
+        reverse = summarize_score_calibration(list(reversed(trades)))["buckets"][0]
+        self.assertEqual(forward["max_drawdown"], reverse["max_drawdown"])
+        self.assertEqual(forward["mean_net_expectancy"], reverse["mean_net_expectancy"])
+
     def test_rejects_malformed_or_nonfinite_rows(self):
         invalid = [
             {"symbol": "BTCUSDT", "score": True, "net_return": 0.1, "exit_ts": 1},
