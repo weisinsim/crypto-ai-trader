@@ -27,7 +27,7 @@ h1{font-size:22px;margin:0 0 5px}.sub{font-size:12px;color:#9aa4b2}
 <header>
 <h1>Crypto AI Trader V28.2 · Research-Gated</h1>
 <div class="sub">BTC · ETH · SOL · AVAX · XRP · 各币种独立模型 · 4H Regime + 1H 收盘确认 · WebSocket实时</div>
-<div id="status" class="status"><span class="dot"></span><span id="stxt">连接中…</span></div><div id="diag" class="small">数据源：连接中</div>
+<div id="status" class="status"><span class="dot"></span><span id="stxt">连接中…</span></div><div id="buildInfo" class="small">部署版本：核对中…</div><div id="diag" class="small">数据源：连接中</div>
 </header>
 <div class="toolbar">
 <button class="filter active" data-f="ALL">ALL</button>
@@ -133,6 +133,21 @@ function render(){
  const hist=Object.values(state.data).map(x=>({symbol:x.symbol,...(state.history?.[x.symbol]?.[0]||{})})).filter(x=>x.signal);
  $("historyPanel").innerHTML=`<div class="history"><h3>最近已确认信号（1H收盘确认）</h3>${hist.length?hist.map(x=>`<div class="histrow"><b>${x.symbol.replace("USDT","")}</b><span class="${x.signal==="LONG"?"activeSig":"invalidSig"}">${x.signal}</span><span>${fmtTime(x.signal_time)} · Entry ${fmt(x.entry)} · ${x.score}/100</span><span>${x.status||"ACTIVE"}</span></div>`).join(""):"<div class='small'>等待第一根1H K线收盘确认</div>"}</div>`;
 }
+async function refreshBuildInfo(){
+ const el=$("buildInfo");
+ try{
+  const r=await fetch("/api/build-info",{cache:"no-store",headers:{"Accept":"application/json"}});
+  if(!r.ok)throw new Error("HTTP "+r.status);
+  const b=await r.json();
+  if(b.revision_known===true&&typeof b.revision==="string"&&b.revision.length>0){
+   el.textContent="部署版本："+b.revision.slice(0,12)+" · "+String(b.mode||"unknown")+" · 自动交易："+(b.auto_trade_enabled===false?"禁用":"状态未知");
+  }else{
+   el.textContent="部署版本：未知（服务未提供 Git commit）· 自动交易："+(b.auto_trade_enabled===false?"禁用":"状态未知");
+  }
+ }catch(e){
+  el.textContent="部署版本：无法核对（接口不可用或尚未部署）";
+ }
+}
 async function refreshChatGPTAlerts(){
  const statusEl=$("alertFeedStatus"), listEl=$("alertFeedList");
  try{
@@ -209,7 +224,7 @@ function connect(){
  }catch(e){setTimeout(connect,3000)}
 }
 document.querySelectorAll(".filter").forEach(b=>b.onclick=()=>{document.querySelectorAll(".filter").forEach(x=>x.classList.remove("active"));b.classList.add("active");state.filter=b.dataset.f;render()});
-snapshot();connect();refreshChatGPTAlerts();setInterval(snapshot,5000);setInterval(refreshChatGPTAlerts,30000);
+snapshot();connect();refreshBuildInfo();refreshChatGPTAlerts();setInterval(snapshot,5000);setInterval(refreshBuildInfo,60000);setInterval(refreshChatGPTAlerts,30000);
 </script>
 </body>
 </html>
