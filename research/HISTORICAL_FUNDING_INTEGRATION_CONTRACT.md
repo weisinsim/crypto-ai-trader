@@ -33,6 +33,9 @@ and a credit for shorts. It assumes constant entry notional.
 - The simulator still uses its candle-bucket funding assumption. The new helper is
   not yet wired into net PnL, and should not be described as live historical-funding
   backtesting.
+- A configured `funding_bps_per_8h=0` means no funding cost was modeled; it does not
+  mean the exchange charged or credited zero. Simulator output explicitly marks
+  funding as `ASSUMPTION_ONLY_NOT_HISTORICAL` and warns against that interpretation.
 
 ## Gate before integration
 
