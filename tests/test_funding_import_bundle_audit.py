@@ -33,13 +33,14 @@ class FundingImportBundleAuditTests(unittest.TestCase):
         value.update(overrides)
         return value
 
-    def audit(self, manifest=None, pages=None, raw_manifest_payload=None):
+    def audit(self, manifest=None, pages=None, raw_manifest_payload=None, parsed_raw_events_by_page=None):
         pages = self.pages() if pages is None else pages
         manifest = self.manifest(pages) if manifest is None else manifest
         return audit_funding_import_bundle(
             manifest, pages, symbol="BTCUSDT", venue="Binance",
             start_ts_ms=1000, end_ts_ms=3000, expected_first_cursor="start",
             raw_manifest_payload=raw_manifest_payload,
+            parsed_raw_events_by_page=parsed_raw_events_by_page,
         )
 
     def test_valid_bundle_passes_internal_consistency_only(self):
@@ -55,6 +56,23 @@ class FundingImportBundleAuditTests(unittest.TestCase):
         self.assertFalse(result["source_verified"])
         self.assertFalse(result["event_coverage_verified"])
         self.assertFalse(result["auto_trade_authorized"])
+
+
+    def test_bundle_exposes_independent_normalization_reconciliation(self):
+        pages = self.pages()
+        parsed = [
+            [{"symbol": "BTCUSDT", "funding_timestamp_ms": 1000, "funding_rate": 0.001}],
+            [{"symbol": "BTCUSDT", "funding_timestamp_ms": 2000, "funding_rate": -0.001}],
+        ]
+        result = self.audit(parsed_raw_events_by_page=parsed)
+        self.assertEqual(result["status"], "PASS")
+        self.assertTrue(result["normalization_verified"])
+        self.assertTrue(result["normalized_events_match_raw_payload"])
+
+        parsed[0][0]["funding_rate"] = 0.9
+        result = self.audit(parsed_raw_events_by_page=parsed)
+        self.assertEqual(result["status"], "FAIL")
+        self.assertFalse(result["normalization_verified"])
 
     def test_exact_raw_manifest_payload_is_verified_when_supplied(self):
         payload = b'{"manifest":"bundle-test"}'
