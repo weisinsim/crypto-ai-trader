@@ -240,13 +240,16 @@ def reconcile_restart_order_ledger(expected_client_order_ids, order_queries, sna
     orders = snapshot.get("open_orders")
     if not isinstance(orders, list) or any(not isinstance(order, Mapping) for order in orders):
         return {"ok": False, "reason": "OPEN_ORDERS_INVALID"}
-    active_snapshot_ids = {
+    active_order_ids = [
         order.get("client_order_id", order.get("clientOrderId"))
         for order in orders
         if order.get("status") in {"NEW", "PARTIALLY_FILLED"}
-    }
-    if any(not isinstance(item, str) or not item for item in active_snapshot_ids):
+    ]
+    if any(not isinstance(item, str) or not item for item in active_order_ids):
         return {"ok": False, "reason": "OPEN_ORDER_CLIENT_ID_INVALID"}
+    if len(set(active_order_ids)) != len(active_order_ids):
+        return {"ok": False, "reason": "DUPLICATE_ACTIVE_OPEN_ORDER_ID"}
+    active_snapshot_ids = set(active_order_ids)
     decisions = {}
     for client_id in expected_client_order_ids:
         query = order_queries.get(client_id)
