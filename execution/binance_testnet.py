@@ -314,6 +314,18 @@ class BinanceFuturesTestnet:
         orders = orders_response.json()
         snapshot_completed_at_ms = int(time.time() * 1000)
         snapshot_duration_ms = round((time.monotonic() - snapshot_started_monotonic) * 1000, 3)
+        # Account and open-order reads are separate calls. Reject unusually wide
+        # observation windows instead of presenting them as a usable snapshot.
+        if snapshot_duration_ms > 2000:
+            return {
+                "ok": False,
+                "reason": "testnet_snapshot_observation_window_too_wide",
+                "mode": "testnet_read_only_snapshot",
+                "symbol": symbol,
+                "snapshot_started_at_ms": snapshot_started_at_ms,
+                "snapshot_completed_at_ms": snapshot_completed_at_ms,
+                "snapshot_duration_ms": snapshot_duration_ms,
+            }
         if not isinstance(orders, list) or any(not isinstance(order, dict) for order in orders):
             return {"ok": False, "reason": "invalid_testnet_open_orders_response"}
         required_order_fields = ("orderId", "side", "type", "status", "reduceOnly")
