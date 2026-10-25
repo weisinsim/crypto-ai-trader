@@ -24,6 +24,30 @@ class ScoreCalibrationTests(unittest.TestCase):
         self.assertEqual(buckets[("BTCUSDT", "80-90")]["sample_count"], 1)
         self.assertEqual(buckets[("ETHUSDT", "90-100")]["validation_status"], "INSUFFICIENT_SAMPLE")
 
+    def test_win_rate_includes_wilson_confidence_interval(self):
+        trades = [
+            {"symbol": "BTCUSDT", "score": 75, "net_return": 0.01, "exit_ts": 1},
+            {"symbol": "BTCUSDT", "score": 75, "net_return": -0.01, "exit_ts": 2},
+        ]
+        bucket = summarize_score_calibration(trades)["buckets"][0]
+        lower, upper = bucket["win_rate_ci_95_wilson"]
+        self.assertAlmostEqual(bucket["win_rate"], 0.5)
+        self.assertAlmostEqual(lower, 0.094531, places=5)
+        self.assertAlmostEqual(upper, 0.905469, places=5)
+        self.assertLessEqual(lower, bucket["win_rate"])
+        self.assertGreaterEqual(upper, bucket["win_rate"])
+
+    def test_wilson_interval_handles_zero_and_all_wins(self):
+        no_wins = summarize_score_calibration([
+            {"symbol": "BTCUSDT", "score": 75, "net_return": -0.01, "exit_ts": 1}
+        ])["buckets"][0]["win_rate_ci_95_wilson"]
+        all_wins = summarize_score_calibration([
+            {"symbol": "BTCUSDT", "score": 75, "net_return": 0.01, "exit_ts": 1}
+        ])["buckets"][0]["win_rate_ci_95_wilson"]
+        self.assertEqual(len(no_wins), 2)
+        self.assertEqual(no_wins[0], 0.0)
+        self.assertEqual(all_wins[1], 1.0)
+
     def test_metrics_follow_exit_time_order_for_drawdown(self):
         trades = [
             {"symbol": "SOLUSDT", "score": 91, "net_return": 0.10, "exit_ts": 2},
