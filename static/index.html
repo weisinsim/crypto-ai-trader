@@ -205,18 +205,18 @@ async function snapshot(){
  try{
   const r=await fetch("/api/snapshot",{cache:"no-store"}); const j=await r.json();
   (j.data||[]).forEach(x=>state.data[x.symbol]=x);
-  setStatus(j.status?.status||"FALLBACK"); setDiag(j); render();
+  setStatus(j.status?.status==="LIVE"?"LIVE":j.status?.status==="DELAYED"?"DELAYED":"FALLBACK"); setDiag(j); render();
  }catch(e){setStatus("OFFLINE")}
 }
 function connect(){
  try{
   const proto=location.protocol==="https:"?"wss":"ws";
   const ws=new WebSocket(proto+"://"+location.host+"/ws"); state.ws=ws;
-  ws.onopen=()=>{setStatus("LIVE");ws.send("hello");snapshot()};
+  ws.onopen=()=>{setStatus("CONNECTING");ws.send("hello");snapshot()};
   ws.onmessage=e=>{
    const m=JSON.parse(e.data);
    if(m.type==="status")setStatus(m.status);
-   if(m.type==="snapshot"){(m.data||[]).forEach(x=>state.data[x.symbol]=x);loadSignals().then(render);setStatus(m.status?.status||"LIVE");setDiag(m)}
+   if(m.type==="snapshot"){(m.data||[]).forEach(x=>state.data[x.symbol]=x);loadSignals().then(render);setStatus(m.status?.status==="LIVE"?"LIVE":m.status?.status==="DELAYED"?"DELAYED":"FALLBACK");setDiag(m)}
    if(m.type==="ticker"){state.data[m.data.symbol]={...(state.data[m.data.symbol]||{}),...m.data};render()}
   };
   ws.onclose=()=>{setStatus("FALLBACK");setTimeout(connect,3000)};
