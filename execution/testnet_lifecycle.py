@@ -116,7 +116,7 @@ def _ensure_testnet_protective_exits_impl(
             symbol, "stop_loss", quantity, stop, f"{client_order_prefix}-sl"
         )
         if not result.get("accepted"):
-            return {"ok": False, "reason": "stop_submission_failed", "detail": result, "actions": actions}
+            return {\n                "ok": False,\n                "reason": "stop_submission_failed_requires_reconciliation",\n                "detail": result,\n                "actions": actions,\n                "requires_reconciliation": True,\n                "automatic_retry": False,\n            }
         actions.append({"kind": "stop_loss", "result": result})
     if not targets:
         result = adapter.submit_testnet_protective_exit(
