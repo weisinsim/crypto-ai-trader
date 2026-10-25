@@ -104,7 +104,7 @@ class PaperTradeSimulatorTests(unittest.TestCase):
         cases = [(1, 1), (8, 1), (9, 2), (16, 2), (17, 3)]
         for bars, expected_intervals in cases:
             with self.subTest(bars_held=bars):
-                candles = [self.candle(3_600_000 + i * 3_600_000) for i in range(bars)]
+                candles = [self.candle(7_200_000 + i * 3_600_000) for i in range(bars)]
                 result = simulate_tactical_candidate(
                     observation=self.candidate(), future_candles=candles,
                     fee_bps_per_side=0, slippage_bps_per_side=0,
