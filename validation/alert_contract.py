@@ -29,7 +29,9 @@ def validate_alert_candidate(symbol, item, now, max_age_seconds=90 * 60):
 
     side = item.get("confirmed_signal")
     model_status = item.get("model_status")
-    if side not in ("LONG", "SHORT") or model_status not in ALLOWED_MODEL_STATUSES:
+    # Validate types before set membership so malformed list/dict values fail
+    # closed instead of raising TypeError in the request path.
+    if side not in ("LONG", "SHORT") or not isinstance(model_status, str) or model_status not in ALLOWED_MODEL_STATUSES:
         return None
 
     ticker_ts = item.get("ts")
@@ -117,6 +119,8 @@ def build_alert_payload(market_status, symbol_cache, symbols, now):
     seen_event_ids = set()
     if heartbeat_fresh and isinstance(symbol_cache, dict):
         for symbol in symbols if isinstance(symbols, (list, tuple)) else ():
+            if not isinstance(symbol, str):
+                continue
             alert = validate_alert_candidate(symbol, symbol_cache.get(symbol), now)
             if alert is not None and alert["event_id"] not in seen_event_ids:
                 alerts.append(alert)
