@@ -1,6 +1,6 @@
 import unittest
 
-from research.score_event_replay_audit import build_frozen_score_event
+from research.score_event_replay_audit import (\n    build_frozen_score_event,\n    compare_replayed_score_events,\n)
 
 
 class ScoreEventReplayAuditTests(unittest.TestCase):
@@ -33,6 +33,29 @@ class ScoreEventReplayAuditTests(unittest.TestCase):
             self.build(candle_close_ts=1_800_000_003_600)["signal_id"],
         )
         self.assertNotEqual(base["signal_id"], self.build(side="SHORT")["signal_id"])
+
+    def test_replay_comparison_reports_identical_events(self):
+        first = self.build()
+        second = self.build()
+        report = compare_replayed_score_events(first, second)
+        self.assertEqual(report["status"], "DETERMINISTIC")
+        self.assertEqual(report["differences"], {})
+        self.assertTrue(report["research_only"])
+        self.assertFalse(report["auto_trade_authorized"])
+
+    def test_replay_comparison_reports_field_level_mismatches(self):
+        first = self.build()
+        second = self.build(score=79.0)
+        report = compare_replayed_score_events(first, second)
+        self.assertEqual(report["status"], "MISMATCH")
+        self.assertIn("score", report["differences"])
+        self.assertIn("signal_id", report["differences"])
+        self.assertEqual(report["differences"]["score"]["first"], 78.5)
+        self.assertEqual(report["differences"]["score"]["second"], 79.0)
+
+    def test_replay_comparison_rejects_non_mapping_inputs(self):
+        with self.assertRaisesRegex(ValueError, "mappings"):
+            compare_replayed_score_events(self.build(), None)
 
     def test_normalizes_symbol_side_and_timeframe(self):
         first = self.build()
