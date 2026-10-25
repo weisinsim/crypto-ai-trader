@@ -11,6 +11,14 @@ from __future__ import annotations
 import math
 
 
+def _is_finite_number(value):
+    """Return False for numeric values that cannot be represented finitely."""
+    try:
+        return math.isfinite(float(value))
+    except (OverflowError, TypeError, ValueError):
+        return False
+
+
 def audit_funding_events(events, *, symbol, start_ts_ms, end_ts_ms):
     """Validate funding events and report whether supplied history covers a window.
 
@@ -40,7 +48,7 @@ def audit_funding_events(events, *, symbol, start_ts_ms, end_ts_ms):
             raise ValueError(f"event {i} symbol does not match requested symbol")
         if isinstance(ts, bool) or not isinstance(ts, int) or ts < 0:
             raise ValueError(f"event {i} funding_timestamp_ms must be a nonnegative integer")
-        if isinstance(rate, bool) or not isinstance(rate, (int, float)) or not math.isfinite(rate):
+        if isinstance(rate, bool) or not isinstance(rate, (int, float)) or not _is_finite_number(rate):
             raise ValueError(f"event {i} funding_rate must be finite")
         if ts in seen:
             raise ValueError(f"duplicate funding timestamp: {ts}")
@@ -83,7 +91,7 @@ def calculate_position_funding(*, events, symbol, side, entry_timestamp_ms,
             raise ValueError(f"{name} must be a nonnegative integer timestamp")
     if exit_timestamp_ms < entry_timestamp_ms:
         raise ValueError("exit timestamp must be >= entry timestamp")
-    if isinstance(entry_notional, bool) or not isinstance(entry_notional, (int, float)) or not math.isfinite(entry_notional) or entry_notional <= 0:
+    if isinstance(entry_notional, bool) or not isinstance(entry_notional, (int, float)) or not _is_finite_number(entry_notional) or entry_notional <= 0:
         raise ValueError("entry_notional must be finite and positive")
     audit = audit_funding_events(events, symbol=symbol,
                                  start_ts_ms=entry_timestamp_ms,
@@ -149,7 +157,7 @@ def calculate_position_funding_with_notional_path(
             raise ValueError(f"notional segment {index} end must be after start")
         if start != expected_start:
             raise ValueError("notional segments must exactly cover the position interval without gaps or overlap")
-        if isinstance(notional, bool) or not isinstance(notional, (int, float)) or not math.isfinite(notional) or notional <= 0:
+        if isinstance(notional, bool) or not isinstance(notional, (int, float)) or not _is_finite_number(notional) or notional <= 0:
             raise ValueError(f"notional segment {index} notional must be finite and positive")
         normalized.append({"start_ts_ms": start, "end_ts_ms": end, "notional": float(notional)})
         expected_start = end
