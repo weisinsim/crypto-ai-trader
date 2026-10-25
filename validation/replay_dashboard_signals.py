@@ -195,8 +195,9 @@ def adx_series(h, l, c, n=14):
         pdi = 100 * p / true_range
         mdi = 100 * m / true_range
         valid_dx.append(100 * abs(pdi - mdi) / max(pdi + mdi, 1e-9))
-        if len(valid_dx) >= n:
-            out[j + 1] = sum(valid_dx[-n:]) / n
+        # The reference adx() averages however many valid DX points exist,
+        # capped at n; it does not wait for a full n-point DX window.
+        out[j + 1] = sum(valid_dx[-n:]) / min(n, len(valid_dx))
     return out
 
 def vwap(h,l,c,q,n=48):
