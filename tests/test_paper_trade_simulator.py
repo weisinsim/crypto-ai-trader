@@ -122,6 +122,8 @@ class PaperTradeSimulatorTests(unittest.TestCase):
                     "CANDLE_BUCKET_ASSUMPTION_NOT_EXCHANGE_SETTLEMENT",
                 )
                 self.assertFalse(result["funding_history_verified"])
+                self.assertEqual(result["funding_assumption_status"], "ASSUMPTION_ONLY_NOT_HISTORICAL")
+                self.assertIn("does not mean", result["funding_warning"])
                 self.assertEqual(result["funding_assumption_bps_per_8h"], 10)
 
     def test_rejects_invalid_levels_and_future_timestamps(self):
