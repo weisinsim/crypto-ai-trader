@@ -118,6 +118,7 @@ class ScoreEventStore:
         trades = []
         cost_complete_count = 0
         required_cost_fields = ("fees", "slippage", "funding")
+        cost_field_valid_counts = {field: 0 for field in required_cost_fields}
         for row in rows:
             trade = dict(row)
             recorded = json.loads(trade.pop("recorded_json"))
@@ -130,6 +131,7 @@ class ScoreEventStore:
                 except ValueError:
                     continue
                 present.append(field)
+                cost_field_valid_counts[field] += 1
             # Cost fields are audit evidence only; net_return remains caller-supplied.
             # Missing fields are not inferred or silently treated as zero.
             trade["cost_fields_present"] = present
@@ -147,6 +149,7 @@ class ScoreEventStore:
             "completed_trade_count": total_trades,
             "uncompleted_score_event_count": total_events - total_trades,
             "cost_fields_required": list(required_cost_fields),
+            "cost_field_valid_counts": cost_field_valid_counts,
             "cost_fields_present_count": cost_complete_count,
             "cost_fields_incomplete_count": total_trades - cost_complete_count,
             "trades": trades,
@@ -173,6 +176,7 @@ class ScoreEventStore:
                 "completed_trade_count": ledger["completed_trade_count"],
                 "uncompleted_score_event_count": ledger["uncompleted_score_event_count"],
                 "cost_fields_required": ledger["cost_fields_required"],
+                "cost_field_valid_counts": ledger["cost_field_valid_counts"],
                 "cost_fields_present_count": ledger["cost_fields_present_count"],
                 "cost_fields_incomplete_count": ledger["cost_fields_incomplete_count"],
             },
