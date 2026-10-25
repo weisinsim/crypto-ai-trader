@@ -72,13 +72,13 @@ def validate_order_intent(intent: OrderIntent, config: ExecutionConfig) -> Execu
     if not isinstance(config, ExecutionConfig):
         return ExecutionDecision(False, "invalid_config_type")
 
-    if config.mode not in {"paper", "testnet"}:
+    if not isinstance(config.mode, str) or config.mode not in {"paper", "testnet"}:
         return ExecutionDecision(False, "unsupported_mode")
     if config.live_trading_enabled is not False:
         return ExecutionDecision(False, "live_trading_not_implemented")
     if not isinstance(intent.symbol, str) or not re.fullmatch(r"[A-Z0-9]{2,20}USDT", intent.symbol):
         return ExecutionDecision(False, "invalid_symbol")
-    if intent.side not in {"BUY", "SELL"}:
+    if not isinstance(intent.side, str) or intent.side not in {"BUY", "SELL"}:
         return ExecutionDecision(False, "invalid_side")
 
     numeric = (
