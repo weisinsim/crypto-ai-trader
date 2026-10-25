@@ -80,10 +80,12 @@ def simulate_tactical_candidate(*, observation, future_candles,
     realized_gross = 0.0
     exits = []
     tp1_done = False
-    exit_reason = "MAX_HOLD"
-    exit_price = valid[min(max_holding_candles, len(valid)) - 1]["c"]
-    bars_used = min(max_holding_candles, len(valid))
-    for index, candle in enumerate(valid[:max_holding_candles]):
+    holding_limit = min(max_holding_candles, len(valid))
+    reached_holding_limit = len(valid) >= max_holding_candles
+    exit_reason = "MAX_HOLD" if reached_holding_limit else "DATA_END"
+    exit_price = valid[holding_limit - 1]["c"]
+    bars_used = holding_limit
+    for index, candle in enumerate(valid[:holding_limit]):
         stop_hit = candle["l"] <= stop if side == "LONG" else candle["h"] >= stop
         tp1_hit = candle["h"] >= tp1 if side == "LONG" else candle["l"] <= tp1
         tp2_hit = candle["h"] >= tp2 if side == "LONG" else candle["l"] <= tp2
@@ -106,11 +108,12 @@ def simulate_tactical_candidate(*, observation, future_candles,
             quantity_remaining = 0.0
             exit_reason, exit_price, bars_used = "TP2", tp2, index + 1
             break
-        if index == min(max_holding_candles, len(valid)) - 1:
+        if index == holding_limit - 1:
             realized_gross += quantity_remaining * direction * (candle["c"] - entry)
-            exits.append({"reason": "MAX_HOLD", "price": candle["c"], "quantity": quantity_remaining, "bar_index": index})
+            reason = "MAX_HOLD" if reached_holding_limit else "DATA_END"
+            exits.append({"reason": reason, "price": candle["c"], "quantity": quantity_remaining, "bar_index": index})
             quantity_remaining = 0.0
-            exit_reason, exit_price, bars_used = "MAX_HOLD", candle["c"], index + 1
+            exit_reason, exit_price, bars_used = reason, candle["c"], index + 1
 
     traded_notional = entry
     # Entry fee plus exit fees on each executed unit fraction's exit notional.
@@ -121,7 +124,8 @@ def simulate_tactical_candidate(*, observation, future_candles,
     funding_cost = traded_notional * (funding_bps_per_8h / 10_000) * funding_intervals
     net_pnl = realized_gross - fee_cost - funding_cost
     return {
-        "status": "SIMULATED",
+        "status": "SIMULATED" if exit_reason != "DATA_END" else "CENSORED",
+        "outcome_complete": exit_reason != "DATA_END",
         "symbol": observation.get("symbol"),
         "side": side,
         "signal_candle_close_ms": signal_close,
