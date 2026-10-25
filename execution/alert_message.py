@@ -19,6 +19,9 @@ def format_entry_alert(event):
     """Format an alert event; clearly labels research-only candidates."""
     if not isinstance(event, dict) or event.get("eligible") is not True:
         raise ValueError("only eligible alert events can be formatted")
+    if (event.get("notification_only") is not True
+            or event.get("auto_trade_authorized") is not False):
+        raise ValueError("event must be notification-only and not execution-authorized")
 
     symbol = event.get("symbol")
     side = event.get("side")
