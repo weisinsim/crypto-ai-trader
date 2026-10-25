@@ -81,10 +81,10 @@ class FundingHistoryImportTests(unittest.TestCase):
 
     def test_anchored_cadence_detects_missing_trailing_window_settlement(self):
         source = (
-            "fundingTime,fundingRate\\n"
-            "2025-01-01T00:00:00Z,0.001\\n"
-            "2025-01-01T08:00:00Z,0.001\\n"
-            "2025-01-01T16:00:00Z,0.001\\n"
+            "fundingTime,fundingRate\n"
+            "2025-01-01T00:00:00Z,0.001\n"
+            "2025-01-01T08:00:00Z,0.001\n"
+            "2025-01-01T16:00:00Z,0.001\n"
         )
         result = import_funding_csv(
             source, symbol="BTCUSDT",
@@ -100,7 +100,7 @@ class FundingHistoryImportTests(unittest.TestCase):
     def test_rejects_non_finite_funding_rates(self):
         for invalid_rate in ("nan", "inf", "-inf"):
             with self.subTest(invalid_rate=invalid_rate):
-                source = f"fundingTime,fundingRate\\n2025-01-01T00:00:00Z,{invalid_rate}\\n"
+                source = f"fundingTime,fundingRate\n2025-01-01T00:00:00Z,{invalid_rate}\n"
                 with self.assertRaisesRegex(ValueError, "must be finite"):
                     import_funding_csv(
                         source, symbol="BTCUSDT",
