@@ -105,7 +105,7 @@ class PaperTradeSimulatorTests(unittest.TestCase):
     def test_gap_through_stop_uses_worse_open_reference(self):
         long_result = simulate_tactical_candidate(
             observation=self.candidate(),
-            future_candles=[self.candle(3_600_001, o=90, h=92, l=89, c=91)],
+            future_candles=[self.candle(3_600_001), self.candle(7_200_000, o=90, h=92, l=89, c=91)],
             fee_bps_per_side=0, slippage_bps_per_side=0, funding_bps_per_8h=0,
         )
         self.assertEqual(long_result["exit_reason"], "STOP")
@@ -117,7 +117,7 @@ class PaperTradeSimulatorTests(unittest.TestCase):
             observation=self.candidate(
                 signal="SHORT", entry=100, sl=105, tp1=95, tp2=90,
             ),
-            future_candles=[self.candle(3_600_001, o=110, h=111, l=108, c=109)],
+            future_candles=[self.candle(3_600_001), self.candle(7_200_000, o=110, h=111, l=108, c=109)],
             fee_bps_per_side=0, slippage_bps_per_side=0, funding_bps_per_8h=0,
         )
         self.assertEqual(short_result["exits"][0]["reference_price"], 110)
