@@ -94,6 +94,27 @@ class TestnetReconciliationTests(unittest.TestCase):
         self.assertEqual(untracked["reason"], "UNTRACKED_ACTIVE_ORDER_ON_RESTART")
         self.assertEqual(missing["reason"], "ORDER_QUERY_MISSING_OR_AMBIGUOUS")
 
+    def test_restart_ledger_rejects_duplicate_active_client_ids(self):
+        snapshot = {
+            "ok": True,
+            "position_amount": "0.5",
+            "open_orders": [
+                {"client_order_id": "btc-sl", "status": "NEW"},
+                {"client_order_id": "btc-sl", "status": "PARTIALLY_FILLED"},
+            ],
+            "snapshot_started_at_ms": 1000,
+            "snapshot_completed_at_ms": 1100,
+            "snapshot_duration_ms": 100.0,
+        }
+        result = reconcile_restart_order_ledger(
+            ["btc-sl"],
+            {"btc-sl": {"found": True, "client_order_id": "btc-sl", "status": "NEW"}},
+            snapshot,
+            now_ms=1200,
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "DUPLICATE_ACTIVE_OPEN_ORDER_ID")
+
     def test_exact_flat_snapshot_passes(self):
         result = reconcile_testnet_state(
             {"BTCUSDT": "0"}, {"BTCUSDT": self.snapshot()}
