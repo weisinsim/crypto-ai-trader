@@ -59,3 +59,28 @@ def build_frozen_score_event(*, symbol, side, timeframe, candle_close_ts, model_
         "research_only": True,
         "auto_trade_authorized": False,
     }
+
+
+def compare_replayed_score_events(first, second):
+    """Compare two frozen event payloads and report deterministic replay status.
+
+    Only the canonical identity/output fields are compared. A mismatch is a
+    research audit finding, never a trading signal or automatic model verdict.
+    """
+    fields = (
+        "signal_id", "symbol", "side", "timeframe", "candle_close_ts",
+        "signal_ts", "model_version", "score",
+    )
+    if not isinstance(first, dict) or not isinstance(second, dict):
+        raise ValueError("both replay events must be mappings")
+    differences = {
+        field: {"first": first.get(field), "second": second.get(field)}
+        for field in fields if first.get(field) != second.get(field)
+    }
+    return {
+        "status": "DETERMINISTIC" if not differences else "MISMATCH",
+        "compared_fields": list(fields),
+        "differences": differences,
+        "research_only": True,
+        "auto_trade_authorized": False,
+    }
