@@ -69,6 +69,20 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertFalse(result["automatic_retry"])
         self.assertEqual(len(adapter.submissions), 1)
 
+    def test_ambiguous_stop_timeout_fails_closed_without_retry_or_target(self):
+        class TimeoutAdapter(FakeAdapter):
+            def submit_testnet_protective_exit(self, symbol, kind, quantity, price, client_id):
+                self.submissions.append((symbol, kind, str(quantity), str(price), client_id))
+                raise TimeoutError("simulated response timeout after request")
+
+        adapter = TimeoutAdapter()
+        result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-timeout-01")
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertFalse(result["automatic_retry"])
+        self.assertEqual(result["reason"], "adapter_exception_requires_reconciliation")
+        self.assertEqual([item[1] for item in adapter.submissions], ["stop_loss"])
+
     def test_target_failure_leaves_stop_and_demands_reconciliation(self):
         adapter = FakeAdapter(fail_kind="take_profit")
         result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-02")
