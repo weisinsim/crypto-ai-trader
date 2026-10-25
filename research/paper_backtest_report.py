@@ -95,7 +95,9 @@ def build_paper_backtest_report(simulated_trades, *, observations=None):
             "trade_id": trade_id, "symbol": symbol.strip().upper(), "side": side,
             "score": score, "exit_timestamp_ms": exit_ts,
         }
-        if status == "CENSORED" or raw.get("exit_reason") == "DATA_END" or not complete:
+        if status == "CENSORED" or raw.get("exit_reason") == "DATA_END":
+            if complete:
+                raise ValueError(f"trade {trade_id} is censored but marked outcome_complete=True")
             censored.append(normalized)
             continue
         if status != "SIMULATED" or not complete:
