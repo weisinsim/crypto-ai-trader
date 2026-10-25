@@ -1,7 +1,8 @@
 """Exchange-agnostic pagination and page-payload audit for funding imports.
 
 This validates a normalized page envelope supplied by an exchange-specific
-adapter. It does not fetch pages or prove that the adapter requested every page.
+adapter. It does not fetch pages, parse raw JSON, reconcile normalized events
+against raw bytes, or prove that the adapter requested every page.
 """
 from __future__ import annotations
 
@@ -18,6 +19,10 @@ def audit_funding_pages(pages, *, symbol, start_ts_ms, end_ts_ms,
     The first request cursor may be pinned with expected_first_cursor. For a
     cursor-based API, each page's next_cursor must equal the next page's
     request_cursor, and the final next_cursor must be None.
+
+    A PASS means the supplied envelope is internally consistent only. Because
+    the exchange-specific raw payload schema is unknown here, this function
+    does not prove that ``events`` were faithfully normalized from raw_payload.
     """
     if not isinstance(pages, (list, tuple)) or not pages:
         raise ValueError("pages must be a non-empty list or tuple")
@@ -127,8 +132,10 @@ def audit_funding_pages(pages, *, symbol, start_ts_ms, end_ts_ms,
         "events": all_events,
         "pagination_chain_consistent": not any("cursor" in e or "pagination" in e or "final_page" in e for e in errors),
         "raw_page_digests_computed": all(p["raw_payload_sha256"] is not None for p in page_reports),
+        "normalization_verified": False,
+        "normalized_events_match_raw_payload": False,
         "source_verified": False,
         "event_coverage_verified": False,
         "auto_trade_authorized": False,
-        "warning": "Audits supplied page envelopes only; completeness still depends on the adapter's source-specific pagination contract and trusted exchange provenance.",
+        "warning": "PASS means envelope consistency only. Raw bytes are hashed but not parsed or reconciled against normalized events; completeness and provenance depend on a source-specific adapter and trusted exchange evidence.",
     }
