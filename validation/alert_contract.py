@@ -7,6 +7,8 @@ import math
 import re
 
 ALLOWED_MODEL_STATUSES = frozenset({"RESEARCH", "PRODUCTION"})
+# This is a candidate-score threshold, not a calibrated win-probability claim.
+MIN_ENTRY_CANDIDATE_SCORE = 70.0
 _SYMBOL_RE = re.compile(r"^[A-Z0-9]{2,20}USDT$")
 
 
@@ -66,6 +68,10 @@ def validate_alert_candidate(symbol, item, now, max_age_seconds=90 * 60):
     score = item.get("confirmed_score")
     if not _finite_number(score) or not 0 <= score <= 100:
         return None
+    # Scores below the configured threshold are not surfaced as entry candidates.
+    # A score of 70 is not a claim of a 70% empirical win rate.
+    if score < MIN_ENTRY_CANDIDATE_SCORE:
+        return None
 
     # Metadata is untrusted input. Keep it bounded and string-only; the UI
     # must still render it as text rather than injecting it into HTML.
@@ -86,6 +92,9 @@ def validate_alert_candidate(symbol, item, now, max_age_seconds=90 * 60):
         "take_profit_1": tp1,
         "take_profit_2": tp2,
         "score": score,
+        "score_is_probability": False,
+        "minimum_candidate_score": MIN_ENTRY_CANDIDATE_SCORE,
+        "entry_candidate": True,
         "score_label": score_label,
         "model_name": model_name,
         "model_status": model_status,
