@@ -10,6 +10,11 @@ research/score_event_ledger.py adds link_realized_trades(score_events, realized_
 
 **Important:** this helper does not persist events and is not wired into the running dashboard or execution layer. It validates caller-supplied records only. No production score/outcome linkage exists until a durable, restart-safe ledger is implemented and tested. Score calibration has not yet been established.
 
+
+## Durable local store added
+
+`research/score_event_store.py` adds a SQLite-backed research ledger. Entry events and realized outcomes are inserted transactionally with unique signal IDs; outcomes are rejected if the source event is missing, the symbol/direction differs, the exit precedes the signal, or the ID was already used. `calibration_rows()` reports completed trades and score events without completed outcomes separately, and the test suite checks data survives reopening the database. This is a local library, not yet wired to the live dashboard or runtime signal pipeline; no production records are being collected by this change.
+
 ## Required input schema
 
 research.score_calibration.summarize_score_calibration expects one row per completed trade: symbol; score (frozen at entry, 0–100); net_return (after entry/exit fees, slippage and applicable historical funding); and exit_ts (milliseconds). Link using the stable signal/trade ID, never future-derived scores.
