@@ -7,12 +7,12 @@ from unittest.mock import patch
 if importlib.util.find_spec("fastapi") is None or importlib.util.find_spec("websockets") is None:
     raise unittest.SkipTest("FastAPI/websockets runtime dependencies are not installed in this test job")
 
-import asyncio
+from fastapi.testclient import TestClient
 import app as app_module
 
 
 class ChatGPTAlertEndpointTests(unittest.TestCase):
-    def test_endpoint_adds_model_version_and_preserves_read_only_contract(self):
+    def test_http_endpoint_preserves_read_only_contract(self):
         expected = {
             "generated_at": 1_800_000_000.0,
             "status": "DELAYED",
@@ -23,8 +23,12 @@ class ChatGPTAlertEndpointTests(unittest.TestCase):
         with patch.object(app_module.time, "time", return_value=1_800_000_000.0), patch.object(
             app_module, "build_alert_payload", return_value=dict(expected)
         ) as builder:
-            payload = asyncio.run(app_module.chatgpt_alerts())
+            # Do not enter TestClient as a context manager: startup handlers
+            # launch market-data tasks, which are outside this endpoint test.
+            response = TestClient(app_module.app).get("/api/chatgpt/alerts")
 
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
         builder.assert_called_once_with(
             app_module.market_status,
             app_module.cache,
