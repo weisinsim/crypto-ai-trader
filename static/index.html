@@ -156,8 +156,15 @@ async function refreshChatGPTAlerts(){
    const detail=document.createElement("div");detail.className="alertMuted";
    detail.textContent="Entry "+(a.entry??"—")+" · SL "+(a.stop_loss??a.sl??"—")+" · TP1 "+(a.take_profit_1??a.tp1??"—")+" · TP2 "+(a.take_profit_2??a.tp2??"—");
    const safety=document.createElement("div");safety.className="alertMuted";
-   safety.textContent="仅提醒："+(a.notification_only===true?"是":"待确认")+" · 自动交易授权："+(a.auto_trade_authorized===false?"关闭":"未确认");
-   item.append(title,detail,safety);listEl.appendChild(item);
+   const researchOnly=a.research_only===true||a.model_status!=="PRODUCTION";
+   safety.textContent=(researchOnly?"研究候选：未批准实盘":"生产状态：仅信号提醒")+
+    " · 仅提醒："+(a.notification_only===true?"是":"待确认")+
+    " · 自动交易："+(a.auto_trade_authorized===false?"禁用":"未确认");
+   const candle=document.createElement("div");candle.className="alertMuted";
+   const candleMs=Number(a.signal_candle_ms);
+   candle.textContent="信号K线："+(Number.isFinite(candleMs)&&candleMs>0?new Date(candleMs).toLocaleString()+" · ":"时间未知 · ")+
+    "请核对最新行情后再自行决策";
+   item.append(title,detail,safety,candle);listEl.appendChild(item);
   });
  }catch(e){
   statusEl.className="alertIntro alertFail";
