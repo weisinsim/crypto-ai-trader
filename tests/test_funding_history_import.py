@@ -107,6 +107,16 @@ class FundingHistoryImportTests(unittest.TestCase):
                         start_ts_ms=1735689600000, end_ts_ms=1735776000000,
                     )
 
+    def test_anchored_cadence_rejects_excessive_expected_grid(self):
+        source = "fundingTime,fundingRate\\n"
+        with self.assertRaisesRegex(ValueError, "exceeds 100000 events"):
+            import_funding_csv(
+                source, symbol="BTCUSDT",
+                start_ts_ms=0, end_ts_ms=100_001,
+                expected_interval_ms=1,
+                expected_anchor_ts_ms=0,
+            )
+
     def test_anchor_requires_expected_interval(self):
         with self.assertRaisesRegex(ValueError, "requires expected_interval_ms"):
             import_funding_csv(
