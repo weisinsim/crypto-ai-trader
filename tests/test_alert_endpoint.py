@@ -28,6 +28,8 @@ class ChatGPTAlertEndpointTests(unittest.TestCase):
             response = TestClient(app_module.app).get("/api/chatgpt/alerts")
 
         self.assertEqual(response.status_code, 200)
+        self.assertIn("no-store", response.headers.get("cache-control", ""))
+        self.assertEqual(response.headers.get("pragma"), "no-cache")
         payload = response.json()
         builder.assert_called_once_with(
             app_module.market_status,
