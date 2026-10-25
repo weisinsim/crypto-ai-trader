@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 from research.score_event_ledger import _finite_number, validate_score_event
@@ -28,7 +29,7 @@ class ScoreEventStore:
         return conn
 
     def _initialize(self):
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS score_events (
                     signal_id TEXT PRIMARY KEY,
@@ -54,7 +55,7 @@ class ScoreEventStore:
         """Persist a frozen score event once; duplicates are rejected, never overwritten."""
         normalized = validate_score_event(event)
         try:
-            with self._connect() as conn:
+            with closing(self._connect()) as conn, conn:
                 conn.execute(
                     "INSERT INTO score_events(signal_id,symbol,side,signal_ts,score,raw_json) VALUES(?,?,?,?,?,?)",
                     (normalized["signal_id"], normalized["symbol"], normalized["side"],
@@ -80,7 +81,7 @@ class ScoreEventStore:
         net_return = _finite_number(trade.get("net_return"), "net_return")
         if net_return <= -1:
             raise ValueError("net_return must be greater than -1")
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             event = conn.execute(
                 "SELECT symbol,side,signal_ts FROM score_events WHERE signal_id=?", (signal_id,)
             ).fetchone()
@@ -103,7 +104,7 @@ class ScoreEventStore:
 
     def calibration_rows(self):
         """Return completed trades with frozen scores plus coverage diagnostics."""
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             rows = conn.execute("""
                 SELECT e.signal_id,e.symbol,e.side,e.signal_ts,e.score,
                        t.exit_ts,t.net_return
