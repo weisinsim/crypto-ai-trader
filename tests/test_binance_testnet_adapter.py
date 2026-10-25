@@ -231,6 +231,18 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual([call[0] for call in client.get_calls[:2]], ["/fapi/v2/account", "/fapi/v1/openOrders"])
         self.assertEqual(client.calls, [])
 
+    def test_position_snapshot_rejects_excessive_observation_window(self):
+        from unittest.mock import patch
+
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        with patch("execution.binance_testnet.time.monotonic", side_effect=[1.0, 4.1]):
+            result = adapter.testnet_position_snapshot("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "testnet_snapshot_observation_window_too_wide")
+        self.assertGreater(result["snapshot_duration_ms"], 2000)
+        self.assertEqual(client.calls, [])
+
     def test_position_snapshot_rejects_invalid_symbol_without_network_call(self):
         client = FakeClient()
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
