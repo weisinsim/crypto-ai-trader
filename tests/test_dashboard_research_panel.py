@@ -54,6 +54,16 @@ class DashboardResearchPanelTests(unittest.TestCase):
         self.assertIn("信号K线：", self.html)
         self.assertIn('a.auto_trade_authorized===false', self.html)
 
+    def test_browser_alert_filter_rejects_invalid_prices_geometry_and_stale_candles(self):
+        self.assertIn("const nowMs=Date.now()", self.html)
+        self.assertIn("const validPrice=v=>typeof v===\"number\"&&Number.isFinite(v)&&v>0", self.html)
+        self.assertIn('a.side==="LONG"&&!(stop<entry&&entry<tp1&&tp1<=tp2)', self.html)
+        self.assertIn('a.side==="SHORT"&&!(tp2<=tp1&&tp1<entry&&entry<stop)', self.html)
+        self.assertIn("nowMs-candleMs>90*60*1000", self.html)
+        self.assertIn("candleMs>nowMs", self.html)
+        self.assertIn("a.notification_only!==true", self.html)
+        self.assertIn("a.auto_trade_authorized!==false", self.html)
+
     def test_html_document_and_script_are_closed(self):
         self.assertEqual(self.html.count("<script>"), 1)
         self.assertEqual(self.html.count("</script>"), 1)
