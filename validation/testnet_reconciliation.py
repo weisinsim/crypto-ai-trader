@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
+import time
 
 
 def _decimal(value, field):
@@ -99,6 +100,15 @@ def reconcile_testnet_state(
         if isinstance(required, (str, bytes)) or not isinstance(required, (list, tuple, set, frozenset)):
             symbol_reasons.append("REQUIRED_PROTECTIVE_ORDERS_INVALID")
             required = []
+        valid_required_ids = {
+            item for item in required if isinstance(item, str) and item.strip()
+        }
+        for order in orders:
+            if not isinstance(order, Mapping):
+                continue
+            order_id = order.get("client_order_id", order.get("clientOrderId"))
+            if order_id not in valid_required_ids:
+                symbol_reasons.append("UNEXPECTED_OPEN_ORDER")
         for order_id in required:
             if not isinstance(order_id, str) or not order_id.strip():
                 symbol_reasons.append("REQUIRED_PROTECTIVE_ORDER_ID_INVALID")
@@ -118,6 +128,27 @@ def reconcile_testnet_state(
                 symbol_reasons.append("PROTECTIVE_ORDER_NOT_REDUCE_ONLY")
             if status not in {"NEW", "PARTIALLY_FILLED"}:
                 symbol_reasons.append("PROTECTIVE_ORDER_NOT_OPEN")
+            if order.get("type") not in {"STOP_MARKET", "TAKE_PROFIT_MARKET"}:
+                symbol_reasons.append("PROTECTIVE_ORDER_TYPE_INVALID")
+            expected_side = "SELL" if expected > 0 else "BUY" if expected < 0 else None
+            if expected_side is None or order.get("side") != expected_side:
+                symbol_reasons.append("PROTECTIVE_ORDER_SIDE_MISMATCH")
+            try:
+                order_quantity = _decimal(
+                    order.get("orig_quantity", order.get("origQty")), "protective order quantity"
+                )
+                if order_quantity <= 0 or abs(order_quantity - abs(expected)) > tolerance:
+                    symbol_reasons.append("PROTECTIVE_ORDER_QUANTITY_MISMATCH")
+            except ValueError:
+                symbol_reasons.append("PROTECTIVE_ORDER_QUANTITY_INVALID")
+            try:
+                trigger_price = _decimal(
+                    order.get("stop_price", order.get("stopPrice")), "protective order trigger price"
+                )
+                if trigger_price <= 0:
+                    symbol_reasons.append("PROTECTIVE_ORDER_TRIGGER_PRICE_INVALID")
+            except ValueError:
+                symbol_reasons.append("PROTECTIVE_ORDER_TRIGGER_PRICE_INVALID")
         results[symbol] = {
             "ok": not symbol_reasons,
             "expected_position_amount": str(expected),
@@ -146,3 +177,106 @@ def reconcile_testnet_state(
             reasons.append(f"{symbol}:UNEXPECTED_OPEN_ORDERS")
 
     return {"ok": not reasons, "reasons": list(dict.fromkeys(reasons)), "symbols": results}
+
+
+def validate_snapshot_timing(
+    snapshot,
+    *,
+    now_ms,
+    max_age_ms=2000,
+    max_observation_window_ms=2000,
+):
+    """Validate local observation timing metadata; this cannot make reads atomic.
+
+    The caller must pass the time at which it intends to act. Missing, malformed,
+    stale, future-dated, or overly wide snapshots fail closed.
+    """
+    if not isinstance(snapshot, Mapping) or snapshot.get("ok") is not True:
+        return {"ok": False, "reason": "SNAPSHOT_MISSING_OR_FAILED"}
+    try:
+        now = _decimal(now_ms, "now_ms")
+        started = _decimal(snapshot.get("snapshot_started_at_ms"), "snapshot_started_at_ms")
+        completed = _decimal(snapshot.get("snapshot_completed_at_ms"), "snapshot_completed_at_ms")
+        duration = _decimal(snapshot.get("snapshot_duration_ms"), "snapshot_duration_ms")
+        max_age = _decimal(max_age_ms, "max_age_ms")
+        max_window = _decimal(max_observation_window_ms, "max_observation_window_ms")
+    except ValueError:
+        return {"ok": False, "reason": "SNAPSHOT_TIMING_INVALID"}
+    if any(value < 0 for value in (now, started, completed, duration, max_age, max_window)):
+        return {"ok": False, "reason": "SNAPSHOT_TIMING_INVALID"}
+    if completed < started or duration > max_window or completed - started > max_window:
+        return {"ok": False, "reason": "SNAPSHOT_OBSERVATION_WINDOW_TOO_WIDE"}
+    if completed > now:
+        return {"ok": False, "reason": "SNAPSHOT_TIMESTAMP_IN_FUTURE"}
+    if now - completed > max_age:
+        return {"ok": False, "reason": "SNAPSHOT_STALE"}
+    return {
+        "ok": True,
+        "observed_age_ms": str(now - completed),
+        "observation_window_ms": str(completed - started),
+    }
+
+
+def reconcile_restart_order_ledger(expected_client_order_ids, order_queries, snapshot, *, now_ms=None):
+    """Read-only restart decision from known client IDs plus a fresh snapshot.
+
+    This helper never submits or cancels orders. Any missing/ambiguous query or
+    mismatch between queried active orders and the open-order snapshot blocks
+    automatic recovery.
+    """
+    if (
+        not isinstance(expected_client_order_ids, (list, tuple, set, frozenset))
+        or isinstance(expected_client_order_ids, (str, bytes))
+        or not expected_client_order_ids
+        or any(not isinstance(item, str) or not item.strip() for item in expected_client_order_ids)
+        or len(set(expected_client_order_ids)) != len(expected_client_order_ids)
+    ):
+        return {"ok": False, "reason": "EXPECTED_CLIENT_ORDER_IDS_INVALID"}
+    if not isinstance(order_queries, Mapping):
+        return {"ok": False, "reason": "ORDER_QUERIES_INVALID"}
+    expected_ids = set(expected_client_order_ids)
+    if not set(order_queries.keys()).issubset(expected_ids):
+        return {"ok": False, "reason": "ORDER_QUERY_KEYS_MISMATCH"}
+    timing = validate_snapshot_timing(snapshot, now_ms=int(time.time() * 1000) if now_ms is None else now_ms)
+    if not timing.get("ok"):
+        return {"ok": False, "reason": "SNAPSHOT_TIMING_REJECTED", "detail": timing.get("reason")}
+    orders = snapshot.get("open_orders")
+    if not isinstance(orders, list) or any(not isinstance(order, Mapping) for order in orders):
+        return {"ok": False, "reason": "OPEN_ORDERS_INVALID"}
+    active_order_ids = [
+        order.get("client_order_id", order.get("clientOrderId"))
+        for order in orders
+        if order.get("status") in {"NEW", "PARTIALLY_FILLED"}
+    ]
+    if any(not isinstance(item, str) or not item for item in active_order_ids):
+        return {"ok": False, "reason": "OPEN_ORDER_CLIENT_ID_INVALID"}
+    if len(set(active_order_ids)) != len(active_order_ids):
+        return {"ok": False, "reason": "DUPLICATE_ACTIVE_OPEN_ORDER_ID"}
+    active_snapshot_ids = set(active_order_ids)
+    decisions = {}
+    for client_id in expected_client_order_ids:
+        query = order_queries.get(client_id)
+        if not isinstance(query, Mapping) or query.get("found") is not True:
+            return {"ok": False, "reason": "ORDER_QUERY_MISSING_OR_AMBIGUOUS", "client_order_id": client_id}
+        status = query.get("status")
+        if status not in {"NEW", "PARTIALLY_FILLED", "FILLED", "CANCELED", "EXPIRED", "REJECTED"}:
+            return {"ok": False, "reason": "ORDER_STATUS_UNKNOWN", "client_order_id": client_id}
+        if query.get("client_order_id", client_id) != client_id:
+            return {"ok": False, "reason": "ORDER_CLIENT_ID_MISMATCH", "client_order_id": client_id}
+        is_active = status in {"NEW", "PARTIALLY_FILLED"}
+        if is_active != (client_id in active_snapshot_ids):
+            return {"ok": False, "reason": "ORDER_QUERY_SNAPSHOT_MISMATCH", "client_order_id": client_id}
+        decisions[client_id] = {
+            "status": status,
+            "active": is_active,
+            "exchange_order_id": str(query.get("exchange_order_id", "")),
+        }
+    untracked = active_snapshot_ids - set(expected_client_order_ids)
+    if untracked:
+        return {"ok": False, "reason": "UNTRACKED_ACTIVE_ORDER_ON_RESTART", "client_order_ids": sorted(untracked)}
+    return {
+        "ok": True,
+        "mode": "read_only_restart_reconciliation",
+        "automatic_order_submission_authorized": False,
+        "orders": decisions,
+    }

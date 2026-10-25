@@ -5,9 +5,12 @@ the take-profit. It does not cancel sibling orders, manage fills, or enable live
 trading; callers must reconcile the returned state before retrying.
 """
 from decimal import Decimal, InvalidOperation
+import time
+
+from validation.testnet_reconciliation import validate_snapshot_timing, reconcile_restart_order_ledger
 
 
-def ensure_testnet_protective_exits(
+def _ensure_testnet_protective_exits_impl(
     adapter,
     symbol: str,
     stop_price,
@@ -30,6 +33,19 @@ def ensure_testnet_protective_exits(
         return {"ok": False, "reason": "invalid_protective_prices"}
 
     snapshot = adapter.testnet_position_snapshot(symbol)
+    timing = validate_snapshot_timing(
+        snapshot,
+        now_ms=int(time.time() * 1000),
+        max_age_ms=2000,
+        max_observation_window_ms=2000,
+    )
+    if not timing.get("ok"):
+        return {
+            "ok": False,
+            "reason": "position_snapshot_timing_rejected",
+            "timing_reason": timing.get("reason"),
+            "requires_reconciliation": True,
+        }
     if not snapshot.get("ok"):
         return {"ok": False, "reason": "position_snapshot_failed"}
     try:
@@ -100,7 +116,14 @@ def ensure_testnet_protective_exits(
             symbol, "stop_loss", quantity, stop, f"{client_order_prefix}-sl"
         )
         if not result.get("accepted"):
-            return {"ok": False, "reason": "stop_submission_failed", "detail": result, "actions": actions}
+            return {
+                "ok": False,
+                "reason": "stop_submission_failed_requires_reconciliation",
+                "detail": result,
+                "actions": actions,
+                "requires_reconciliation": True,
+                "automatic_retry": False,
+            }
         actions.append({"kind": "stop_loss", "result": result})
     if not targets:
         result = adapter.submit_testnet_protective_exit(
@@ -118,6 +141,20 @@ def ensure_testnet_protective_exits(
 
     # Confirm the exchange state after requests; a successful HTTP response is not enough.
     final_snapshot = adapter.testnet_position_snapshot(symbol)
+    final_timing = validate_snapshot_timing(
+        final_snapshot,
+        now_ms=int(time.time() * 1000),
+        max_age_ms=2000,
+        max_observation_window_ms=2000,
+    )
+    if not final_timing.get("ok"):
+        return {
+            "ok": False,
+            "reason": "post_submission_snapshot_timing_rejected",
+            "timing_reason": final_timing.get("reason"),
+            "actions": actions,
+            "requires_reconciliation": True,
+        }
     if not final_snapshot.get("ok"):
         return {"ok": False, "reason": "post_submission_snapshot_failed", "actions": actions, "requires_reconciliation": True}
     try:
@@ -194,7 +231,7 @@ def ensure_testnet_protective_exits(
 
 
 
-def cancel_testnet_sibling_after_flatten(
+def _cancel_testnet_sibling_after_flatten_impl(
     adapter,
     symbol: str,
     filled_exit_client_order_id: str,
@@ -295,3 +332,145 @@ def cancel_testnet_sibling_after_flatten(
         "sibling_exit_client_order_id": sibling_exit_client_order_id,
         "cancel_result": cancelled,
     }
+
+
+
+def ensure_testnet_protective_exits(
+    adapter,
+    symbol: str,
+    stop_price,
+    take_profit_price,
+    client_order_prefix: str,
+):
+    """Fail closed on adapter exceptions; never retry an ambiguous submission."""
+    try:
+        return _ensure_testnet_protective_exits_impl(
+            adapter, symbol, stop_price, take_profit_price, client_order_prefix
+        )
+    except Exception as exc:
+        return {
+            "ok": False,
+            "reason": "adapter_exception_requires_reconciliation",
+            "error_type": type(exc).__name__,
+            "requires_reconciliation": True,
+            "automatic_retry": False,
+        }
+
+
+def cancel_testnet_sibling_after_flatten(
+    adapter,
+    symbol: str,
+    filled_exit_client_order_id: str,
+    sibling_exit_client_order_id: str,
+):
+    """Treat read/cancel exceptions as ambiguous; never retry a cancel blindly."""
+    try:
+        return _cancel_testnet_sibling_after_flatten_impl(
+            adapter, symbol, filled_exit_client_order_id, sibling_exit_client_order_id
+        )
+    except Exception as exc:
+        return {
+            "ok": False,
+            "reason": "adapter_exception_requires_reconciliation",
+            "error_type": type(exc).__name__,
+            "requires_reconciliation": True,
+            "automatic_retry": False,
+        }
+
+
+def reconcile_testnet_restart(adapter, symbol: str, expected_client_order_ids):
+    """Read-only restart recovery: query known IDs and compare with a fresh snapshot.
+
+    This function never submits or cancels orders. Any exception, unknown order,
+    stale snapshot, or disagreement requires manual reconciliation.
+    """
+    try:
+        if not isinstance(symbol, str) or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
+            return {
+                "ok": False,
+                "reason": "restart_symbol_invalid",
+                "requires_reconciliation": True,
+                "automatic_retry": False,
+            }
+        if (
+            isinstance(expected_client_order_ids, (str, bytes))
+            or not isinstance(expected_client_order_ids, (list, tuple, set, frozenset))
+            or not expected_client_order_ids
+        ):
+            return {
+                "ok": False,
+                "reason": "restart_client_order_ids_invalid",
+                "requires_reconciliation": True,
+                "automatic_retry": False,
+            }
+        ids = list(expected_client_order_ids)
+        if (
+            any(
+                not isinstance(item, str)
+                or not item
+                or len(item) > 36
+                or any(not (char.isalnum() or char in "-_") for char in item)
+                for item in ids
+            )
+            or len(set(ids)) != len(ids)
+        ):
+            return {
+                "ok": False,
+                "reason": "restart_client_order_ids_invalid",
+                "requires_reconciliation": True,
+                "automatic_retry": False,
+            }
+        # Validate all caller-supplied IDs before any adapter call. In particular,
+        # duplicate IDs must not trigger duplicate exchange queries.
+        expected_client_order_ids = ids
+        snapshot = adapter.testnet_position_snapshot(symbol)
+        if not isinstance(snapshot, dict) or not snapshot.get("ok"):
+            return {"ok": False, "reason": "restart_snapshot_failed", "requires_reconciliation": True, "automatic_retry": False}
+        snapshot_symbol = snapshot.get("symbol")
+        if snapshot_symbol is not None and snapshot_symbol != symbol:
+            return {
+                "ok": False,
+                "reason": "restart_snapshot_symbol_mismatch",
+                "snapshot_symbol": snapshot_symbol,
+                "requires_reconciliation": True,
+                "automatic_retry": False,
+            }
+        timing = validate_snapshot_timing(
+            snapshot,
+            now_ms=int(time.time() * 1000),
+            max_age_ms=2000,
+            max_observation_window_ms=2000,
+        )
+        if not timing.get("ok"):
+            return {
+                "ok": False,
+                "reason": "restart_snapshot_timing_rejected",
+                "timing_reason": timing.get("reason"),
+                "requires_reconciliation": True,
+                "automatic_retry": False,
+            }
+        queries = {}
+        for client_id in expected_client_order_ids:
+            queries[client_id] = adapter.query_testnet_order(symbol, client_id)
+        result = reconcile_restart_order_ledger(
+            expected_client_order_ids,
+            queries,
+            snapshot,
+            now_ms=int(time.time() * 1000),
+        )
+        if not result.get("ok"):
+            return {**result, "requires_reconciliation": True, "automatic_retry": False}
+        return {
+            **result,
+            "symbol": symbol,
+            "position_amount": str(snapshot.get("position_amount")),
+            "requires_reconciliation": False,
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "reason": "restart_reconciliation_exception",
+            "error_type": type(exc).__name__,
+            "requires_reconciliation": True,
+            "automatic_retry": False,
+        }
