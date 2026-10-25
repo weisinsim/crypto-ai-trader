@@ -107,6 +107,25 @@ class ScoreEventReplayAuditTests(unittest.TestCase):
         self.assertTrue(report["expected_input_errors"])
         self.assertTrue(report["replayed_input_errors"])
 
+    def test_replay_series_rejects_unsupported_schema_and_unsafe_flags(self):
+        event = self.build()
+        legacy = dict(event)
+        legacy["event_schema_version"] = 99
+        unsafe = dict(event)
+        unsafe["auto_trade_authorized"] = True
+        report = audit_replay_series([event, legacy, unsafe], [event])
+        self.assertEqual(report["status"], "FAIL")
+        reasons = {row["reason"] for row in report["expected_input_errors"]}
+        self.assertIn("unsupported event_schema_version", reasons)
+        self.assertIn("unsafe authorization flags", reasons)
+
+    def test_replay_series_rejects_missing_schema_fields(self):
+        event = self.build()
+        del event["score_definition"]
+        report = audit_replay_series([event], [])
+        self.assertEqual(report["status"], "FAIL")
+        self.assertIn("missing required fields", {row["reason"] for row in report["expected_input_errors"]})
+
     def test_replay_series_requires_sequences(self):
         with self.assertRaisesRegex(ValueError, "sequences"):
             audit_replay_series(None, [])
