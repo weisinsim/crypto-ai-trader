@@ -105,6 +105,28 @@ class ScoreEventStoreTests(unittest.TestCase):
         self.assertEqual(full_report["coverage"]["uncompleted_score_event_count"], 1)
         self.assertEqual(full_report["calibration"]["buckets"], [])
 
+    def test_integrity_audit_reports_clean_linkage_and_uncompleted_events(self):
+        self.store.record_score_event(self.event)
+        audit = self.store.integrity_audit()
+        self.assertEqual(audit["status"], "PASS")
+        self.assertEqual(audit["sqlite_integrity_check"], ["ok"])
+        self.assertEqual(audit["score_event_count"], 1)
+        self.assertEqual(audit["realized_trade_count"], 0)
+        self.assertEqual(audit["uncompleted_score_event_count"], 1)
+        self.assertEqual(audit["orphan_realized_trade_count"], 0)
+        self.assertEqual(audit["duplicate_score_event_id_groups"], 0)
+        self.assertEqual(audit["duplicate_realized_trade_id_groups"], 0)
+        self.assertTrue(audit["research_only"])
+        self.assertFalse(audit["auto_trade_authorized"])
+
+        self.store.record_realized_trade(dict(
+            self.trade, fees=0.001, slippage=0.002, funding=0.0
+        ))
+        audit = self.store.integrity_audit()
+        self.assertEqual(audit["status"], "PASS")
+        self.assertEqual(audit["realized_trade_count"], 1)
+        self.assertEqual(audit["uncompleted_score_event_count"], 0)
+
     def test_invalid_outcome_is_rejected_without_partial_write(self):
         self.store.record_score_event(self.event)
         with self.assertRaisesRegex(ValueError, "exit_ts precedes"):
