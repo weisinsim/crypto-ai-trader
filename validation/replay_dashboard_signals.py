@@ -327,16 +327,21 @@ def main():
         one_path=data/f"{s}_1h.csv"; four_path=data/f"{s}_4h.csv"
         one=validate_candle_cadence(read_rows(one_path), 3_600_000, str(one_path))
         four=validate_candle_cadence(read_rows(four_path), 14_400_000, str(four_path))
-        trades=replay(s,one,four)
         fields=["timestamp","status","signal","side","entry","atr","stop","target","target2","score","model","model_version","rsi","ema20_1h","ema50_1h","ema20_4h","ema50_4h","adx","vwap","support","resistance","reason"]
         state_counts = {}
         if a.include_states:
+            # One full replay produces both state diagnostics and actionable
+            # signal rows. Running replay twice repeats every indicator and
+            # ADX calculation for each candle without adding information.
             states=replay(s,one,four,include_states=True)
             for row in states:
                 key = row["reason"]
                 state_counts[key] = state_counts.get(key, 0) + 1
             with (out/f"{s}_states.csv").open("w",newline="",encoding="utf-8") as sf:
                 sw=csv.DictWriter(sf,fieldnames=fields); sw.writeheader(); sw.writerows(states)
+            trades=[row for row in states if row.get("side")]
+        else:
+            trades=replay(s,one,four)
         dest=out/f"{s}_signals.csv"
         with dest.open("w",newline="",encoding="utf-8") as f:
             w=csv.DictWriter(f,fieldnames=fields); w.writeheader(); w.writerows(trades)
