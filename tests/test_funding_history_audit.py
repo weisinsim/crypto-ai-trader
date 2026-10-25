@@ -72,3 +72,76 @@ class FundingHistoryAuditTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+class FundingNotionalPathTests(unittest.TestCase):
+    def test_partial_exit_reduces_notional_for_later_settlements(self):
+        from research.funding_history_audit import calculate_position_funding_with_notional_path
+
+        events = [
+            {"symbol": "BTCUSDT", "funding_timestamp_ms": 1000, "funding_rate": 0.001},
+            {"symbol": "BTCUSDT", "funding_timestamp_ms": 2000, "funding_rate": 0.001},
+            {"symbol": "BTCUSDT", "funding_timestamp_ms": 3000, "funding_rate": 0.001},
+        ]
+        result = calculate_position_funding_with_notional_path(
+            events=events, symbol="BTCUSDT", side="LONG",
+            entry_timestamp_ms=1000, exit_timestamp_ms=4000,
+            notional_segments=[
+                {"start_ts_ms": 1000, "end_ts_ms": 2500, "notional": 1000},
+                {"start_ts_ms": 2500, "end_ts_ms": 4000, "notional": 400},
+            ],
+        )
+        self.assertEqual(result["funding_event_count"], 3)
+        self.assertEqual([e["applied_notional"] for e in result["applied_events"]], [1000, 1000, 400])
+        self.assertAlmostEqual(result["funding_cost"], 2.4)
+        self.assertFalse(result["notional_path_verified"])
+        self.assertFalse(result["auto_trade_authorized"])
+
+    def test_funding_at_segment_boundary_uses_reduced_notional(self):
+        from research.funding_history_audit import calculate_position_funding_with_notional_path
+
+        result = calculate_position_funding_with_notional_path(
+            events=[{"symbol": "BTCUSDT", "funding_timestamp_ms": 2000, "funding_rate": 0.01}],
+            symbol="BTCUSDT", side="LONG", entry_timestamp_ms=1000,
+            exit_timestamp_ms=3000,
+            notional_segments=[
+                {"start_ts_ms": 1000, "end_ts_ms": 2000, "notional": 1000},
+                {"start_ts_ms": 2000, "end_ts_ms": 3000, "notional": 250},
+            ],
+        )
+        self.assertEqual(result["applied_events"][0]["applied_notional"], 250)
+        self.assertAlmostEqual(result["funding_cost"], 2.5)
+
+    def test_notional_path_rejects_gaps_overlap_and_invalid_notional(self):
+        from research.funding_history_audit import calculate_position_funding_with_notional_path
+
+        base = dict(
+            events=[], symbol="BTCUSDT", side="LONG",
+            entry_timestamp_ms=1000, exit_timestamp_ms=3000,
+        )
+        invalid_paths = [
+            [{"start_ts_ms": 1000, "end_ts_ms": 1900, "notional": 1000},
+             {"start_ts_ms": 2000, "end_ts_ms": 3000, "notional": 500}],
+            [{"start_ts_ms": 1000, "end_ts_ms": 2200, "notional": 1000},
+             {"start_ts_ms": 2000, "end_ts_ms": 3000, "notional": 500}],
+            [{"start_ts_ms": 1000, "end_ts_ms": 3000, "notional": 0}],
+        ]
+        for path in invalid_paths:
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                calculate_position_funding_with_notional_path(**base, notional_segments=path)
+
+    def test_negative_rate_and_short_side_reverse_cashflow(self):
+        from research.funding_history_audit import calculate_position_funding_with_notional_path
+
+        result = calculate_position_funding_with_notional_path(
+            events=[{"symbol": "BTCUSDT", "funding_timestamp_ms": 1500, "funding_rate": -0.002}],
+            symbol="BTCUSDT", side="SHORT", entry_timestamp_ms=1000,
+            exit_timestamp_ms=2000,
+            notional_segments=[{"start_ts_ms": 1000, "end_ts_ms": 2000, "notional": 500}],
+        )
+        self.assertAlmostEqual(result["funding_cost"], 1.0)
+
+
+if __name__ == "__main__":
+    unittest.main()
