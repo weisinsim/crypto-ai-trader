@@ -117,6 +117,12 @@ class PaperTradeSimulatorTests(unittest.TestCase):
                     result["entry_price_assumption"] * 0.001 * expected_intervals,
                 )
                 self.assertFalse(result["costs_verified"])
+                self.assertEqual(
+                    result["funding_model"],
+                    "CANDLE_BUCKET_ASSUMPTION_NOT_EXCHANGE_SETTLEMENT",
+                )
+                self.assertFalse(result["funding_history_verified"])
+                self.assertEqual(result["funding_assumption_bps_per_8h"], 10)
 
     def test_rejects_invalid_levels_and_future_timestamps(self):
         with self.assertRaisesRegex(ValueError, "risk levels"):
