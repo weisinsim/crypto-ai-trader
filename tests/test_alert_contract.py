@@ -116,6 +116,16 @@ class AlertContractTests(unittest.TestCase):
         self.assertTrue(payload["notification_only"])
         self.assertIs(payload["auto_trade_authorized"], False)
 
+    def test_duplicate_symbols_do_not_duplicate_same_event(self):
+        payload = build_alert_payload(
+            {"status": "LIVE", "updated": self.now - 2},
+            {"BTCUSDT": self.item},
+            ["BTCUSDT", "BTCUSDT"],
+            self.now,
+        )
+        self.assertEqual(len(payload["alerts"]), 1)
+        self.assertEqual(payload["alerts"][0]["symbol"], "BTCUSDT")
+
     def test_non_dict_cache_and_invalid_clock_fail_closed(self):
         payload = build_alert_payload(
             {"status": "LIVE", "updated": self.now - 2},
