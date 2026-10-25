@@ -13,9 +13,10 @@ import math
 def build_frozen_score_event(*, symbol, side, timeframe, candle_close_ts, model_version, score):
     """Build a stable signal ID and normalized immutable event payload.
 
-    The same canonical inputs produce the same ID. A changed model version, side,
-    candle close time, or score produces a different ID. Candle timestamps are
-    milliseconds since epoch and must identify a *closed* candle.
+    The same logical signal (symbol, side, timeframe, closed-candle timestamp,
+    model version) produces the same ID even if a replayed score drifts. This lets
+    the audit compare score values under a stable event identity. Candle timestamps
+    are milliseconds since epoch and must identify a *closed* candle.
     """
     if not isinstance(symbol, str) or not symbol.strip():
         raise ValueError("symbol must be a non-empty string")
