@@ -96,9 +96,12 @@ def simulate_tactical_candidate(*, observation, future_candles,
         tp2_hit = candle["h"] >= tp2 if side == "LONG" else candle["l"] <= tp2
         # Ambiguous OHLC bars are resolved conservatively: stop takes priority.
         if stop_hit:
-            fill = adverse_exit_price(stop)
+            # If the bar opens through the stop, model the stop reference at
+            # the open rather than granting an impossible fill at the stop.
+            stop_reference = min(stop, candle["o"]) if side == "LONG" else max(stop, candle["o"])
+            fill = adverse_exit_price(stop_reference)
             realized_gross += quantity_remaining * direction * (fill - entry)
-            exits.append({"reason": "STOP", "price": fill, "reference_price": stop, "quantity": quantity_remaining, "bar_index": index})
+            exits.append({"reason": "STOP", "price": fill, "reference_price": stop_reference, "configured_stop": stop, "gap_through_stop": stop_reference != stop, "quantity": quantity_remaining, "bar_index": index})
             quantity_remaining = 0.0
             exit_reason, exit_price, bars_used = "STOP", stop, index + 1
             break
