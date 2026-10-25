@@ -40,6 +40,19 @@ class FundingHistoryImportTests(unittest.TestCase):
         )
         self.assertFalse(result["manifest"]["cadence_check_passed"])
 
+    def test_empty_window_does_not_pass_expected_cadence(self):
+        source = "fundingTime,fundingRate\\n"
+        result = import_funding_csv(
+            source, symbol="BTCUSDT",
+            start_ts_ms=1735689600000, end_ts_ms=1735776000000,
+            expected_interval_ms=28_800_000,
+        )
+        self.assertEqual(result["events"], [])
+        self.assertFalse(result["manifest"]["cadence_check_passed"])
+        self.assertEqual(result["manifest"]["cadence_check_status"], "INSUFFICIENT_EVENTS")
+        self.assertFalse(result["manifest"]["cadence_boundary_coverage_verified"])
+        self.assertFalse(result["manifest"]["coverage_verified"])
+
     def test_rejects_ambiguous_numeric_timestamps(self):
         source = "fundingTime,fundingRate\n1735689600000,0.001\n"
         with self.assertRaisesRegex(ValueError, "ambiguous"):
