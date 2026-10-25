@@ -176,3 +176,41 @@ def reconcile_testnet_state(
             reasons.append(f"{symbol}:UNEXPECTED_OPEN_ORDERS")
 
     return {"ok": not reasons, "reasons": list(dict.fromkeys(reasons)), "symbols": results}
+
+
+def validate_snapshot_timing(
+    snapshot,
+    *,
+    now_ms,
+    max_age_ms=2000,
+    max_observation_window_ms=2000,
+):
+    """Validate local observation timing metadata; this cannot make reads atomic.
+
+    The caller must pass the time at which it intends to act. Missing, malformed,
+    stale, future-dated, or overly wide snapshots fail closed.
+    """
+    if not isinstance(snapshot, Mapping) or snapshot.get("ok") is not True:
+        return {"ok": False, "reason": "SNAPSHOT_MISSING_OR_FAILED"}
+    try:
+        now = _decimal(now_ms, "now_ms")
+        started = _decimal(snapshot.get("snapshot_started_at_ms"), "snapshot_started_at_ms")
+        completed = _decimal(snapshot.get("snapshot_completed_at_ms"), "snapshot_completed_at_ms")
+        duration = _decimal(snapshot.get("snapshot_duration_ms"), "snapshot_duration_ms")
+        max_age = _decimal(max_age_ms, "max_age_ms")
+        max_window = _decimal(max_observation_window_ms, "max_observation_window_ms")
+    except ValueError:
+        return {"ok": False, "reason": "SNAPSHOT_TIMING_INVALID"}
+    if any(value < 0 for value in (now, started, completed, duration, max_age, max_window)):
+        return {"ok": False, "reason": "SNAPSHOT_TIMING_INVALID"}
+    if completed < started or duration > max_window or completed - started > max_window:
+        return {"ok": False, "reason": "SNAPSHOT_OBSERVATION_WINDOW_TOO_WIDE"}
+    if completed > now:
+        return {"ok": False, "reason": "SNAPSHOT_TIMESTAMP_IN_FUTURE"}
+    if now - completed > max_age:
+        return {"ok": False, "reason": "SNAPSHOT_STALE"}
+    return {
+        "ok": True,
+        "observed_age_ms": str(now - completed),
+        "observation_window_ms": str(completed - started),
+    }
