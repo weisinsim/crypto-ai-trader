@@ -69,6 +69,19 @@ class FundingHistoryAuditTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "finite"):
             audit_funding_events(rows, symbol="BTCUSDT", start_ts_ms=0, end_ts_ms=2000)
 
+    def test_overflowing_integer_rate_is_rejected_without_internal_error(self):
+        rows = [{"symbol": "BTCUSDT", "funding_timestamp_ms": 1000, "funding_rate": 10 ** 10000}]
+        with self.assertRaisesRegex(ValueError, "finite"):
+            audit_funding_events(rows, symbol="BTCUSDT", start_ts_ms=0, end_ts_ms=2000)
+
+    def test_overflowing_integer_notional_is_rejected_without_internal_error(self):
+        with self.assertRaisesRegex(ValueError, "entry_notional"):
+            calculate_position_funding(
+                events=[], symbol="BTCUSDT", side="LONG",
+                entry_timestamp_ms=1000, exit_timestamp_ms=2000,
+                entry_notional=10 ** 10000,
+            )
+
 
 
 class FundingNotionalPathTests(unittest.TestCase):
