@@ -61,3 +61,6 @@ Chronological cohort reporting added in `research/chronological_backtest_report.
 
 
 Cost-sensitivity stress runner added in `research/paper_stress_test.py`. It replays the same frozen candidate set under named base/moderate/high fee, slippage, and funding-cost assumptions, reporting each scenario independently. It keeps right-censored outcomes out of performance metrics and explicitly marks historical funding, fills, costs, and calibration as unverified. This is sensitivity analysis, not evidence of actual exchange costs and not permission to tune on a holdout.
+
+
+Execution-cost audit refinement: the paper lifecycle simulator now applies adverse slippage to both entry and every exit fill (long exits lower, short exits higher), while retaining the reference trigger price separately for audit. Regression tests verify exit slippage worsens returns for both LONG and SHORT. These remain modeled fills, not order-book or exchange-fill verification.
