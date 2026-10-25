@@ -8,6 +8,7 @@ class EntryAlertMessageTests(unittest.TestCase):
     def event(self):
         return {
             "eligible": True, "symbol": "BTCUSDT", "side": "LONG",
+            "notification_only": True, "auto_trade_authorized": False,
             "research_only": True, "score": 82, "entry": 65000,
             "stop_loss": 64500, "take_profit_1": 66000, "take_profit_2": 66500,
             "risk_reward": 2.0, "signal_candle_ms": 1_800_000_000_000,
@@ -54,6 +55,18 @@ class EntryAlertMessageTests(unittest.TestCase):
     def test_rejects_ineligible_events(self):
         event = self.event()
         event["eligible"] = False
+        with self.assertRaises(ValueError):
+            format_entry_alert(event)
+
+    def test_rejects_non_notification_event(self):
+        event = self.event()
+        event["notification_only"] = False
+        with self.assertRaises(ValueError):
+            format_entry_alert(event)
+
+    def test_rejects_execution_authorized_event(self):
+        event = self.event()
+        event["auto_trade_authorized"] = True
         with self.assertRaises(ValueError):
             format_entry_alert(event)
 
