@@ -247,6 +247,47 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertFalse(result["requires_reconciliation"])
         self.assertEqual(adapter.query_calls, [("BTCUSDT", "btc-sl")])
 
+    def test_restart_reconciliation_query_timeout_fails_closed_without_mutation(self):
+        import time
+
+        class RestartAdapter:
+            def __init__(self):
+                self.query_calls = 0
+                self.submit_calls = 0
+                self.cancel_calls = 0
+
+            def testnet_position_snapshot(self, symbol):
+                now = int(time.time() * 1000)
+                return {
+                    "ok": True, "symbol": symbol, "position_amount": "0.5",
+                    "snapshot_started_at_ms": now - 10,
+                    "snapshot_completed_at_ms": now,
+                    "snapshot_duration_ms": 10.0,
+                    "open_orders": [{"client_order_id": "btc-sl", "status": "NEW"}],
+                }
+
+            def query_testnet_order(self, symbol, client_id):
+                self.query_calls += 1
+                raise TimeoutError("simulated restart order-query timeout")
+
+            def submit_testnet_protective_exit(self, *args):
+                self.submit_calls += 1
+                raise AssertionError("restart reconciliation must never submit")
+
+            def cancel_testnet_order(self, *args):
+                self.cancel_calls += 1
+                raise AssertionError("restart reconciliation must never cancel")
+
+        adapter = RestartAdapter()
+        result = reconcile_testnet_restart(adapter, "BTCUSDT", ["btc-sl"])
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertFalse(result["automatic_retry"])
+        self.assertEqual(result["reason"], "restart_reconciliation_exception")
+        self.assertEqual(adapter.query_calls, 1)
+        self.assertEqual(adapter.submit_calls, 0)
+        self.assertEqual(adapter.cancel_calls, 0)
+
     def test_restart_reconciliation_fails_closed_on_unknown_or_mismatched_state(self):
         import time
 
