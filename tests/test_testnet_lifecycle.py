@@ -17,11 +17,16 @@ class FakeAdapter:
         self.snapshot_count += 1
         if self.mutate_position and self.snapshot_count > 1:
             self.position = "0.4"
+        import time
+        now_ms = int(time.time() * 1000)
         return {
             "ok": True,
             "symbol": symbol,
             "position_amount": self.position,
             "entry_price": self.entry,
+            "snapshot_started_at_ms": now_ms - 10,
+            "snapshot_completed_at_ms": now_ms,
+            "snapshot_duration_ms": 10.0,
             "open_orders": [dict(order) for order in self.orders],
         }
 
