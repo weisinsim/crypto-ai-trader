@@ -1,6 +1,9 @@
 import unittest
 
-from research.score_event_replay_audit import (\n    build_frozen_score_event,\n    compare_replayed_score_events,\n)
+from research.score_event_replay_audit import (
+    build_frozen_score_event,
+    compare_replayed_score_events,
+)
 
 
 class ScoreEventReplayAuditTests(unittest.TestCase):
