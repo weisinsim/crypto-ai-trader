@@ -4,8 +4,10 @@ This module does not place, queue, or authorize exchange orders.
 """
 import hashlib
 import math
+import re
 
 ALLOWED_MODEL_STATUSES = frozenset({"RESEARCH", "PRODUCTION"})
+_SYMBOL_RE = re.compile(r"^[A-Z0-9]{2,20}USDT$")
 
 
 def _finite_number(value):
@@ -18,7 +20,7 @@ def _finite_number(value):
 
 def validate_alert_candidate(symbol, item, now, max_age_seconds=90 * 60):
     """Return a sanitized notification-only alert, or None when unsafe/stale."""
-    if not isinstance(symbol, str) or not symbol.endswith("USDT"):
+    if not isinstance(symbol, str) or not _SYMBOL_RE.fullmatch(symbol):
         return None
     if not isinstance(item, dict) or not _finite_number(now) or now <= 0:
         return None
