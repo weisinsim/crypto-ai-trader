@@ -34,7 +34,7 @@ class FakeAdapter:
             "status": "NEW", "reduce_only": True, "type": order_type,
             "stop_price": str(price), "client_order_id": client_id,
             "side": "SELL" if DecimalPosition(self.position) > 0 else "BUY",
-            "orig_quantity": str(abs(DecimalPosition(self.position))),
+            "orig_quantity": str(abs(DecimalPosition(self.position))), "executed_quantity": "0",
         })
         return {"accepted": True, "client_order_id": client_id}
 
@@ -111,7 +111,7 @@ class TestnetLifecycleTests(unittest.TestCase):
     def test_existing_matching_stop_is_reused(self):
         adapter = FakeAdapter(orders=[{
             "status": "NEW", "reduce_only": True, "type": "STOP_MARKET",
-            "stop_price": "99", "side": "SELL", "orig_quantity": "0.5",
+            "stop_price": "99", "side": "SELL", "orig_quantity": "0.5", "executed_quantity": "0",
             "client_order_id": "btc-run-03-sl",
         }])
         result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-03")
@@ -121,7 +121,7 @@ class TestnetLifecycleTests(unittest.TestCase):
     def test_existing_stop_with_unrelated_client_id_fails_closed(self):
         adapter = FakeAdapter(orders=[{
             "status": "NEW", "reduce_only": True, "type": "STOP_MARKET",
-            "stop_price": "99", "side": "SELL", "orig_quantity": "0.5",
+            "stop_price": "99", "side": "SELL", "orig_quantity": "0.5", "executed_quantity": "0",
             "client_order_id": "unrelated-stop-id",
         }])
         result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-04a")
@@ -132,7 +132,7 @@ class TestnetLifecycleTests(unittest.TestCase):
     def test_mismatched_existing_stop_fails_closed(self):
         adapter = FakeAdapter(orders=[{
             "status": "NEW", "reduce_only": True, "type": "STOP_MARKET",
-            "stop_price": "98", "side": "SELL", "orig_quantity": "0.5",
+            "stop_price": "98", "side": "SELL", "orig_quantity": "0.5", "executed_quantity": "0",
             "client_order_id": "btc-run-04-sl",
         }])
         result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-04")
@@ -392,12 +392,12 @@ class TestnetLifecycleTests(unittest.TestCase):
         adapter = FakeAdapter(orders=[
             {
                 "status": "NEW", "reduce_only": True, "type": "STOP_MARKET",
-                "stop_price": "99", "side": "SELL", "orig_quantity": "0.5",
+                "stop_price": "99", "side": "SELL", "orig_quantity": "0.5", "executed_quantity": "0",
                 "client_order_id": "btc-restart-01-sl",
             },
             {
                 "status": "NEW", "reduce_only": True, "type": "TAKE_PROFIT_MARKET",
-                "stop_price": "102", "side": "SELL", "orig_quantity": "0.5",
+                "stop_price": "102", "side": "SELL", "orig_quantity": "0.5", "executed_quantity": "0",
                 "client_order_id": "btc-restart-01-tp",
             },
         ])
@@ -414,12 +414,12 @@ class TestnetLifecycleTests(unittest.TestCase):
         duplicate_stops = [
             {
                 "status": "NEW", "reduce_only": True, "type": "STOP_MARKET",
-                "stop_price": "99", "side": "SELL", "orig_quantity": "0.5",
+                "stop_price": "99", "side": "SELL", "orig_quantity": "0.5", "executed_quantity": "0",
                 "client_order_id": "btc-restart-02-sl",
             },
             {
                 "status": "NEW", "reduce_only": True, "type": "STOP_MARKET",
-                "stop_price": "99", "side": "SELL", "orig_quantity": "0.5",
+                "stop_price": "99", "side": "SELL", "orig_quantity": "0.5", "executed_quantity": "0",
                 "client_order_id": "btc-restart-02-alt",
             },
         ]
