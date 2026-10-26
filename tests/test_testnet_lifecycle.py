@@ -210,7 +210,7 @@ class TestnetLifecycleTests(unittest.TestCase):
                 return {"found": True, "symbol": symbol, "client_order_id": client_id, "status": status, "executed_quantity": "0.5", "original_quantity": "0.5"}
 
             def testnet_position_snapshot(self, symbol):
-                return {"ok": True, "symbol": symbol, "position_amount": "0"}
+                return {"ok": True, "symbol": symbol, "position_amount": "0", "open_orders": []}
 
             def cancel_testnet_order(self, symbol, client_id):
                 self.cancel_calls += 1
@@ -234,7 +234,7 @@ class TestnetLifecycleTests(unittest.TestCase):
 
             def testnet_position_snapshot(self, symbol):
                 self.snapshot_calls += 1
-                return {"ok": True, "symbol": symbol, "position_amount": "0"}
+                return {"ok": True, "symbol": symbol, "position_amount": "0", "open_orders": []}
 
             def cancel_testnet_order(self, symbol, client_id):
                 self.cancel_calls += 1
@@ -266,7 +266,7 @@ class TestnetLifecycleTests(unittest.TestCase):
                 return {"found": True, "symbol": symbol, "client_order_id": client_id, "status": status, "executed_quantity": "0.5", "original_quantity": "0.5"}
 
             def testnet_position_snapshot(self, symbol):
-                return {"ok": True, "symbol": symbol, "position_amount": self.position}
+                return {"ok": True, "symbol": symbol, "position_amount": self.position, "open_orders": []}
 
             def cancel_testnet_order(self, symbol, client_id):
                 self.cancel_calls.append((symbol, client_id))
@@ -311,7 +311,7 @@ class TestnetLifecycleTests(unittest.TestCase):
                 return {"found": True, "symbol": symbol, "client_order_id": client_id, "status": self.status, "executed_quantity": executed, "original_quantity": "0.5"}
 
             def testnet_position_snapshot(self, symbol):
-                return {"ok": True, "symbol": symbol, "position_amount": self.position}
+                return {"ok": True, "symbol": symbol, "position_amount": self.position, "open_orders": []}
 
             def cancel_testnet_order(self, symbol, client_id):
                 self.cancel_calls.append(client_id)
@@ -345,7 +345,7 @@ class TestnetLifecycleTests(unittest.TestCase):
                 }
 
             def testnet_position_snapshot(self, symbol):
-                return {"ok": True, "symbol": symbol, "position_amount": "0"}
+                return {"ok": True, "symbol": symbol, "position_amount": "0", "open_orders": []}
 
             def cancel_testnet_order(self, symbol, client_id):
                 self.cancel_calls.append((symbol, client_id))
@@ -450,7 +450,7 @@ class TestnetLifecycleTests(unittest.TestCase):
 
             def testnet_position_snapshot(self, symbol):
                 self.snapshot_calls += 1
-                return {"ok": True, "symbol": symbol, "position_amount": "0"}
+                return {"ok": True, "symbol": symbol, "position_amount": "0", "open_orders": []}
 
             def cancel_testnet_order(self, symbol, client_id):
                 self.cancel_calls += 1
@@ -482,7 +482,7 @@ class TestnetLifecycleTests(unittest.TestCase):
 
             def testnet_position_snapshot(self, symbol):
                 self.snapshot_calls += 1
-                return {"ok": True, "symbol": symbol, "position_amount": "0"}
+                return {"ok": True, "symbol": symbol, "position_amount": "0", "open_orders": []}
 
             def cancel_testnet_order(self, symbol, client_id):
                 self.cancel_calls += 1
@@ -520,7 +520,7 @@ class TestnetLifecycleTests(unittest.TestCase):
             def testnet_position_snapshot(self, symbol):
                 self.snapshot_calls += 1
                 if self.snapshot_calls == 1:
-                    return {"ok": True, "symbol": symbol, "position_amount": "0"}
+                    return {"ok": True, "symbol": symbol, "position_amount": "0", "open_orders": []}
                 return {
                     "ok": True, "symbol": symbol, "position_amount": "0",
                     "open_orders": [{
@@ -567,7 +567,7 @@ class TestnetLifecycleTests(unittest.TestCase):
                 }
 
             def testnet_position_snapshot(self, symbol):
-                return {"ok": True, "symbol": symbol, "position_amount": "0"}
+                return {"ok": True, "symbol": symbol, "position_amount": "0", "open_orders": []}
 
             def cancel_testnet_order(self, symbol, client_id):
                 self.cancel_calls += 1
@@ -580,6 +580,36 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertTrue(result["requires_reconciliation"])
         self.assertEqual(adapter.cancel_calls, 1)
 
+
+    def test_sibling_cleanup_fails_closed_when_open_orders_snapshot_missing(self):
+        class MissingOpenOrdersAdapter:
+            def __init__(self):
+                self.snapshot_calls = 0
+                self.cancel_calls = 0
+
+            def query_testnet_order(self, symbol, client_id):
+                status = "FILLED" if client_id == "btc-sl" else "NEW"
+                quantity = "0.5" if status == "FILLED" else "0"
+                return {
+                    "found": True, "symbol": symbol, "client_order_id": client_id,
+                    "status": status, "executed_quantity": quantity,
+                    "original_quantity": "0.5",
+                }
+
+            def testnet_position_snapshot(self, symbol):
+                self.snapshot_calls += 1
+                return {"ok": True, "symbol": symbol, "position_amount": "0"}
+
+            def cancel_testnet_order(self, symbol, client_id):
+                self.cancel_calls += 1
+                return {"cancelled": True}
+
+        adapter = MissingOpenOrdersAdapter()
+        result = cancel_testnet_sibling_after_flatten(adapter, "BTCUSDT", "btc-sl", "btc-tp")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "open_orders_snapshot_missing")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(adapter.cancel_calls, 1)
 
     def test_already_inactive_sibling_still_checks_remaining_open_orders(self):
         class InactiveSiblingWithOtherOrdersAdapter:
