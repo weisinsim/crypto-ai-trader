@@ -916,5 +916,43 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(result["reason"], "invalid_testnet_open_order_status")
 
 
+
+    def test_protective_exit_duplicate_client_id_error_requires_reconciliation(self):
+        class DuplicateClientIdClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"canTrade": True, "positions": [
+                        {"symbol": "BTCUSDT", "positionAmt": "0.5", "entryPrice": "100"},
+                    ]})
+                return super().get(path, params)
+
+            def post(self, path, params):
+                self.calls.append((path, params))
+                response = httpx.Response(
+                    400,
+                    json={"code": -4116, "msg": "Client order ID is not unique."},
+                    request=httpx.Request("POST", "https://testnet.binancefuture.com/fapi/v1/order"),
+                )
+                raise httpx.HTTPStatusError(
+                    "duplicate client order ID", request=response.request, response=response
+                )
+
+        client = DuplicateClientIdClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "btc-recovery-sl"
+        )
+        self.assertFalse(result["accepted"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(
+            result["reason"],
+            "protective_exit_client_id_conflict_requires_reconciliation",
+        )
+        self.assertEqual(result["client_order_id"], "btc-recovery-sl")
+        self.assertEqual(len(client.calls), 1)
+
 if __name__ == "__main__":
     unittest.main()
