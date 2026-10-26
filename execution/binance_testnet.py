@@ -309,7 +309,7 @@ class BinanceFuturesTestnet:
 
     def testnet_position_snapshot(self, symbol: str):
         """Read authoritative TESTNET position and open orders; no mutations."""
-        if not isinstance(symbol, str) or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
+        if not isinstance(symbol, str) or not symbol.isascii() or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
             return {"ok": False, "reason": "invalid_symbol"}
         account_response = self._get(
             "/fapi/v2/account",
@@ -383,7 +383,7 @@ class BinanceFuturesTestnet:
         This deliberately does not retry ambiguous requests. Query by client order ID
         and inspect the position/open-order snapshot before taking recovery action.
         """
-        if not isinstance(symbol, str) or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
+        if not isinstance(symbol, str) or not symbol.isascii() or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
             return {"accepted": False, "reason": "invalid_symbol"}
         if not isinstance(exit_kind, str) or exit_kind not in {"stop_loss", "take_profit"}:
             return {"accepted": False, "reason": "invalid_exit_kind"}
@@ -473,7 +473,7 @@ class BinanceFuturesTestnet:
 
     def cancel_testnet_order(self, symbol: str, client_order_id: str):
         """Cancel one known TESTNET order by client ID; never cancels by broad symbol."""
-        if not isinstance(symbol, str) or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
+        if not isinstance(symbol, str) or not symbol.isascii() or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
             return {"cancelled": False, "reason": "invalid_symbol"}
         if not isinstance(client_order_id, str) or not client_order_id or len(client_order_id) > 36:
             return {"cancelled": False, "reason": "invalid_client_order_id"}
