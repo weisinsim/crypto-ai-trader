@@ -481,9 +481,19 @@ class BinanceFuturesTestnet:
         if len(matching) != 1:
             return {"ok": False, "reason": "position_not_found_or_ambiguous"}
         position = matching[0]
+        # Do not infer a flat position from a missing positionAmt, or treat a
+        # missing entryPrice as zero. A malformed account payload is not an
+        # authoritative position snapshot and must fail closed.
+        if (
+            "positionAmt" not in position
+            or "entryPrice" not in position
+            or position.get("positionAmt") in (None, "")
+            or position.get("entryPrice") in (None, "")
+        ):
+            return {"ok": False, "reason": "invalid_testnet_position_values"}
         try:
-            amount = Decimal(str(position.get("positionAmt", "0")))
-            entry_price = Decimal(str(position.get("entryPrice", "0")))
+            amount = Decimal(str(position["positionAmt"]))
+            entry_price = Decimal(str(position["entryPrice"]))
             if not amount.is_finite() or not entry_price.is_finite() or entry_price < 0:
                 raise InvalidOperation
         except (InvalidOperation, TypeError, ValueError):
