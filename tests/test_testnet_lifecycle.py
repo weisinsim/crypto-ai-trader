@@ -581,5 +581,38 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertEqual(adapter.cancel_calls, 1)
 
 
+    def test_already_inactive_sibling_still_checks_remaining_open_orders(self):
+        class InactiveSiblingWithOtherOrdersAdapter:
+            def __init__(self):
+                self.snapshot_calls = 0
+
+            def query_testnet_order(self, symbol, client_id):
+                status = "FILLED" if client_id == "btc-sl" else "CANCELED"
+                quantity = "0.5" if status == "FILLED" else "0"
+                return {
+                    "found": True, "symbol": symbol, "client_order_id": client_id,
+                    "status": status, "executed_quantity": quantity,
+                    "original_quantity": "0.5",
+                }
+
+            def testnet_position_snapshot(self, symbol):
+                self.snapshot_calls += 1
+                snapshot = {"ok": True, "symbol": symbol, "position_amount": "0", "open_orders": []}
+                if self.snapshot_calls == 2:
+                    snapshot["open_orders"] = [{"client_order_id": "unrelated-live-order"}]
+                return snapshot
+
+            def cancel_testnet_order(self, symbol, client_id):
+                raise AssertionError("must not cancel when sibling is already inactive")
+
+        adapter = InactiveSiblingWithOtherOrdersAdapter()
+        result = cancel_testnet_sibling_after_flatten(adapter, "BTCUSDT", "btc-sl", "btc-tp")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "open_orders_remain_after_flatten")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(adapter.snapshot_calls, 2)
+
+
+
 if __name__ == "__main__":
     unittest.main()
