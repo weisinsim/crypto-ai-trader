@@ -399,6 +399,29 @@ def cancel_testnet_sibling_after_flatten(
             "reason": "both_exits_report_filled_check_exchange_history",
             "requires_reconciliation": True,
         }
+    # A flat position plus a sibling with any executed quantity is not a
+    # clean cancel case: the sibling may have raced with the filled exit and
+    # could have contributed to a reversal/over-close. Never cancel or declare
+    # clean until that execution is explicitly reconciled.
+    try:
+        sibling_executed = Decimal(str(sibling.get("executed_quantity", "NaN")))
+        sibling_original = Decimal(str(sibling.get("original_quantity", "NaN")))
+        if (
+            not sibling_executed.is_finite()
+            or not sibling_original.is_finite()
+            or sibling_original <= 0
+            or sibling_executed < 0
+            or sibling_executed > sibling_original
+            or sibling_executed != 0
+        ):
+            raise InvalidOperation
+    except (InvalidOperation, TypeError, ValueError):
+        return {
+            "ok": False,
+            "reason": "sibling_execution_state_requires_reconciliation",
+            "sibling_status": sibling.get("status"),
+            "requires_reconciliation": True,
+        }
     try:
         cancelled = adapter.cancel_testnet_order(symbol, sibling_exit_client_order_id)
     except Exception as exc:
