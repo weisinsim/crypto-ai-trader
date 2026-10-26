@@ -234,7 +234,8 @@ class BinanceFuturesTestnet:
         trading lifecycle: callers must not use it until position reconciliation,
         protective exits, kill-switch enforcement and restart recovery are integrated.
         """
-        config = config or ExecutionConfig(mode="testnet")
+        if config is None:
+            config = ExecutionConfig(mode="testnet")
         if config.mode != "testnet" or config.live_trading_enabled:
             return {"accepted": False, "reason": "testnet_mode_required"}
         if not isinstance(client_order_id, str) or not client_order_id or len(client_order_id) > 36:
