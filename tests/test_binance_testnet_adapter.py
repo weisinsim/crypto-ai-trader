@@ -3,6 +3,8 @@ import hmac
 import unittest
 from urllib.parse import urlencode
 
+import httpx
+
 from execution.binance_testnet import BinanceFuturesTestnet, BinanceTestnetConfigurationError, TESTNET_BASE_URL
 from execution.safety import ExecutionConfig, OrderIntent
 
@@ -400,6 +402,23 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(result["reason"], "testnet_mode_required")
         self.assertEqual(client.calls, [])
 
+
+    def test_market_order_timeout_is_ambiguous_and_never_retried(self):
+        class TimeoutClient(FakeClient):
+            def post(self, path, params):
+                self.calls.append((path, params))
+                raise httpx.ReadTimeout("simulated timeout")
+
+        client = TimeoutClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "btc-timeout-0001", ExecutionConfig(mode="testnet")
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "testnet_order_outcome_unknown")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(len(client.calls), 1)
+        self.assertEqual(client.calls[0][0], "/fapi/v1/order")
 
     def test_cancel_order_uses_signed_specific_testnet_client_id(self):
         client = FakeClient()
