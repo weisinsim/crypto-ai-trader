@@ -425,6 +425,25 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(len(client.calls), 1)
         self.assertEqual(client.calls[0][0], "/fapi/v1/order")
 
+    def test_malformed_post_response_requires_reconciliation_without_retry(self):
+        class MalformedResponse(FakeResponse):
+            def json(self):
+                raise ValueError("malformed response")
+        class MalformedClient(FakeClient):
+            def post(self, path, params):
+                self.calls.append((path, params))
+                return MalformedResponse()
+
+        client = MalformedClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "btc-malformed-0001", ExecutionConfig(mode="testnet")
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "testnet_order_outcome_unknown")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(len(client.calls), 1)
+
     def test_cancel_order_uses_signed_specific_testnet_client_id(self):
         client = FakeClient()
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
