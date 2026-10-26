@@ -190,7 +190,7 @@ class TestnetLifecycleTests(unittest.TestCase):
                 return {"found": True, "status": status, "executed_quantity": "0.5"}
 
             def testnet_position_snapshot(self, symbol):
-                return {"ok": True, "position_amount": self.position}
+                return {"ok": True, "symbol": symbol, "position_amount": self.position}
 
             def cancel_testnet_order(self, symbol, client_id):
                 self.cancel_calls.append((symbol, client_id))
@@ -201,6 +201,27 @@ class TestnetLifecycleTests(unittest.TestCase):
         result = cancel_testnet_sibling_after_flatten(adapter, "BTCUSDT", "btc-sl", "btc-tp")
         self.assertTrue(result["ok"])
         self.assertEqual(adapter.cancel_calls, [("BTCUSDT", "btc-tp")])
+
+    def test_sibling_cancel_rejects_wrong_symbol_snapshot(self):
+        class WrongSymbolAdapter:
+            def __init__(self):
+                self.cancel_calls = []
+
+            def query_testnet_order(self, symbol, client_id):
+                return {"found": True, "status": "FILLED", "executed_quantity": "0.5"}
+
+            def testnet_position_snapshot(self, symbol):
+                return {"ok": True, "symbol": "ETHUSDT", "position_amount": "0"}
+
+            def cancel_testnet_order(self, symbol, client_id):
+                self.cancel_calls.append(client_id)
+                return {"cancelled": True}
+
+        adapter = WrongSymbolAdapter()
+        result = cancel_testnet_sibling_after_flatten(adapter, "BTCUSDT", "btc-sl", "btc-tp")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "position_snapshot_symbol_mismatch")
+        self.assertEqual(adapter.cancel_calls, [])
 
     def test_sibling_is_not_cancelled_on_partial_fill_or_nonflat_position(self):
         class ReconcileAdapter:
@@ -213,7 +234,7 @@ class TestnetLifecycleTests(unittest.TestCase):
                 return {"found": True, "status": self.status, "executed_quantity": "0.2"}
 
             def testnet_position_snapshot(self, symbol):
-                return {"ok": True, "position_amount": self.position}
+                return {"ok": True, "symbol": symbol, "position_amount": self.position}
 
             def cancel_testnet_order(self, symbol, client_id):
                 self.cancel_calls.append(client_id)
