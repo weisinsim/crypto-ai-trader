@@ -40,8 +40,8 @@ class FakeClient:
             return FakeResponse({"symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"), "orderId": 12345, "status": "PARTIALLY_FILLED", "origQty": "0.5", "executedQty": "0.2", "avgPrice": "100.1"})
         if path == "/fapi/v2/account":
             return FakeResponse({"canTrade": True, "positions": [
-                {"symbol": "BTCUSDT", "positionAmt": "0"},
-                {"symbol": "ETHUSDT", "positionAmt": "0.25"},
+                {"symbol": "BTCUSDT", "positionAmt": "0", "entryPrice": "0"},
+                {"symbol": "ETHUSDT", "positionAmt": "0.25", "entryPrice": "100"},
             ]})
         return FakeResponse(self.exchange_payload)
 
@@ -144,7 +144,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                 return FakeResponse(self.payload)
         payloads = (
             {"canTrade": "false", "positions": []},
-            {"canTrade": True, "positions": [{"positionAmt": "NaN"}]},
+            {"canTrade": True, "positions": [{"symbol": "BTCUSDT", "positionAmt": "NaN", "entryPrice": "100"}]},
             {"canTrade": True, "positions": "malformed"},
         )
         for payload in payloads:
@@ -670,6 +670,26 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                 )
                 self.assertEqual(client.calls, [])
 
+
+    def test_position_snapshot_rejects_missing_position_fields(self):
+        for missing_field in ("positionAmt", "entryPrice"):
+            with self.subTest(missing_field=missing_field):
+                class MissingPositionFieldClient(FakeClient):
+                    def get(self, path, params):
+                        if path == "/fapi/v2/account":
+                            position = {"symbol": "BTCUSDT", "positionAmt": "0", "entryPrice": "0"}
+                            position.pop(missing_field)
+                            return FakeResponse({"canTrade": True, "positions": [position]})
+                        return super().get(path, params)
+
+                client = MissingPositionFieldClient()
+                adapter = BinanceFuturesTestnet(
+                    api_key="test-key", api_secret="test-secret", client=client
+                )
+                result = adapter.testnet_position_snapshot("BTCUSDT")
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["reason"], "invalid_testnet_position_values")
+                self.assertFalse(any(path == "/fapi/v1/openOrders" for path, _ in client.get_calls))
 
     def test_position_snapshot_rejects_open_order_executed_quantity_above_original(self):
         class OverfilledOrderClient(FakeClient):
