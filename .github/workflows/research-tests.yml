@@ -14,6 +14,7 @@ on:
       - "research/**"
       - "tests/**"
       - "app.py"
+      - "static/**"
       - ".github/workflows/research-tests.yml"
   workflow_dispatch:
 
