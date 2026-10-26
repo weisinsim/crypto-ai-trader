@@ -79,6 +79,7 @@ h1{font-size:22px;margin:0 0 5px}.sub{font-size:12px;color:#9aa4b2}
 </section><div id="cards" class="cards"></div><div id="alertPanel" class="researchPanel"><h2>进场提醒（只通知，不下单）</h2><div class="intro">正在验证实时行情与模型状态…</div></div><div id="historyPanel" class="historyPanel"></div>
 <div class="small">V28.2：Research-Gated Dashboard。实时行情与历史回测状态分开显示；所有候选模型仍处于研究阶段，信号不保证盈利。</div>
 </div>
+<script src="/static/alert_contract.js"></script>
 <script>
 const state={data:{},history:{},alerts:[],filter:"ALL",ws:null};
 const $=id=>document.getElementById(id);
@@ -132,28 +133,13 @@ async function loadSignals(){try{const r=await fetch("/api/signals",{cache:"no-s
 
 function renderAlerts(payload){
  const panel=$("alertPanel");
- const now=Date.now()/1000;
- const envelopeFresh=payload && Number.isFinite(payload.generated_at) && payload.generated_at>0 && payload.generated_at<=now && now-payload.generated_at<=120;
- const safe=payload && payload.status==="LIVE" && envelopeFresh && payload.notification_only===true && payload.auto_trade_authorized===false && Array.isArray(payload.alerts);
- const seen=new Set();
- const alerts=safe?payload.alerts.filter(a=>{
-  if(!a || typeof a.symbol!=="string" || !/^[A-Z0-9]{2,20}USDT$/.test(a.symbol))return false;
-  if(!["LONG","SHORT"].includes(a.side) || !["RESEARCH","PRODUCTION"].includes(a.model_status))return false;
-  if(a.notification_only!==true || a.auto_trade_authorized!==false)return false;
-  if(a.research_only!==(a.model_status!=="PRODUCTION"))return false;
-  if(typeof a.event_id!=="string" || !/^[a-f0-9]{24}$/.test(a.event_id) || seen.has(a.event_id))return false;
-  if(!Number.isFinite(a.score) || a.score<70 || a.score>100)return false;
-  if(a.score_is_probability!==false || a.entry_candidate!==true || a.minimum_candidate_score!==70)return false;
-  if(!Number.isFinite(a.signal_candle_ms) || a.signal_candle_ms<=0 || a.signal_candle_ms>Date.now() || Date.now()-a.signal_candle_ms>90*60*1000)return false;
-  if(!Number.isFinite(a.analysis_ts) || a.analysis_ts<=0 || a.analysis_ts>Date.now()/1000 || Date.now()/1000-a.analysis_ts>90*60)return false;
-  if(![a.entry,a.stop_loss,a.take_profit_1,a.take_profit_2].every(v=>typeof v==="number" && Number.isFinite(v) && v>0))return false;
-  const geometry=a.side==="LONG" ? a.stop_loss<a.entry && a.entry<a.take_profit_1 && a.take_profit_1<=a.take_profit_2 : a.take_profit_2<=a.take_profit_1 && a.take_profit_1<a.entry && a.entry<a.stop_loss;
-  if(!geometry)return false;
-  seen.add(a.event_id);
-  return true;
- }):[];
- if(!safe){panel.innerHTML='<h2>进场提醒（只通知，不下单）</h2><div class="intro">行情状态未确认或数据已过期，暂不显示提醒。</div>';return;}
- panel.innerHTML='<h2>进场提醒（只通知，不下单）</h2><div class="intro">仅为研究/模型信号提示；不是收益保证。实盘自动下单已关闭。</div>'+(alerts.length?alerts.map(a=>'<div class="histrow"><b>'+a.symbol+'</b><span class="'+(a.side==="LONG"?"activeSig":"invalidSig")+'">'+a.side+'</span><span>Entry '+fmt(a.entry)+' · SL '+fmt(a.stop_loss)+' · TP1 '+fmt(a.take_profit_1)+' · TP2 '+fmt(a.take_profit_2)+'</span><span>'+Math.round(a.score)+'/100 · '+(a.research_only?'RESEARCH ONLY':'PRODUCTION')+'</span></div>').join(""):'<div class="intro" style="margin-top:8px">当前没有通过全部安全校验的新进场信号。</div>');
+ const result=window.AlertContract.validateAlertPayload(payload);
+ if(!result.safe){
+  panel.innerHTML='<h2>进场提醒（只通知，不下单）</h2><div class="intro">行情状态未确认或数据已过期，暂不显示提醒。</div>';
+  return;
+ }
+ const alerts=result.alerts;
+ panel.innerHTML='<h2>进场提醒（只通知，不下单）</h2><div class="intro">仅为研究/模型信号提示；不是收益保证。实盘自动下单已关闭。</div>'+(alerts.length?alerts.map(a=>'<div class="histrow"><b>'+a.symbol+'</b><span class="'+(a.side==="LONG"?"activeSig":"invalidSig")+'">'+a.side+'</span><span>Entry '+fmt(a.entry)+' · SL '+fmt(a.stop_loss)+' · TP1 '+fmt(a.take_profit_1)+' · TP2 '+fmt(a.take_profit_2)+'</span><span>'+Math.round(a.score)+'/100 · '+(a.research_only?'RESEARCH ONLY':'PRODUCTION')+'</span></div>').join(''):'<div class="intro" style="margin-top:8px">当前没有通过全部安全校验的新进场信号。</div>');
 }
 async function loadAlerts(){
  try{
