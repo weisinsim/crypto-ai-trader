@@ -200,6 +200,54 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertEqual(adapter.submissions, [])
 
 
+    def test_sibling_cancel_exception_is_ambiguous_and_not_retried(self):
+        class CancelRaisesAdapter:
+            def __init__(self):
+                self.cancel_calls = 0
+
+            def query_testnet_order(self, symbol, client_id):
+                status = "FILLED" if client_id == "btc-sl" else "NEW"
+                return {"found": True, "status": status, "executed_quantity": "0.5"}
+
+            def testnet_position_snapshot(self, symbol):
+                return {"ok": True, "symbol": symbol, "position_amount": "0"}
+
+            def cancel_testnet_order(self, symbol, client_id):
+                self.cancel_calls += 1
+                raise TimeoutError("cancel response lost")
+
+        adapter = CancelRaisesAdapter()
+        result = cancel_testnet_sibling_after_flatten(adapter, "BTCUSDT", "btc-sl", "btc-tp")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "sibling_cancel_exception_outcome_unknown")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(adapter.cancel_calls, 1)
+
+    def test_filled_exit_lookup_exception_fails_closed_before_snapshot_or_cancel(self):
+        class LookupRaisesAdapter:
+            def __init__(self):
+                self.snapshot_calls = 0
+                self.cancel_calls = 0
+
+            def query_testnet_order(self, symbol, client_id):
+                raise TimeoutError("order query failed")
+
+            def testnet_position_snapshot(self, symbol):
+                self.snapshot_calls += 1
+                return {"ok": True, "symbol": symbol, "position_amount": "0"}
+
+            def cancel_testnet_order(self, symbol, client_id):
+                self.cancel_calls += 1
+                return {"cancelled": True}
+
+        adapter = LookupRaisesAdapter()
+        result = cancel_testnet_sibling_after_flatten(adapter, "BTCUSDT", "btc-sl", "btc-tp")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "filled_exit_lookup_exception")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(adapter.snapshot_calls, 0)
+        self.assertEqual(adapter.cancel_calls, 0)
+
     def test_sibling_cancel_requires_filled_exit_and_flat_position(self):
         class ReconcileAdapter:
             def __init__(self, status="FILLED", position="0", sibling_status="NEW", cancel_ok=True):
