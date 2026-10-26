@@ -281,6 +281,28 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertIn("signature", client.get_calls[0][1])
         self.assertEqual(client.calls, [])
 
+    def test_query_order_rejects_mismatched_exchange_identity(self):
+        class MismatchedClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "ETHUSDT",
+                        "clientOrderId": "different-client-id",
+                        "orderId": 12345,
+                        "status": "FILLED",
+                        "executedQty": "0.5",
+                    })
+                return super().get(path, params)
+
+        client = MismatchedClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.query_testnet_order("BTCUSDT", "paper-test-0001")
+        self.assertFalse(result["found"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["reason"], "unexpected_or_mismatched_testnet_order_response")
+        self.assertEqual(client.calls, [])
+
     def test_query_order_rejects_invalid_client_id_without_network_call(self):
         client = FakeClient()
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
@@ -495,6 +517,25 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(client.calls[0][0], "/fapi/v1/order")
         self.assertEqual(client.calls[0][1]["origClientOrderId"], "btc-stop-0001")
         self.assertIn("signature", client.calls[0][1])
+
+    def test_cancel_order_rejects_mismatched_exchange_identity(self):
+        class MismatchedClient(FakeClient):
+            def delete(self, path, params):
+                self.calls.append((path, params))
+                return FakeResponse({
+                    "symbol": "ETHUSDT",
+                    "clientOrderId": "different-client-id",
+                    "orderId": 12345,
+                    "status": "CANCELED",
+                })
+
+        client = MismatchedClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.cancel_testnet_order("BTCUSDT", "btc-stop-0001")
+        self.assertFalse(result["cancelled"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["reason"], "unexpected_or_mismatched_testnet_cancel_response")
+        self.assertEqual(len(client.calls), 1)
 
     def test_cancel_order_rejects_invalid_id_without_request(self):
         client = FakeClient()
