@@ -459,14 +459,45 @@ class BinanceFuturesTestnet:
         orders = orders_response.json()
         if not isinstance(orders, list) or any(not isinstance(order, dict) for order in orders):
             return {"ok": False, "reason": "invalid_testnet_open_orders_response"}
-        required_order_fields = ("orderId", "side", "type", "status", "reduceOnly")
+        required_order_fields = (
+            "orderId", "symbol", "clientOrderId", "side", "type", "status",
+            "reduceOnly", "stopPrice", "origQty", "executedQty",
+        )
         for order in orders:
             if any(field not in order for field in required_order_fields):
                 return {"ok": False, "reason": "invalid_testnet_open_order_record"}
+            if order.get("symbol") != symbol:
+                return {"ok": False, "reason": "testnet_open_order_symbol_mismatch"}
+            if (
+                not isinstance(order["orderId"], (str, int))
+                or isinstance(order["orderId"], bool)
+                or not str(order["orderId"])
+                or not isinstance(order["clientOrderId"], str)
+                or not order["clientOrderId"]
+                or len(order["clientOrderId"]) > 36
+                or not order["clientOrderId"].isascii()
+                or not order["clientOrderId"].replace("-", "").replace("_", "").isalnum()
+            ):
+                return {"ok": False, "reason": "invalid_testnet_open_order_identity"}
             if not isinstance(order["reduceOnly"], bool):
                 return {"ok": False, "reason": "invalid_testnet_open_order_reduce_only"}
             if not all(isinstance(order[field], str) and order[field] for field in ("side", "type", "status")):
                 return {"ok": False, "reason": "invalid_testnet_open_order_record"}
+            try:
+                stop_price = Decimal(str(order["stopPrice"]))
+                orig_quantity = Decimal(str(order["origQty"]))
+                executed_quantity = Decimal(str(order["executedQty"]))
+                if (
+                    not stop_price.is_finite()
+                    or not orig_quantity.is_finite()
+                    or not executed_quantity.is_finite()
+                    or stop_price < 0
+                    or orig_quantity <= 0
+                    or executed_quantity < 0
+                ):
+                    raise InvalidOperation
+            except (InvalidOperation, TypeError, ValueError):
+                return {"ok": False, "reason": "invalid_testnet_open_order_numeric_fields"}
         return {
             "ok": True,
             "mode": "testnet_read_only_snapshot",
