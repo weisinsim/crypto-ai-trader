@@ -35,7 +35,7 @@ class FakeClient:
     def get(self, path, params):
         self.get_calls.append((path, params))
         if path == "/fapi/v1/openOrders":
-            return FakeResponse([{"orderId": 99, "clientOrderId": "stop-0001", "side": "SELL", "type": "STOP_MARKET", "status": "NEW", "reduceOnly": True, "stopPrice": "99.8", "origQty": "0.5", "executedQty": "0"}])
+            return FakeResponse([{"orderId": 99, "symbol": "BTCUSDT", "clientOrderId": "stop-0001", "side": "SELL", "type": "STOP_MARKET", "status": "NEW", "reduceOnly": True, "stopPrice": "99.8", "origQty": "0.5", "executedQty": "0"}])
         if path == "/fapi/v1/order":
             return FakeResponse({"symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"), "orderId": 12345, "status": "PARTIALLY_FILLED", "executedQty": "0.2", "avgPrice": "100.1"})
         if path == "/fapi/v2/account":
@@ -323,6 +323,46 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(result["open_orders"][0]["type"], "STOP_MARKET")
         self.assertTrue(result["open_orders"][0]["reduce_only"])
         self.assertEqual([call[0] for call in client.get_calls[:2]], ["/fapi/v2/account", "/fapi/v1/openOrders"])
+        self.assertEqual(client.calls, [])
+
+    def test_position_snapshot_rejects_open_order_for_wrong_symbol(self):
+        class WrongSymbolOrderClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/openOrders":
+                    self.get_calls.append((path, params))
+                    return FakeResponse([{
+                        "orderId": 99, "symbol": "ETHUSDT", "clientOrderId": "stop-0001",
+                        "side": "SELL", "type": "STOP_MARKET", "status": "NEW",
+                        "reduceOnly": True, "stopPrice": "99.8", "origQty": "0.5",
+                        "executedQty": "0",
+                    }])
+                return super().get(path, params)
+
+        client = WrongSymbolOrderClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.testnet_position_snapshot("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "testnet_open_order_symbol_mismatch")
+        self.assertEqual(client.calls, [])
+
+    def test_position_snapshot_rejects_nonfinite_open_order_quantity(self):
+        class InvalidQuantityOrderClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/openOrders":
+                    self.get_calls.append((path, params))
+                    return FakeResponse([{
+                        "orderId": 99, "symbol": "BTCUSDT", "clientOrderId": "stop-0001",
+                        "side": "SELL", "type": "STOP_MARKET", "status": "NEW",
+                        "reduceOnly": True, "stopPrice": "99.8", "origQty": "NaN",
+                        "executedQty": "0",
+                    }])
+                return super().get(path, params)
+
+        client = InvalidQuantityOrderClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.testnet_position_snapshot("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "invalid_testnet_open_order_numeric_fields")
         self.assertEqual(client.calls, [])
 
     def test_position_snapshot_rejects_invalid_symbol_without_network_call(self):
