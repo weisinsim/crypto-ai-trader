@@ -162,6 +162,24 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     adapter.symbol_rules(symbol)
 
+    def test_symbol_rules_rejects_malformed_exchange_info_and_nonfinite_filters(self):
+        payloads = (
+            [],
+            {"symbols": [None]},
+            {"symbols": [{"symbol": "BTCUSDT", "filters": "malformed"}]},
+            {"symbols": [{"symbol": "BTCUSDT", "filters": [
+                {"filterType": "MARKET_LOT_SIZE", "stepSize": "NaN", "minQty": "0.001", "maxQty": "100"}
+            ]}]},
+        )
+        for payload in payloads:
+            with self.subTest(payload=payload):
+                client = FakeClient(exchange_payload=payload)
+                adapter = BinanceFuturesTestnet(
+                    api_key="test-key", api_secret="test-secret", client=client
+                )
+                with self.assertRaises(ValueError):
+                    adapter.symbol_rules("BTCUSDT")
+
     def test_non_trading_symbol_is_rejected_before_order_validation(self):
         payload = {"symbols": [{"symbol": "BTCUSDT", "status": "BREAK", "filters": [
             {"filterType": "MARKET_LOT_SIZE", "stepSize": "0.001", "minQty": "0.001", "maxQty": "100"},
