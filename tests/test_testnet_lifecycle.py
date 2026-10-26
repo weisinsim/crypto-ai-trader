@@ -728,5 +728,53 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertTrue(result["requires_reconciliation"])
 
 
+    def test_sibling_fills_between_cancel_ack_and_post_cancel_lookup_fails_closed(self):
+        class SiblingFillRaceAdapter:
+            def __init__(self):
+                self.sibling_queries = 0
+                self.cancel_calls = 0
+                self.snapshot_calls = 0
+
+            def query_testnet_order(self, symbol, client_id):
+                if client_id == "btc-sl":
+                    return {
+                        "found": True, "symbol": symbol, "client_order_id": client_id,
+                        "status": "FILLED", "executed_quantity": "0.5",
+                        "original_quantity": "0.5",
+                    }
+                self.sibling_queries += 1
+                status = "NEW" if self.sibling_queries == 1 else "FILLED"
+                executed = "0" if status == "NEW" else "0.5"
+                return {
+                    "found": True, "symbol": symbol, "client_order_id": client_id,
+                    "status": status, "executed_quantity": executed,
+                    "original_quantity": "0.5",
+                }
+
+            def testnet_position_snapshot(self, symbol):
+                self.snapshot_calls += 1
+                return {
+                    "ok": True, "symbol": symbol, "position_amount": "0",
+                    "open_orders": [],
+                }
+
+            def cancel_testnet_order(self, symbol, client_id):
+                self.cancel_calls += 1
+                return {"cancelled": True, "status": "CANCELED"}
+
+        adapter = SiblingFillRaceAdapter()
+        result = cancel_testnet_sibling_after_flatten(
+            adapter, "BTCUSDT", "btc-sl", "btc-tp"
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "post_cancel_sibling_not_confirmed_inactive")
+        self.assertEqual(result["sibling_status"], "FILLED")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(adapter.cancel_calls, 1)
+        # Do not treat a cancel acknowledgement as proof of cancellation, and
+        # do not take a final "clean" snapshot after observing the fill race.
+        self.assertEqual(adapter.snapshot_calls, 1)
+
+
 if __name__ == "__main__":
     unittest.main()
