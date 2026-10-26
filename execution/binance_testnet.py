@@ -236,6 +236,8 @@ class BinanceFuturesTestnet:
         """
         if config is None:
             config = ExecutionConfig(mode="testnet")
+        if not isinstance(config, ExecutionConfig):
+            return {"accepted": False, "reason": "invalid_execution_config"}
         if config.mode != "testnet" or config.live_trading_enabled:
             return {"accepted": False, "reason": "testnet_mode_required"}
         if not isinstance(client_order_id, str) or not client_order_id or len(client_order_id) > 36:
