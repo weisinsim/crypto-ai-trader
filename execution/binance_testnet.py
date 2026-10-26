@@ -56,6 +56,24 @@ class BinanceFuturesTestnet:
         ).hexdigest()
         return payload
 
+    def _assert_testnet_base_url(self):
+        if str(getattr(self._client, "base_url", "")).rstrip("/") != TESTNET_BASE_URL:
+            raise BinanceTestnetConfigurationError(
+                "Refusing request: client base URL is not the fixed Binance Futures TESTNET host."
+            )
+
+    def _get(self, path, *, params):
+        self._assert_testnet_base_url()
+        return self._client.get(path, params=params)
+
+    def _post(self, path, *, params):
+        self._assert_testnet_base_url()
+        return self._client.post(path, params=params)
+
+    def _delete(self, path, *, params):
+        self._assert_testnet_base_url()
+        return self._client.delete(path, params=params)
+
     def account_risk_metrics(self, symbol):
         """Return gross account exposure metrics from signed TESTNET account state.
 
@@ -63,7 +81,7 @@ class BinanceFuturesTestnet:
         """
         if not isinstance(symbol, str) or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
             return {"ok": False, "reason": "invalid_symbol"}
-        response = self._client.get("/fapi/v2/account", params=self._signed_params({}))
+        response = self._get("/fapi/v2/account", params=self._signed_params({}))
         response.raise_for_status()
         account = response.json()
         if not isinstance(account, dict) or not isinstance(account.get("positions"), list):
@@ -103,7 +121,7 @@ class BinanceFuturesTestnet:
         """Read testnet exchange filters; does not submit or create an order."""
         if not symbol.endswith("USDT") or not symbol[:-4].isalnum():
             raise ValueError("invalid_symbol")
-        response = self._client.get("/fapi/v1/exchangeInfo", params={"symbol": symbol})
+        response = self._get("/fapi/v1/exchangeInfo", params={"symbol": symbol})
         response.raise_for_status()
         payload = response.json()
         matches = [item for item in payload.get("symbols", []) if item.get("symbol") == symbol]
@@ -129,7 +147,7 @@ class BinanceFuturesTestnet:
 
     def account_preflight(self):
         """Verify signed testnet account access without placing or modifying orders."""
-        response = self._client.get(
+        response = self._get(
             "/fapi/v2/account",
             params=self._signed_params({}),
         )
@@ -184,7 +202,7 @@ class BinanceFuturesTestnet:
             }
         except (ValueError, InvalidOperation, TypeError, KeyError):
             return {"accepted": False, "reason": "exchange_preflight_failed"}
-        response = self._client.post("/fapi/v1/order/test", params=self._signed_params(params))
+        response = self._post("/fapi/v1/order/test", params=self._signed_params(params))
         response.raise_for_status()
         return {
             "accepted": True,
@@ -243,7 +261,7 @@ class BinanceFuturesTestnet:
             "quantity": quantity_text,
             "newClientOrderId": client_order_id,
         })
-        response = self._client.post("/fapi/v1/order", params=params)
+        response = self._post("/fapi/v1/order", params=params)
         response.raise_for_status()
         payload = response.json()
         if not isinstance(payload, dict) or "orderId" not in payload:
@@ -267,7 +285,7 @@ class BinanceFuturesTestnet:
             return {"found": False, "reason": "invalid_client_order_id"}
         if not client_order_id.replace("-", "").replace("_", "").isalnum():
             return {"found": False, "reason": "invalid_client_order_id"}
-        response = self._client.get(
+        response = self._get(
             "/fapi/v1/order",
             params=self._signed_params({
                 "symbol": symbol,
@@ -293,7 +311,7 @@ class BinanceFuturesTestnet:
         """Read authoritative TESTNET position and open orders; no mutations."""
         if not isinstance(symbol, str) or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
             return {"ok": False, "reason": "invalid_symbol"}
-        account_response = self._client.get(
+        account_response = self._get(
             "/fapi/v2/account",
             params=self._signed_params({}),
         )
@@ -314,7 +332,7 @@ class BinanceFuturesTestnet:
                 raise InvalidOperation
         except (InvalidOperation, TypeError, ValueError):
             return {"ok": False, "reason": "invalid_testnet_position_values"}
-        orders_response = self._client.get(
+        orders_response = self._get(
             "/fapi/v1/openOrders",
             params=self._signed_params({"symbol": symbol}),
         )
@@ -433,7 +451,7 @@ class BinanceFuturesTestnet:
             })
         except (ValueError, InvalidOperation, TypeError, KeyError):
             return {"accepted": False, "reason": "exchange_preflight_failed"}
-        response = self._client.post("/fapi/v1/order", params=params)
+        response = self._post("/fapi/v1/order", params=params)
         response.raise_for_status()
         payload = response.json()
         if not isinstance(payload, dict) or "orderId" not in payload:
@@ -461,7 +479,7 @@ class BinanceFuturesTestnet:
             return {"cancelled": False, "reason": "invalid_client_order_id"}
         if not client_order_id.replace("-", "").replace("_", "").isalnum():
             return {"cancelled": False, "reason": "invalid_client_order_id"}
-        response = self._client.delete(
+        response = self._delete(
             "/fapi/v1/order",
             params=self._signed_params({
                 "symbol": symbol,
