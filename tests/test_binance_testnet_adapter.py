@@ -756,5 +756,46 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
 
 
 
+    def test_position_snapshot_rejects_nonpositive_open_order_id(self):
+        client = FakeClient()
+        original_get = client.get
+
+        def malformed_get(path, params):
+            if path == "/fapi/v1/openOrders":
+                return FakeResponse([{
+                    "orderId": 0, "symbol": "BTCUSDT", "clientOrderId": "stop-0001",
+                    "side": "SELL", "type": "STOP_MARKET", "status": "NEW",
+                    "reduceOnly": True, "stopPrice": "99.8", "origQty": "0.5",
+                    "executedQty": "0",
+                }])
+            return original_get(path, params)
+
+        client.get = malformed_get
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.testnet_position_snapshot("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "invalid_testnet_open_order_identity")
+
+    def test_position_snapshot_rejects_non_open_status_in_open_orders(self):
+        client = FakeClient()
+        original_get = client.get
+
+        def malformed_get(path, params):
+            if path == "/fapi/v1/openOrders":
+                return FakeResponse([{
+                    "orderId": 123, "symbol": "BTCUSDT", "clientOrderId": "stop-0001",
+                    "side": "SELL", "type": "STOP_MARKET", "status": "FILLED",
+                    "reduceOnly": True, "stopPrice": "99.8", "origQty": "0.5",
+                    "executedQty": "0.5",
+                }])
+            return original_get(path, params)
+
+        client.get = malformed_get
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.testnet_position_snapshot("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "invalid_testnet_open_order_status")
+
+
 if __name__ == "__main__":
     unittest.main()
