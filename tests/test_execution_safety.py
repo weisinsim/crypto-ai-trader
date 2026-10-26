@@ -51,6 +51,8 @@ class ExecutionSafetyTests(unittest.TestCase):
     def test_rejects_wrong_object_types_and_unicode_symbol(self):
         self.assertFalse(validate_order_intent({}, ExecutionConfig()).allowed)
         self.assertFalse(validate_order_intent(self.intent(), {}).allowed)
+        self.assertFalse(validate_order_intent(self.intent(side=[]), ExecutionConfig(mode="testnet")).allowed)
+        self.assertFalse(validate_order_intent(self.intent(), ExecutionConfig(mode=[])).allowed)
         decision = validate_order_intent(self.intent(symbol="ＢＴＣUSDT"), ExecutionConfig(mode="testnet"))
         self.assertFalse(decision.allowed)
 
