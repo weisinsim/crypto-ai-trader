@@ -706,5 +706,55 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
 
 
 
+    def test_cancel_order_rejects_malformed_exchange_order_id(self):
+        class MalformedCancelIdClient(FakeClient):
+            def delete(self, path, params):
+                self.calls.append((path, params))
+                return FakeResponse({
+                    "symbol": params.get("symbol"),
+                    "clientOrderId": params.get("origClientOrderId"),
+                    "orderId": True,
+                    "status": "CANCELED",
+                })
+
+        client = MalformedCancelIdClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.cancel_testnet_order("BTCUSDT", "btc-stop-0001")
+        self.assertFalse(result["cancelled"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["reason"], "unexpected_or_mismatched_testnet_cancel_response")
+        self.assertEqual(len(client.calls), 1)
+
+    def test_protective_exit_rejects_malformed_exchange_order_id(self):
+        class PositionClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"canTrade": True, "positions": [
+                        {"symbol": "BTCUSDT", "positionAmt": "0.5", "entryPrice": "100"},
+                    ]})
+                return super().get(path, params)
+
+            def post(self, path, params):
+                self.calls.append((path, params))
+                return FakeResponse({
+                    "symbol": params.get("symbol"),
+                    "clientOrderId": params.get("newClientOrderId"),
+                    "orderId": True,
+                    "status": "NEW",
+                })
+
+        client = PositionClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "btc-stop-bad-id"
+        )
+        self.assertFalse(result["accepted"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["reason"], "unexpected_testnet_order_response")
+        self.assertEqual(len(client.calls), 1)
+
+
+
 if __name__ == "__main__":
     unittest.main()
