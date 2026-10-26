@@ -118,6 +118,52 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual([s[1] for s in adapter.submissions], ["take_profit"])
 
+    def test_restart_with_both_matching_protective_orders_is_idempotent(self):
+        adapter = FakeAdapter(orders=[
+            {
+                "status": "NEW", "reduce_only": True, "type": "STOP_MARKET",
+                "stop_price": "99", "side": "SELL", "orig_quantity": "0.5",
+                "executed_quantity": "0", "client_order_id": "btc-restart-sl",
+            },
+            {
+                "status": "NEW", "reduce_only": True, "type": "TAKE_PROFIT_MARKET",
+                "stop_price": "102", "side": "SELL", "orig_quantity": "0.5",
+                "executed_quantity": "0", "client_order_id": "btc-restart-tp",
+            },
+        ])
+        result = ensure_testnet_protective_exits(
+            adapter, "BTCUSDT", "99", "102", "btc-restart"
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["mode"], "testnet_protective_exits_verified")
+        self.assertEqual(adapter.submissions, [])
+        self.assertEqual(adapter.snapshot_count, 2)
+        self.assertEqual(
+            set(result["verified_orders"]),
+            {"STOP_MARKET", "TAKE_PROFIT_MARKET"},
+        )
+
+    def test_restart_with_duplicate_client_id_conflict_does_not_submit_again(self):
+        class ConflictAdapter(FakeAdapter):
+            def submit_testnet_protective_exit(self, symbol, kind, quantity, price, client_id):
+                self.submissions.append((symbol, kind, str(quantity), str(price), client_id))
+                return {
+                    "accepted": False,
+                    "reason": "protective_exit_client_id_conflict_requires_reconciliation",
+                    "requires_reconciliation": True,
+                    "client_order_id": client_id,
+                }
+
+        adapter = ConflictAdapter()
+        result = ensure_testnet_protective_exits(
+            adapter, "BTCUSDT", "99", "102", "btc-conflict"
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "stop_submission_failed")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual([item[1] for item in adapter.submissions], ["stop_loss"])
+        self.assertEqual(adapter.snapshot_count, 1)
+
     def test_existing_stop_with_unrelated_client_id_fails_closed(self):
         adapter = FakeAdapter(orders=[{
             "status": "NEW", "reduce_only": True, "type": "STOP_MARKET",
