@@ -30,11 +30,21 @@ class BinanceFuturesTestnet:
             raise BinanceTestnetConfigurationError(
                 "Set BINANCE_TESTNET_API_KEY and BINANCE_TESTNET_API_SECRET; never use production keys."
             )
-        self._client = client or httpx.Client(
-            base_url=TESTNET_BASE_URL,
-            headers={"X-MBX-APIKEY": self.api_key},
-            timeout=10.0,
-        )
+        if client is not None:
+            # Dependency injection is useful for tests, but must not permit an
+            # alternate host to route signed requests to a production exchange.
+            client_base_url = str(getattr(client, "base_url", "")).rstrip("/")
+            if client_base_url != TESTNET_BASE_URL:
+                raise BinanceTestnetConfigurationError(
+                    "Injected client must use the fixed Binance Futures TESTNET base URL."
+                )
+            self._client = client
+        else:
+            self._client = httpx.Client(
+                base_url=TESTNET_BASE_URL,
+                headers={"X-MBX-APIKEY": self.api_key},
+                timeout=10.0,
+            )
 
     def _signed_params(self, params):
         payload = dict(params)
