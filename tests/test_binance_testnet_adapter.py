@@ -371,7 +371,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
             "BTCUSDT", "stop_loss", "0.5", "99.8", "stop-btc-nan"
         )
         self.assertFalse(invalid["accepted"])
-        self.assertEqual(invalid["reason"], "no_open_position_or_invalid_position_values")
+        self.assertEqual(invalid["reason"], "position_snapshot_failed")
         self.assertEqual(invalid_client.calls, [])
 
     def test_signed_request_uses_hmac_sha256(self):
