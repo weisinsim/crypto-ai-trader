@@ -593,6 +593,76 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(client.calls[0][1]["origClientOrderId"], "btc-stop-0001")
         self.assertIn("signature", client.calls[0][1])
 
+    def test_cancel_order_timeout_is_ambiguous_and_never_retried(self):
+        class TimeoutCancelClient(FakeClient):
+            def delete(self, path, params):
+                self.calls.append((path, params))
+                raise httpx.ReadTimeout(
+                    "cancel response timed out",
+                    request=httpx.Request("DELETE", "https://testnet.binancefuture.com/fapi/v1/order"),
+                )
+
+        client = TimeoutCancelClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.cancel_testnet_order("BTCUSDT", "btc-stop-timeout")
+        self.assertFalse(result["cancelled"])
+        self.assertEqual(result["reason"], "testnet_cancel_outcome_unknown")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(len(client.calls), 1)
+
+    def test_cancel_order_http_404_requires_reconciliation_without_retry(self):
+        class MissingCancelClient(FakeClient):
+            def delete(self, path, params):
+                self.calls.append((path, params))
+                request = httpx.Request(
+                    "DELETE", "https://testnet.binancefuture.com/fapi/v1/order"
+                )
+                response = httpx.Response(404, json={
+                    "code": -2011, "msg": "Unknown order sent."
+                }, request=request)
+                raise httpx.HTTPStatusError(
+                    "cancel response returned 404", request=request, response=response
+                )
+
+        client = MissingCancelClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.cancel_testnet_order("BTCUSDT", "btc-stop-missing")
+        self.assertFalse(result["cancelled"])
+        self.assertEqual(
+            result["reason"], "testnet_cancel_http_outcome_requires_reconciliation"
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["http_status"], 404)
+        self.assertEqual(len(client.calls), 1)
+
+    def test_cancel_order_nonterminal_exchange_status_requires_reconciliation(self):
+        class StillActiveCancelClient(FakeClient):
+            def delete(self, path, params):
+                self.calls.append((path, params))
+                return FakeResponse({
+                    "symbol": params.get("symbol"),
+                    "clientOrderId": params.get("origClientOrderId"),
+                    "orderId": 12345,
+                    "status": "PARTIALLY_FILLED",
+                })
+
+        client = StillActiveCancelClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.cancel_testnet_order("BTCUSDT", "btc-stop-partial")
+        self.assertFalse(result["cancelled"])
+        self.assertEqual(
+            result["reason"], "testnet_cancel_not_confirmed_requires_reconciliation"
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["status"], "PARTIALLY_FILLED")
+        self.assertEqual(len(client.calls), 1)
+
     def test_cancel_order_rejects_mismatched_exchange_identity(self):
         class MismatchedClient(FakeClient):
             def delete(self, path, params):
