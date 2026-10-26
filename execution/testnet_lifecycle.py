@@ -101,27 +101,47 @@ def ensure_testnet_protective_exits(
     quantity = abs(position)
     actions = []
     if not stops:
-        result = adapter.submit_testnet_protective_exit(
-            symbol, "stop_loss", quantity, stop, f"{client_order_prefix}-sl"
-        )
-        if not result.get("accepted"):
+        try:
+            result = adapter.submit_testnet_protective_exit(
+                symbol, "stop_loss", quantity, stop, f"{client_order_prefix}-sl"
+            )
+        except Exception as exc:
+            # A raised exception does not prove the exchange rejected the order.
+            # Do not retry; reconcile by client ID and exchange snapshot.
+            return {
+                "ok": False,
+                "reason": "stop_submission_exception_outcome_unknown",
+                "detail": {"exception_type": type(exc).__name__},
+                "actions": actions,
+                "requires_reconciliation": True,
+            }
+        if not isinstance(result, dict) or result.get("accepted") is not True:
             return {
                 "ok": False,
                 "reason": "stop_submission_failed",
-                "detail": result,
+                "detail": result if isinstance(result, dict) else {"invalid_adapter_response": True},
                 "actions": actions,
-                "requires_reconciliation": bool(result.get("requires_reconciliation")),
+                "requires_reconciliation": True if not isinstance(result, dict) else bool(result.get("requires_reconciliation")),
             }
         actions.append({"kind": "stop_loss", "result": result})
     if not targets:
-        result = adapter.submit_testnet_protective_exit(
-            symbol, "take_profit", quantity, target, f"{client_order_prefix}-tp"
-        )
-        if not result.get("accepted"):
+        try:
+            result = adapter.submit_testnet_protective_exit(
+                symbol, "take_profit", quantity, target, f"{client_order_prefix}-tp"
+            )
+        except Exception as exc:
+            return {
+                "ok": False,
+                "reason": "take_profit_submission_exception_outcome_unknown_stop_remains",
+                "detail": {"exception_type": type(exc).__name__},
+                "actions": actions,
+                "requires_reconciliation": True,
+            }
+        if not isinstance(result, dict) or result.get("accepted") is not True:
             return {
                 "ok": False,
                 "reason": "take_profit_submission_failed_stop_remains",
-                "detail": result,
+                "detail": result if isinstance(result, dict) else {"invalid_adapter_response": True},
                 "actions": actions,
                 "requires_reconciliation": True,
             }
