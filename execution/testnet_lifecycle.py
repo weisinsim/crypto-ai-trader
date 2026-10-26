@@ -246,6 +246,8 @@ def cancel_testnet_sibling_after_flatten(
     snapshot = adapter.testnet_position_snapshot(symbol)
     if not snapshot.get("ok"):
         return {"ok": False, "reason": "position_snapshot_failed", "requires_reconciliation": True}
+    if snapshot.get("symbol") != symbol:
+        return {"ok": False, "reason": "position_snapshot_symbol_mismatch", "requires_reconciliation": True}
     try:
         position = Decimal(str(snapshot["position_amount"]))
     except (InvalidOperation, TypeError, ValueError, KeyError):
@@ -293,6 +295,8 @@ def cancel_testnet_sibling_after_flatten(
     final_snapshot = adapter.testnet_position_snapshot(symbol)
     if not final_snapshot.get("ok"):
         return {"ok": False, "reason": "post_cancel_snapshot_failed", "requires_reconciliation": True}
+    if final_snapshot.get("symbol") != symbol:
+        return {"ok": False, "reason": "post_cancel_snapshot_symbol_mismatch", "requires_reconciliation": True}
     try:
         final_position = Decimal(str(final_snapshot["position_amount"]))
     except (InvalidOperation, TypeError, ValueError, KeyError):
