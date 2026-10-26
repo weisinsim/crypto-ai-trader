@@ -120,10 +120,14 @@ class TestnetLifecycleTests(unittest.TestCase):
                 self.position = position
                 self.sibling_status = sibling_status
                 self.cancel_ok = cancel_ok
+                self.cancelled = False
                 self.cancel_calls = []
 
             def query_testnet_order(self, symbol, client_id):
-                status = self.status if client_id == "btc-sl" else self.sibling_status
+                if client_id == "btc-sl":
+                    status = self.status
+                else:
+                    status = "CANCELED" if self.cancelled else self.sibling_status
                 return {"found": True, "status": status, "executed_quantity": "0.5"}
 
             def testnet_position_snapshot(self, symbol):
@@ -131,6 +135,7 @@ class TestnetLifecycleTests(unittest.TestCase):
 
             def cancel_testnet_order(self, symbol, client_id):
                 self.cancel_calls.append((symbol, client_id))
+                self.cancelled = self.cancel_ok
                 return {"cancelled": self.cancel_ok, "status": "CANCELED" if self.cancel_ok else "UNKNOWN"}
 
         adapter = ReconcileAdapter()
