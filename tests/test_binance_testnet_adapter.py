@@ -327,11 +327,15 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         off_tick = adapter.submit_testnet_protective_exit(
             "BTCUSDT", "stop_loss", "0.5", "99.85", "stop-btc-offtick"
         )
+        out_of_bounds = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "0.05", "stop-btc-outbounds"
+        )
         too_large = adapter.submit_testnet_protective_exit(
             "BTCUSDT", "take_profit", "0.6", "101", "take-btc-0001"
         )
         self.assertEqual(wrong_trigger["reason"], "invalid_protective_trigger_geometry")
         self.assertEqual(off_tick["reason"], "trigger_price_not_aligned_to_exchange_tick")
+        self.assertEqual(out_of_bounds["reason"], "trigger_price_outside_exchange_price_bounds")
         self.assertEqual(too_large["reason"], "exit_quantity_exceeds_position")
         self.assertEqual(client.calls, [])
 
