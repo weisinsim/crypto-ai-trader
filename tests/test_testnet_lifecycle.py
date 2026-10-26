@@ -358,5 +358,34 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertEqual(adapter.cancel_calls, [])
 
 
+    def test_initial_snapshot_exception_fails_closed_without_submission(self):
+        class SnapshotRaisesAdapter(FakeAdapter):
+            def testnet_position_snapshot(self, symbol):
+                raise TimeoutError("snapshot read failed")
+
+        adapter = SnapshotRaisesAdapter()
+        result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-snapshot-error")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "position_snapshot_exception")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(adapter.submissions, [])
+
+    def test_post_submission_snapshot_exception_requires_reconciliation(self):
+        class FinalSnapshotRaisesAdapter(FakeAdapter):
+            def testnet_position_snapshot(self, symbol):
+                if self.snapshot_count >= 1:
+                    self.snapshot_count += 1
+                    if self.snapshot_count > 1:
+                        raise TimeoutError("post-submit snapshot read failed")
+                return super().testnet_position_snapshot(symbol)
+
+        adapter = FinalSnapshotRaisesAdapter()
+        result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-final-snapshot-error")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "post_submission_snapshot_exception")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual([s[1] for s in adapter.submissions], ["stop_loss", "take_profit"])
+
+
 if __name__ == "__main__":
     unittest.main()
