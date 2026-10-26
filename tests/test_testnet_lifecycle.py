@@ -586,10 +586,14 @@ class TestnetLifecycleTests(unittest.TestCase):
             def __init__(self):
                 self.snapshot_calls = 0
                 self.cancel_calls = 0
+                self.cancelled = False
 
             def query_testnet_order(self, symbol, client_id):
-                status = "FILLED" if client_id == "btc-sl" else "NEW"
-                quantity = "0.5" if status == "FILLED" else "0"
+                if client_id == "btc-sl":
+                    status, quantity = "FILLED", "0.5"
+                else:
+                    status = "CANCELED" if self.cancelled else "NEW"
+                    quantity = "0"
                 return {
                     "found": True, "symbol": symbol, "client_order_id": client_id,
                     "status": status, "executed_quantity": quantity,
@@ -602,6 +606,7 @@ class TestnetLifecycleTests(unittest.TestCase):
 
             def cancel_testnet_order(self, symbol, client_id):
                 self.cancel_calls += 1
+                self.cancelled = True
                 return {"cancelled": True}
 
         adapter = MissingOpenOrdersAdapter()
