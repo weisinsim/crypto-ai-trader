@@ -84,10 +84,22 @@ class TestnetLifecycleTests(unittest.TestCase):
         adapter = FakeAdapter(orders=[{
             "status": "NEW", "reduce_only": True, "type": "STOP_MARKET",
             "stop_price": "99", "side": "SELL", "orig_quantity": "0.5",
+            "client_order_id": "btc-run-03-sl",
         }])
         result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-03")
         self.assertTrue(result["ok"])
         self.assertEqual([s[1] for s in adapter.submissions], ["take_profit"])
+
+    def test_existing_stop_with_unrelated_client_id_fails_closed(self):
+        adapter = FakeAdapter(orders=[{
+            "status": "NEW", "reduce_only": True, "type": "STOP_MARKET",
+            "stop_price": "99", "side": "SELL", "orig_quantity": "0.5",
+            "client_order_id": "unrelated-stop-id",
+        }])
+        result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-04a")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "existing_stop_client_order_id_mismatch")
+        self.assertEqual(adapter.submissions, [])
 
     def test_mismatched_existing_stop_fails_closed(self):
         adapter = FakeAdapter(orders=[{
