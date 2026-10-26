@@ -97,14 +97,22 @@ def ensure_testnet_protective_exits(
         try:
             order_price = Decimal(str(order.get("stop_price", "0")))
             order_quantity = Decimal(str(order.get("orig_quantity", "NaN")))
+            executed_quantity = Decimal(str(order.get("executed_quantity", "NaN")))
         except (InvalidOperation, TypeError, ValueError):
             return {"ok": False, "reason": f"existing_{kind}_order_invalid"}
         if order_price != expected_price:
             return {"ok": False, "reason": f"existing_{kind}_price_mismatch"}
         if order.get("side") != expected_side:
             return {"ok": False, "reason": f"existing_{kind}_side_mismatch"}
-        if not order_quantity.is_finite() or order_quantity != abs(position):
-            return {"ok": False, "reason": f"existing_{kind}_quantity_mismatch"}
+        # Any partial execution makes this snapshot unsuitable for automatic reuse:
+        # the remaining position/order relationship must be reconciled explicitly.
+        if (
+            not order_quantity.is_finite()
+            or order_quantity != abs(position)
+            or not executed_quantity.is_finite()
+            or executed_quantity != 0
+        ):
+            return {"ok": False, "reason": f"existing_{kind}_quantity_or_execution_mismatch"}
 
     quantity = abs(position)
     actions = []
@@ -217,6 +225,7 @@ def ensure_testnet_protective_exits(
         try:
             actual_price = Decimal(str(order.get("stop_price", "0")))
             actual_quantity = Decimal(str(order.get("orig_quantity", "NaN")))
+            executed_quantity = Decimal(str(order.get("executed_quantity", "NaN")))
         except (InvalidOperation, TypeError, ValueError):
             return {"ok": False, "reason": "post_submission_order_invalid", "actions": actions, "requires_reconciliation": True}
         if (
@@ -224,6 +233,8 @@ def ensure_testnet_protective_exits(
             or actual_price != expected_price
             or not actual_quantity.is_finite()
             or actual_quantity != abs(final_position)
+            or not executed_quantity.is_finite()
+            or executed_quantity != 0
         ):
             return {"ok": False, "reason": "post_submission_protective_order_mismatch", "actions": actions, "requires_reconciliation": True}
         verified[order_type] = {
