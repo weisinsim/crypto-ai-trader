@@ -307,7 +307,8 @@ class TestnetLifecycleTests(unittest.TestCase):
                 self.cancel_calls = []
 
             def query_testnet_order(self, symbol, client_id):
-                return {"found": True, "symbol": symbol, "client_order_id": client_id, "status": self.status, "executed_quantity": "0.2", "original_quantity": "0.5"}
+                executed = "0.5" if self.status == "FILLED" else "0.2"
+                return {"found": True, "symbol": symbol, "client_order_id": client_id, "status": self.status, "executed_quantity": executed, "original_quantity": "0.5"}
 
             def testnet_position_snapshot(self, symbol):
                 return {"ok": True, "symbol": symbol, "position_amount": self.position}
