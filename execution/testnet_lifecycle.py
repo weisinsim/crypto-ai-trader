@@ -15,11 +15,11 @@ def ensure_testnet_protective_exits(
     client_order_prefix: str,
 ):
     """Install and then verify a reduce-only stop and target for a testnet position."""
-    if not isinstance(symbol, str) or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
+    if not isinstance(symbol, str) or not symbol.isascii() or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
         return {"ok": False, "reason": "invalid_symbol"}
     if not isinstance(client_order_prefix, str) or not client_order_prefix or len(client_order_prefix) > 20:
         return {"ok": False, "reason": "invalid_client_order_prefix"}
-    if not client_order_prefix.replace("-", "").replace("_", "").isalnum():
+    if not client_order_prefix.isascii() or not client_order_prefix.replace("-", "").replace("_", "").isalnum():
         return {"ok": False, "reason": "invalid_client_order_prefix"}
     try:
         stop = Decimal(str(stop_price))
@@ -208,7 +208,7 @@ def cancel_testnet_sibling_after_flatten(
     for value in (filled_exit_client_order_id, sibling_exit_client_order_id):
         if not isinstance(value, str) or not value or len(value) > 36:
             return {"ok": False, "reason": "invalid_client_order_id"}
-        if not value.replace("-", "").replace("_", "").isalnum():
+        if not value.isascii() or not value.replace("-", "").replace("_", "").isalnum():
             return {"ok": False, "reason": "invalid_client_order_id"}
     filled = adapter.query_testnet_order(symbol, filled_exit_client_order_id)
     if not filled.get("found"):
