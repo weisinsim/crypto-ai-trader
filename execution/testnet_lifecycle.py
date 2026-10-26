@@ -58,6 +58,16 @@ def ensure_testnet_protective_exits(
     open_orders = snapshot.get("open_orders")
     if not isinstance(open_orders, list) or any(not isinstance(order, dict) for order in open_orders):
         return {"ok": False, "reason": "invalid_open_orders_snapshot"}
+    initial_client_ids = [order.get("client_order_id") for order in open_orders]
+    if (
+        any(not isinstance(client_id, str) or not client_id for client_id in initial_client_ids)
+        or len(set(initial_client_ids)) != len(initial_client_ids)
+    ):
+        return {
+            "ok": False,
+            "reason": "duplicate_or_invalid_open_order_client_ids_requires_reconciliation",
+            "requires_reconciliation": True,
+        }
     # The adapter snapshot is sourced from the exchange's openOrders endpoint.
     # Treat malformed/unknown records and any active order that is not a recognized
     # reduce-only protective exit as an ambiguity; never add protection on top of
@@ -188,6 +198,17 @@ def ensure_testnet_protective_exits(
     final_orders = final_snapshot.get("open_orders")
     if not isinstance(final_orders, list) or any(not isinstance(order, dict) for order in final_orders):
         return {"ok": False, "reason": "post_submission_open_orders_invalid", "actions": actions, "requires_reconciliation": True}
+    final_client_ids = [order.get("client_order_id") for order in final_orders]
+    if (
+        any(not isinstance(client_id, str) or not client_id for client_id in final_client_ids)
+        or len(set(final_client_ids)) != len(final_client_ids)
+    ):
+        return {
+            "ok": False,
+            "reason": "post_submission_duplicate_or_invalid_client_ids",
+            "actions": actions,
+            "requires_reconciliation": True,
+        }
 
     # Validate the entire post-submit snapshot, not just the two expected exits.
     # An unexpected entry/order appearing during setup makes the exchange state
