@@ -80,6 +80,34 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertEqual([s[1] for s in adapter.submissions], ["stop_loss", "take_profit"])
         self.assertTrue(result["requires_reconciliation"])
 
+    def test_raised_stop_submission_exception_requires_reconciliation_and_stops(self):
+        class RaisingAdapter(FakeAdapter):
+            def submit_testnet_protective_exit(self, symbol, kind, quantity, price, client_id):
+                self.submissions.append((symbol, kind, str(quantity), str(price), client_id))
+                raise TimeoutError("response path failed after request")
+
+        adapter = RaisingAdapter()
+        result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-raise")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "stop_submission_exception_outcome_unknown")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual([s[1] for s in adapter.submissions], ["stop_loss"])
+
+    def test_raised_target_submission_exception_preserves_stop_and_requires_reconciliation(self):
+        class RaisingTargetAdapter(FakeAdapter):
+            def submit_testnet_protective_exit(self, symbol, kind, quantity, price, client_id):
+                self.submissions.append((symbol, kind, str(quantity), str(price), client_id))
+                if kind == "take_profit":
+                    raise TimeoutError("response path failed after request")
+                return super().submit_testnet_protective_exit(symbol, kind, quantity, price, client_id)
+
+        adapter = RaisingTargetAdapter()
+        result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-target-raise")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "take_profit_submission_exception_outcome_unknown_stop_remains")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual([s[1] for s in adapter.submissions], ["stop_loss", "take_profit"])
+
     def test_existing_matching_stop_is_reused(self):
         adapter = FakeAdapter(orders=[{
             "status": "NEW", "reduce_only": True, "type": "STOP_MARKET",
