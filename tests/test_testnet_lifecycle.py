@@ -207,7 +207,7 @@ class TestnetLifecycleTests(unittest.TestCase):
 
             def query_testnet_order(self, symbol, client_id):
                 status = "FILLED" if client_id == "btc-sl" else "NEW"
-                return {"found": True, "status": status, "executed_quantity": "0.5"}
+                return {"found": True, "symbol": symbol, "client_order_id": client_id, "status": status, "executed_quantity": "0.5", "original_quantity": "0.5"}
 
             def testnet_position_snapshot(self, symbol):
                 return {"ok": True, "symbol": symbol, "position_amount": "0"}
@@ -263,7 +263,7 @@ class TestnetLifecycleTests(unittest.TestCase):
                     status = self.status
                 else:
                     status = "CANCELED" if self.cancelled else self.sibling_status
-                return {"found": True, "status": status, "executed_quantity": "0.5"}
+                return {"found": True, "symbol": symbol, "client_order_id": client_id, "status": status, "executed_quantity": "0.5", "original_quantity": "0.5"}
 
             def testnet_position_snapshot(self, symbol):
                 return {"ok": True, "symbol": symbol, "position_amount": self.position}
@@ -284,7 +284,7 @@ class TestnetLifecycleTests(unittest.TestCase):
                 self.cancel_calls = []
 
             def query_testnet_order(self, symbol, client_id):
-                return {"found": True, "status": "FILLED", "executed_quantity": "0.5"}
+                return {"found": True, "symbol": symbol, "client_order_id": client_id, "status": "FILLED", "executed_quantity": "0.5", "original_quantity": "0.5"}
 
             def testnet_position_snapshot(self, symbol):
                 return {"ok": True, "symbol": "ETHUSDT", "position_amount": "0"}
@@ -307,7 +307,7 @@ class TestnetLifecycleTests(unittest.TestCase):
                 self.cancel_calls = []
 
             def query_testnet_order(self, symbol, client_id):
-                return {"found": True, "status": self.status, "executed_quantity": "0.2"}
+                return {"found": True, "symbol": symbol, "client_order_id": client_id, "status": self.status, "executed_quantity": "0.2", "original_quantity": "0.5"}
 
             def testnet_position_snapshot(self, symbol):
                 return {"ok": True, "symbol": symbol, "position_amount": self.position}
@@ -336,11 +336,11 @@ class TestnetLifecycleTests(unittest.TestCase):
                 if client_id == "btc-sl":
                     return {
                         "found": True, "symbol": symbol, "client_order_id": client_id,
-                        "status": "FILLED", "executed_quantity": "0.5",
+                        "status": "FILLED", "executed_quantity": "0.5", "original_quantity": "0.5",
                     }
                 return {
                     "found": True, "symbol": symbol, "client_order_id": client_id,
-                    "status": "UNKNOWN", "executed_quantity": "0",
+                    "status": "UNKNOWN", "executed_quantity": "0", "original_quantity": "0.5",
                 }
 
             def testnet_position_snapshot(self, symbol):
