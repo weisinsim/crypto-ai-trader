@@ -339,9 +339,11 @@ class TestnetLifecycleTests(unittest.TestCase):
             def query_testnet_order(self, symbol, client_id):
                 if client_id == "btc-sl":
                     status = self.status
+                    executed = "0.5" if status == "FILLED" else "0.2"
                 else:
                     status = "CANCELED" if self.cancelled else self.sibling_status
-                return {"found": True, "symbol": symbol, "client_order_id": client_id, "status": status, "executed_quantity": "0.5", "original_quantity": "0.5"}
+                    executed = "0" if status in {"NEW", "CANCELED"} else "0.2" if status == "PARTIALLY_FILLED" else "0.5"
+                return {"found": True, "symbol": symbol, "client_order_id": client_id, "status": status, "executed_quantity": executed, "original_quantity": "0.5"}
 
             def testnet_position_snapshot(self, symbol):
                 return {"ok": True, "symbol": symbol, "position_amount": self.position, "open_orders": []}
@@ -376,6 +378,80 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["reason"], "position_snapshot_symbol_mismatch")
         self.assertEqual(adapter.cancel_calls, [])
+
+    def test_partially_filled_sibling_is_not_cancelled_even_if_position_snapshot_is_flat(self):
+        class PartiallyFilledSiblingAdapter:
+            def __init__(self):
+                self.cancel_calls = 0
+
+            def query_testnet_order(self, symbol, client_id):
+                if client_id == "btc-sl":
+                    return {
+                        "found": True, "symbol": symbol, "client_order_id": client_id,
+                        "status": "FILLED", "executed_quantity": "0.5",
+                        "original_quantity": "0.5",
+                    }
+                return {
+                    "found": True, "symbol": symbol, "client_order_id": client_id,
+                    "status": "PARTIALLY_FILLED", "executed_quantity": "0.1",
+                    "original_quantity": "0.5",
+                }
+
+            def testnet_position_snapshot(self, symbol):
+                return {
+                    "ok": True, "symbol": symbol, "position_amount": "0",
+                    "open_orders": [],
+                }
+
+            def cancel_testnet_order(self, symbol, client_id):
+                self.cancel_calls += 1
+                return {"cancelled": True}
+
+        adapter = PartiallyFilledSiblingAdapter()
+        result = cancel_testnet_sibling_after_flatten(
+            adapter, "BTCUSDT", "btc-sl", "btc-tp"
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(
+            result["reason"], "sibling_execution_state_requires_reconciliation"
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(adapter.cancel_calls, 0)
+
+    def test_active_sibling_with_missing_execution_quantity_fails_closed(self):
+        class MissingSiblingExecutionAdapter:
+            def __init__(self):
+                self.cancel_calls = 0
+
+            def query_testnet_order(self, symbol, client_id):
+                result = {
+                    "found": True, "symbol": symbol, "client_order_id": client_id,
+                    "status": "FILLED" if client_id == "btc-sl" else "NEW",
+                    "original_quantity": "0.5",
+                }
+                if client_id == "btc-sl":
+                    result["executed_quantity"] = "0.5"
+                return result
+
+            def testnet_position_snapshot(self, symbol):
+                return {
+                    "ok": True, "symbol": symbol, "position_amount": "0",
+                    "open_orders": [],
+                }
+
+            def cancel_testnet_order(self, symbol, client_id):
+                self.cancel_calls += 1
+                return {"cancelled": True}
+
+        adapter = MissingSiblingExecutionAdapter()
+        result = cancel_testnet_sibling_after_flatten(
+            adapter, "BTCUSDT", "btc-sl", "btc-tp"
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(
+            result["reason"], "sibling_execution_state_requires_reconciliation"
+        )
+        self.assertEqual(adapter.cancel_calls, 0)
 
     def test_sibling_is_not_cancelled_on_partial_fill_or_nonflat_position(self):
         class ReconcileAdapter:
