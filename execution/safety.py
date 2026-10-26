@@ -47,13 +47,13 @@ def validate_order_intent(intent: OrderIntent, config: ExecutionConfig) -> Execu
         return ExecutionDecision(False, "invalid_intent")
     if not isinstance(config, ExecutionConfig):
         return ExecutionDecision(False, "invalid_execution_config")
-    if config.mode not in {"paper", "testnet"}:
+    if not isinstance(config.mode, str) or config.mode not in {"paper", "testnet"}:
         return ExecutionDecision(False, "unsupported_mode")
     if config.live_trading_enabled is not False:
         return ExecutionDecision(False, "live_trading_not_implemented")
     if not isinstance(intent.symbol, str) or not intent.symbol.isascii() or not intent.symbol.endswith("USDT") or not intent.symbol[:-4].isalnum():
         return ExecutionDecision(False, "invalid_symbol")
-    if intent.side not in {"BUY", "SELL"}:
+    if not isinstance(intent.side, str) or intent.side not in {"BUY", "SELL"}:
         return ExecutionDecision(False, "invalid_side")
     if intent.reduce_only is not False:
         return ExecutionDecision(False, "reduce_only_entry_not_supported")
