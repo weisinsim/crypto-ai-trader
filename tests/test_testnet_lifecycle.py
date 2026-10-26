@@ -496,5 +496,48 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertEqual(adapter.cancel_calls, 0)
 
 
+    def test_sibling_cleanup_fails_if_open_orders_remain_after_flatten(self):
+        class RemainingOrderAdapter:
+            def __init__(self):
+                self.snapshot_calls = 0
+                self.cancelled = False
+
+            def query_testnet_order(self, symbol, client_id):
+                if client_id == "btc-sl":
+                    return {
+                        "found": True, "symbol": symbol, "client_order_id": client_id,
+                        "status": "FILLED", "executed_quantity": "0.5",
+                        "original_quantity": "0.5",
+                    }
+                status = "CANCELED" if self.cancelled else "NEW"
+                return {
+                    "found": True, "symbol": symbol, "client_order_id": client_id,
+                    "status": status, "executed_quantity": "0",
+                    "original_quantity": "0.5",
+                }
+
+            def testnet_position_snapshot(self, symbol):
+                self.snapshot_calls += 1
+                if self.snapshot_calls == 1:
+                    return {"ok": True, "symbol": symbol, "position_amount": "0"}
+                return {
+                    "ok": True, "symbol": symbol, "position_amount": "0",
+                    "open_orders": [{
+                        "symbol": symbol, "client_order_id": "unexpected-entry",
+                        "status": "NEW", "type": "LIMIT", "reduce_only": False,
+                    }],
+                }
+
+            def cancel_testnet_order(self, symbol, client_id):
+                self.cancelled = True
+                return {"cancelled": True}
+
+        adapter = RemainingOrderAdapter()
+        result = cancel_testnet_sibling_after_flatten(adapter, "BTCUSDT", "btc-sl", "btc-tp")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "open_orders_remain_after_flatten")
+        self.assertTrue(result["requires_reconciliation"])
+
+
 if __name__ == "__main__":
     unittest.main()
