@@ -270,8 +270,8 @@ def cancel_testnet_sibling_after_flatten(
     if not isinstance(filled, dict) or not filled.get("found"):
         return {"ok": False, "reason": "filled_exit_lookup_failed", "requires_reconciliation": True}
     if (
-        ("symbol" in filled and filled.get("symbol") != symbol)
-        or ("client_order_id" in filled and filled.get("client_order_id") != filled_exit_client_order_id)
+        filled.get("symbol") != symbol
+        or filled.get("client_order_id") != filled_exit_client_order_id
     ):
         return {"ok": False, "reason": "filled_exit_identity_mismatch", "requires_reconciliation": True}
     if filled.get("status") != "FILLED":
@@ -284,18 +284,15 @@ def cancel_testnet_sibling_after_flatten(
     try:
         executed = Decimal(str(filled.get("executed_quantity", "0")))
         original_raw = filled.get("original_quantity")
-        original = Decimal(str(original_raw)) if original_raw is not None else None
+        if original_raw is None:
+            raise InvalidOperation
+        original = Decimal(str(original_raw))
         if (
             not executed.is_finite()
             or executed <= 0
-            or (
-                original is not None
-                and (
-                    not original.is_finite()
-                    or original <= 0
-                    or executed != original
-                )
-            )
+            or not original.is_finite()
+            or original <= 0
+            or executed != original
         ):
             raise InvalidOperation
     except (InvalidOperation, TypeError, ValueError):
@@ -328,8 +325,8 @@ def cancel_testnet_sibling_after_flatten(
     if not isinstance(sibling, dict) or not sibling.get("found"):
         return {"ok": False, "reason": "sibling_lookup_failed", "requires_reconciliation": True}
     if (
-        ("symbol" in sibling and sibling.get("symbol") != symbol)
-        or ("client_order_id" in sibling and sibling.get("client_order_id") != sibling_exit_client_order_id)
+        sibling.get("symbol") != symbol
+        or sibling.get("client_order_id") != sibling_exit_client_order_id
     ):
         return {"ok": False, "reason": "sibling_order_identity_mismatch", "requires_reconciliation": True}
     if sibling.get("status") in {"CANCELED", "EXPIRED", "REJECTED"}:
@@ -374,11 +371,8 @@ def cancel_testnet_sibling_after_flatten(
     if not isinstance(sibling_after_cancel, dict) or not sibling_after_cancel.get("found"):
         return {"ok": False, "reason": "post_cancel_sibling_lookup_failed", "requires_reconciliation": True}
     if (
-        ("symbol" in sibling_after_cancel and sibling_after_cancel.get("symbol") != symbol)
-        or (
-            "client_order_id" in sibling_after_cancel
-            and sibling_after_cancel.get("client_order_id") != sibling_exit_client_order_id
-        )
+        sibling_after_cancel.get("symbol") != symbol
+        or sibling_after_cancel.get("client_order_id") != sibling_exit_client_order_id
     ):
         return {"ok": False, "reason": "post_cancel_sibling_identity_mismatch", "requires_reconciliation": True}
     if sibling_after_cancel.get("status") not in {"CANCELED", "EXPIRED", "REJECTED"}:
