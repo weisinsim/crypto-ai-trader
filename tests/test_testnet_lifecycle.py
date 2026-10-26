@@ -957,6 +957,56 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertTrue(result["requires_reconciliation"])
 
 
+    def test_sibling_partial_fill_before_cancel_ack_requires_reconciliation(self):
+        class PartialFillDuringCancelAdapter:
+            def __init__(self):
+                self.query_calls = 0
+                self.cancel_calls = 0
+                self.snapshot_calls = 0
+
+            def query_testnet_order(self, symbol, client_id):
+                self.query_calls += 1
+                if self.query_calls == 1:
+                    return {
+                        "found": True, "symbol": symbol, "client_order_id": client_id,
+                        "status": "FILLED", "executed_quantity": "0.5",
+                        "original_quantity": "0.5",
+                    }
+                if self.query_calls == 2:
+                    return {
+                        "found": True, "symbol": symbol, "client_order_id": client_id,
+                        "status": "NEW", "executed_quantity": "0",
+                        "original_quantity": "0.5",
+                    }
+                return {
+                    "found": True, "symbol": symbol, "client_order_id": client_id,
+                    "status": "CANCELED", "executed_quantity": "0.1",
+                    "original_quantity": "0.5",
+                }
+
+            def testnet_position_snapshot(self, symbol):
+                self.snapshot_calls += 1
+                return {
+                    "ok": True, "symbol": symbol, "position_amount": "0",
+                    "open_orders": [],
+                }
+
+            def cancel_testnet_order(self, symbol, client_id):
+                self.cancel_calls += 1
+                return {"cancelled": True}
+
+        adapter = PartialFillDuringCancelAdapter()
+        result = cancel_testnet_sibling_after_flatten(
+            adapter, "BTCUSDT", "btc-sl", "btc-tp"
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(
+            result["reason"], "post_cancel_sibling_execution_requires_reconciliation"
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(adapter.cancel_calls, 1)
+        self.assertEqual(adapter.snapshot_calls, 1)
+
     def test_sibling_fills_between_cancel_ack_and_post_cancel_lookup_fails_closed(self):
         class SiblingFillRaceAdapter:
             def __init__(self):
