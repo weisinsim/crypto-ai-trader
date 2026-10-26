@@ -450,7 +450,7 @@ class TestnetLifecycleTests(unittest.TestCase):
         )
         self.assertFalse(result["ok"])
         self.assertEqual(
-            result["reason"], "sibling_execution_state_requires_reconciliation"
+            result["reason"], "sibling_partial_fill_status_requires_reconciliation"
         )
         self.assertTrue(result["requires_reconciliation"])
         self.assertEqual(adapter.cancel_calls, 0)
