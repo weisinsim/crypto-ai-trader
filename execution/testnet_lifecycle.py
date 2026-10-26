@@ -373,6 +373,14 @@ def cancel_testnet_sibling_after_flatten(
         return {"ok": False, "reason": "post_cancel_sibling_lookup_exception", "requires_reconciliation": True}
     if not isinstance(sibling_after_cancel, dict) or not sibling_after_cancel.get("found"):
         return {"ok": False, "reason": "post_cancel_sibling_lookup_failed", "requires_reconciliation": True}
+    if (
+        ("symbol" in sibling_after_cancel and sibling_after_cancel.get("symbol") != symbol)
+        or (
+            "client_order_id" in sibling_after_cancel
+            and sibling_after_cancel.get("client_order_id") != sibling_exit_client_order_id
+        )
+    ):
+        return {"ok": False, "reason": "post_cancel_sibling_identity_mismatch", "requires_reconciliation": True}
     if sibling_after_cancel.get("status") not in {"CANCELED", "EXPIRED", "REJECTED"}:
         return {
             "ok": False,
