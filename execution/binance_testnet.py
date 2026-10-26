@@ -124,29 +124,73 @@ class BinanceFuturesTestnet:
         response = self._get("/fapi/v1/exchangeInfo", params={"symbol": symbol})
         response.raise_for_status()
         payload = response.json()
-        matches = [item for item in payload.get("symbols", []) if item.get("symbol") == symbol]
+        if not isinstance(payload, dict) or not isinstance(payload.get("symbols"), list):
+            raise ValueError("invalid_exchange_info_response")
+        if any(not isinstance(item, dict) for item in payload["symbols"]):
+            raise ValueError("invalid_exchange_symbol_records")
+        matches = [item for item in payload["symbols"] if item.get("symbol") == symbol]
         if len(matches) != 1:
             raise ValueError("symbol_not_found_or_ambiguous")
-        filters = {item.get("filterType"): item for item in matches[0].get("filters", [])}
+        raw_filters = matches[0].get("filters")
+        if not isinstance(raw_filters, list) or any(not isinstance(item, dict) for item in raw_filters):
+            raise ValueError("invalid_exchange_filter_records")
+        filters = {
+            item.get("filterType"): item
+            for item in raw_filters
+            if isinstance(item.get("filterType"), str)
+        }
         lot = filters.get("MARKET_LOT_SIZE") or filters.get("LOT_SIZE")
         if not lot:
             raise ValueError("market_lot_size_filter_missing")
+        try:
+            quantity_step = Decimal(str(lot["stepSize"]))
+            min_quantity = Decimal(str(lot["minQty"]))
+            max_quantity = Decimal(str(lot["maxQty"]))
+        except (KeyError, InvalidOperation, TypeError, ValueError) as exc:
+            raise ValueError("invalid_exchange_quantity_filters") from exc
+        if (
+            not quantity_step.is_finite() or quantity_step <= 0
+            or not min_quantity.is_finite() or min_quantity <= 0
+            or not max_quantity.is_finite() or max_quantity < min_quantity
+        ):
+            raise ValueError("invalid_exchange_quantity_filters")
         price_filter = filters.get("PRICE_FILTER")
+        price_tick_size = min_price = max_price = None
+        if price_filter is not None:
+            try:
+                price_tick_size = Decimal(str(price_filter["tickSize"]))
+                min_price = Decimal(str(price_filter["minPrice"]))
+                max_price = Decimal(str(price_filter["maxPrice"]))
+            except (KeyError, InvalidOperation, TypeError, ValueError) as exc:
+                raise ValueError("invalid_exchange_price_filters") from exc
+            if (
+                not price_tick_size.is_finite() or price_tick_size <= 0
+                or not min_price.is_finite() or min_price < 0
+                or not max_price.is_finite() or max_price <= min_price
+            ):
+                raise ValueError("invalid_exchange_price_filters")
         min_notional_filter = filters.get("MIN_NOTIONAL") or filters.get("NOTIONAL")
+        min_notional = None
+        if min_notional_filter is not None:
+            raw_notional = min_notional_filter.get("notional") or min_notional_filter.get("minNotional")
+            if raw_notional not in (None, ""):
+                try:
+                    parsed_notional = Decimal(str(raw_notional))
+                except (InvalidOperation, TypeError, ValueError) as exc:
+                    raise ValueError("invalid_exchange_min_notional") from exc
+                if not parsed_notional.is_finite() or parsed_notional <= 0:
+                    raise ValueError("invalid_exchange_min_notional")
+                min_notional = str(parsed_notional)
         return {
             "symbol": symbol,
             "status": matches[0].get("status"),
-            "quantity_step": lot.get("stepSize"),
-            "min_quantity": lot.get("minQty"),
-            "max_quantity": lot.get("maxQty"),
-            "price_tick_size": price_filter.get("tickSize") if price_filter else None,
-            "min_price": price_filter.get("minPrice") if price_filter else None,
-            "max_price": price_filter.get("maxPrice") if price_filter else None,
-            "min_notional": (
-                min_notional_filter.get("notional")
-                or min_notional_filter.get("minNotional")
-                if min_notional_filter else None
-            ),
+            "quantity_step": str(quantity_step),
+            "min_quantity": str(min_quantity),
+            "max_quantity": str(max_quantity),
+            "price_tick_size": str(price_tick_size) if price_tick_size is not None else None,
+            "min_price": str(min_price) if min_price is not None else None,
+            "max_price": str(max_price) if max_price is not None else None,
+            "min_notional": min_notional,
         }
 
     def account_preflight(self):
