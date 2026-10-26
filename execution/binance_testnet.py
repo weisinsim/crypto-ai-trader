@@ -279,11 +279,11 @@ class BinanceFuturesTestnet:
 
     def query_testnet_order(self, symbol: str, client_order_id: str):
         """Reconcile an existing TESTNET order by its client ID; never retries or submits."""
-        if not symbol.endswith("USDT") or not symbol[:-4].isalnum():
+        if not isinstance(symbol, str) or not symbol.isascii() or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
             return {"found": False, "reason": "invalid_symbol"}
         if not isinstance(client_order_id, str) or not client_order_id or len(client_order_id) > 36:
             return {"found": False, "reason": "invalid_client_order_id"}
-        if not client_order_id.replace("-", "").replace("_", "").isalnum():
+        if not client_order_id.isascii() or not client_order_id.replace("-", "").replace("_", "").isalnum():
             return {"found": False, "reason": "invalid_client_order_id"}
         response = self._get(
             "/fapi/v1/order",
@@ -389,7 +389,7 @@ class BinanceFuturesTestnet:
             return {"accepted": False, "reason": "invalid_exit_kind"}
         if not isinstance(client_order_id, str) or not client_order_id or len(client_order_id) > 36:
             return {"accepted": False, "reason": "invalid_client_order_id"}
-        if not client_order_id.replace("-", "").replace("_", "").isalnum():
+        if not client_order_id.isascii() or not client_order_id.replace("-", "").replace("_", "").isalnum():
             return {"accepted": False, "reason": "invalid_client_order_id"}
         try:
             requested_quantity = Decimal(str(quantity))
@@ -477,7 +477,7 @@ class BinanceFuturesTestnet:
             return {"cancelled": False, "reason": "invalid_symbol"}
         if not isinstance(client_order_id, str) or not client_order_id or len(client_order_id) > 36:
             return {"cancelled": False, "reason": "invalid_client_order_id"}
-        if not client_order_id.replace("-", "").replace("_", "").isalnum():
+        if not client_order_id.isascii() or not client_order_id.replace("-", "").replace("_", "").isalnum():
             return {"cancelled": False, "reason": "invalid_client_order_id"}
         response = self._delete(
             "/fapi/v1/order",
