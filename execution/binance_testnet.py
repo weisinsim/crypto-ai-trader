@@ -307,11 +307,18 @@ class BinanceFuturesTestnet:
                 "http_status": exc.response.status_code,
                 "client_order_id": client_order_id,
             }
+        except (ValueError, TypeError):
+            return {
+                "accepted": False,
+                "reason": "testnet_order_outcome_unknown",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
         if (
             not isinstance(payload, dict)
-            or "orderId" not in payload
-            or payload.get("symbol") not in (None, intent.symbol)
-            or payload.get("clientOrderId") not in (None, client_order_id)
+            or payload.get("orderId") in (None, "")
+            or payload.get("symbol") != intent.symbol
+            or payload.get("clientOrderId") != client_order_id
             or payload.get("status") not in {"NEW", "PARTIALLY_FILLED", "FILLED"}
         ):
             return {
@@ -558,11 +565,18 @@ class BinanceFuturesTestnet:
                 "http_status": exc.response.status_code,
                 "client_order_id": client_order_id,
             }
+        except (ValueError, TypeError):
+            return {
+                "accepted": False,
+                "reason": "protective_exit_outcome_unknown",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
         if (
             not isinstance(payload, dict)
-            or "orderId" not in payload
-            or payload.get("symbol") not in (None, symbol)
-            or payload.get("clientOrderId") not in (None, client_order_id)
+            or payload.get("orderId") in (None, "")
+            or payload.get("symbol") != symbol
+            or payload.get("clientOrderId") != client_order_id
             or payload.get("status") not in {"NEW", "PARTIALLY_FILLED", "FILLED"}
         ):
             return {
