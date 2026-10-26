@@ -649,5 +649,37 @@ class TestnetLifecycleTests(unittest.TestCase):
 
 
 
+    def test_existing_partially_executed_protective_order_fails_closed(self):
+        adapter = FakeAdapter(orders=[{
+            "status": "PARTIALLY_FILLED", "reduce_only": True, "type": "STOP_MARKET",
+            "stop_price": "99", "side": "SELL", "orig_quantity": "0.5",
+            "executed_quantity": "0.1", "client_order_id": "btc-partial-sl",
+        }])
+        result = ensure_testnet_protective_exits(
+            adapter, "BTCUSDT", "99", "102", "btc-partial"
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "existing_stop_order_quantity_or_execution_mismatch")
+        self.assertTrue(result.get("requires_reconciliation", False) or result["reason"].startswith("existing_"))
+        self.assertEqual(adapter.submissions, [])
+
+    def test_post_submission_partially_executed_protective_order_fails_closed(self):
+        class PartialExecutionAfterSubmitAdapter(FakeAdapter):
+            def testnet_position_snapshot(self, symbol):
+                snapshot = super().testnet_position_snapshot(symbol)
+                if self.snapshot_count >= 2 and snapshot["open_orders"]:
+                    snapshot["open_orders"][0]["status"] = "PARTIALLY_FILLED"
+                    snapshot["open_orders"][0]["executed_quantity"] = "0.1"
+                return snapshot
+
+        adapter = PartialExecutionAfterSubmitAdapter()
+        result = ensure_testnet_protective_exits(
+            adapter, "BTCUSDT", "99", "102", "btc-race-partial"
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "post_submission_protective_order_mismatch")
+        self.assertTrue(result["requires_reconciliation"])
+
+
 if __name__ == "__main__":
     unittest.main()
