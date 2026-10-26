@@ -626,5 +626,62 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                 self.assertEqual(client.calls, [])
 
 
+    def test_query_order_rejects_invalid_exchange_order_ids(self):
+        class InvalidOrderIdClient(FakeClient):
+            def __init__(self, order_id):
+                super().__init__()
+                self.order_id = order_id
+
+            def get(self, path, params):
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "BTCUSDT",
+                        "clientOrderId": "paper-test-0001",
+                        "orderId": self.order_id,
+                        "status": "FILLED",
+                        "origQty": "0.5",
+                        "executedQty": "0.5",
+                        "avgPrice": "100.1",
+                    })
+                return super().get(path, params)
+
+        for order_id in (True, False, 0, -1, "12.3", "not-an-id", "", None):
+            with self.subTest(order_id=order_id):
+                client = InvalidOrderIdClient(order_id)
+                adapter = BinanceFuturesTestnet(
+                    api_key="test-key", api_secret="test-secret", client=client
+                )
+                result = adapter.query_testnet_order("BTCUSDT", "paper-test-0001")
+                self.assertFalse(result["found"])
+                self.assertTrue(result["requires_reconciliation"])
+                self.assertEqual(
+                    result["reason"], "unexpected_or_mismatched_testnet_order_response"
+                )
+                self.assertEqual(client.calls, [])
+
+
+    def test_position_snapshot_rejects_open_order_executed_quantity_above_original(self):
+        class OverfilledOrderClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/openOrders":
+                    self.get_calls.append((path, params))
+                    return FakeResponse([{
+                        "orderId": 99, "symbol": "BTCUSDT", "clientOrderId": "stop-0001",
+                        "side": "SELL", "type": "STOP_MARKET", "status": "NEW",
+                        "reduceOnly": True, "stopPrice": "99.8", "origQty": "0.5",
+                        "executedQty": "0.6",
+                    }])
+                return super().get(path, params)
+
+        client = OverfilledOrderClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.testnet_position_snapshot("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "invalid_testnet_open_order_numeric_fields")
+        self.assertEqual(client.calls, [])
+
+
+
 if __name__ == "__main__":
     unittest.main()
