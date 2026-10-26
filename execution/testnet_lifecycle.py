@@ -479,6 +479,32 @@ def cancel_testnet_sibling_after_flatten(
             "sibling_status": sibling_after_cancel.get("status"),
             "requires_reconciliation": True,
         }
+    # The sibling may have partially executed between the pre-cancel lookup
+    # and the cancel acknowledgement. An inactive final status alone does not
+    # prove that the cancel race left no residual execution.
+    try:
+        post_cancel_executed = Decimal(
+            str(sibling_after_cancel.get("executed_quantity", "NaN"))
+        )
+        post_cancel_original = Decimal(
+            str(sibling_after_cancel.get("original_quantity", "NaN"))
+        )
+        if (
+            not post_cancel_executed.is_finite()
+            or not post_cancel_original.is_finite()
+            or post_cancel_original <= 0
+            or post_cancel_executed < 0
+            or post_cancel_executed > post_cancel_original
+            or post_cancel_executed != 0
+        ):
+            raise InvalidOperation
+    except (InvalidOperation, TypeError, ValueError):
+        return {
+            "ok": False,
+            "reason": "post_cancel_sibling_execution_requires_reconciliation",
+            "sibling_status": sibling_after_cancel.get("status"),
+            "requires_reconciliation": True,
+        }
 
     try:
         final_snapshot = adapter.testnet_position_snapshot(symbol)
