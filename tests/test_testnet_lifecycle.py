@@ -649,6 +649,53 @@ class TestnetLifecycleTests(unittest.TestCase):
 
 
 
+    def test_duplicate_client_ids_in_initial_snapshot_fail_closed(self):
+        adapter = FakeAdapter(orders=[
+            {
+                "status": "NEW", "reduce_only": True, "type": "STOP_MARKET",
+                "stop_price": "99", "side": "SELL", "orig_quantity": "0.5",
+                "executed_quantity": "0", "client_order_id": "same-protective-id",
+            },
+            {
+                "status": "NEW", "reduce_only": True, "type": "TAKE_PROFIT_MARKET",
+                "stop_price": "102", "side": "SELL", "orig_quantity": "0.5",
+                "executed_quantity": "0", "client_order_id": "same-protective-id",
+            },
+        ])
+        result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-duplicate")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "duplicate_or_invalid_open_order_client_ids_requires_reconciliation")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(adapter.submissions, [])
+
+    def test_both_protective_exits_filled_requires_manual_reconciliation(self):
+        class BothFilledAdapter:
+            def __init__(self):
+                self.cancel_calls = []
+
+            def query_testnet_order(self, symbol, client_id):
+                return {
+                    "found": True, "symbol": symbol, "client_order_id": client_id,
+                    "status": "FILLED", "executed_quantity": "0.5", "original_quantity": "0.5",
+                }
+
+            def testnet_position_snapshot(self, symbol):
+                # Even if a snapshot currently looks flat, two FILLED exits may
+                # imply a race, over-close, or unexpected reverse exposure.
+                return {"ok": True, "symbol": symbol, "position_amount": "0", "open_orders": []}
+
+            def cancel_testnet_order(self, symbol, client_id):
+                self.cancel_calls.append(client_id)
+                return {"cancelled": True}
+
+        adapter = BothFilledAdapter()
+        result = cancel_testnet_sibling_after_flatten(adapter, "BTCUSDT", "btc-sl", "btc-tp")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "both_exits_report_filled_check_exchange_history")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(adapter.cancel_calls, [])
+
+
     def test_existing_partially_executed_protective_order_fails_closed(self):
         adapter = FakeAdapter(orders=[{
             "status": "PARTIALLY_FILLED", "reduce_only": True, "type": "STOP_MARKET",
