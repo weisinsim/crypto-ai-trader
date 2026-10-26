@@ -291,6 +291,31 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertIn("signature", client.get_calls[0][1])
         self.assertEqual(client.calls, [])
 
+    def test_query_order_http_404_is_not_treated_as_confirmed_absence(self):
+        class MissingOrderClient(FakeClient):
+            def get(self, path, params):
+                self.get_calls.append((path, params))
+                if path == "/fapi/v1/order":
+                    request = httpx.Request(
+                        "GET", "https://testnet.binancefuture.com/fapi/v1/order"
+                    )
+                    response = httpx.Response(404, json={
+                        "code": -2013, "msg": "Order does not exist."
+                    }, request=request)
+                    raise httpx.HTTPStatusError(
+                        "order lookup returned 404", request=request, response=response
+                    )
+                return super().get(path, params)
+
+        client = MissingOrderClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        with self.assertRaises(httpx.HTTPStatusError):
+            adapter.query_testnet_order("BTCUSDT", "paper-test-404")
+        self.assertEqual(len([call for call in client.get_calls if call[0] == "/fapi/v1/order"]), 1)
+        self.assertEqual(client.calls, [])
+
     def test_query_order_rejects_mismatched_exchange_identity(self):
         class MismatchedClient(FakeClient):
             def get(self, path, params):
