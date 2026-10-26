@@ -364,7 +364,7 @@ class TestnetLifecycleTests(unittest.TestCase):
                 raise TimeoutError("snapshot read failed")
 
         adapter = SnapshotRaisesAdapter()
-        result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-snapshot-error")
+        result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-snap-err")
         self.assertFalse(result["ok"])
         self.assertEqual(result["reason"], "position_snapshot_exception")
         self.assertTrue(result["requires_reconciliation"])
@@ -380,7 +380,7 @@ class TestnetLifecycleTests(unittest.TestCase):
                 return super().testnet_position_snapshot(symbol)
 
         adapter = FinalSnapshotRaisesAdapter()
-        result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-final-snapshot-error")
+        result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-final-err")
         self.assertFalse(result["ok"])
         self.assertEqual(result["reason"], "post_submission_snapshot_exception")
         self.assertTrue(result["requires_reconciliation"])
