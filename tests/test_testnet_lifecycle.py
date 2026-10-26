@@ -807,6 +807,44 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertTrue(result["requires_reconciliation"])
         self.assertEqual(adapter.cancel_calls, 1)
 
+    def test_inactive_sibling_with_partial_execution_requires_reconciliation(self):
+        class InactivePartialSiblingAdapter:
+            def __init__(self):
+                self.snapshot_calls = 0
+                self.cancel_calls = 0
+
+            def query_testnet_order(self, symbol, client_id):
+                status = "FILLED" if client_id == "btc-sl" else "CANCELED"
+                executed = "0.5" if status == "FILLED" else "0.1"
+                return {
+                    "found": True, "symbol": symbol, "client_order_id": client_id,
+                    "status": status, "executed_quantity": executed,
+                    "original_quantity": "0.5",
+                }
+
+            def testnet_position_snapshot(self, symbol):
+                self.snapshot_calls += 1
+                return {
+                    "ok": True, "symbol": symbol, "position_amount": "0",
+                    "open_orders": [],
+                }
+
+            def cancel_testnet_order(self, symbol, client_id):
+                self.cancel_calls += 1
+                return {"cancelled": True}
+
+        adapter = InactivePartialSiblingAdapter()
+        result = cancel_testnet_sibling_after_flatten(
+            adapter, "BTCUSDT", "btc-sl", "btc-tp"
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(
+            result["reason"], "inactive_sibling_execution_state_requires_reconciliation"
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(adapter.snapshot_calls, 1)
+        self.assertEqual(adapter.cancel_calls, 0)
+
     def test_already_inactive_sibling_still_checks_remaining_open_orders(self):
         class InactiveSiblingWithOtherOrdersAdapter:
             def __init__(self):
