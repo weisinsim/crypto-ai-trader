@@ -105,6 +105,7 @@ class TestnetLifecycleTests(unittest.TestCase):
         adapter = FakeAdapter(orders=[{
             "status": "NEW", "reduce_only": True, "type": "STOP_MARKET",
             "stop_price": "98", "side": "SELL", "orig_quantity": "0.5",
+            "client_order_id": "btc-run-04-sl",
         }])
         result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-04")
         self.assertFalse(result["ok"])
@@ -135,6 +136,7 @@ class TestnetLifecycleTests(unittest.TestCase):
         adapter = FakeAdapter(orders=[{
             "status": "NEW", "reduce_only": True, "type": "STOP_MARKET",
             "stop_price": "99", "side": "SELL", "orig_quantity": "0.3",
+            "client_order_id": "btc-run-08-sl",
         }])
         result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-08")
         self.assertFalse(result["ok"])
