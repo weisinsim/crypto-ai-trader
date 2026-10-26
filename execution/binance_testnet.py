@@ -701,7 +701,7 @@ class BinanceFuturesTestnet:
             }
         if (
             not isinstance(payload, dict)
-            or payload.get("orderId") in (None, "")
+            or not _valid_exchange_order_id(payload.get("orderId"))
             or payload.get("symbol") != symbol
             or payload.get("clientOrderId") != client_order_id
             or payload.get("status") not in {"NEW", "PARTIALLY_FILLED", "FILLED"}
@@ -746,7 +746,7 @@ class BinanceFuturesTestnet:
         payload = response.json()
         if (
             not isinstance(payload, dict)
-            or payload.get("orderId") in (None, "")
+            or not _valid_exchange_order_id(payload.get("orderId"))
             or payload.get("symbol") != symbol
             or payload.get("clientOrderId") != client_order_id
             or not isinstance(payload.get("status"), str)
