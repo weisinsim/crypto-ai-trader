@@ -957,6 +957,45 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertTrue(result["requires_reconciliation"])
 
 
+    def test_partial_filled_status_with_zero_execution_still_fails_closed(self):
+        class ContradictorySiblingAdapter:
+            def __init__(self):
+                self.cancel_calls = 0
+
+            def query_testnet_order(self, symbol, client_id):
+                if client_id == "btc-sl":
+                    return {
+                        "found": True, "symbol": symbol, "client_order_id": client_id,
+                        "status": "FILLED", "executed_quantity": "0.5",
+                        "original_quantity": "0.5",
+                    }
+                return {
+                    "found": True, "symbol": symbol, "client_order_id": client_id,
+                    "status": "PARTIALLY_FILLED", "executed_quantity": "0",
+                    "original_quantity": "0.5",
+                }
+
+            def testnet_position_snapshot(self, symbol):
+                return {
+                    "ok": True, "symbol": symbol, "position_amount": "0",
+                    "open_orders": [],
+                }
+
+            def cancel_testnet_order(self, symbol, client_id):
+                self.cancel_calls += 1
+                return {"cancelled": True}
+
+        adapter = ContradictorySiblingAdapter()
+        result = cancel_testnet_sibling_after_flatten(
+            adapter, "BTCUSDT", "btc-sl", "btc-tp"
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(
+            result["reason"], "sibling_partial_fill_status_requires_reconciliation"
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(adapter.cancel_calls, 0)
+
     def test_sibling_partial_fill_before_cancel_ack_requires_reconciliation(self):
         class PartialFillDuringCancelAdapter:
             def __init__(self):
