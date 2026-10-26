@@ -22,7 +22,7 @@ class FakeResponse:
 
 class FakeClient:
     def __init__(self, exchange_payload=None):
-        self.exchange_payload = exchange_payload or {"symbols": [{"symbol": "BTCUSDT", "status": "TRADING", "filters": [
+        self.exchange_payload = exchange_payload if exchange_payload is not None else {"symbols": [{"symbol": "BTCUSDT", "status": "TRADING", "filters": [
             {"filterType": "MARKET_LOT_SIZE", "stepSize": "0.001", "minQty": "0.001", "maxQty": "100"},
             {"filterType": "MIN_NOTIONAL", "notional": "5"},
             {"filterType": "PRICE_FILTER", "tickSize": "0.1", "minPrice": "0.1", "maxPrice": "1000000"},
