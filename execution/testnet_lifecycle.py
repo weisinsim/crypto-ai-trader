@@ -81,6 +81,9 @@ def ensure_testnet_protective_exits(
         [(order, stop, "stop") for order in stops]
         + [(order, target, "target") for order in targets]
     ):
+        expected_client_id = f"{client_order_prefix}-sl" if kind == "stop" else f"{client_order_prefix}-tp"
+        if order.get("client_order_id") != expected_client_id:
+            return {"ok": False, "reason": f"existing_{kind}_client_order_id_mismatch"}
         try:
             order_price = Decimal(str(order.get("stop_price", "0")))
             order_quantity = Decimal(str(order.get("orig_quantity", "NaN")))
@@ -167,6 +170,9 @@ def ensure_testnet_protective_exits(
         if len(matches) != 1:
             return {"ok": False, "reason": f"post_submission_{order_type.lower()}_count_mismatch", "actions": actions, "requires_reconciliation": True}
         order = matches[0]
+        expected_client_id = f"{client_order_prefix}-sl" if order_type == "STOP_MARKET" else f"{client_order_prefix}-tp"
+        if order.get("client_order_id") != expected_client_id:
+            return {"ok": False, "reason": "post_submission_client_order_id_mismatch", "actions": actions, "requires_reconciliation": True}
         try:
             actual_price = Decimal(str(order.get("stop_price", "0")))
             actual_quantity = Decimal(str(order.get("orig_quantity", "NaN")))
