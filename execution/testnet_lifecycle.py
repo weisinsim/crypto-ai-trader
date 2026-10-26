@@ -420,6 +420,15 @@ def cancel_testnet_sibling_after_flatten(
             "reason": "both_exits_report_filled_check_exchange_history",
             "requires_reconciliation": True,
         }
+    if sibling.get("status") == "PARTIALLY_FILLED":
+        # Even if a stale or inconsistent payload reports zero executed
+        # quantity, the status itself means exposure history is ambiguous.
+        # Do not cancel based on contradictory order state.
+        return {
+            "ok": False,
+            "reason": "sibling_partial_fill_status_requires_reconciliation",
+            "requires_reconciliation": True,
+        }
     # A flat position plus a sibling with any executed quantity is not a
     # clean cancel case: the sibling may have raced with the filled exit and
     # could have contributed to a reversal/over-close. Never cancel or declare
