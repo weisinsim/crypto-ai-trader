@@ -639,6 +639,25 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(result["http_status"], 404)
         self.assertEqual(len(client.calls), 1)
 
+    def test_cancel_order_unexpected_client_exception_fails_closed_without_retry(self):
+        class UnexpectedFailureClient(FakeClient):
+            def delete(self, path, params):
+                self.calls.append((path, params))
+                raise RuntimeError("unexpected client failure after request dispatch")
+
+        client = UnexpectedFailureClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.cancel_testnet_order("BTCUSDT", "btc-stop-runtime-error")
+        self.assertFalse(result["cancelled"])
+        self.assertEqual(
+            result["reason"], "testnet_cancel_unexpected_error_requires_reconciliation"
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["exception_type"], "RuntimeError")
+        self.assertEqual(len(client.calls), 1)
+
     def test_cancel_order_nonterminal_exchange_status_requires_reconciliation(self):
         class StillActiveCancelClient(FakeClient):
             def delete(self, path, params):
