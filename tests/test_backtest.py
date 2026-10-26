@@ -43,6 +43,17 @@ class CandleValidationTests(unittest.TestCase):
                 interval_ms=3_600_000,
             )
 
+    def test_backtest_interval_ms_rejects_invalid_values(self):
+        rows = candles_from_closes([100, 101, 102, 103, 104])
+        for interval in (0, -1, True, 1.5, "3600000"):
+            with self.subTest(interval=interval), self.assertRaisesRegex(
+                ValueError, "interval_ms must be a positive integer"
+            ):
+                run_ema_cross_backtest(
+                    rows, fast=2, slow=3, atr_period=1,
+                    interval_ms=interval,
+                )
+
     def test_rejects_invalid_high(self):
         with self.assertRaises(ValueError):
             validate_candles([{"t": 0, "o": 10, "h": 9, "l": 8, "c": 9}])
