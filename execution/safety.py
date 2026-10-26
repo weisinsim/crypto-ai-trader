@@ -42,25 +42,55 @@ class ExecutionDecision:
 
 
 def validate_order_intent(intent: OrderIntent, config: ExecutionConfig) -> ExecutionDecision:
-    """Validate a proposed order; never authorizes real-money trading."""
+    """Validate a proposed entry order; never authorizes real-money trading."""
+    if not isinstance(intent, OrderIntent):
+        return ExecutionDecision(False, "invalid_intent")
+    if not isinstance(config, ExecutionConfig):
+        return ExecutionDecision(False, "invalid_execution_config")
     if config.mode not in {"paper", "testnet"}:
         return ExecutionDecision(False, "unsupported_mode")
-    if config.live_trading_enabled:
+    if config.live_trading_enabled is not False:
         return ExecutionDecision(False, "live_trading_not_implemented")
-    if not intent.symbol.endswith("USDT") or not intent.symbol[:-4].isalnum():
+    if not isinstance(intent.symbol, str) or not intent.symbol.isascii() or not intent.symbol.endswith("USDT") or not intent.symbol[:-4].isalnum():
         return ExecutionDecision(False, "invalid_symbol")
     if intent.side not in {"BUY", "SELL"}:
         return ExecutionDecision(False, "invalid_side")
+    if intent.reduce_only is not False:
+        return ExecutionDecision(False, "reduce_only_entry_not_supported")
+
     numeric = (
         intent.entry, intent.stop_loss, intent.take_profit, intent.quantity,
         config.max_notional_usdt, config.max_risk_fraction,
     )
-    if any(not math.isfinite(value) or value <= 0 for value in numeric):
+    if any(
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value <= 0
+        for value in numeric
+    ):
         return ExecutionDecision(False, "non_positive_price_quantity_or_limit")
-    if config.max_leverage < 1 or config.max_signal_age_seconds < 0 or config.max_risk_fraction > 1:
+    if (
+        isinstance(config.max_leverage, bool)
+        or not isinstance(config.max_leverage, int)
+        or config.max_leverage < 1
+        or isinstance(config.max_signal_age_seconds, bool)
+        or not isinstance(config.max_signal_age_seconds, int)
+        or config.max_signal_age_seconds < 0
+        or config.max_risk_fraction > 1
+    ):
         return ExecutionDecision(False, "invalid_risk_configuration")
+    if isinstance(intent.leverage, bool) or not isinstance(intent.leverage, int):
+        return ExecutionDecision(False, "invalid_leverage")
     if intent.leverage < 1 or intent.leverage > config.max_leverage:
         return ExecutionDecision(False, "leverage_limit_exceeded")
+    if (
+        isinstance(intent.signal_timestamp, bool)
+        or not isinstance(intent.signal_timestamp, int)
+        or isinstance(intent.now_timestamp, bool)
+        or not isinstance(intent.now_timestamp, int)
+    ):
+        return ExecutionDecision(False, "invalid_signal_timestamp")
     age = intent.now_timestamp - intent.signal_timestamp
     if age < 0 or age > config.max_signal_age_seconds:
         return ExecutionDecision(False, "stale_or_future_signal")
