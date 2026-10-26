@@ -362,6 +362,27 @@ def cancel_testnet_sibling_after_flatten(
     ):
         return {"ok": False, "reason": "sibling_order_identity_mismatch", "requires_reconciliation": True}
     if sibling.get("status") in {"CANCELED", "EXPIRED", "REJECTED"}:
+        # An inactive status does not erase a possible partial execution before
+        # cancellation. Reconcile the execution fields before declaring cleanup.
+        try:
+            inactive_executed = Decimal(str(sibling.get("executed_quantity", "NaN")))
+            inactive_original = Decimal(str(sibling.get("original_quantity", "NaN")))
+            if (
+                not inactive_executed.is_finite()
+                or not inactive_original.is_finite()
+                or inactive_original <= 0
+                or inactive_executed < 0
+                or inactive_executed > inactive_original
+                or inactive_executed != 0
+            ):
+                raise InvalidOperation
+        except (InvalidOperation, TypeError, ValueError):
+            return {
+                "ok": False,
+                "reason": "inactive_sibling_execution_state_requires_reconciliation",
+                "sibling_status": sibling.get("status"),
+                "requires_reconciliation": True,
+            }
         # Even when the sibling is already inactive, verify the account is still
         # flat and no other open order can recreate exposure before reporting clean.
         try:
