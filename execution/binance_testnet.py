@@ -409,10 +409,37 @@ class BinanceFuturesTestnet:
                 "NEW", "PARTIALLY_FILLED", "FILLED", "CANCELED", "REJECTED", "EXPIRED"
             }
             or "executedQty" not in payload
+            or "origQty" not in payload
         ):
             return {
                 "found": False,
                 "reason": "unexpected_or_mismatched_testnet_order_response",
+                "requires_reconciliation": True,
+            }
+        try:
+            original_quantity = Decimal(str(payload["origQty"]))
+            executed_quantity = Decimal(str(payload["executedQty"]))
+            average_price = Decimal(str(payload.get("avgPrice", "0")))
+            if (
+                not original_quantity.is_finite()
+                or not executed_quantity.is_finite()
+                or not average_price.is_finite()
+                or original_quantity <= 0
+                or executed_quantity < 0
+                or executed_quantity > original_quantity
+                or average_price < 0
+            ):
+                raise InvalidOperation
+        except (InvalidOperation, TypeError, ValueError):
+            return {
+                "found": False,
+                "reason": "invalid_testnet_order_numeric_fields",
+                "requires_reconciliation": True,
+            }
+        if payload["status"] == "FILLED" and executed_quantity != original_quantity:
+            return {
+                "found": False,
+                "reason": "filled_testnet_order_quantity_mismatch",
                 "requires_reconciliation": True,
             }
         return {
@@ -421,9 +448,10 @@ class BinanceFuturesTestnet:
             "symbol": payload["symbol"],
             "client_order_id": payload["clientOrderId"],
             "exchange_order_id": str(payload["orderId"]),
-            "status": payload.get("status", "UNKNOWN"),
-            "executed_quantity": payload.get("executedQty", "0"),
-            "average_price": payload.get("avgPrice", "0"),
+            "status": payload["status"],
+            "executed_quantity": str(executed_quantity),
+            "original_quantity": str(original_quantity),
+            "average_price": str(average_price),
         }
 
     def testnet_position_snapshot(self, symbol: str):
