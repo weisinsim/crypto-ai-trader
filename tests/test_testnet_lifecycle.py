@@ -55,6 +55,23 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertEqual(adapter.snapshot_count, 2)
         self.assertTrue(result["requires_post_fill_sibling_cancellation"])
 
+    def test_ambiguous_stop_submission_propagates_reconciliation_requirement(self):
+        class AmbiguousAdapter(FakeAdapter):
+            def submit_testnet_protective_exit(self, symbol, kind, quantity, price, client_id):
+                self.submissions.append((symbol, kind, str(quantity), str(price), client_id))
+                return {
+                    "accepted": False,
+                    "reason": "protective_exit_outcome_unknown",
+                    "requires_reconciliation": True,
+                }
+
+        adapter = AmbiguousAdapter()
+        result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-ambiguous")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "stop_submission_failed")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual([s[1] for s in adapter.submissions], ["stop_loss"])
+
     def test_target_failure_leaves_stop_and_demands_reconciliation(self):
         adapter = FakeAdapter(fail_kind="take_profit")
         result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-02")
