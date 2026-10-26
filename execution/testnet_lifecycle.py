@@ -265,6 +265,15 @@ def cancel_testnet_sibling_after_flatten(
         return {"ok": False, "reason": "sibling_lookup_failed", "requires_reconciliation": True}
     if sibling.get("status") in {"CANCELED", "EXPIRED", "REJECTED"}:
         return {"ok": True, "mode": "testnet_sibling_already_inactive", "sibling_status": sibling.get("status")}
+    # Only known live states are eligible for cancellation. A malformed/unknown
+    # status must not be treated as an active order that is safe to cancel.
+    if sibling.get("status") not in {"NEW", "PARTIALLY_FILLED", "FILLED"}:
+        return {
+            "ok": False,
+            "reason": "sibling_status_unknown_requires_reconciliation",
+            "sibling_status": sibling.get("status"),
+            "requires_reconciliation": True,
+        }
     if sibling.get("status") == "FILLED":
         return {
             "ok": False,
