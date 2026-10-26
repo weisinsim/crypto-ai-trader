@@ -278,6 +278,42 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertEqual(adapter.submissions, [])
 
 
+    def test_sibling_lookup_exception_fails_closed_without_cancel(self):
+        class SiblingLookupRaisesAdapter:
+            def __init__(self):
+                self.cancel_calls = 0
+                self.query_calls = 0
+
+            def query_testnet_order(self, symbol, client_id):
+                self.query_calls += 1
+                if client_id == "btc-sl":
+                    return {
+                        "found": True, "symbol": symbol, "client_order_id": client_id,
+                        "status": "FILLED", "executed_quantity": "0.5",
+                        "original_quantity": "0.5",
+                    }
+                raise TimeoutError("sibling order lookup unavailable")
+
+            def testnet_position_snapshot(self, symbol):
+                return {
+                    "ok": True, "symbol": symbol, "position_amount": "0",
+                    "open_orders": [],
+                }
+
+            def cancel_testnet_order(self, symbol, client_id):
+                self.cancel_calls += 1
+                return {"cancelled": True}
+
+        adapter = SiblingLookupRaisesAdapter()
+        result = cancel_testnet_sibling_after_flatten(
+            adapter, "BTCUSDT", "btc-sl", "btc-tp"
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "sibling_lookup_exception")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(adapter.query_calls, 2)
+        self.assertEqual(adapter.cancel_calls, 0)
+
     def test_sibling_cancel_exception_is_ambiguous_and_not_retried(self):
         class CancelRaisesAdapter:
             def __init__(self):
