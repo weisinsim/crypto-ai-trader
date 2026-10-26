@@ -23,6 +23,7 @@ class FakeClient:
         self.exchange_payload = exchange_payload or {"symbols": [{"symbol": "BTCUSDT", "status": "TRADING", "filters": [
             {"filterType": "MARKET_LOT_SIZE", "stepSize": "0.001", "minQty": "0.001", "maxQty": "100"},
             {"filterType": "MIN_NOTIONAL", "notional": "5"},
+            {"filterType": "PRICE_FILTER", "tickSize": "0.1", "minPrice": "0.1", "maxPrice": "1000000"},
         ]}]}
         self.base_url = TESTNET_BASE_URL
         self.headers = {}
