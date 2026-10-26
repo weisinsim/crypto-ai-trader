@@ -701,18 +701,53 @@ class BinanceFuturesTestnet:
                 "requires_reconciliation": True,
                 "client_order_id": client_order_id,
             }
+        # A successful HTTP response is not sufficient: verify that the
+        # exchange echoed the exact protective order we intended to place.
+        # Missing/mismatched fields may mean the response cannot safely identify
+        # the protection that is actually active; reconcile by client ID.
         if (
             not isinstance(payload, dict)
             or not _valid_exchange_order_id(payload.get("orderId"))
             or payload.get("symbol") != symbol
             or payload.get("clientOrderId") != client_order_id
-            or payload.get("status") not in {"NEW", "PARTIALLY_FILLED", "FILLED"}
+            or payload.get("side") != params["side"]
+            or payload.get("type") != order_type
+            or payload.get("reduceOnly") is not True
+            or payload.get("workingType") != "MARK_PRICE"
         ):
             return {
                 "accepted": False,
                 "reason": "unexpected_testnet_order_response",
                 "requires_reconciliation": True,
                 "client_order_id": client_order_id,
+            }
+        try:
+            response_quantity = Decimal(str(payload.get("origQty", "NaN")))
+            response_trigger = Decimal(str(payload.get("stopPrice", "NaN")))
+            if (
+                not response_quantity.is_finite()
+                or response_quantity != rounded
+                or not response_trigger.is_finite()
+                or response_trigger != trigger
+            ):
+                raise InvalidOperation
+        except (InvalidOperation, TypeError, ValueError):
+            return {
+                "accepted": False,
+                "reason": "unexpected_testnet_order_response",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
+        # Conditional exits should initially be resting. A response that is
+        # already partially filled/filled is an execution race, not a verified
+        # installation; require a fresh exchange snapshot and manual reconciliation.
+        if payload.get("status") != "NEW":
+            return {
+                "accepted": False,
+                "reason": "protective_exit_submission_state_requires_reconciliation",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+                "status": payload.get("status"),
             }
         return {
             "accepted": True,
