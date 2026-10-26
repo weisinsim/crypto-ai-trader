@@ -142,7 +142,8 @@ function renderAlerts(payload){
   if(a.notification_only!==true || a.auto_trade_authorized!==false)return false;
   if(a.research_only!==(a.model_status!=="PRODUCTION"))return false;
   if(typeof a.event_id!=="string" || !/^[a-f0-9]{24}$/.test(a.event_id) || seen.has(a.event_id))return false;
-  if(!Number.isFinite(a.score) || a.score<0 || a.score>100)return false;
+  if(!Number.isFinite(a.score) || a.score<70 || a.score>100)return false;
+  if(a.score_is_probability!==false || a.entry_candidate!==true || a.minimum_candidate_score!==70)return false;
   if(!Number.isFinite(a.signal_candle_ms) || a.signal_candle_ms<=0 || a.signal_candle_ms>Date.now() || Date.now()-a.signal_candle_ms>90*60*1000)return false;
   if(!Number.isFinite(a.analysis_ts) || a.analysis_ts<=0 || a.analysis_ts>Date.now()/1000 || Date.now()/1000-a.analysis_ts>90*60)return false;
   if(![a.entry,a.stop_loss,a.take_profit_1,a.take_profit_2].every(v=>typeof v==="number" && Number.isFinite(v) && v>0))return false;
