@@ -281,11 +281,45 @@ class BinanceFuturesTestnet:
             "quantity": quantity_text,
             "newClientOrderId": client_order_id,
         })
-        response = self._post("/fapi/v1/order", params=params)
-        response.raise_for_status()
-        payload = response.json()
-        if not isinstance(payload, dict) or "orderId" not in payload:
-            return {"accepted": False, "reason": "unexpected_testnet_order_response"}
+        try:
+            response = self._post("/fapi/v1/order", params=params)
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.TimeoutException, httpx.TransportError):
+            # A timeout after POST is ambiguous: never auto-retry an order.
+            return {
+                "accepted": False,
+                "reason": "testnet_order_outcome_unknown",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code >= 500:
+                return {
+                    "accepted": False,
+                    "reason": "testnet_order_outcome_unknown",
+                    "requires_reconciliation": True,
+                    "client_order_id": client_order_id,
+                }
+            return {
+                "accepted": False,
+                "reason": "testnet_order_rejected",
+                "http_status": exc.response.status_code,
+                "client_order_id": client_order_id,
+            }
+        if (
+            not isinstance(payload, dict)
+            or "orderId" not in payload
+            or payload.get("symbol") not in (None, intent.symbol)
+            or payload.get("clientOrderId") not in (None, client_order_id)
+            or payload.get("status") not in {"NEW", "PARTIALLY_FILLED", "FILLED"}
+        ):
+            return {
+                "accepted": False,
+                "reason": "unexpected_testnet_order_response",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
         return {
             "accepted": True,
             "mode": "testnet_order_submitted",
@@ -497,11 +531,46 @@ class BinanceFuturesTestnet:
             })
         except (ValueError, InvalidOperation, TypeError, KeyError):
             return {"accepted": False, "reason": "exchange_preflight_failed"}
-        response = self._post("/fapi/v1/order", params=params)
-        response.raise_for_status()
-        payload = response.json()
-        if not isinstance(payload, dict) or "orderId" not in payload:
-            return {"accepted": False, "reason": "unexpected_testnet_order_response"}
+        try:
+            response = self._post("/fapi/v1/order", params=params)
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.TimeoutException, httpx.TransportError):
+            # The exchange may have accepted the conditional order. Reconcile by
+            # client ID and exchange snapshot; do not retry this submission.
+            return {
+                "accepted": False,
+                "reason": "protective_exit_outcome_unknown",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code >= 500:
+                return {
+                    "accepted": False,
+                    "reason": "protective_exit_outcome_unknown",
+                    "requires_reconciliation": True,
+                    "client_order_id": client_order_id,
+                }
+            return {
+                "accepted": False,
+                "reason": "protective_exit_rejected",
+                "http_status": exc.response.status_code,
+                "client_order_id": client_order_id,
+            }
+        if (
+            not isinstance(payload, dict)
+            or "orderId" not in payload
+            or payload.get("symbol") not in (None, symbol)
+            or payload.get("clientOrderId") not in (None, client_order_id)
+            or payload.get("status") not in {"NEW", "PARTIALLY_FILLED", "FILLED"}
+        ):
+            return {
+                "accepted": False,
+                "reason": "unexpected_testnet_order_response",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
         return {
             "accepted": True,
             "mode": "testnet_protective_exit_submitted",
