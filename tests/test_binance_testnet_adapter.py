@@ -37,7 +37,7 @@ class FakeClient:
         if path == "/fapi/v1/openOrders":
             return FakeResponse([{"orderId": 99, "symbol": "BTCUSDT", "clientOrderId": "stop-0001", "side": "SELL", "type": "STOP_MARKET", "status": "NEW", "reduceOnly": True, "stopPrice": "99.8", "origQty": "0.5", "executedQty": "0"}])
         if path == "/fapi/v1/order":
-            return FakeResponse({"symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"), "orderId": 12345, "status": "PARTIALLY_FILLED", "executedQty": "0.2", "avgPrice": "100.1"})
+            return FakeResponse({"symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"), "orderId": 12345, "status": "PARTIALLY_FILLED", "origQty": "0.5", "executedQty": "0.2", "avgPrice": "100.1"})
         if path == "/fapi/v2/account":
             return FakeResponse({"canTrade": True, "positions": [
                 {"symbol": "BTCUSDT", "positionAmt": "0"},
@@ -584,6 +584,46 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertFalse(result["cancelled"])
         self.assertEqual(result["reason"], "invalid_client_order_id")
         self.assertEqual(client.calls, [])
+
+
+    def test_query_order_rejects_invalid_or_inconsistent_quantities(self):
+        class InvalidOrderClient(FakeClient):
+            def __init__(self, payload):
+                super().__init__()
+                self.payload = payload
+
+            def get(self, path, params):
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    return FakeResponse(self.payload)
+                return super().get(path, params)
+
+        base = {
+            "symbol": "BTCUSDT",
+            "clientOrderId": "paper-test-0001",
+            "orderId": 12345,
+            "status": "FILLED",
+            "origQty": "0.5",
+            "executedQty": "0.5",
+            "avgPrice": "100.1",
+        }
+        cases = [
+            ({**base, "executedQty": "NaN"}, "invalid_testnet_order_numeric_fields"),
+            ({**base, "executedQty": "0.6"}, "invalid_testnet_order_numeric_fields"),
+            ({**base, "executedQty": "0.4"}, "filled_testnet_order_quantity_mismatch"),
+            ({**base, "origQty": "Infinity"}, "invalid_testnet_order_numeric_fields"),
+        ]
+        for payload, reason in cases:
+            with self.subTest(payload=payload):
+                client = InvalidOrderClient(payload)
+                adapter = BinanceFuturesTestnet(
+                    api_key="test-key", api_secret="test-secret", client=client
+                )
+                result = adapter.query_testnet_order("BTCUSDT", "paper-test-0001")
+                self.assertFalse(result["found"])
+                self.assertTrue(result["requires_reconciliation"])
+                self.assertEqual(result["reason"], reason)
+                self.assertEqual(client.calls, [])
 
 
 if __name__ == "__main__":
