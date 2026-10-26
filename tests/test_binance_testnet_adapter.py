@@ -48,12 +48,22 @@ class FakeClient:
     def post(self, path, params):
         self.calls.append((path, params))
         if path == "/fapi/v1/order":
-            return FakeResponse({
+            payload = {
                 "symbol": params.get("symbol"),
                 "clientOrderId": params.get("newClientOrderId"),
                 "orderId": 12345,
                 "status": "NEW",
-            })
+            }
+            if params.get("type") in {"STOP_MARKET", "TAKE_PROFIT_MARKET"}:
+                payload.update({
+                    "side": params.get("side"),
+                    "type": params.get("type"),
+                    "reduceOnly": True,
+                    "workingType": params.get("workingType"),
+                    "origQty": params.get("quantity"),
+                    "stopPrice": params.get("stopPrice"),
+                })
+            return FakeResponse(payload)
         return FakeResponse()
 
     def delete(self, path, params):
@@ -723,6 +733,95 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertFalse(result["cancelled"])
         self.assertTrue(result["requires_reconciliation"])
         self.assertEqual(result["reason"], "unexpected_or_mismatched_testnet_cancel_response")
+        self.assertEqual(len(client.calls), 1)
+
+    def test_protective_exit_rejects_mismatched_exchange_echo_fields(self):
+        cases = [
+            ("side", "BUY"),
+            ("type", "LIMIT"),
+            ("reduceOnly", False),
+            ("workingType", "CONTRACT_PRICE"),
+            ("origQty", "0.4"),
+            ("stopPrice", "99.7"),
+        ]
+        for field, wrong_value in cases:
+            with self.subTest(field=field):
+                class MismatchedEchoClient(FakeClient):
+                    def get(self, path, params):
+                        if path == "/fapi/v2/account":
+                            self.get_calls.append((path, params))
+                            return FakeResponse({"canTrade": True, "positions": [
+                                {"symbol": "BTCUSDT", "positionAmt": "0.5", "entryPrice": "100"},
+                            ]})
+                        return super().get(path, params)
+
+                    def post(self, path, params):
+                        self.calls.append((path, params))
+                        payload = {
+                            "symbol": params.get("symbol"),
+                            "clientOrderId": params.get("newClientOrderId"),
+                            "orderId": 12345,
+                            "status": "NEW",
+                            "side": params.get("side"),
+                            "type": params.get("type"),
+                            "reduceOnly": True,
+                            "workingType": params.get("workingType"),
+                            "origQty": params.get("quantity"),
+                            "stopPrice": params.get("stopPrice"),
+                        }
+                        payload[field] = wrong_value
+                        return FakeResponse(payload)
+
+                client = MismatchedEchoClient()
+                adapter = BinanceFuturesTestnet(
+                    api_key="test-key", api_secret="test-secret", client=client
+                )
+                result = adapter.submit_testnet_protective_exit(
+                    "BTCUSDT", "stop_loss", "0.5", "99.8", "btc-echo-check"
+                )
+                self.assertFalse(result["accepted"])
+                self.assertTrue(result["requires_reconciliation"])
+                self.assertEqual(result["reason"], "unexpected_testnet_order_response")
+                self.assertEqual(len(client.calls), 1)
+
+    def test_protective_exit_already_filled_on_submit_requires_reconciliation(self):
+        class FilledOnSubmitClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"canTrade": True, "positions": [
+                        {"symbol": "BTCUSDT", "positionAmt": "0.5", "entryPrice": "100"},
+                    ]})
+                return super().get(path, params)
+
+            def post(self, path, params):
+                self.calls.append((path, params))
+                return FakeResponse({
+                    "symbol": params.get("symbol"),
+                    "clientOrderId": params.get("newClientOrderId"),
+                    "orderId": 12345,
+                    "status": "FILLED",
+                    "side": params.get("side"),
+                    "type": params.get("type"),
+                    "reduceOnly": True,
+                    "workingType": params.get("workingType"),
+                    "origQty": params.get("quantity"),
+                    "stopPrice": params.get("stopPrice"),
+                })
+
+        client = FilledOnSubmitClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "btc-already-filled"
+        )
+        self.assertFalse(result["accepted"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(
+            result["reason"], "protective_exit_submission_state_requires_reconciliation"
+        )
+        self.assertEqual(result["status"], "FILLED")
         self.assertEqual(len(client.calls), 1)
 
     def test_protective_exit_rejects_malformed_exchange_order_id(self):
