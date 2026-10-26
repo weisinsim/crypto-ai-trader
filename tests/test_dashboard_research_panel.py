@@ -44,8 +44,9 @@ class DashboardResearchPanelTests(unittest.TestCase):
         self.assertIn("RESEARCH ONLY", self.html)
 
     def test_html_document_and_script_are_closed(self):
-        self.assertEqual(self.html.count("<script>"), 1)
-        self.assertEqual(self.html.count("</script>"), 1)
+        opening_scripts = self.html.count("<script>") + self.html.count("<script ")
+        self.assertEqual(opening_scripts, self.html.count("</script>"))
+        self.assertIn('<script src="/static/alert_contract.js"></script>', self.html)
         self.assertTrue(self.html.strip().endswith("</html>"))
 
 
