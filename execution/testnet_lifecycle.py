@@ -32,6 +32,8 @@ def ensure_testnet_protective_exits(
     snapshot = adapter.testnet_position_snapshot(symbol)
     if not snapshot.get("ok"):
         return {"ok": False, "reason": "position_snapshot_failed"}
+    if snapshot.get("symbol") != symbol:
+        return {"ok": False, "reason": "position_snapshot_symbol_mismatch"}
     try:
         position = Decimal(str(snapshot["position_amount"]))
         entry = Decimal(str(snapshot["entry_price"]))
@@ -129,6 +131,8 @@ def ensure_testnet_protective_exits(
     final_snapshot = adapter.testnet_position_snapshot(symbol)
     if not final_snapshot.get("ok"):
         return {"ok": False, "reason": "post_submission_snapshot_failed", "actions": actions, "requires_reconciliation": True}
+    if final_snapshot.get("symbol") != symbol:
+        return {"ok": False, "reason": "post_submission_snapshot_symbol_mismatch", "actions": actions, "requires_reconciliation": True}
     try:
         final_position = Decimal(str(final_snapshot["position_amount"]))
         final_entry = Decimal(str(final_snapshot["entry_price"]))
