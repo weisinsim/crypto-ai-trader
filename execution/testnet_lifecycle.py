@@ -29,9 +29,17 @@ def ensure_testnet_protective_exits(
     except (InvalidOperation, TypeError, ValueError):
         return {"ok": False, "reason": "invalid_protective_prices"}
 
-    snapshot = adapter.testnet_position_snapshot(symbol)
-    if not snapshot.get("ok"):
-        return {"ok": False, "reason": "position_snapshot_failed"}
+    try:
+        snapshot = adapter.testnet_position_snapshot(symbol)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "reason": "position_snapshot_exception",
+            "detail": {"exception_type": type(exc).__name__},
+            "requires_reconciliation": True,
+        }
+    if not isinstance(snapshot, dict) or not snapshot.get("ok"):
+        return {"ok": False, "reason": "position_snapshot_failed", "requires_reconciliation": True}
     if snapshot.get("symbol") != symbol:
         return {"ok": False, "reason": "position_snapshot_symbol_mismatch"}
     try:
@@ -148,8 +156,17 @@ def ensure_testnet_protective_exits(
         actions.append({"kind": "take_profit", "result": result})
 
     # Confirm the exchange state after requests; a successful HTTP response is not enough.
-    final_snapshot = adapter.testnet_position_snapshot(symbol)
-    if not final_snapshot.get("ok"):
+    try:
+        final_snapshot = adapter.testnet_position_snapshot(symbol)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "reason": "post_submission_snapshot_exception",
+            "detail": {"exception_type": type(exc).__name__},
+            "actions": actions,
+            "requires_reconciliation": True,
+        }
+    if not isinstance(final_snapshot, dict) or not final_snapshot.get("ok"):
         return {"ok": False, "reason": "post_submission_snapshot_failed", "actions": actions, "requires_reconciliation": True}
     if final_snapshot.get("symbol") != symbol:
         return {"ok": False, "reason": "post_submission_snapshot_symbol_mismatch", "actions": actions, "requires_reconciliation": True}
