@@ -847,6 +847,16 @@ class BinanceFuturesTestnet:
                 "requires_reconciliation": True,
                 "client_order_id": client_order_id,
             }
+        except Exception as exc:
+            # Unexpected client/transport adapter failures are ambiguous too:
+            # the request may have reached the exchange. Never retry a cancel.
+            return {
+                "cancelled": False,
+                "reason": "testnet_cancel_unexpected_error_requires_reconciliation",
+                "requires_reconciliation": True,
+                "exception_type": type(exc).__name__,
+                "client_order_id": client_order_id,
+            }
         if (
             not isinstance(payload, dict)
             or not _valid_exchange_order_id(payload.get("orderId"))
