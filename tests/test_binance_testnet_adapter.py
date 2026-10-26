@@ -129,8 +129,10 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
 
     def test_symbol_rules_rejects_invalid_symbol(self):
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=FakeClient())
-        with self.assertRaises(ValueError):
-            adapter.symbol_rules("../BTCUSDT")
+        for symbol in ("../BTCUSDT", "ＢＴＣUSDT", None):
+            with self.subTest(symbol=symbol):
+                with self.assertRaises(ValueError):
+                    adapter.symbol_rules(symbol)
 
     def test_non_trading_symbol_is_rejected_before_order_validation(self):
         payload = {"symbols": [{"symbol": "BTCUSDT", "status": "BREAK", "filters": [
@@ -225,9 +227,11 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
     def test_query_order_rejects_invalid_client_id_without_network_call(self):
         client = FakeClient()
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
-        result = adapter.query_testnet_order("BTCUSDT", "invalid id")
-        self.assertFalse(result["found"])
-        self.assertEqual(result["reason"], "invalid_client_order_id")
+        for client_id in ("invalid id", "客户端-0001"):
+            with self.subTest(client_id=client_id):
+                result = adapter.query_testnet_order("BTCUSDT", client_id)
+                self.assertFalse(result["found"])
+                self.assertEqual(result["reason"], "invalid_client_order_id")
         self.assertEqual(client.get_calls, [])
 
     def test_position_snapshot_reads_position_and_open_orders_without_mutation(self):
