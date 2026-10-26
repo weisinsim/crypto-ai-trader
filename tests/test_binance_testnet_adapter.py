@@ -330,6 +330,41 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(too_large["reason"], "exit_quantity_exceeds_position")
         self.assertEqual(client.calls, [])
 
+    def test_protective_exit_rejects_partial_quantity_and_nonfinite_position(self):
+        class PositionClient(FakeClient):
+            def __init__(self, position_amount):
+                super().__init__()
+                self.position_amount = position_amount
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"canTrade": True, "positions": [
+                        {"symbol": "BTCUSDT", "positionAmt": self.position_amount, "entryPrice": "100"},
+                    ]})
+                return super().get(path, params)
+
+        partial_client = PositionClient("0.5")
+        partial_adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=partial_client
+        )
+        partial = partial_adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.4", "99.8", "stop-btc-partial"
+        )
+        self.assertFalse(partial["accepted"])
+        self.assertEqual(partial["reason"], "protective_exit_must_match_full_position_quantity")
+        self.assertEqual(partial_client.calls, [])
+
+        invalid_client = PositionClient("NaN")
+        invalid_adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=invalid_client
+        )
+        invalid = invalid_adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "stop-btc-nan"
+        )
+        self.assertFalse(invalid["accepted"])
+        self.assertEqual(invalid["reason"], "no_open_position_or_invalid_position_values")
+        self.assertEqual(invalid_client.calls, [])
+
     def test_signed_request_uses_hmac_sha256(self):
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=FakeClient())
         params = adapter._signed_params({"symbol": "BTCUSDT", "side": "BUY"})
