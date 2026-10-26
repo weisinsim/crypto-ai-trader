@@ -424,8 +424,13 @@ class BinanceFuturesTestnet:
             entry_price = Decimal(snapshot["entry_price"])
         except (InvalidOperation, TypeError, ValueError, KeyError):
             return {"accepted": False, "reason": "invalid_position_snapshot"}
-        if position_amount == 0 or entry_price <= 0:
-            return {"accepted": False, "reason": "no_open_position"}
+        if (
+            not position_amount.is_finite()
+            or not entry_price.is_finite()
+            or position_amount == 0
+            or entry_price <= 0
+        ):
+            return {"accepted": False, "reason": "no_open_position_or_invalid_position_values"}
         is_long = position_amount > 0
         if exit_kind == "stop_loss":
             geometry_ok = trigger < entry_price if is_long else trigger > entry_price
@@ -451,6 +456,10 @@ class BinanceFuturesTestnet:
                 return {"accepted": False, "reason": "quantity_below_exchange_minimum"}
             if rounded > maximum or rounded > abs(position_amount):
                 return {"accepted": False, "reason": "exit_quantity_exceeds_position_or_exchange_maximum"}
+            # Protective exits must cover the entire current position exactly.
+            # Rounding down a trigger order would silently leave residual exposure.
+            if rounded != requested_quantity or rounded != abs(position_amount):
+                return {"accepted": False, "reason": "protective_exit_must_match_full_position_quantity"}
             quantity_text = format(rounded, "f")
             if "." in quantity_text:
                 quantity_text = quantity_text.rstrip("0").rstrip(".")
