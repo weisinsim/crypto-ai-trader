@@ -251,5 +251,36 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertEqual(nonflat.cancel_calls, [])
 
 
+    def test_unknown_sibling_order_status_fails_closed_without_cancel(self):
+        class UnknownSiblingStatusAdapter:
+            def __init__(self):
+                self.cancel_calls = []
+
+            def query_testnet_order(self, symbol, client_id):
+                if client_id == "btc-sl":
+                    return {
+                        "found": True, "symbol": symbol, "client_order_id": client_id,
+                        "status": "FILLED", "executed_quantity": "0.5",
+                    }
+                return {
+                    "found": True, "symbol": symbol, "client_order_id": client_id,
+                    "status": "UNKNOWN", "executed_quantity": "0",
+                }
+
+            def testnet_position_snapshot(self, symbol):
+                return {"ok": True, "symbol": symbol, "position_amount": "0"}
+
+            def cancel_testnet_order(self, symbol, client_id):
+                self.cancel_calls.append((symbol, client_id))
+                return {"cancelled": True}
+
+        adapter = UnknownSiblingStatusAdapter()
+        result = cancel_testnet_sibling_after_flatten(adapter, "BTCUSDT", "btc-sl", "btc-tp")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "sibling_status_unknown_requires_reconciliation")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(adapter.cancel_calls, [])
+
+
 if __name__ == "__main__":
     unittest.main()
