@@ -811,15 +811,42 @@ class BinanceFuturesTestnet:
             return {"cancelled": False, "reason": "invalid_client_order_id"}
         if not client_order_id.isascii() or not client_order_id.replace("-", "").replace("_", "").isalnum():
             return {"cancelled": False, "reason": "invalid_client_order_id"}
-        response = self._delete(
-            "/fapi/v1/order",
-            params=self._signed_params({
-                "symbol": symbol,
-                "origClientOrderId": client_order_id,
-            }),
-        )
-        response.raise_for_status()
-        payload = response.json()
+        try:
+            response = self._delete(
+                "/fapi/v1/order",
+                params=self._signed_params({
+                    "symbol": symbol,
+                    "origClientOrderId": client_order_id,
+                }),
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.TimeoutException, httpx.TransportError):
+            # The cancel may have reached the exchange even if its response did
+            # not reach us. Never retry; query the order and account snapshots.
+            return {
+                "cancelled": False,
+                "reason": "testnet_cancel_outcome_unknown",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
+        except httpx.HTTPStatusError as exc:
+            # Includes 404 (possibly already filled/cancelled) and 5xx: neither
+            # proves the order's final state. Do not retry the mutation.
+            return {
+                "cancelled": False,
+                "reason": "testnet_cancel_http_outcome_requires_reconciliation",
+                "requires_reconciliation": True,
+                "http_status": exc.response.status_code,
+                "client_order_id": client_order_id,
+            }
+        except (ValueError, TypeError):
+            return {
+                "cancelled": False,
+                "reason": "testnet_cancel_response_unreadable_requires_reconciliation",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
         if (
             not isinstance(payload, dict)
             or not _valid_exchange_order_id(payload.get("orderId"))
@@ -836,8 +863,18 @@ class BinanceFuturesTestnet:
                 "requires_reconciliation": True,
                 "client_order_id": client_order_id,
             }
+        if payload["status"] != "CANCELED":
+            return {
+                "cancelled": False,
+                "reason": "testnet_cancel_not_confirmed_requires_reconciliation",
+                "requires_reconciliation": True,
+                "symbol": payload["symbol"],
+                "client_order_id": payload["clientOrderId"],
+                "exchange_order_id": str(payload["orderId"]),
+                "status": payload["status"],
+            }
         return {
-            "cancelled": payload["status"] == "CANCELED",
+            "cancelled": True,
             "mode": "testnet_order_cancelled",
             "symbol": payload["symbol"],
             "client_order_id": payload["clientOrderId"],
