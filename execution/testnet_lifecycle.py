@@ -346,10 +346,11 @@ def cancel_testnet_sibling_after_flatten(
             return {"ok": False, "reason": "inactive_sibling_position_invalid", "requires_reconciliation": True}
         if not inactive_position.is_finite() or inactive_position != 0:
             return {"ok": False, "reason": "inactive_sibling_position_not_flat", "requires_reconciliation": True}
-        if "open_orders" in inactive_snapshot:
-            inactive_orders = inactive_snapshot.get("open_orders")
-            if not isinstance(inactive_orders, list) or inactive_orders:
-                return {"ok": False, "reason": "open_orders_remain_after_flatten", "requires_reconciliation": True}
+        if "open_orders" not in inactive_snapshot:
+            return {"ok": False, "reason": "open_orders_snapshot_missing", "requires_reconciliation": True}
+        inactive_orders = inactive_snapshot.get("open_orders")
+        if not isinstance(inactive_orders, list) or inactive_orders:
+            return {"ok": False, "reason": "open_orders_remain_after_flatten", "requires_reconciliation": True}
         return {"ok": True, "mode": "testnet_sibling_already_inactive", "sibling_status": sibling.get("status")}
     # Only known live states are eligible for cancellation. A malformed/unknown
     # status must not be treated as an active order that is safe to cancel.
@@ -423,16 +424,17 @@ def cancel_testnet_sibling_after_flatten(
             "requires_reconciliation": True,
         }
     # A flat position alone is not enough: another live order could reopen
-    # exposure immediately after cleanup. Production snapshots always include
-    # open_orders; if the adapter provides it, require the symbol to be clear.
-    if "open_orders" in final_snapshot:
-        remaining_orders = final_snapshot.get("open_orders")
-        if not isinstance(remaining_orders, list) or remaining_orders:
-            return {
-                "ok": False,
-                "reason": "open_orders_remain_after_flatten",
-                "requires_reconciliation": True,
-            }
+    # exposure immediately after cleanup. A missing open-order list is ambiguous
+    # and must never be interpreted as an empty list.
+    if "open_orders" not in final_snapshot:
+        return {"ok": False, "reason": "open_orders_snapshot_missing", "requires_reconciliation": True}
+    remaining_orders = final_snapshot.get("open_orders")
+    if not isinstance(remaining_orders, list) or remaining_orders:
+        return {
+            "ok": False,
+            "reason": "open_orders_remain_after_flatten",
+            "requires_reconciliation": True,
+        }
     return {
         "ok": True,
         "mode": "testnet_sibling_cancelled_after_flatten",
