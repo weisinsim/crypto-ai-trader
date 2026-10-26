@@ -698,6 +698,35 @@ class BinanceFuturesTestnet:
                     "requires_reconciliation": True,
                     "client_order_id": client_order_id,
                 }
+            # Binance USD-M Futures error -4116 means the client order ID is
+            # already in use. That is not proof this submission is safely
+            # rejected: an earlier attempt may have reached the exchange.
+            # Reconcile by client ID and exchange snapshots; never retry here.
+            error_payload = {}
+            try:
+                parsed_payload = exc.response.json()
+                if isinstance(parsed_payload, dict):
+                    error_payload = parsed_payload
+            except (ValueError, TypeError):
+                pass
+            error_code = error_payload.get("code")
+            error_message = error_payload.get("msg", "")
+            duplicate_client_id = (
+                str(error_code) == "-4116"
+                or (
+                    isinstance(error_message, str)
+                    and "client order id" in error_message.lower()
+                    and ("not unique" in error_message.lower() or "already exists" in error_message.lower())
+                )
+            )
+            if duplicate_client_id:
+                return {
+                    "accepted": False,
+                    "reason": "protective_exit_client_id_conflict_requires_reconciliation",
+                    "requires_reconciliation": True,
+                    "http_status": exc.response.status_code,
+                    "client_order_id": client_order_id,
+                }
             return {
                 "accepted": False,
                 "reason": "protective_exit_rejected",
