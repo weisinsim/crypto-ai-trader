@@ -387,5 +387,49 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertEqual([s[1] for s in adapter.submissions], ["stop_loss", "take_profit"])
 
 
+    def test_restart_reuses_both_matching_protective_orders_without_resubmitting(self):
+        adapter = FakeAdapter(orders=[
+            {
+                "status": "NEW", "reduce_only": True, "type": "STOP_MARKET",
+                "stop_price": "99", "side": "SELL", "orig_quantity": "0.5",
+                "client_order_id": "btc-restart-01-sl",
+            },
+            {
+                "status": "NEW", "reduce_only": True, "type": "TAKE_PROFIT_MARKET",
+                "stop_price": "102", "side": "SELL", "orig_quantity": "0.5",
+                "client_order_id": "btc-restart-01-tp",
+            },
+        ])
+        result = ensure_testnet_protective_exits(
+            adapter, "BTCUSDT", "99", "102", "btc-restart-01"
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["mode"], "testnet_protective_exits_verified")
+        self.assertEqual(adapter.submissions, [])
+        self.assertEqual(len(result["verified_orders"]), 2)
+        self.assertEqual(adapter.snapshot_count, 2)
+
+    def test_restart_with_duplicate_stop_orders_fails_closed_without_submission(self):
+        duplicate_stops = [
+            {
+                "status": "NEW", "reduce_only": True, "type": "STOP_MARKET",
+                "stop_price": "99", "side": "SELL", "orig_quantity": "0.5",
+                "client_order_id": "btc-restart-02-sl",
+            },
+            {
+                "status": "NEW", "reduce_only": True, "type": "STOP_MARKET",
+                "stop_price": "99", "side": "SELL", "orig_quantity": "0.5",
+                "client_order_id": "btc-restart-02-alt",
+            },
+        ]
+        adapter = FakeAdapter(orders=duplicate_stops)
+        result = ensure_testnet_protective_exits(
+            adapter, "BTCUSDT", "99", "102", "btc-restart-02"
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "duplicate_protective_orders_require_manual_reconciliation")
+        self.assertEqual(adapter.submissions, [])
+
+
 if __name__ == "__main__":
     unittest.main()
