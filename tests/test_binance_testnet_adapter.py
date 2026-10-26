@@ -117,6 +117,26 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             adapter.account_preflight()
 
+    def test_account_preflight_rejects_non_boolean_trade_flag_and_nonfinite_position(self):
+        class BadClient(FakeClient):
+            def __init__(self, payload):
+                super().__init__()
+                self.payload = payload
+            def get(self, path, params):
+                return FakeResponse(self.payload)
+        payloads = (
+            {"canTrade": "false", "positions": []},
+            {"canTrade": True, "positions": [{"positionAmt": "NaN"}]},
+            {"canTrade": True, "positions": "malformed"},
+        )
+        for payload in payloads:
+            with self.subTest(payload=payload):
+                adapter = BinanceFuturesTestnet(
+                    api_key="test-key", api_secret="test-secret", client=BadClient(payload)
+                )
+                with self.assertRaises(ValueError):
+                    adapter.account_preflight()
+
     def test_symbol_rules_reads_quantity_and_notional_filters(self):
         client = FakeClient()
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
@@ -200,6 +220,17 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         )
         self.assertFalse(result["accepted"])
         self.assertEqual(result["reason"], "testnet_mode_required")
+        self.assertEqual(client.calls, [])
+
+    def test_testnet_order_rejects_falsey_invalid_config_without_submission(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.submit_testnet_market_order(self.intent(), "paper-test-0003", {})
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "invalid_execution_config")
+        validation = adapter.validate_order(self.intent(), {})
+        self.assertFalse(validation["accepted"])
+        self.assertEqual(validation["reason"], "invalid_execution_config")
         self.assertEqual(client.calls, [])
 
     def test_testnet_order_requires_safe_client_order_id(self):
