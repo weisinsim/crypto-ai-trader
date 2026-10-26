@@ -399,13 +399,27 @@ class BinanceFuturesTestnet:
         )
         response.raise_for_status()
         payload = response.json()
-        if not isinstance(payload, dict) or "orderId" not in payload:
-            return {"found": False, "reason": "unexpected_testnet_order_response"}
+        if (
+            not isinstance(payload, dict)
+            or payload.get("orderId") in (None, "")
+            or payload.get("symbol") != symbol
+            or payload.get("clientOrderId") != client_order_id
+            or not isinstance(payload.get("status"), str)
+            or payload.get("status") not in {
+                "NEW", "PARTIALLY_FILLED", "FILLED", "CANCELED", "REJECTED", "EXPIRED"
+            }
+            or "executedQty" not in payload
+        ):
+            return {
+                "found": False,
+                "reason": "unexpected_or_mismatched_testnet_order_response",
+                "requires_reconciliation": True,
+            }
         return {
             "found": True,
             "mode": "testnet_order_reconciliation",
-            "symbol": payload.get("symbol", symbol),
-            "client_order_id": payload.get("clientOrderId", client_order_id),
+            "symbol": payload["symbol"],
+            "client_order_id": payload["clientOrderId"],
             "exchange_order_id": str(payload["orderId"]),
             "status": payload.get("status", "UNKNOWN"),
             "executed_quantity": payload.get("executedQty", "0"),
@@ -661,15 +675,29 @@ class BinanceFuturesTestnet:
         )
         response.raise_for_status()
         payload = response.json()
-        if not isinstance(payload, dict) or "orderId" not in payload:
-            return {"cancelled": False, "reason": "unexpected_testnet_cancel_response"}
+        if (
+            not isinstance(payload, dict)
+            or payload.get("orderId") in (None, "")
+            or payload.get("symbol") != symbol
+            or payload.get("clientOrderId") != client_order_id
+            or not isinstance(payload.get("status"), str)
+            or payload.get("status") not in {
+                "NEW", "PARTIALLY_FILLED", "FILLED", "CANCELED", "REJECTED", "EXPIRED"
+            }
+        ):
+            return {
+                "cancelled": False,
+                "reason": "unexpected_or_mismatched_testnet_cancel_response",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
         return {
-            "cancelled": payload.get("status") == "CANCELED",
+            "cancelled": payload["status"] == "CANCELED",
             "mode": "testnet_order_cancelled",
-            "symbol": payload.get("symbol", symbol),
-            "client_order_id": payload.get("clientOrderId", client_order_id),
+            "symbol": payload["symbol"],
+            "client_order_id": payload["clientOrderId"],
             "exchange_order_id": str(payload["orderId"]),
-            "status": payload.get("status", "UNKNOWN"),
+            "status": payload["status"],
         }
 
     def close(self):
