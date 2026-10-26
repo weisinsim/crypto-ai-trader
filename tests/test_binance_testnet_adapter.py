@@ -70,6 +70,13 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         with self.assertRaises(BinanceTestnetConfigurationError):
             BinanceFuturesTestnet(api_key="", api_secret="")
 
+    def test_rejects_injected_client_with_non_testnet_base_url(self):
+        client = FakeClient()
+        client.base_url = "https://fapi.binance.com"
+        with self.assertRaises(BinanceTestnetConfigurationError):
+            BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        self.assertEqual(client.calls, [])
+
     def test_posts_only_to_testnet_validation_endpoint(self):
         client = FakeClient()
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
