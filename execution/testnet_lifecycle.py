@@ -246,8 +246,11 @@ def cancel_testnet_sibling_after_flatten(
             return {"ok": False, "reason": "invalid_client_order_id"}
         if not value.isascii() or not value.replace("-", "").replace("_", "").isalnum():
             return {"ok": False, "reason": "invalid_client_order_id"}
-    filled = adapter.query_testnet_order(symbol, filled_exit_client_order_id)
-    if not filled.get("found"):
+    try:
+        filled = adapter.query_testnet_order(symbol, filled_exit_client_order_id)
+    except Exception:
+        return {"ok": False, "reason": "filled_exit_lookup_exception", "requires_reconciliation": True}
+    if not isinstance(filled, dict) or not filled.get("found"):
         return {"ok": False, "reason": "filled_exit_lookup_failed", "requires_reconciliation": True}
     if filled.get("status") != "FILLED":
         return {
@@ -263,8 +266,11 @@ def cancel_testnet_sibling_after_flatten(
     except (InvalidOperation, TypeError, ValueError):
         return {"ok": False, "reason": "invalid_filled_quantity", "requires_reconciliation": True}
 
-    snapshot = adapter.testnet_position_snapshot(symbol)
-    if not snapshot.get("ok"):
+    try:
+        snapshot = adapter.testnet_position_snapshot(symbol)
+    except Exception:
+        return {"ok": False, "reason": "position_snapshot_exception", "requires_reconciliation": True}
+    if not isinstance(snapshot, dict) or not snapshot.get("ok"):
         return {"ok": False, "reason": "position_snapshot_failed", "requires_reconciliation": True}
     if snapshot.get("symbol") != symbol:
         return {"ok": False, "reason": "position_snapshot_symbol_mismatch", "requires_reconciliation": True}
@@ -280,8 +286,11 @@ def cancel_testnet_sibling_after_flatten(
             "requires_reconciliation": True,
         }
 
-    sibling = adapter.query_testnet_order(symbol, sibling_exit_client_order_id)
-    if not sibling.get("found"):
+    try:
+        sibling = adapter.query_testnet_order(symbol, sibling_exit_client_order_id)
+    except Exception:
+        return {"ok": False, "reason": "sibling_lookup_exception", "requires_reconciliation": True}
+    if not isinstance(sibling, dict) or not sibling.get("found"):
         return {"ok": False, "reason": "sibling_lookup_failed", "requires_reconciliation": True}
     if sibling.get("status") in {"CANCELED", "EXPIRED", "REJECTED"}:
         return {"ok": True, "mode": "testnet_sibling_already_inactive", "sibling_status": sibling.get("status")}
@@ -300,8 +309,16 @@ def cancel_testnet_sibling_after_flatten(
             "reason": "both_exits_report_filled_check_exchange_history",
             "requires_reconciliation": True,
         }
-    cancelled = adapter.cancel_testnet_order(symbol, sibling_exit_client_order_id)
-    if not cancelled.get("cancelled"):
+    try:
+        cancelled = adapter.cancel_testnet_order(symbol, sibling_exit_client_order_id)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "reason": "sibling_cancel_exception_outcome_unknown",
+            "detail": {"exception_type": type(exc).__name__},
+            "requires_reconciliation": True,
+        }
+    if not isinstance(cancelled, dict) or not cancelled.get("cancelled"):
         return {
             "ok": False,
             "reason": "sibling_cancel_unconfirmed",
@@ -310,8 +327,11 @@ def cancel_testnet_sibling_after_flatten(
         }
     # A cancel acknowledgement is not proof the sibling is inactive: it may
     # have filled in the race between the pre-cancel lookup and cancellation.
-    sibling_after_cancel = adapter.query_testnet_order(symbol, sibling_exit_client_order_id)
-    if not sibling_after_cancel.get("found"):
+    try:
+        sibling_after_cancel = adapter.query_testnet_order(symbol, sibling_exit_client_order_id)
+    except Exception:
+        return {"ok": False, "reason": "post_cancel_sibling_lookup_exception", "requires_reconciliation": True}
+    if not isinstance(sibling_after_cancel, dict) or not sibling_after_cancel.get("found"):
         return {"ok": False, "reason": "post_cancel_sibling_lookup_failed", "requires_reconciliation": True}
     if sibling_after_cancel.get("status") not in {"CANCELED", "EXPIRED", "REJECTED"}:
         return {
@@ -321,8 +341,11 @@ def cancel_testnet_sibling_after_flatten(
             "requires_reconciliation": True,
         }
 
-    final_snapshot = adapter.testnet_position_snapshot(symbol)
-    if not final_snapshot.get("ok"):
+    try:
+        final_snapshot = adapter.testnet_position_snapshot(symbol)
+    except Exception:
+        return {"ok": False, "reason": "post_cancel_snapshot_exception", "requires_reconciliation": True}
+    if not isinstance(final_snapshot, dict) or not final_snapshot.get("ok"):
         return {"ok": False, "reason": "post_cancel_snapshot_failed", "requires_reconciliation": True}
     if final_snapshot.get("symbol") != symbol:
         return {"ok": False, "reason": "post_cancel_snapshot_symbol_mismatch", "requires_reconciliation": True}
