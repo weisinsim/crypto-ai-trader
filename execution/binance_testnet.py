@@ -399,9 +399,16 @@ class BinanceFuturesTestnet:
         )
         response.raise_for_status()
         payload = response.json()
+        order_id = payload.get("orderId") if isinstance(payload, dict) else None
+        valid_order_id = (
+            isinstance(order_id, (str, int))
+            and not isinstance(order_id, bool)
+            and str(order_id).isdigit()
+            and int(order_id) > 0
+        )
         if (
             not isinstance(payload, dict)
-            or payload.get("orderId") in (None, "")
+            or not valid_order_id
             or payload.get("symbol") != symbol
             or payload.get("clientOrderId") != client_order_id
             or not isinstance(payload.get("status"), str)
@@ -522,6 +529,7 @@ class BinanceFuturesTestnet:
                     or stop_price < 0
                     or orig_quantity <= 0
                     or executed_quantity < 0
+                    or executed_quantity > orig_quantity
                 ):
                     raise InvalidOperation
             except (InvalidOperation, TypeError, ValueError):
