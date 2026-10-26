@@ -330,6 +330,26 @@ def cancel_testnet_sibling_after_flatten(
     ):
         return {"ok": False, "reason": "sibling_order_identity_mismatch", "requires_reconciliation": True}
     if sibling.get("status") in {"CANCELED", "EXPIRED", "REJECTED"}:
+        # Even when the sibling is already inactive, verify the account is still
+        # flat and no other open order can recreate exposure before reporting clean.
+        try:
+            inactive_snapshot = adapter.testnet_position_snapshot(symbol)
+        except Exception:
+            return {"ok": False, "reason": "inactive_sibling_snapshot_exception", "requires_reconciliation": True}
+        if not isinstance(inactive_snapshot, dict) or not inactive_snapshot.get("ok"):
+            return {"ok": False, "reason": "inactive_sibling_snapshot_failed", "requires_reconciliation": True}
+        if inactive_snapshot.get("symbol") != symbol:
+            return {"ok": False, "reason": "inactive_sibling_snapshot_symbol_mismatch", "requires_reconciliation": True}
+        try:
+            inactive_position = Decimal(str(inactive_snapshot["position_amount"]))
+        except (InvalidOperation, TypeError, ValueError, KeyError):
+            return {"ok": False, "reason": "inactive_sibling_position_invalid", "requires_reconciliation": True}
+        if not inactive_position.is_finite() or inactive_position != 0:
+            return {"ok": False, "reason": "inactive_sibling_position_not_flat", "requires_reconciliation": True}
+        if "open_orders" in inactive_snapshot:
+            inactive_orders = inactive_snapshot.get("open_orders")
+            if not isinstance(inactive_orders, list) or inactive_orders:
+                return {"ok": False, "reason": "open_orders_remain_after_flatten", "requires_reconciliation": True}
         return {"ok": True, "mode": "testnet_sibling_already_inactive", "sibling_status": sibling.get("status")}
     # Only known live states are eligible for cancellation. A malformed/unknown
     # status must not be treated as an active order that is safe to cancel.
