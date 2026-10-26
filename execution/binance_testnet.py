@@ -140,6 +140,8 @@ class BinanceFuturesTestnet:
             "min_quantity": lot.get("minQty"),
             "max_quantity": lot.get("maxQty"),
             "price_tick_size": price_filter.get("tickSize") if price_filter else None,
+            "min_price": price_filter.get("minPrice") if price_filter else None,
+            "max_price": price_filter.get("maxPrice") if price_filter else None,
             "min_notional": (
                 min_notional_filter.get("notional")
                 or min_notional_filter.get("minNotional")
@@ -452,14 +454,22 @@ class BinanceFuturesTestnet:
             minimum = Decimal(str(rules["min_quantity"]))
             maximum = Decimal(str(rules["max_quantity"]))
             raw_tick = rules.get("price_tick_size")
-            if raw_tick in (None, ""):
+            raw_min_price = rules.get("min_price")
+            raw_max_price = rules.get("max_price")
+            if raw_tick in (None, "") or raw_min_price in (None, "") or raw_max_price in (None, ""):
                 return {"accepted": False, "reason": "exchange_price_filter_missing"}
             tick = Decimal(str(raw_tick))
+            min_price = Decimal(str(raw_min_price))
+            max_price = Decimal(str(raw_max_price))
             if (
                 step <= 0 or minimum <= 0 or maximum < minimum
                 or not tick.is_finite() or tick <= 0
+                or not min_price.is_finite() or min_price < 0
+                or not max_price.is_finite() or max_price <= min_price
             ):
                 return {"accepted": False, "reason": "invalid_exchange_quantity_or_price_filters"}
+            if trigger < min_price or trigger > max_price:
+                return {"accepted": False, "reason": "trigger_price_outside_exchange_price_bounds"}
             if trigger % tick != 0:
                 return {"accepted": False, "reason": "trigger_price_not_aligned_to_exchange_tick"}
             rounded = (requested_quantity / step).to_integral_value(rounding=ROUND_DOWN) * step
