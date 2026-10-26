@@ -79,7 +79,7 @@ class BinanceFuturesTestnet:
 
         Fails closed if exchange notional is missing for an open position.
         """
-        if not isinstance(symbol, str) or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
+        if not isinstance(symbol, str) or not symbol.isascii() or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
             return {"ok": False, "reason": "invalid_symbol"}
         response = self._get("/fapi/v2/account", params=self._signed_params({}))
         response.raise_for_status()
@@ -119,7 +119,7 @@ class BinanceFuturesTestnet:
 
     def symbol_rules(self, symbol):
         """Read testnet exchange filters; does not submit or create an order."""
-        if not symbol.endswith("USDT") or not symbol[:-4].isalnum():
+        if not isinstance(symbol, str) or not symbol.isascii() or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
             raise ValueError("invalid_symbol")
         response = self._get("/fapi/v1/exchangeInfo", params={"symbol": symbol})
         response.raise_for_status()
@@ -226,7 +226,7 @@ class BinanceFuturesTestnet:
             return {"accepted": False, "reason": "testnet_mode_required"}
         if not isinstance(client_order_id, str) or not client_order_id or len(client_order_id) > 36:
             return {"accepted": False, "reason": "invalid_client_order_id"}
-        if not client_order_id.replace("-", "").replace("_", "").isalnum():
+        if not client_order_id.isascii() or not client_order_id.replace("-", "").replace("_", "").isalnum():
             return {"accepted": False, "reason": "invalid_client_order_id"}
         decision = validate_order_intent(intent, config)
         if not decision.allowed:
@@ -385,7 +385,7 @@ class BinanceFuturesTestnet:
         """
         if not isinstance(symbol, str) or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
             return {"accepted": False, "reason": "invalid_symbol"}
-        if exit_kind not in {"stop_loss", "take_profit"}:
+        if not isinstance(exit_kind, str) or exit_kind not in {"stop_loss", "take_profit"}:
             return {"accepted": False, "reason": "invalid_exit_kind"}
         if not isinstance(client_order_id, str) or not client_order_id or len(client_order_id) > 36:
             return {"accepted": False, "reason": "invalid_client_order_id"}
