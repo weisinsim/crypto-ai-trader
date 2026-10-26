@@ -506,9 +506,7 @@ class BinanceFuturesTestnet:
             if order.get("symbol") != symbol:
                 return {"ok": False, "reason": "testnet_open_order_symbol_mismatch"}
             if (
-                not isinstance(order["orderId"], (str, int))
-                or isinstance(order["orderId"], bool)
-                or not str(order["orderId"])
+                not _valid_exchange_order_id(order["orderId"])
                 or not isinstance(order["clientOrderId"], str)
                 or not order["clientOrderId"]
                 or len(order["clientOrderId"]) > 36
@@ -520,6 +518,10 @@ class BinanceFuturesTestnet:
                 return {"ok": False, "reason": "invalid_testnet_open_order_reduce_only"}
             if not all(isinstance(order[field], str) and order[field] for field in ("side", "type", "status")):
                 return {"ok": False, "reason": "invalid_testnet_open_order_record"}
+            if order["side"] not in {"BUY", "SELL"}:
+                return {"ok": False, "reason": "invalid_testnet_open_order_side"}
+            if order["status"] not in {"NEW", "PARTIALLY_FILLED"}:
+                return {"ok": False, "reason": "invalid_testnet_open_order_status"}
             try:
                 stop_price = Decimal(str(order["stopPrice"]))
                 orig_quantity = Decimal(str(order["origQty"]))
