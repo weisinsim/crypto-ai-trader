@@ -683,5 +683,28 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
 
 
 
+    def test_market_order_rejects_malformed_exchange_order_id(self):
+        class MalformedOrderIdClient(FakeClient):
+            def post(self, path, params):
+                self.calls.append((path, params))
+                return FakeResponse({
+                    "symbol": params.get("symbol"),
+                    "clientOrderId": params.get("newClientOrderId"),
+                    "orderId": True,
+                    "status": "NEW",
+                })
+
+        client = MalformedOrderIdClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "btc-bad-order-id", ExecutionConfig(mode="testnet")
+        )
+        self.assertFalse(result["accepted"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["reason"], "unexpected_testnet_order_response")
+        self.assertEqual(len(client.calls), 1)
+
+
+
 if __name__ == "__main__":
     unittest.main()
