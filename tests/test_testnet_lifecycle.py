@@ -196,7 +196,7 @@ class TestnetLifecycleTests(unittest.TestCase):
         }])
         result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-08")
         self.assertFalse(result["ok"])
-        self.assertEqual(result["reason"], "existing_stop_quantity_mismatch")
+        self.assertEqual(result["reason"], "existing_stop_quantity_or_execution_mismatch")
         self.assertEqual(adapter.submissions, [])
 
 
@@ -659,7 +659,7 @@ class TestnetLifecycleTests(unittest.TestCase):
             adapter, "BTCUSDT", "99", "102", "btc-partial"
         )
         self.assertFalse(result["ok"])
-        self.assertEqual(result["reason"], "existing_stop_order_quantity_or_execution_mismatch")
+        self.assertEqual(result["reason"], "existing_stop_quantity_or_execution_mismatch")
         self.assertTrue(result.get("requires_reconciliation", False) or result["reason"].startswith("existing_"))
         self.assertEqual(adapter.submissions, [])
 
