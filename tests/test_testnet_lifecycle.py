@@ -431,5 +431,70 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertEqual(adapter.submissions, [])
 
 
+    def test_sibling_cancel_rejects_filled_order_identity_mismatch(self):
+        class WrongFilledIdentityAdapter:
+            def __init__(self):
+                self.snapshot_calls = 0
+                self.cancel_calls = 0
+
+            def query_testnet_order(self, symbol, client_id):
+                return {
+                    "found": True,
+                    "symbol": "ETHUSDT",
+                    "client_order_id": client_id,
+                    "status": "FILLED",
+                    "executed_quantity": "0.5",
+                    "original_quantity": "0.5",
+                }
+
+            def testnet_position_snapshot(self, symbol):
+                self.snapshot_calls += 1
+                return {"ok": True, "symbol": symbol, "position_amount": "0"}
+
+            def cancel_testnet_order(self, symbol, client_id):
+                self.cancel_calls += 1
+                return {"cancelled": True}
+
+        adapter = WrongFilledIdentityAdapter()
+        result = cancel_testnet_sibling_after_flatten(adapter, "BTCUSDT", "btc-sl", "btc-tp")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "filled_exit_identity_mismatch")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(adapter.snapshot_calls, 0)
+        self.assertEqual(adapter.cancel_calls, 0)
+
+    def test_sibling_cancel_rejects_filled_quantity_mismatch(self):
+        class QuantityMismatchAdapter:
+            def __init__(self):
+                self.snapshot_calls = 0
+                self.cancel_calls = 0
+
+            def query_testnet_order(self, symbol, client_id):
+                return {
+                    "found": True,
+                    "symbol": symbol,
+                    "client_order_id": client_id,
+                    "status": "FILLED",
+                    "executed_quantity": "0.4",
+                    "original_quantity": "0.5",
+                }
+
+            def testnet_position_snapshot(self, symbol):
+                self.snapshot_calls += 1
+                return {"ok": True, "symbol": symbol, "position_amount": "0"}
+
+            def cancel_testnet_order(self, symbol, client_id):
+                self.cancel_calls += 1
+                return {"cancelled": True}
+
+        adapter = QuantityMismatchAdapter()
+        result = cancel_testnet_sibling_after_flatten(adapter, "BTCUSDT", "btc-sl", "btc-tp")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "invalid_or_inconsistent_filled_quantity")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(adapter.snapshot_calls, 0)
+        self.assertEqual(adapter.cancel_calls, 0)
+
+
 if __name__ == "__main__":
     unittest.main()
