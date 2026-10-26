@@ -125,6 +125,34 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertEqual([s[1] for s in adapter.submissions], ["stop_loss", "take_profit"])
         self.assertEqual(result["verified_orders"]["STOP_MARKET"]["side"], "BUY")
 
+    def test_initial_snapshot_for_wrong_symbol_fails_closed(self):
+        class WrongSymbolAdapter(FakeAdapter):
+            def testnet_position_snapshot(self, symbol):
+                result = super().testnet_position_snapshot(symbol)
+                result["symbol"] = "ETHUSDT"
+                return result
+
+        adapter = WrongSymbolAdapter()
+        result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-wrong-symbol")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "position_snapshot_symbol_mismatch")
+        self.assertEqual(adapter.submissions, [])
+
+    def test_post_submission_snapshot_for_wrong_symbol_requires_reconciliation(self):
+        class WrongFinalSymbolAdapter(FakeAdapter):
+            def testnet_position_snapshot(self, symbol):
+                result = super().testnet_position_snapshot(symbol)
+                if self.snapshot_count > 1:
+                    result["symbol"] = "ETHUSDT"
+                return result
+
+        adapter = WrongFinalSymbolAdapter()
+        result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-wrong-final")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "post_submission_snapshot_symbol_mismatch")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual([s[1] for s in adapter.submissions], ["stop_loss", "take_profit"])
+
     def test_position_change_during_setup_fails_closed(self):
         adapter = FakeAdapter(mutate_position=True)
         result = ensure_testnet_protective_exits(adapter, "BTCUSDT", "99", "102", "btc-run-07")
