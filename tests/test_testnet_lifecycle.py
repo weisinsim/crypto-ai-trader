@@ -188,6 +188,38 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertEqual(result["reason"], "position_changed_during_protection_setup")
         self.assertTrue(result["requires_reconciliation"])
 
+    def test_position_sign_reversal_during_setup_fails_closed_even_same_abs_quantity(self):
+        class ReversedPositionAdapter(FakeAdapter):
+            def testnet_position_snapshot(self, symbol):
+                result = super().testnet_position_snapshot(symbol)
+                if self.snapshot_count > 1:
+                    result["position_amount"] = "-0.5"
+                return result
+
+        adapter = ReversedPositionAdapter()
+        result = ensure_testnet_protective_exits(
+            adapter, "BTCUSDT", "99", "102", "btc-run-reversed"
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "position_changed_during_protection_setup")
+        self.assertTrue(result["requires_reconciliation"])
+
+    def test_entry_price_change_during_setup_fails_closed(self):
+        class EntryPriceChangedAdapter(FakeAdapter):
+            def testnet_position_snapshot(self, symbol):
+                result = super().testnet_position_snapshot(symbol)
+                if self.snapshot_count > 1:
+                    result["entry_price"] = "100.1"
+                return result
+
+        adapter = EntryPriceChangedAdapter()
+        result = ensure_testnet_protective_exits(
+            adapter, "BTCUSDT", "99", "102", "btc-run-entry-drift"
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "position_changed_during_protection_setup")
+        self.assertTrue(result["requires_reconciliation"])
+
     def test_existing_order_quantity_mismatch_fails_closed(self):
         adapter = FakeAdapter(orders=[{
             "status": "NEW", "reduce_only": True, "type": "STOP_MARKET",
