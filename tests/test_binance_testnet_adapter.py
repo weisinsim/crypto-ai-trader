@@ -48,7 +48,12 @@ class FakeClient:
     def post(self, path, params):
         self.calls.append((path, params))
         if path == "/fapi/v1/order":
-            return FakeResponse({"orderId": 12345, "status": "NEW"})
+            return FakeResponse({
+                "symbol": params.get("symbol"),
+                "clientOrderId": params.get("newClientOrderId"),
+                "orderId": 12345,
+                "status": "NEW",
+            })
         return FakeResponse()
 
     def delete(self, path, params):
