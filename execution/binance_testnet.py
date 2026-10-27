@@ -741,6 +741,26 @@ class BinanceFuturesTestnet:
         else:
             geometry_ok = trigger > entry_price if is_long else trigger < entry_price
             order_type = "TAKE_PROFIT_MARKET"
+        # Do not stack multiple open orders of the same protective kind for one
+        # position. An earlier order may already cover the requested exit; adding
+        # another full-position conditional order creates ambiguous protection.
+        conflicting_orders = [
+            order for order in snapshot.get("open_orders", [])
+            if isinstance(order, dict)
+            and order.get("side") == ("SELL" if is_long else "BUY")
+            and order.get("type") == order_type
+            and order.get("status") in {"NEW", "PARTIALLY_FILLED"}
+        ]
+        if conflicting_orders:
+            return {
+                "accepted": False,
+                "reason": "protective_exit_existing_order_requires_reconciliation",
+                "requires_reconciliation": True,
+                "existing_client_order_ids": [
+                    order.get("client_order_id") for order in conflicting_orders
+                ],
+                "client_order_id": client_order_id,
+            }
         if not geometry_ok:
             return {"accepted": False, "reason": "invalid_protective_trigger_geometry"}
         if requested_quantity > abs(position_amount):
