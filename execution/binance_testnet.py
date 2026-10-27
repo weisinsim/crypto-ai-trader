@@ -440,6 +440,37 @@ class BinanceFuturesTestnet:
                     "requires_reconciliation": True,
                     "client_order_id": client_order_id,
                 }
+            # Binance -4116 means this client ID is already in use. The order
+            # may belong to a prior attempt that reached the exchange; don't
+            # classify it as a clean rejection or let callers blindly retry.
+            error_payload = {}
+            try:
+                parsed_payload = exc.response.json()
+                if isinstance(parsed_payload, dict):
+                    error_payload = parsed_payload
+            except (ValueError, TypeError):
+                pass
+            error_code = error_payload.get("code")
+            error_message = error_payload.get("msg", "")
+            duplicate_client_id = (
+                str(error_code) == "-4116"
+                or (
+                    isinstance(error_message, str)
+                    and "client order id" in error_message.lower()
+                    and (
+                        "not unique" in error_message.lower()
+                        or "already exists" in error_message.lower()
+                    )
+                )
+            )
+            if duplicate_client_id:
+                return {
+                    "accepted": False,
+                    "reason": "testnet_order_client_id_conflict_requires_reconciliation",
+                    "requires_reconciliation": True,
+                    "http_status": exc.response.status_code,
+                    "client_order_id": client_order_id,
+                }
             return {
                 "accepted": False,
                 "reason": "testnet_order_rejected",
