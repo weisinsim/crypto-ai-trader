@@ -453,6 +453,16 @@ class BinanceFuturesTestnet:
                 "requires_reconciliation": True,
                 "client_order_id": client_order_id,
             }
+        except Exception as exc:
+            # Unexpected custom-client failures can happen after the exchange
+            # receives the request. Treat the outcome as ambiguous; never retry.
+            return {
+                "accepted": False,
+                "reason": "testnet_order_outcome_unknown",
+                "requires_reconciliation": True,
+                "exception_type": type(exc).__name__,
+                "client_order_id": client_order_id,
+            }
         if (
             not isinstance(payload, dict)
             or not _valid_exchange_order_id(payload.get("orderId"))
