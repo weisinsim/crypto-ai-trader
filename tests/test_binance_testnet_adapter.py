@@ -710,6 +710,56 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(client.calls, [])
 
 
+    def test_query_order_rejects_status_quantity_contradictions(self):
+        base = {
+            "symbol": "BTCUSDT",
+            "clientOrderId": "paper-test-0001",
+            "orderId": 12345,
+            "origQty": "0.5",
+            "avgPrice": "100.1",
+        }
+        cases = [
+            (
+                {**base, "status": "NEW", "executedQty": "0.1"},
+                "new_testnet_order_has_execution_requires_reconciliation",
+            ),
+            (
+                {**base, "status": "PARTIALLY_FILLED", "executedQty": "0"},
+                "partially_filled_testnet_order_quantity_mismatch",
+            ),
+            (
+                {**base, "status": "PARTIALLY_FILLED", "executedQty": "0.5"},
+                "partially_filled_testnet_order_quantity_mismatch",
+            ),
+        ]
+
+        class StatusQuantityClient(FakeClient):
+            def __init__(self, payload):
+                super().__init__()
+                self.payload = payload
+
+            def get(self, path, params):
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    return FakeResponse(self.payload)
+                return super().get(path, params)
+
+        for payload, reason in cases:
+            with self.subTest(status=payload["status"], executed=payload["executedQty"]):
+                client = StatusQuantityClient(payload)
+                adapter = BinanceFuturesTestnet(
+                    api_key="test-key", api_secret="test-secret", client=client
+                )
+                result = adapter.query_testnet_order("BTCUSDT", "paper-test-0001")
+                self.assertFalse(result["found"])
+                self.assertTrue(result["requires_reconciliation"])
+                self.assertEqual(result["reason"], reason)
+                self.assertEqual(
+                    len([call for call in client.get_calls if call[0] == "/fapi/v1/order"]),
+                    1,
+                )
+                self.assertEqual(client.calls, [])
+
     def test_query_order_rejects_invalid_or_inconsistent_quantities(self):
         class InvalidOrderClient(FakeClient):
             def __init__(self, payload):
