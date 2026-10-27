@@ -401,10 +401,35 @@ class BinanceFuturesTestnet:
                         else "invalid_risk_metrics_response"
                     ),
                 }
+            # A MARKET order can fill away from the signal's intended entry.
+            # Use a fresh, identity-checked mark price for the exposure estimate,
+            # and conservatively use the larger of signal entry and mark price.
+            try:
+                mark_response = self._get(
+                    "/fapi/v1/premiumIndex", params={"symbol": intent.symbol}
+                )
+                mark_response.raise_for_status()
+                mark_payload = mark_response.json()
+                if (
+                    not isinstance(mark_payload, dict)
+                    or mark_payload.get("symbol") != intent.symbol
+                ):
+                    raise ValueError("mark_price_symbol_mismatch")
+                mark_price = Decimal(str(mark_payload.get("markPrice", "NaN")))
+                if not mark_price.is_finite() or mark_price <= 0:
+                    raise ValueError("invalid_mark_price")
+            except Exception as exc:
+                return {
+                    "accepted": False,
+                    "reason": "market_order_mark_price_requires_reconciliation",
+                    "requires_reconciliation": True,
+                    "exception_type": type(exc).__name__,
+                    "client_order_id": client_order_id,
+                }
             try:
                 current_account_notional = Decimal(str(risk_metrics["total_notional_usdt"]))
                 account_notional_limit = Decimal(str(config.max_account_notional_usdt))
-                proposed_notional = Decimal(str(intent.entry)) * quantity
+                proposed_notional = max(Decimal(str(intent.entry)), mark_price) * quantity
                 projected_account_notional = current_account_notional + proposed_notional
                 if (
                     not current_account_notional.is_finite()
