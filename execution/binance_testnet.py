@@ -17,6 +17,7 @@ from execution.safety import ExecutionConfig, OrderIntent, validate_order_intent
 
 TESTNET_BASE_URL = "https://testnet.binancefuture.com"
 MAX_PROTECTIVE_SNAPSHOT_DURATION_MS = 2000
+MAX_PROTECTIVE_SNAPSHOT_AGE_MS = 2000
 
 
 def _valid_exchange_order_id(value):
@@ -789,7 +790,7 @@ class BinanceFuturesTestnet:
         # A short snapshot collection window does not guarantee that the
         # snapshot is still fresh after exchange-filter and mark-price reads.
         snapshot_age_ms = int(time.time() * 1000) - completed_ms
-        if snapshot_age_ms < 0 or snapshot_age_ms > MAX_PROTECTIVE_SNAPSHOT_DURATION_MS:
+        if snapshot_age_ms < 0 or snapshot_age_ms > MAX_PROTECTIVE_SNAPSHOT_AGE_MS:
             return {
                 "accepted": False,
                 "reason": "position_snapshot_stale_or_invalid",
