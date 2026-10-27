@@ -935,8 +935,22 @@ class TestnetLifecycleTests(unittest.TestCase):
             adapter, "BTCUSDT", "99", "102", "btc-partial"
         )
         self.assertFalse(result["ok"])
-        self.assertEqual(result["reason"], "existing_stop_quantity_or_execution_mismatch")
-        self.assertTrue(result.get("requires_reconciliation", False) or result["reason"].startswith("existing_"))
+        self.assertEqual(result["reason"], "initial_partial_fill_status_requires_reconciliation")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(adapter.submissions, [])
+
+    def test_existing_partial_fill_status_with_zero_execution_fails_closed(self):
+        adapter = FakeAdapter(orders=[{
+            "status": "PARTIALLY_FILLED", "reduce_only": True, "type": "STOP_MARKET",
+            "stop_price": "99", "side": "SELL", "orig_quantity": "0.5",
+            "executed_quantity": "0", "client_order_id": "btc-partial-zero-sl",
+        }])
+        result = ensure_testnet_protective_exits(
+            adapter, "BTCUSDT", "99", "102", "btc-partial-zero"
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "initial_partial_fill_status_requires_reconciliation")
+        self.assertTrue(result["requires_reconciliation"])
         self.assertEqual(adapter.submissions, [])
 
     def test_post_submission_partially_executed_protective_order_fails_closed(self):
@@ -956,6 +970,27 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertEqual(result["reason"], "post_submission_protective_order_mismatch")
         self.assertTrue(result["requires_reconciliation"])
 
+
+    def test_post_submission_partial_fill_status_with_zero_execution_fails_closed(self):
+        class ContradictoryPostSubmitAdapter(FakeAdapter):
+            def testnet_position_snapshot(self, symbol):
+                snapshot = super().testnet_position_snapshot(symbol)
+                if self.snapshot_count >= 2 and snapshot["open_orders"]:
+                    snapshot["open_orders"][0]["status"] = "PARTIALLY_FILLED"
+                    snapshot["open_orders"][0]["executed_quantity"] = "0"
+                return snapshot
+
+        adapter = ContradictoryPostSubmitAdapter()
+        result = ensure_testnet_protective_exits(
+            adapter, "BTCUSDT", "99", "102", "btc-post-partial-zero"
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(
+            result["reason"],
+            "post_submission_partial_fill_status_requires_reconciliation",
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual([item[1] for item in adapter.submissions], ["stop_loss", "take_profit"])
 
     def test_partial_filled_status_with_zero_execution_still_fails_closed(self):
         class ContradictorySiblingAdapter:
