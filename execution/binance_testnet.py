@@ -16,6 +16,7 @@ import httpx
 from execution.safety import ExecutionConfig, OrderIntent, validate_order_intent
 
 TESTNET_BASE_URL = "https://testnet.binancefuture.com"
+MAX_PROTECTIVE_SNAPSHOT_DURATION_MS = 2000
 
 
 def _valid_exchange_order_id(value):
@@ -657,9 +658,31 @@ class BinanceFuturesTestnet:
         snapshot = self.testnet_position_snapshot(symbol)
         if not snapshot.get("ok"):
             return {"accepted": False, "reason": "position_snapshot_failed"}
+        # Position and open-order state are read in separate exchange calls, so
+        # never submit a protective order from a snapshot with a missing,
+        # inconsistent, or excessively wide observation window.
         try:
+            started_ms = snapshot["snapshot_started_at_ms"]
+            completed_ms = snapshot["snapshot_completed_at_ms"]
+            duration_ms = Decimal(str(snapshot["snapshot_duration_ms"]))
+            if (
+                isinstance(started_ms, bool) or not isinstance(started_ms, int)
+                or isinstance(completed_ms, bool) or not isinstance(completed_ms, int)
+                or started_ms < 0 or completed_ms < started_ms
+                or not duration_ms.is_finite() or duration_ms < 0
+                or duration_ms != Decimal(completed_ms - started_ms)
+                or duration_ms > MAX_PROTECTIVE_SNAPSHOT_DURATION_MS
+            ):
+                raise ValueError("invalid_or_stale_snapshot_window")
             position_amount = Decimal(snapshot["position_amount"])
             entry_price = Decimal(snapshot["entry_price"])
+        except (InvalidOperation, TypeError, ValueError, KeyError):
+            return {
+                "accepted": False,
+                "reason": "position_snapshot_stale_or_invalid",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
         except (InvalidOperation, TypeError, ValueError, KeyError):
             return {"accepted": False, "reason": "invalid_position_snapshot"}
         if (
