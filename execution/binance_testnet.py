@@ -112,9 +112,16 @@ class BinanceFuturesTestnet:
         symbol_notional = Decimal("0")
         try:
             for position in account["positions"]:
-                if not isinstance(position, dict):
+                if (
+                    not isinstance(position, dict)
+                    or not isinstance(position.get("symbol"), str)
+                    or not position.get("symbol")
+                    or "positionAmt" not in position
+                ):
+                    # Missing position fields must never be interpreted as a
+                    # flat position; that could understate account exposure.
                     return {"ok": False, "reason": "invalid_position_record", "requires_reconciliation": True}
-                amount = Decimal(str(position.get("positionAmt", "0")))
+                amount = Decimal(str(position["positionAmt"]))
                 if not amount.is_finite():
                     return {"ok": False, "reason": "invalid_position_amount", "requires_reconciliation": True}
                 if amount == 0:
