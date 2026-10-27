@@ -929,6 +929,17 @@ class BinanceFuturesTestnet:
                 "requires_reconciliation": True,
                 "client_order_id": client_order_id,
             }
+        except Exception as exc:
+            # Custom clients/adapters can fail outside the expected httpx
+            # hierarchy after the request has been sent. The exchange may have
+            # accepted the order, so classify this as ambiguous and never retry.
+            return {
+                "accepted": False,
+                "reason": "protective_exit_outcome_unknown",
+                "requires_reconciliation": True,
+                "exception_type": type(exc).__name__,
+                "client_order_id": client_order_id,
+            }
         # A successful HTTP response is not sufficient: verify that the
         # exchange echoed the exact protective order we intended to place.
         # Missing/mismatched fields may mean the response cannot safely identify
