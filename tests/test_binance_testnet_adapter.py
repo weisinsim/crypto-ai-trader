@@ -36,7 +36,7 @@ class FakeClient:
     def get(self, path, params):
         self.get_calls.append((path, params))
         if path == "/fapi/v1/openOrders":
-            return FakeResponse([{"orderId": 99, "symbol": "BTCUSDT", "clientOrderId": "stop-0001", "side": "SELL", "type": "STOP_MARKET", "status": "NEW", "reduceOnly": True, "stopPrice": "99.8", "origQty": "0.5", "executedQty": "0"}])
+            return FakeResponse([])
         if path == "/fapi/v1/premiumIndex":
             return FakeResponse({"symbol": params.get("symbol"), "markPrice": "100"})
         if path == "/fapi/v1/order":
@@ -1418,6 +1418,14 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                     return FakeResponse({"canTrade": True, "positions": [
                         {"symbol": "BTCUSDT", "positionAmt": "0.5", "entryPrice": "100"},
                     ]})
+                if path == "/fapi/v1/openOrders":
+                    self.get_calls.append((path, params))
+                    return FakeResponse([{
+                        "orderId": 99, "symbol": "BTCUSDT", "clientOrderId": "stop-0001",
+                        "side": "SELL", "type": "STOP_MARKET", "status": "NEW",
+                        "reduceOnly": True, "stopPrice": "99.8", "origQty": "0.5",
+                        "executedQty": "0",
+                    }])
                 return super().get(path, params)
 
         client = ExistingClientOrderClient()
