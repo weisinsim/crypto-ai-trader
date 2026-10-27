@@ -520,6 +520,11 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
     def test_protective_exit_rejects_trigger_already_crossed_by_mark_price(self):
         class CrossedMarkClient(FakeClient):
             def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"canTrade": True, "positions": [
+                        {"symbol": "BTCUSDT", "positionAmt": "0.5", "entryPrice": "100"},
+                    ]})
                 if path == "/fapi/v1/premiumIndex":
                     self.get_calls.append((path, params))
                     return FakeResponse({"symbol": params.get("symbol"), "markPrice": "99.5"})
@@ -540,6 +545,11 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
     def test_protective_exit_fails_closed_when_mark_price_is_invalid(self):
         class InvalidMarkClient(FakeClient):
             def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"canTrade": True, "positions": [
+                        {"symbol": "BTCUSDT", "positionAmt": "0.5", "entryPrice": "100"},
+                    ]})
                 if path == "/fapi/v1/premiumIndex":
                     self.get_calls.append((path, params))
                     return FakeResponse({"symbol": params.get("symbol"), "markPrice": "NaN"})
