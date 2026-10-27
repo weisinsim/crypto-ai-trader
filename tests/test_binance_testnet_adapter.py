@@ -1404,6 +1404,46 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["reason"], "invalid_testnet_open_order_identity")
 
+    def test_position_snapshot_rejects_new_order_with_nonzero_execution(self):
+        client = FakeClient()
+        original_get = client.get
+
+        def malformed_get(path, params):
+            if path == "/fapi/v1/openOrders":
+                return FakeResponse([{
+                    "orderId": 124, "symbol": "BTCUSDT", "clientOrderId": "new-with-fill",
+                    "side": "SELL", "type": "STOP_MARKET", "status": "NEW",
+                    "reduceOnly": True, "stopPrice": "99.8", "origQty": "0.5",
+                    "executedQty": "0.1",
+                }])
+            return original_get(path, params)
+
+        client.get = malformed_get
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.testnet_position_snapshot("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "invalid_testnet_open_order_numeric_fields")
+
+    def test_position_snapshot_rejects_partially_filled_order_with_zero_execution(self):
+        client = FakeClient()
+        original_get = client.get
+
+        def malformed_get(path, params):
+            if path == "/fapi/v1/openOrders":
+                return FakeResponse([{
+                    "orderId": 125, "symbol": "BTCUSDT", "clientOrderId": "partial-without-fill",
+                    "side": "SELL", "type": "STOP_MARKET", "status": "PARTIALLY_FILLED",
+                    "reduceOnly": True, "stopPrice": "99.8", "origQty": "0.5",
+                    "executedQty": "0",
+                }])
+            return original_get(path, params)
+
+        client.get = malformed_get
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.testnet_position_snapshot("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "invalid_testnet_open_order_numeric_fields")
+
     def test_position_snapshot_rejects_non_open_status_in_open_orders(self):
         client = FakeClient()
         original_get = client.get
