@@ -399,15 +399,47 @@ class BinanceFuturesTestnet:
             return {"found": False, "reason": "invalid_client_order_id"}
         if not client_order_id.isascii() or not client_order_id.replace("-", "").replace("_", "").isalnum():
             return {"found": False, "reason": "invalid_client_order_id"}
-        response = self._get(
-            "/fapi/v1/order",
-            params=self._signed_params({
+        try:
+            response = self._get(
+                "/fapi/v1/order",
+                params=self._signed_params({
+                    "symbol": symbol,
+                    "origClientOrderId": client_order_id,
+                }),
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.TimeoutException, httpx.TransportError):
+            # A failed read does not establish whether an order exists or what
+            # state it is in. The caller must reconcile from a fresh exchange
+            # snapshot; never interpret a transport failure as absence.
+            return {
+                "found": False,
+                "reason": "testnet_order_query_outcome_unknown",
+                "requires_reconciliation": True,
                 "symbol": symbol,
-                "origClientOrderId": client_order_id,
-            }),
-        )
-        response.raise_for_status()
-        payload = response.json()
+                "client_order_id": client_order_id,
+            }
+        except httpx.HTTPStatusError as exc:
+            # Includes 404 (-2013) and server errors. A not-found response can
+            # race with a just-accepted order, so it is not proof of absence.
+            return {
+                "found": False,
+                "reason": "testnet_order_query_http_outcome_requires_reconciliation",
+                "requires_reconciliation": True,
+                "http_status": exc.response.status_code,
+                "symbol": symbol,
+                "client_order_id": client_order_id,
+            }
+        except (ValueError, TypeError):
+            # Unreadable JSON / malformed response is ambiguous, not "not found".
+            return {
+                "found": False,
+                "reason": "testnet_order_query_response_unreadable_requires_reconciliation",
+                "requires_reconciliation": True,
+                "symbol": symbol,
+                "client_order_id": client_order_id,
+            }
         if (
             not isinstance(payload, dict)
             or not _valid_exchange_order_id(payload.get("orderId"))
