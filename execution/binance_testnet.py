@@ -513,6 +513,10 @@ class BinanceFuturesTestnet:
         """Read authoritative TESTNET position and open orders; no mutations."""
         if not isinstance(symbol, str) or not symbol.isascii() or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
             return {"ok": False, "reason": "invalid_symbol"}
+        # Bound the observation window across both account and open-order reads.
+        # These timestamps do not make the exchange reads atomic; callers must
+        # still reconcile and reject snapshots whose window is stale or too wide.
+        snapshot_started_at_ms = int(time.time() * 1000)
         account_response = self._get(
             "/fapi/v2/account",
             params=self._signed_params({}),
@@ -594,10 +598,14 @@ class BinanceFuturesTestnet:
                     raise InvalidOperation
             except (InvalidOperation, TypeError, ValueError):
                 return {"ok": False, "reason": "invalid_testnet_open_order_numeric_fields"}
+        snapshot_completed_at_ms = int(time.time() * 1000)
         return {
             "ok": True,
             "mode": "testnet_read_only_snapshot",
             "symbol": symbol,
+            "snapshot_started_at_ms": snapshot_started_at_ms,
+            "snapshot_completed_at_ms": snapshot_completed_at_ms,
+            "snapshot_duration_ms": float(snapshot_completed_at_ms - snapshot_started_at_ms),
             "position_amount": str(amount),
             "entry_price": str(entry_price),
             "open_orders": [
