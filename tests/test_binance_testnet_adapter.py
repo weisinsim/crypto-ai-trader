@@ -995,6 +995,27 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(client.calls, [])
 
 
+    def test_query_order_unexpected_client_exception_requires_reconciliation(self):
+        class BrokenQueryClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/order":
+                    raise RuntimeError("unexpected adapter failure")
+                return super().get(path, params)
+
+        client = BrokenQueryClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.query_testnet_order("BTCUSDT", "paper-test-0001")
+        self.assertFalse(result["found"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(
+            result["reason"],
+            "testnet_order_query_unexpected_error_requires_reconciliation",
+        )
+        self.assertEqual(result["exception_type"], "RuntimeError")
+        self.assertEqual(client.calls, [])
+
     def test_query_order_rejects_status_quantity_contradictions(self):
         base = {
             "symbol": "BTCUSDT",
