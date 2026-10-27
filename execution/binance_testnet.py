@@ -507,6 +507,44 @@ class BinanceFuturesTestnet:
                 "requires_reconciliation": True,
                 "client_order_id": client_order_id,
             }
+
+        # A matching order ID/status is not enough: validate the exchange's
+        # quantity fields before callers decide whether protection is needed.
+        # Missing or contradictory fill data is ambiguous and must be reconciled.
+        try:
+            original_quantity = Decimal(str(payload.get("origQty", "NaN")))
+            executed_quantity = Decimal(str(payload.get("executedQty", "NaN")))
+            requested_quantity = Decimal(quantity_text)
+            if (
+                not original_quantity.is_finite()
+                or not executed_quantity.is_finite()
+                or original_quantity <= 0
+                or original_quantity != requested_quantity
+                or executed_quantity < 0
+                or executed_quantity > original_quantity
+            ):
+                raise InvalidOperation
+            status = payload["status"]
+            if (
+                (status == "NEW" and executed_quantity != 0)
+                or (
+                    status == "PARTIALLY_FILLED"
+                    and not (Decimal("0") < executed_quantity < original_quantity)
+                )
+                or (
+                    status == "FILLED"
+                    and executed_quantity != original_quantity
+                )
+            ):
+                raise InvalidOperation
+        except (InvalidOperation, TypeError, ValueError, KeyError):
+            return {
+                "accepted": False,
+                "reason": "testnet_order_fill_state_requires_reconciliation",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
+
         return {
             "accepted": True,
             "mode": "testnet_order_submitted",
