@@ -860,6 +860,34 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(len(client.calls), 1)
         self.assertEqual(client.calls[0][0], "/fapi/v1/order")
 
+    def test_protective_exit_unexpected_post_exception_is_ambiguous_and_never_retried(self):
+        class UnexpectedPostClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"canTrade": True, "positions": [
+                        {"symbol": "BTCUSDT", "positionAmt": "0.5", "entryPrice": "100"},
+                    ]})
+                return super().get(path, params)
+
+            def post(self, path, params):
+                self.calls.append((path, params))
+                raise RuntimeError("unexpected custom adapter failure")
+
+        client = UnexpectedPostClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "btc-stop-runtime-error"
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "protective_exit_outcome_unknown")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["exception_type"], "RuntimeError")
+        self.assertEqual(len(client.calls), 1)
+        self.assertEqual(client.calls[0][0], "/fapi/v1/order")
+
     def test_malformed_post_response_requires_reconciliation_without_retry(self):
         class MalformedResponse(FakeResponse):
             def json(self):
