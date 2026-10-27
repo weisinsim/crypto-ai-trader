@@ -442,6 +442,16 @@ class BinanceFuturesTestnet:
                 "symbol": symbol,
                 "client_order_id": client_order_id,
             }
+        except Exception as exc:
+            # A custom client/adapter failure also cannot prove order absence.
+            return {
+                "found": False,
+                "reason": "testnet_order_query_unexpected_error_requires_reconciliation",
+                "requires_reconciliation": True,
+                "exception_type": type(exc).__name__,
+                "symbol": symbol,
+                "client_order_id": client_order_id,
+            }
         if (
             not isinstance(payload, dict)
             or not _valid_exchange_order_id(payload.get("orderId"))
