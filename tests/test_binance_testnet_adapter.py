@@ -311,9 +311,57 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         adapter = BinanceFuturesTestnet(
             api_key="test-key", api_secret="test-secret", client=client
         )
-        with self.assertRaises(httpx.HTTPStatusError):
-            adapter.query_testnet_order("BTCUSDT", "paper-test-404")
+        result = adapter.query_testnet_order("BTCUSDT", "paper-test-404")
+        self.assertFalse(result["found"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(
+            result["reason"],
+            "testnet_order_query_http_outcome_requires_reconciliation",
+        )
+        self.assertEqual(result["http_status"], 404)
         self.assertEqual(len([call for call in client.get_calls if call[0] == "/fapi/v1/order"]), 1)
+        self.assertEqual(client.calls, [])
+
+    def test_query_order_transport_failure_requires_reconciliation(self):
+        class BrokenReadClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    request = httpx.Request("GET", "https://testnet.binancefuture.com/fapi/v1/order")
+                    raise httpx.ReadTimeout("simulated read timeout", request=request)
+                return super().get(path, params)
+
+        client = BrokenReadClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.query_testnet_order("BTCUSDT", "paper-test-timeout")
+        self.assertFalse(result["found"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["reason"], "testnet_order_query_outcome_unknown")
+        self.assertEqual(len(client.get_calls), 1)
+        self.assertEqual(client.calls, [])
+
+    def test_query_order_unreadable_json_requires_reconciliation(self):
+        class UnreadableResponse(FakeResponse):
+            def json(self):
+                raise ValueError("invalid JSON")
+
+        class BrokenJsonClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    return UnreadableResponse({})
+                return super().get(path, params)
+
+        client = BrokenJsonClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.query_testnet_order("BTCUSDT", "paper-test-invalid-json")
+        self.assertFalse(result["found"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(
+            result["reason"],
+            "testnet_order_query_response_unreadable_requires_reconciliation",
+        )
+        self.assertEqual(len(client.get_calls), 1)
         self.assertEqual(client.calls, [])
 
     def test_query_order_rejects_mismatched_exchange_identity(self):
