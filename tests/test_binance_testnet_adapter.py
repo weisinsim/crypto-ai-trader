@@ -542,6 +542,38 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(result["mark_price"], "99.5")
         self.assertEqual(client.calls, [])
 
+    def test_protective_exit_rejects_crossed_mark_for_all_position_directions(self):
+        cases = (
+            ("short-stop", "stop_loss", "-0.5", "100.2", "100.5"),
+            ("long-target", "take_profit", "0.5", "101", "101.2"),
+            ("short-target", "take_profit", "-0.5", "99", "98.5"),
+        )
+        for label, exit_kind, position_amount, trigger, mark_price in cases:
+            with self.subTest(label=label):
+                class PositionMarkClient(FakeClient):
+                    def get(self, path, params):
+                        if path == "/fapi/v2/account":
+                            self.get_calls.append((path, params))
+                            return FakeResponse({"canTrade": True, "positions": [
+                                {"symbol": "BTCUSDT", "positionAmt": position_amount, "entryPrice": "100"},
+                            ]})
+                        if path == "/fapi/v1/premiumIndex":
+                            self.get_calls.append((path, params))
+                            return FakeResponse({"symbol": params.get("symbol"), "markPrice": mark_price})
+                        return super().get(path, params)
+
+                client = PositionMarkClient()
+                adapter = BinanceFuturesTestnet(
+                    api_key="test-key", api_secret="test-secret", client=client
+                )
+                result = adapter.submit_testnet_protective_exit(
+                    "BTCUSDT", exit_kind, "0.5", trigger, f"cross-{label}"
+                )
+                self.assertFalse(result["accepted"])
+                self.assertEqual(result["reason"], "protective_trigger_already_crossed")
+                self.assertEqual(result["mark_price"], mark_price)
+                self.assertEqual(client.calls, [])
+
     def test_protective_exit_fails_closed_when_mark_price_is_invalid(self):
         class InvalidMarkClient(FakeClient):
             def get(self, path, params):
