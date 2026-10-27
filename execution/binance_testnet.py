@@ -684,6 +684,23 @@ class BinanceFuturesTestnet:
                 "requires_reconciliation": True,
                 "client_order_id": client_order_id,
             }
+        # A client order ID is an idempotency/recovery key. If it is already
+        # present in the authoritative open-order snapshot, do not submit again:
+        # the existing order may be the result of a previous ambiguous attempt.
+        # This check is intentionally read-only and does not infer that other
+        # order IDs are safe substitutes for this request.
+        existing_client_order_ids = {
+            order.get("client_order_id")
+            for order in snapshot.get("open_orders", [])
+            if isinstance(order, dict)
+        }
+        if client_order_id in existing_client_order_ids:
+            return {
+                "accepted": False,
+                "reason": "protective_exit_client_id_already_open_requires_reconciliation",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
         if (
             not position_amount.is_finite()
             or not entry_price.is_finite()
