@@ -141,6 +141,11 @@ class BinanceFuturesTestnet:
                 notional = abs(Decimal(str(raw_notional)))
                 if not notional.is_finite():
                     return {"ok": False, "reason": "position_notional_invalid", "requires_reconciliation": True}
+                # A non-zero position with zero reported notional is not a
+                # trustworthy exposure snapshot. Treating it as zero could let
+                # a new entry pass the gross account cap incorrectly.
+                if notional <= 0:
+                    return {"ok": False, "reason": "position_notional_non_positive", "requires_reconciliation": True}
                 total_notional += notional
                 if position.get("symbol") == symbol:
                     symbol_notional += notional
