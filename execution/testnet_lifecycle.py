@@ -73,6 +73,15 @@ def ensure_testnet_protective_exits(
     # reduce-only protective exit as an ambiguity; never add protection on top of
     # an unresolved entry or unexpected order.
     for order in open_orders:
+        if order.get("status") == "PARTIALLY_FILLED":
+            # A partially-filled protective exit means the position/order
+            # relationship may already have changed. Even a contradictory
+            # zero executedQty must not be treated as a reusable resting order.
+            return {
+                "ok": False,
+                "reason": "initial_partial_fill_status_requires_reconciliation",
+                "requires_reconciliation": True,
+            }
         if (
             not isinstance(order.get("status"), str)
             or order.get("status") not in {"NEW", "PARTIALLY_FILLED"}
@@ -214,6 +223,13 @@ def ensure_testnet_protective_exits(
     # An unexpected entry/order appearing during setup makes the exchange state
     # ambiguous; do not report successful protection while ignoring it.
     for order in final_orders:
+        if order.get("status") == "PARTIALLY_FILLED":
+            return {
+                "ok": False,
+                "reason": "post_submission_partial_fill_status_requires_reconciliation",
+                "actions": actions,
+                "requires_reconciliation": True,
+            }
         if (
             not isinstance(order.get("status"), str)
             or order.get("status") not in {"NEW", "PARTIALLY_FILLED"}
