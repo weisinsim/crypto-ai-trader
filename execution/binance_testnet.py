@@ -606,6 +606,11 @@ class BinanceFuturesTestnet:
                     or orig_quantity <= 0
                     or executed_quantity < 0
                     or executed_quantity > orig_quantity
+                    or (order["status"] == "NEW" and executed_quantity != 0)
+                    or (
+                        order["status"] == "PARTIALLY_FILLED"
+                        and not (0 < executed_quantity < orig_quantity)
+                    )
                 ):
                     raise InvalidOperation
             except (InvalidOperation, TypeError, ValueError):
