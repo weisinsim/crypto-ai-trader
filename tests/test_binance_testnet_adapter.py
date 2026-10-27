@@ -1490,6 +1490,42 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(client.calls, [])
         self.assertFalse(any(path == "/fapi/v1/premiumIndex" for path, _ in client.get_calls))
 
+    def test_protective_exit_refuses_partially_filled_existing_stop_loss(self):
+        class PartiallyFilledStopClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"canTrade": True, "positions": [
+                        {"symbol": "BTCUSDT", "positionAmt": "0.5", "entryPrice": "100"},
+                    ]})
+                if path == "/fapi/v1/openOrders":
+                    self.get_calls.append((path, params))
+                    return FakeResponse([{
+                        "orderId": 100, "symbol": "BTCUSDT", "clientOrderId": "partially-filled-stop",
+                        "side": "SELL", "type": "STOP_MARKET", "status": "PARTIALLY_FILLED",
+                        "reduceOnly": True, "stopPrice": "99.7", "origQty": "0.5",
+                        "executedQty": "0.1",
+                    }])
+                return super().get(path, params)
+
+        client = PartiallyFilledStopClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "new-stop-after-partial"
+        )
+        self.assertFalse(result["accepted"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(
+            result["reason"], "protective_exit_existing_order_requires_reconciliation"
+        )
+        self.assertEqual(
+            result["existing_client_order_ids"], ["partially-filled-stop"]
+        )
+        self.assertEqual(client.calls, [])
+        self.assertFalse(any(path == "/fapi/v1/premiumIndex" for path, _ in client.get_calls))
+
     def test_protective_exit_duplicate_client_id_error_requires_reconciliation(self):
         class DuplicateClientIdClient(FakeClient):
             def get(self, path, params):
