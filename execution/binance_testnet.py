@@ -7,6 +7,7 @@ environment variables and must never be committed to the repository.
 import hashlib
 from decimal import Decimal, InvalidOperation, ROUND_DOWN
 import hmac
+import math
 import os
 import time
 from urllib.parse import urlencode
@@ -86,46 +87,59 @@ class BinanceFuturesTestnet:
         return self._client.delete(path, params=params)
 
     def account_risk_metrics(self, symbol):
-        """Return gross account exposure metrics from signed TESTNET account state.
+        """Return gross exposure from signed TESTNET account state.
 
-        Fails closed if exchange notional is missing for an open position.
+        Network/HTTP/JSON failures and unusable risk values fail closed. The
+        caller must not treat an incomplete snapshot as zero exposure.
         """
         if not isinstance(symbol, str) or not symbol.isascii() or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
             return {"ok": False, "reason": "invalid_symbol"}
-        response = self._get("/fapi/v2/account", params=self._signed_params({}))
-        response.raise_for_status()
-        account = response.json()
+        try:
+            response = self._get("/fapi/v2/account", params=self._signed_params({}))
+            response.raise_for_status()
+            account = response.json()
+        except Exception as exc:
+            return {
+                "ok": False,
+                "reason": "account_risk_metrics_request_failed",
+                "detail": {"exception_type": type(exc).__name__},
+                "requires_reconciliation": True,
+            }
         if not isinstance(account, dict) or not isinstance(account.get("positions"), list):
-            return {"ok": False, "reason": "invalid_testnet_account_response"}
+            return {"ok": False, "reason": "invalid_testnet_account_response", "requires_reconciliation": True}
         open_positions = 0
         total_notional = Decimal("0")
         symbol_notional = Decimal("0")
         try:
             for position in account["positions"]:
                 if not isinstance(position, dict):
-                    return {"ok": False, "reason": "invalid_position_record"}
+                    return {"ok": False, "reason": "invalid_position_record", "requires_reconciliation": True}
                 amount = Decimal(str(position.get("positionAmt", "0")))
                 if not amount.is_finite():
-                    return {"ok": False, "reason": "invalid_position_amount"}
+                    return {"ok": False, "reason": "invalid_position_amount", "requires_reconciliation": True}
                 if amount == 0:
                     continue
                 open_positions += 1
                 raw_notional = position.get("notional")
                 if raw_notional in (None, ""):
-                    return {"ok": False, "reason": "position_notional_missing"}
+                    return {"ok": False, "reason": "position_notional_missing", "requires_reconciliation": True}
                 notional = abs(Decimal(str(raw_notional)))
                 if not notional.is_finite():
-                    return {"ok": False, "reason": "position_notional_invalid"}
+                    return {"ok": False, "reason": "position_notional_invalid", "requires_reconciliation": True}
                 total_notional += notional
                 if position.get("symbol") == symbol:
                     symbol_notional += notional
-        except (InvalidOperation, TypeError, ValueError):
-            return {"ok": False, "reason": "invalid_position_risk_values"}
+            symbol_notional_float = float(symbol_notional)
+            total_notional_float = float(total_notional)
+            if not math.isfinite(symbol_notional_float) or not math.isfinite(total_notional_float):
+                return {"ok": False, "reason": "risk_metrics_out_of_float_range", "requires_reconciliation": True}
+        except (InvalidOperation, TypeError, ValueError, OverflowError):
+            return {"ok": False, "reason": "invalid_position_risk_values", "requires_reconciliation": True}
         return {
             "ok": True, "mode": "testnet_account_risk_metrics",
             "open_positions": open_positions,
-            "symbol_notional_usdt": float(symbol_notional),
-            "total_notional_usdt": float(total_notional),
+            "symbol_notional_usdt": symbol_notional_float,
+            "total_notional_usdt": total_notional_float,
         }
 
     def symbol_rules(self, symbol):
