@@ -8,6 +8,7 @@ from validation.candle_closure import filter_closed_candles, normalize_timestamp
 from validation.dashboard_health import build_health_payload
 from validation.signal_confirmation import invalidate_stale_confirmation
 from validation.xrp_model import evaluate_xrp_signal
+from research.tactical_scorer import score_tactical_setup
 from pathlib import Path
 
 import httpx
@@ -620,44 +621,19 @@ async def analyze_symbol(s):
             # ETH has not passed independent validation; deliberately suppress false positives.
             score=0; score_label="NO-PRODUCTION"
         else:
-            # Asset-specific trend regime with a deliberately looser tactical entry.
-            bull=e20_4>e50_4 and p>e20_4
-            bear=e20_4<e50_4 and p<e20_4
-            if s=="SOLUSDT":
-                rl=(40,52); rs=(48,60); sl_mult=1.0; tp_mult=2.0; max_hold="12H"
-            elif s=="AVAXUSDT":
-                rl=(40,52); rs=(48,60); sl_mult=1.2; tp_mult=1.2; max_hold="12H"
-            else: # BTC research tactical
-                rl=(45,55); rs=(45,55); sl_mult=1.2; tp_mult=1.5; max_hold="1–3H"
-            long_ok=bull and r is not None and rl[0]<=r<=rl[1] and p>e20 and p>c1[-2]
-            short_ok=bear and r is not None and rs[0]<=r<=rs[1] and p<e20 and p<c1[-2]
-            # Tactical mode allows earlier entry; ADX is advisory, not a hard blocker.
-            if long_ok:
-                signal="LONG"; direction=1
-            elif short_ok:
-                signal="SHORT"; direction=-1
-            elif bull and r is not None and r<=rl[1]:
-                signal="WATCH-LONG"; direction=1
-            elif bear and r is not None and r>=rs[0]:
-                signal="WATCH-SHORT"; direction=-1
-            if direction:
-                entry=p; sl=p-direction*sl_mult*(a or p*.005); tp1=p+direction*tp_mult*(a or p*.005); tp2=p+direction*(tp_mult*1.5)*(a or p*.005)
-                dist_support=max(0,p-support) if support else None
-                dist_res=max(0,resistance-p) if resistance else None
-                entry_location="OPTIMAL" if ((direction==1 and dist_support is not None and a and dist_support/a<=2.5) or (direction==-1 and dist_res is not None and a and dist_res/a<=2.5)) else "TACTICAL"
-            trend_pts=30 if (direction==1 and bull) or (direction==-1 and bear) else 0
-            rsi_pts=20 if ((direction==1 and rl[0]<=r<=rl[1]) or (direction==-1 and rs[0]<=r<=rs[1])) else 0
-            adx_pts=15 if adx_v and adx_v>=20 else 8 if adx_v and adx_v>=15 else 0
-            vol_pts=15 if vr and vr>=1.1 else 8 if vr and vr>=0.8 else 0
-            loc_pts=10 if entry_location=="OPTIMAL" else 5 if direction else 0
-            score=min(100,int(trend_pts+rsi_pts+adx_pts+vol_pts+loc_pts))
-            score_label="A" if score>=75 else "B" if score>=65 else "C" if score>=50 else "NO-TRADE"
-            score_breakdown={"trend":trend_pts,"rsi":rsi_pts,"adx":adx_pts,"volume":vol_pts,"entry_location":loc_pts}
-            # Research models may display WATCH/SETUP, but only candidates can be execution-ready.
-            if cfg["status"]=="RESEARCH" and signal in ("LONG","SHORT") and score<75:
-                signal="WATCH-LONG" if direction==1 else "WATCH-SHORT"
-            if cfg["status"]=="NO-PRODUCTION":
-                signal="NO-TRADE"; direction=0; entry=sl=tp1=tp2=None
+            # Pure scorer is shared with deterministic research replay.
+            tactical = score_tactical_setup(
+                symbol=s, model_status=cfg["status"], price=p,
+                ema20_1h=e20, ema20_4h=e20_4, ema50_4h=e50_4,
+                rsi_1h=r, atr_1h=a, adx_1h=adx_v, volume_ratio=vr,
+                previous_close=c1[-2], support=support, resistance=resistance,
+            )
+            signal=tactical["signal"]; direction=tactical["direction"]
+            entry=tactical["entry"]; sl=tactical["sl"]
+            tp1=tactical["tp1"]; tp2=tactical["tp2"]
+            entry_location=tactical["entry_location"]
+            score=tactical["score"]; score_label=tactical["score_label"]
+            score_breakdown=tactical["score_breakdown"]
         if signal in ("LONG","SHORT") and score >= 75:
             opportunity_tier = "A"
         elif signal in ("LONG","SHORT","WATCH-LONG","WATCH-SHORT") and score >= 65:
