@@ -43,8 +43,8 @@ class FakeClient:
             return FakeResponse({"symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"), "orderId": 12345, "status": "PARTIALLY_FILLED", "origQty": "0.5", "executedQty": "0.2", "avgPrice": "100.1"})
         if path == "/fapi/v2/account":
             return FakeResponse({"canTrade": True, "positions": [
-                {"symbol": "BTCUSDT", "positionAmt": "0", "entryPrice": "0"},
-                {"symbol": "ETHUSDT", "positionAmt": "0.25", "entryPrice": "100"},
+                {"symbol": "BTCUSDT", "positionAmt": "0", "entryPrice": "0", "notional": "0"},
+                {"symbol": "ETHUSDT", "positionAmt": "0.25", "entryPrice": "100", "notional": "25"},
             ]})
         return FakeResponse(self.exchange_payload)
 
