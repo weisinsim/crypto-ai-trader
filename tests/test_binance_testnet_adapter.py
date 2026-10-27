@@ -887,6 +887,40 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(client.calls, [])
 
 
+    def test_market_order_duplicate_client_id_requires_reconciliation(self):
+        class DuplicateClientIdClient(FakeClient):
+            def post(self, path, params):
+                self.calls.append((path, params))
+                response = httpx.Response(
+                    400,
+                    json={"code": -4116, "msg": "Client order ID is not unique."},
+                    request=httpx.Request(
+                        "POST", "https://testnet.binancefuture.com/fapi/v1/order"
+                    ),
+                )
+                raise httpx.HTTPStatusError(
+                    "duplicate client order ID",
+                    request=response.request,
+                    response=response,
+                )
+
+        client = DuplicateClientIdClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "btc-recovery-entry-01", ExecutionConfig(mode="testnet")
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(
+            result["reason"],
+            "testnet_order_client_id_conflict_requires_reconciliation",
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["client_order_id"], "btc-recovery-entry-01")
+        self.assertEqual(len(client.calls), 1)
+        self.assertEqual(client.calls[0][0], "/fapi/v1/order")
+
     def test_market_order_timeout_is_ambiguous_and_never_retried(self):
         class TimeoutClient(FakeClient):
             def post(self, path, params):
