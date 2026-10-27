@@ -767,7 +767,9 @@ class BinanceFuturesTestnet:
             mark_price = Decimal(str(mark_payload.get("markPrice", "NaN")))
             if not mark_price.is_finite() or mark_price <= 0:
                 raise ValueError("invalid_mark_price")
-        except (httpx.HTTPError, ValueError, TypeError, InvalidOperation, KeyError):
+        except Exception:
+            # Unexpected client/response exceptions are also fail-closed: no
+            # protective order is submitted without a validated mark price.
             return {
                 "accepted": False,
                 "reason": "mark_price_preflight_failed",
