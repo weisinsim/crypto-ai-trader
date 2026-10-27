@@ -1871,6 +1871,55 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(client.calls, [])
 
 
+    def test_account_risk_metrics_duplicate_position_symbol_fails_closed(self):
+        class DuplicatePositionClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "canTrade": True,
+                        "positions": [
+                            {"symbol": "BTCUSDT", "positionAmt": "0.1", "notional": "10"},
+                            {"symbol": "BTCUSDT", "positionAmt": "0.2", "notional": "20"},
+                        ],
+                    })
+                return super().get(path, params)
+
+        client = DuplicatePositionClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.account_risk_metrics("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "duplicate_position_symbol")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(client.calls, [])
+
+    def test_account_risk_metrics_flat_position_with_nonzero_notional_fails_closed(self):
+        class InconsistentFlatPositionClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "canTrade": True,
+                        "positions": [{
+                            "symbol": "BTCUSDT",
+                            "positionAmt": "0",
+                            "notional": "10",
+                        }],
+                    })
+                return super().get(path, params)
+
+        client = InconsistentFlatPositionClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.account_risk_metrics("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "flat_position_has_nonzero_notional")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(client.calls, [])
+
     def test_account_risk_metrics_zero_notional_for_open_position_fails_closed(self):
         class ZeroNotionalClient(FakeClient):
             def get(self, path, params):
