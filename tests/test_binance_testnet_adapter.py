@@ -12,7 +12,7 @@ from execution.safety import ExecutionConfig, OrderIntent
 
 class FakeResponse:
     def __init__(self, payload=None):
-        self.payload = payload or {}
+        self.payload = payload if payload is not None else {}
 
     def raise_for_status(self):
         return None
