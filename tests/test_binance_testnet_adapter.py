@@ -402,6 +402,12 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         result = adapter.testnet_position_snapshot("BTCUSDT")
         self.assertTrue(result["ok"])
         self.assertEqual(result["mode"], "testnet_read_only_snapshot")
+        self.assertGreater(result["snapshot_started_at_ms"], 0)
+        self.assertGreaterEqual(result["snapshot_completed_at_ms"], result["snapshot_started_at_ms"])
+        self.assertEqual(
+            result["snapshot_duration_ms"],
+            float(result["snapshot_completed_at_ms"] - result["snapshot_started_at_ms"]),
+        )
         self.assertEqual(result["position_amount"], "0")
         self.assertEqual(result["open_orders"][0]["type"], "STOP_MARKET")
         self.assertTrue(result["open_orders"][0]["reduce_only"])
