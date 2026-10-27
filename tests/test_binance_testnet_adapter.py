@@ -550,6 +550,42 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(invalid["reason"], "position_snapshot_failed")
         self.assertEqual(invalid_client.calls, [])
 
+    def test_protective_exit_rejects_stale_or_inconsistent_snapshot_window(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        base_snapshot = {
+            "ok": True,
+            "snapshot_started_at_ms": 1000,
+            "snapshot_completed_at_ms": 4000,
+            "snapshot_duration_ms": 3000,
+            "position_amount": "0.5",
+            "entry_price": "100",
+            "open_orders": [],
+        }
+        adapter.testnet_position_snapshot = lambda symbol: dict(base_snapshot)
+        stale = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "stop-btc-stale"
+        )
+        self.assertFalse(stale["accepted"])
+        self.assertEqual(stale["reason"], "position_snapshot_stale_or_invalid")
+        self.assertTrue(stale["requires_reconciliation"])
+
+        inconsistent_snapshot = dict(
+            base_snapshot,
+            snapshot_completed_at_ms=1500,
+            snapshot_duration_ms=400,
+        )
+        adapter.testnet_position_snapshot = lambda symbol: dict(inconsistent_snapshot)
+        inconsistent = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "stop-btc-inconsistent"
+        )
+        self.assertFalse(inconsistent["accepted"])
+        self.assertEqual(inconsistent["reason"], "position_snapshot_stale_or_invalid")
+        self.assertTrue(inconsistent["requires_reconciliation"])
+        self.assertEqual(client.calls, [])
+
     def test_signed_request_uses_hmac_sha256(self):
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=FakeClient())
         params = adapter._signed_params({"symbol": "BTCUSDT", "side": "BUY"})
