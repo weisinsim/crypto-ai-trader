@@ -282,6 +282,74 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(result["reason"], "invalid_client_order_id")
         self.assertEqual(client.calls, [])
 
+    def test_market_order_fails_closed_when_account_risk_snapshot_is_unavailable(self):
+        class UnavailableAccountClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    raise httpx.ReadTimeout("simulated account risk timeout")
+                return super().get(path, params)
+
+        client = UnavailableAccountClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "risk-timeout-0001", ExecutionConfig(mode="testnet")
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(
+            result["reason"], "account_risk_preflight_failed_requires_reconciliation"
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(client.calls, [])
+
+    def test_market_order_fails_closed_when_projected_account_exposure_exceeds_cap(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(),
+            "risk-cap-0001",
+            ExecutionConfig(mode="testnet", max_account_notional_usdt=60.0),
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "account_notional_limit_exceeded")
+        self.assertEqual(result["current_account_notional_usdt"], 25.0)
+        self.assertEqual(result["proposed_order_notional_usdt"], 50.0)
+        self.assertEqual(result["max_account_notional_usdt"], 60.0)
+        self.assertEqual(client.calls, [])
+
+    def test_market_order_fails_closed_when_existing_position_notional_is_missing(self):
+        class MissingExistingNotionalClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "canTrade": True,
+                        "positions": [{
+                            "symbol": "ETHUSDT",
+                            "positionAmt": "0.25",
+                            "entryPrice": "100",
+                        }],
+                    })
+                return super().get(path, params)
+
+        client = MissingExistingNotionalClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "risk-missing-0001", ExecutionConfig(mode="testnet")
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(
+            result["reason"], "account_risk_preflight_failed_requires_reconciliation"
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(client.calls, [])
+
     def test_query_order_reconciles_by_client_order_id_without_submission(self):
         client = FakeClient()
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
