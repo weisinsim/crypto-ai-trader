@@ -400,7 +400,18 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(client.get_calls, [])
 
     def test_position_snapshot_reads_position_and_open_orders_without_mutation(self):
-        client = FakeClient()
+        class SnapshotOrderClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/openOrders":
+                    self.get_calls.append((path, params))
+                    return FakeResponse([{
+                        "orderId": 99, "symbol": "BTCUSDT", "clientOrderId": "stop-0001",
+                        "side": "SELL", "type": "STOP_MARKET", "status": "NEW",
+                        "reduceOnly": True, "stopPrice": "99.8", "origQty": "0.5",
+                        "executedQty": "0",
+                    }])
+                return super().get(path, params)
+        client = SnapshotOrderClient()
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
         result = adapter.testnet_position_snapshot("BTCUSDT")
         self.assertTrue(result["ok"])
