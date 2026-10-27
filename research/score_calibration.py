@@ -82,8 +82,10 @@ def summarize_score_calibration(trades, *, min_samples=30, bands=DEFAULT_BANDS, 
             raise ValueError(f"trade {index} score must be finite and in [0, 100]")
         if not _number(net_return) or net_return <= -1:
             raise ValueError(f"trade {index} net_return must be finite and greater than -1")
-        if not _number(exit_ts) or exit_ts < 0:
-            raise ValueError(f"trade {index} exit_ts must be a non-negative finite timestamp")
+        # Exit timestamps are event identities in milliseconds; fractional
+        # milliseconds and booleans indicate malformed ingestion.
+        if isinstance(exit_ts, bool) or not isinstance(exit_ts, int) or exit_ts < 0:
+            raise ValueError(f"trade {index} exit_ts must be a non-negative integer millisecond timestamp")
         match = next((i for i, (lo, hi) in enumerate(normalized_bands)
                       if lo <= score < hi or (score == 100 and hi > 100)), None)
         if match is not None:
