@@ -79,6 +79,14 @@ class ScoreCalibrationTests(unittest.TestCase):
             with self.subTest(row=row), self.assertRaises(ValueError):
                 summarize_score_calibration([row])
 
+    def test_rejects_non_integer_exit_timestamps(self):
+        for exit_ts in (1.5, True, -1, float("nan"), "123"):
+            row = {"symbol": "BTCUSDT", "score": 80, "net_return": 0.01, "exit_ts": exit_ts}
+            with self.subTest(exit_ts=exit_ts), self.assertRaisesRegex(
+                ValueError, "exit_ts must be a non-negative integer millisecond timestamp"
+            ):
+                summarize_score_calibration([row])
+
     def test_report_discloses_that_cost_coverage_is_not_independently_verified(self):
         report = summarize_score_calibration([
             {"symbol": "BTCUSDT", "score": 75, "net_return": 0.01, "exit_ts": 1}
