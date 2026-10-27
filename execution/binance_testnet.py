@@ -699,38 +699,6 @@ class BinanceFuturesTestnet:
             order_type = "TAKE_PROFIT_MARKET"
         if not geometry_ok:
             return {"accepted": False, "reason": "invalid_protective_trigger_geometry"}
-        # Conditional exits use MARK_PRICE as their trigger source. Entry-price
-        # geometry alone is insufficient if the market has already crossed the
-        # trigger; read the current mark price and fail closed if unavailable.
-        try:
-            mark_response = self._get(
-                "/fapi/v1/premiumIndex",
-                params={"symbol": symbol},
-            )
-            mark_response.raise_for_status()
-            mark_payload = mark_response.json()
-            if not isinstance(mark_payload, dict) or mark_payload.get("symbol") != symbol:
-                raise ValueError("invalid_mark_price_response")
-            mark_price = Decimal(str(mark_payload.get("markPrice", "NaN")))
-            if not mark_price.is_finite() or mark_price <= 0:
-                raise ValueError("invalid_mark_price")
-        except (httpx.HTTPError, ValueError, TypeError, InvalidOperation, KeyError):
-            return {
-                "accepted": False,
-                "reason": "mark_price_preflight_failed",
-                "requires_reconciliation": True,
-                "client_order_id": client_order_id,
-            }
-        if exit_kind == "stop_loss":
-            mark_geometry_ok = trigger < mark_price if is_long else trigger > mark_price
-        else:
-            mark_geometry_ok = trigger > mark_price if is_long else trigger < mark_price
-        if not mark_geometry_ok:
-            return {
-                "accepted": False,
-                "reason": "protective_trigger_already_crossed",
-                "mark_price": str(mark_price),
-            }
         if requested_quantity > abs(position_amount):
             return {"accepted": False, "reason": "exit_quantity_exceeds_position"}
         try:
@@ -784,6 +752,44 @@ class BinanceFuturesTestnet:
             })
         except (ValueError, InvalidOperation, TypeError, KeyError):
             return {"accepted": False, "reason": "exchange_preflight_failed"}
+        # Conditional exits use MARK_PRICE as their trigger source. Entry-price
+        # geometry alone is insufficient if the market has already crossed the
+        # trigger; read the current mark price and fail closed if unavailable.
+        try:
+            mark_response = self._get(
+                "/fapi/v1/premiumIndex",
+                params={"symbol": symbol},
+            )
+            mark_response.raise_for_status()
+            mark_payload = mark_response.json()
+            if not isinstance(mark_payload, dict) or mark_payload.get("symbol") != symbol:
+                raise ValueError("invalid_mark_price_response")
+            mark_price = Decimal(str(mark_payload.get("markPrice", "NaN")))
+            if not mark_price.is_finite() or mark_price <= 0:
+                raise ValueError("invalid_mark_price")
+        except (httpx.HTTPError, ValueError, TypeError, InvalidOperation, KeyError):
+            return {
+                "accepted": False,
+                "reason": "mark_price_preflight_failed",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
+        if exit_kind == "stop_loss":
+            mark_geometry_ok = trigger < mark_price if is_long else trigger > mark_price
+        else:
+            mark_geometry_ok = trigger > mark_price if is_long else trigger < mark_price
+        if not mark_geometry_ok:
+            return {
+                "accepted": False,
+                "reason": "protective_trigger_already_crossed",
+                "mark_price": str(mark_price),
+            }
+        # Refresh the signature after the network preflight so its timestamp is
+        # as close as possible to order submission (recvWindow is only 5 seconds).
+        params = self._signed_params({
+            key: value for key, value in params.items()
+            if key not in {"timestamp", "signature"}
+        })
         try:
             response = self._post("/fapi/v1/order", params=params)
             response.raise_for_status()
