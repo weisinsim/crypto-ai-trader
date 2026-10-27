@@ -656,9 +656,25 @@ class BinanceFuturesTestnet:
                 raise InvalidOperation
         except (InvalidOperation, TypeError, ValueError):
             return {"accepted": False, "reason": "invalid_quantity_or_trigger"}
-        snapshot = self.testnet_position_snapshot(symbol)
-        if not snapshot.get("ok"):
-            return {"accepted": False, "reason": "position_snapshot_failed"}
+        try:
+            snapshot = self.testnet_position_snapshot(symbol)
+        except Exception as exc:
+            # A snapshot transport/decoding failure leaves position and existing
+            # protection state unknown. Do not continue toward a new order.
+            return {
+                "accepted": False,
+                "reason": "position_snapshot_failed_requires_reconciliation",
+                "requires_reconciliation": True,
+                "exception_type": type(exc).__name__,
+                "client_order_id": client_order_id,
+            }
+        if not isinstance(snapshot, dict) or not snapshot.get("ok"):
+            return {
+                "accepted": False,
+                "reason": "position_snapshot_failed",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
         # Position and open-order state are read in separate exchange calls, so
         # never submit a protective order from a snapshot with a missing,
         # inconsistent, or excessively wide observation window.
