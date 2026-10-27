@@ -967,7 +967,7 @@ class TestnetLifecycleTests(unittest.TestCase):
             adapter, "BTCUSDT", "99", "102", "btc-race-partial"
         )
         self.assertFalse(result["ok"])
-        self.assertEqual(result["reason"], "post_submission_protective_order_mismatch")
+        self.assertEqual(result["reason"], "post_submission_partial_fill_status_requires_reconciliation")
         self.assertTrue(result["requires_reconciliation"])
 
 
@@ -982,7 +982,7 @@ class TestnetLifecycleTests(unittest.TestCase):
 
         adapter = ContradictoryPostSubmitAdapter()
         result = ensure_testnet_protective_exits(
-            adapter, "BTCUSDT", "99", "102", "btc-post-partial-zero"
+            adapter, "BTCUSDT", "99", "102", "btc-post-partial0"
         )
         self.assertFalse(result["ok"])
         self.assertEqual(
