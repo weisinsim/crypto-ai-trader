@@ -1699,6 +1699,33 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(result["client_order_id"], "btc-recovery-sl")
         self.assertEqual(len(client.calls), 1)
 
+    def test_market_order_fails_closed_when_account_trading_flag_is_false_or_missing(self):
+        for account_payload in (
+            {"canTrade": False, "positions": []},
+            {"positions": []},
+        ):
+            with self.subTest(account_payload=account_payload):
+                class TradingDisabledAccountClient(FakeClient):
+                    def get(self, path, params):
+                        if path == "/fapi/v2/account":
+                            self.get_calls.append((path, params))
+                            return FakeResponse(account_payload)
+                        return super().get(path, params)
+
+                client = TradingDisabledAccountClient()
+                adapter = BinanceFuturesTestnet(
+                    api_key="test-key", api_secret="test-secret", client=client
+                )
+                result = adapter.submit_testnet_market_order(
+                    self.intent(), "account-trade-flag-0001", ExecutionConfig(mode="testnet")
+                )
+                self.assertFalse(result["accepted"])
+                self.assertEqual(
+                    result["reason"], "account_risk_preflight_failed_requires_reconciliation"
+                )
+                self.assertTrue(result["requires_reconciliation"])
+                self.assertEqual(client.calls, [])
+
     def test_account_risk_metrics_network_failure_fails_closed(self):
         class FailingAccountClient(FakeClient):
             def get(self, path, params):
