@@ -1631,5 +1631,69 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(result["client_order_id"], "btc-recovery-sl")
         self.assertEqual(len(client.calls), 1)
 
+    def test_account_risk_metrics_network_failure_fails_closed(self):
+        class FailingAccountClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    raise httpx.ReadTimeout("simulated account timeout")
+                return super().get(path, params)
+
+        client = FailingAccountClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.account_risk_metrics("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "account_risk_metrics_request_failed")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["detail"]["exception_type"], "ReadTimeout")
+        self.assertEqual(len(client.get_calls), 1)
+        self.assertEqual(client.calls, [])
+
+    def test_account_risk_metrics_rejects_notional_outside_float_range(self):
+        class HugeNotionalClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "canTrade": True,
+                        "positions": [{
+                            "symbol": "BTCUSDT",
+                            "positionAmt": "1",
+                            "notional": "1e10000",
+                        }],
+                    })
+                return super().get(path, params)
+
+        client = HugeNotionalClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.account_risk_metrics("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "risk_metrics_out_of_float_range")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(client.calls, [])
+
+    def test_account_risk_metrics_missing_open_position_notional_fails_closed(self):
+        class MissingNotionalClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "canTrade": True,
+                        "positions": [{
+                            "symbol": "BTCUSDT",
+                            "positionAmt": "0.1",
+                        }],
+                    })
+                return super().get(path, params)
+
+        client = MissingNotionalClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.account_risk_metrics("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "position_notional_missing")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(client.calls, [])
+
+
 if __name__ == "__main__":
     unittest.main()
