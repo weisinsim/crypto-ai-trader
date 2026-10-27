@@ -1366,6 +1366,29 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
 
 
 
+    def test_protective_exit_snapshot_exception_fails_closed(self):
+        class SnapshotExceptionClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    raise httpx.TimeoutException("snapshot timed out")
+                return super().get(path, params)
+
+        client = SnapshotExceptionClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "stop-snapshot-timeout"
+        )
+        self.assertFalse(result["accepted"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(
+            result["reason"], "position_snapshot_failed_requires_reconciliation"
+        )
+        self.assertEqual(result["exception_type"], "TimeoutException")
+        self.assertEqual(client.calls, [])
+
     def test_protective_exit_refuses_client_id_already_in_open_order_snapshot(self):
         class ExistingClientOrderClient(FakeClient):
             def get(self, path, params):
