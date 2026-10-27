@@ -56,6 +56,8 @@ class FakeClient:
                 "clientOrderId": params.get("newClientOrderId"),
                 "orderId": 12345,
                 "status": "NEW",
+                "origQty": params.get("quantity"),
+                "executedQty": "0",
             }
             if params.get("type") in {"STOP_MARKET", "TAKE_PROFIT_MARKET"}:
                 payload.update({
@@ -250,6 +252,31 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(client.calls[0][1]["newClientOrderId"], "paper-test-0001")
         self.assertEqual(client.calls[0][1]["quantity"], "0.5")
         self.assertNotIn("https://fapi.binance.com", client.base_url)
+
+    def test_market_order_missing_fill_fields_requires_reconciliation(self):
+        class MissingFillResponseClient(FakeClient):
+            def post(self, path, params):
+                self.calls.append((path, params))
+                return FakeResponse({
+                    "symbol": params.get("symbol"),
+                    "clientOrderId": params.get("newClientOrderId"),
+                    "orderId": 12345,
+                    "status": "NEW",
+                })
+
+        client = MissingFillResponseClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "missing-fill-0001", ExecutionConfig(mode="testnet")
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(
+            result["reason"], "testnet_order_fill_state_requires_reconciliation"
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(len(client.calls), 1)
 
     def test_testnet_order_rejects_paper_or_live_mode_without_submission(self):
         client = FakeClient()
