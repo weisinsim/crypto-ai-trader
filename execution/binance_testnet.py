@@ -105,8 +105,16 @@ class BinanceFuturesTestnet:
                 "detail": {"exception_type": type(exc).__name__},
                 "requires_reconciliation": True,
             }
-        if not isinstance(account, dict) or not isinstance(account.get("positions"), list):
-            return {"ok": False, "reason": "invalid_testnet_account_response", "requires_reconciliation": True}
+        if (
+            not isinstance(account, dict)
+            or not isinstance(account.get("positions"), list)
+            or account.get("canTrade") is not True
+        ):
+            return {
+                "ok": False,
+                "reason": "invalid_or_trading_disabled_testnet_account_response",
+                "requires_reconciliation": True,
+            }
         open_positions = 0
         total_notional = Decimal("0")
         symbol_notional = Decimal("0")
