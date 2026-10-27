@@ -118,6 +118,7 @@ class BinanceFuturesTestnet:
         open_positions = 0
         total_notional = Decimal("0")
         symbol_notional = Decimal("0")
+        seen_symbols = set()
         try:
             for position in account["positions"]:
                 if (
@@ -129,13 +130,26 @@ class BinanceFuturesTestnet:
                     # Missing position fields must never be interpreted as a
                     # flat position; that could understate account exposure.
                     return {"ok": False, "reason": "invalid_position_record", "requires_reconciliation": True}
+                position_symbol = position["symbol"]
+                if position_symbol in seen_symbols:
+                    return {"ok": False, "reason": "duplicate_position_symbol", "requires_reconciliation": True}
+                seen_symbols.add(position_symbol)
                 amount = Decimal(str(position["positionAmt"]))
                 if not amount.is_finite():
                     return {"ok": False, "reason": "invalid_position_amount", "requires_reconciliation": True}
+                raw_notional = position.get("notional")
                 if amount == 0:
+                    # A flat amount paired with non-zero (or malformed)
+                    # notional is internally inconsistent and cannot safely
+                    # be counted as zero exposure.
+                    if raw_notional not in (None, ""):
+                        reported_notional = abs(Decimal(str(raw_notional)))
+                        if not reported_notional.is_finite():
+                            return {"ok": False, "reason": "position_notional_invalid", "requires_reconciliation": True}
+                        if reported_notional > 0:
+                            return {"ok": False, "reason": "flat_position_has_nonzero_notional", "requires_reconciliation": True}
                     continue
                 open_positions += 1
-                raw_notional = position.get("notional")
                 if raw_notional in (None, ""):
                     return {"ok": False, "reason": "position_notional_missing", "requires_reconciliation": True}
                 notional = abs(Decimal(str(raw_notional)))
