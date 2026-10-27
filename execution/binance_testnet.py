@@ -348,6 +348,61 @@ class BinanceFuturesTestnet:
             quantity_text = format(quantity, "f")
             if "." in quantity_text:
                 quantity_text = quantity_text.rstrip("0").rstrip(".")
+
+            # A valid per-order decision is not sufficient if account exposure
+            # is unknown or the new order would exceed the explicit gross cap.
+            try:
+                risk_metrics = self.account_risk_metrics(intent.symbol)
+            except Exception as exc:
+                return {
+                    "accepted": False,
+                    "reason": "account_risk_preflight_exception_requires_reconciliation",
+                    "requires_reconciliation": True,
+                    "exception_type": type(exc).__name__,
+                }
+            if (
+                not isinstance(risk_metrics, dict)
+                or risk_metrics.get("ok") is not True
+                or risk_metrics.get("mode") != "testnet_account_risk_metrics"
+            ):
+                return {
+                    "accepted": False,
+                    "reason": "account_risk_preflight_failed_requires_reconciliation",
+                    "requires_reconciliation": True,
+                    "risk_metrics_reason": (
+                        risk_metrics.get("reason") if isinstance(risk_metrics, dict)
+                        else "invalid_risk_metrics_response"
+                    ),
+                }
+            try:
+                current_account_notional = Decimal(str(risk_metrics["total_notional_usdt"]))
+                account_notional_limit = Decimal(str(config.max_account_notional_usdt))
+                proposed_notional = Decimal(str(intent.entry)) * quantity
+                projected_account_notional = current_account_notional + proposed_notional
+                if (
+                    not current_account_notional.is_finite()
+                    or current_account_notional < 0
+                    or not account_notional_limit.is_finite()
+                    or account_notional_limit <= 0
+                    or not proposed_notional.is_finite()
+                    or proposed_notional <= 0
+                    or not projected_account_notional.is_finite()
+                ):
+                    raise InvalidOperation
+            except (KeyError, InvalidOperation, TypeError, ValueError, OverflowError):
+                return {
+                    "accepted": False,
+                    "reason": "invalid_account_risk_preflight_values_requires_reconciliation",
+                    "requires_reconciliation": True,
+                }
+            if projected_account_notional > account_notional_limit:
+                return {
+                    "accepted": False,
+                    "reason": "account_notional_limit_exceeded",
+                    "current_account_notional_usdt": float(current_account_notional),
+                    "proposed_order_notional_usdt": float(proposed_notional),
+                    "max_account_notional_usdt": float(account_notional_limit),
+                }
         except (ValueError, InvalidOperation, TypeError, KeyError):
             return {"accepted": False, "reason": "exchange_preflight_failed"}
         params = self._signed_params({
