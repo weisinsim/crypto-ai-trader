@@ -599,6 +599,31 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertTrue(result["requires_reconciliation"])
         self.assertEqual(client.calls, [])
 
+    def test_protective_exit_fails_closed_when_mark_symbol_mismatches(self):
+        class MismatchedMarkClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"canTrade": True, "positions": [
+                        {"symbol": "BTCUSDT", "positionAmt": "0.5", "entryPrice": "100"},
+                    ]})
+                if path == "/fapi/v1/premiumIndex":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"symbol": "ETHUSDT", "markPrice": "100"})
+                return super().get(path, params)
+
+        client = MismatchedMarkClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "stop-btc-wrongmarksymbol"
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "mark_price_preflight_failed")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(client.calls, [])
+
     def test_protective_exit_fails_closed_on_unexpected_mark_client_exception(self):
         class RaisingMarkClient(FakeClient):
             def get(self, path, params):
