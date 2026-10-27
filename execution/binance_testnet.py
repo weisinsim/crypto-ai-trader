@@ -786,6 +786,16 @@ class BinanceFuturesTestnet:
                 "reason": "protective_trigger_already_crossed",
                 "mark_price": str(mark_price),
             }
+        # A short snapshot collection window does not guarantee that the
+        # snapshot is still fresh after exchange-filter and mark-price reads.
+        snapshot_age_ms = int(time.time() * 1000) - completed_ms
+        if snapshot_age_ms < 0 or snapshot_age_ms > MAX_PROTECTIVE_SNAPSHOT_DURATION_MS:
+            return {
+                "accepted": False,
+                "reason": "position_snapshot_stale_or_invalid",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
         # Refresh the signature after the network preflight so its timestamp is
         # as close as possible to order submission (recvWindow is only 5 seconds).
         params = self._signed_params({
