@@ -348,6 +348,33 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(result["max_account_notional_usdt"], 60.0)
         self.assertEqual(client.calls, [])
 
+    def test_market_order_account_cap_uses_higher_fresh_mark_price(self):
+        class HigherMarkPriceClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/premiumIndex":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": params.get("symbol"),
+                        "markPrice": "120",
+                    })
+                return super().get(path, params)
+
+        client = HigherMarkPriceClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(),
+            "risk-mark-cap-0001",
+            ExecutionConfig(mode="testnet", max_account_notional_usdt=80.0),
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "account_notional_limit_exceeded")
+        self.assertEqual(result["current_account_notional_usdt"], 25.0)
+        self.assertEqual(result["proposed_order_notional_usdt"], 60.0)
+        self.assertEqual(result["max_account_notional_usdt"], 80.0)
+        self.assertEqual(client.calls, [])
+
     def test_market_order_fails_closed_when_existing_position_notional_is_missing(self):
         class MissingExistingNotionalClient(FakeClient):
             def get(self, path, params):
