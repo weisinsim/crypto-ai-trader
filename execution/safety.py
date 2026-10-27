@@ -14,6 +14,7 @@ class ExecutionConfig:
     mode: str = "paper"
     live_trading_enabled: bool = False
     max_notional_usdt: float = 100.0
+    max_account_notional_usdt: float = 100.0
     max_risk_fraction: float = 0.005
     max_leverage: int = 2
     max_signal_age_seconds: int = 3600
@@ -60,7 +61,8 @@ def validate_order_intent(intent: OrderIntent, config: ExecutionConfig) -> Execu
 
     numeric = (
         intent.entry, intent.stop_loss, intent.take_profit, intent.quantity,
-        config.max_notional_usdt, config.max_risk_fraction,
+        config.max_notional_usdt, config.max_account_notional_usdt,
+        config.max_risk_fraction,
     )
     if any(
         isinstance(value, bool)
