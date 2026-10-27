@@ -445,6 +445,20 @@ class BinanceFuturesTestnet:
                 "reason": "invalid_testnet_order_numeric_fields",
                 "requires_reconciliation": True,
             }
+        if payload["status"] == "NEW" and executed_quantity != 0:
+            return {
+                "found": False,
+                "reason": "new_testnet_order_has_execution_requires_reconciliation",
+                "requires_reconciliation": True,
+            }
+        if payload["status"] == "PARTIALLY_FILLED" and not (
+            0 < executed_quantity < original_quantity
+        ):
+            return {
+                "found": False,
+                "reason": "partially_filled_testnet_order_quantity_mismatch",
+                "requires_reconciliation": True,
+            }
         if payload["status"] == "FILLED" and executed_quantity != original_quantity:
             return {
                 "found": False,
