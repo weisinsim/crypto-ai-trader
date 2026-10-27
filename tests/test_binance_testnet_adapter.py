@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import time
 import unittest
 from urllib.parse import urlencode
 
@@ -515,6 +516,33 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(off_tick["reason"], "trigger_price_not_aligned_to_exchange_tick")
         self.assertEqual(out_of_bounds["reason"], "trigger_price_outside_exchange_price_bounds")
         self.assertEqual(too_large["reason"], "exit_quantity_exceeds_position")
+        self.assertEqual(client.calls, [])
+
+    def test_protective_exit_rejects_snapshot_that_aged_during_preflight(self):
+        class AgedSnapshotAdapter(BinanceFuturesTestnet):
+            def testnet_position_snapshot(self, symbol):
+                completed = int(time.time() * 1000) - 10_000
+                return {
+                    "ok": True,
+                    "symbol": symbol,
+                    "snapshot_started_at_ms": completed - 1,
+                    "snapshot_completed_at_ms": completed,
+                    "snapshot_duration_ms": 1,
+                    "position_amount": "0.5",
+                    "entry_price": "100",
+                    "open_orders": [],
+                }
+
+        client = FakeClient()
+        adapter = AgedSnapshotAdapter(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "stop-btc-aged-snapshot"
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "position_snapshot_stale_or_invalid")
+        self.assertTrue(result["requires_reconciliation"])
         self.assertEqual(client.calls, [])
 
     def test_protective_exit_rejects_trigger_already_crossed_by_mark_price(self):
