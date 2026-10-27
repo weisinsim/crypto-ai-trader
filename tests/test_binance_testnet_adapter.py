@@ -36,6 +36,8 @@ class FakeClient:
         self.get_calls.append((path, params))
         if path == "/fapi/v1/openOrders":
             return FakeResponse([{"orderId": 99, "symbol": "BTCUSDT", "clientOrderId": "stop-0001", "side": "SELL", "type": "STOP_MARKET", "status": "NEW", "reduceOnly": True, "stopPrice": "99.8", "origQty": "0.5", "executedQty": "0"}])
+        if path == "/fapi/v1/premiumIndex":
+            return FakeResponse({"symbol": params.get("symbol"), "markPrice": "100"})
         if path == "/fapi/v1/order":
             return FakeResponse({"symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"), "orderId": 12345, "status": "PARTIALLY_FILLED", "origQty": "0.5", "executedQty": "0.2", "avgPrice": "100.1"})
         if path == "/fapi/v2/account":
@@ -513,6 +515,46 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(off_tick["reason"], "trigger_price_not_aligned_to_exchange_tick")
         self.assertEqual(out_of_bounds["reason"], "trigger_price_outside_exchange_price_bounds")
         self.assertEqual(too_large["reason"], "exit_quantity_exceeds_position")
+        self.assertEqual(client.calls, [])
+
+    def test_protective_exit_rejects_trigger_already_crossed_by_mark_price(self):
+        class CrossedMarkClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/premiumIndex":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"symbol": params.get("symbol"), "markPrice": "99.5"})
+                return super().get(path, params)
+
+        client = CrossedMarkClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "stop-btc-crossed"
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "protective_trigger_already_crossed")
+        self.assertEqual(result["mark_price"], "99.5")
+        self.assertEqual(client.calls, [])
+
+    def test_protective_exit_fails_closed_when_mark_price_is_invalid(self):
+        class InvalidMarkClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/premiumIndex":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"symbol": params.get("symbol"), "markPrice": "NaN"})
+                return super().get(path, params)
+
+        client = InvalidMarkClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "stop-btc-badmark"
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "mark_price_preflight_failed")
+        self.assertTrue(result["requires_reconciliation"])
         self.assertEqual(client.calls, [])
 
     def test_protective_exit_rejects_partial_quantity_and_nonfinite_position(self):
