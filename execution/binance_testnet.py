@@ -1619,34 +1619,44 @@ class BinanceFuturesTestnet:
                     "state": state,
                     "requires_reconciliation": True,
                 }
-            try:
-                result = self._risk_ledger.transition(
-                    client_order_id, "EXTERNALIZED",
-                    detail=(
-                        "confirmed_snapshot: matching open entry order; "
-                        f"symbol={symbol}; status={status}; "
-                        f"exchange_order_id={order['exchange_order_id']}"
-                    ),
-                )
-            except RiskLedgerError as exc:
-                return {
-                    "ok": False,
-                    "reason": "risk_ledger_externalization_failed",
-                    "exception_type": type(exc).__name__,
-                    "state": state,
-                    "requires_reconciliation": True,
-                }
-            if not isinstance(result, dict) or result.get("ok") is not True:
-                return {
-                    "ok": False,
-                    "reason": "risk_ledger_externalization_failed",
-                    "ledger_result": result,
-                    "state": state,
-                    "requires_reconciliation": True,
-                }
+            # An already-EXTERNALIZED reservation is still active risk, but
+            # it must not be transitioned to the same state again: the ledger
+            # transition graph intentionally disallows self-transitions.
+            # The fresh matching snapshot is sufficient to confirm it remains
+            # externalized without mutating the durable state.
+            if state != "EXTERNALIZED":
+                try:
+                    result = self._risk_ledger.transition(
+                        client_order_id, "EXTERNALIZED",
+                        detail=(
+                            "confirmed_snapshot: matching open entry order; "
+                            f"symbol={symbol}; status={status}; "
+                            f"exchange_order_id={order['exchange_order_id']}"
+                        ),
+                    )
+                except RiskLedgerError as exc:
+                    return {
+                        "ok": False,
+                        "reason": "risk_ledger_externalization_failed",
+                        "exception_type": type(exc).__name__,
+                        "state": state,
+                        "requires_reconciliation": True,
+                    }
+                if not isinstance(result, dict) or result.get("ok") is not True:
+                    return {
+                        "ok": False,
+                        "reason": "risk_ledger_externalization_failed",
+                        "ledger_result": result,
+                        "state": state,
+                        "requires_reconciliation": True,
+                    }
             return {
                 "ok": True,
-                "reason": "open_entry_order_confirmed_external",
+                "reason": (
+                    "externalized_order_still_open_confirmed"
+                    if state == "EXTERNALIZED"
+                    else "open_entry_order_confirmed_external"
+                ),
                 "state": "EXTERNALIZED",
                 "exchange_status": status,
                 "requires_reconciliation": False,
