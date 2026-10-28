@@ -384,6 +384,54 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(result["proposed_order_notional_usdt"], 50.0)
         self.assertEqual(client.calls, [])
 
+    def test_market_order_mark_price_crossing_target_fails_closed(self):
+        class TargetCrossedMarkClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/premiumIndex":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"symbol": params.get("symbol"), "markPrice": "101"})
+                return super().get(path, params)
+
+        client = TargetCrossedMarkClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(take_profit=100.6),
+            "risk-mark-target-crossed-0001",
+            ExecutionConfig(mode="testnet"),
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(
+            result["reason"], "market_order_mark_price_invalidates_risk_geometry"
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(client.calls, [])
+
+    def test_market_order_mark_price_risk_exceeds_fraction_fails_closed(self):
+        class HigherRiskMarkClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/premiumIndex":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"symbol": params.get("symbol"), "markPrice": "101"})
+                return super().get(path, params)
+
+        client = HigherRiskMarkClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(stop_loss=99.8, take_profit=102),
+            "risk-mark-risk-fraction-0001",
+            ExecutionConfig(mode="testnet", max_risk_fraction=0.005),
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(
+            result["reason"], "market_order_mark_price_exceeds_risk_limit"
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(client.calls, [])
+
     def test_market_order_fails_closed_when_open_order_price_is_unknown(self):
         class UnknownPriceOrderClient(FakeClient):
             def get(self, path, params):
@@ -430,9 +478,12 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
             api_key="test-key", api_secret="test-secret", client=client
         )
         result = adapter.submit_testnet_market_order(
-            self.intent(),
+            self.intent(take_profit=130),
             "risk-mark-cap-0001",
-            ExecutionConfig(mode="testnet", max_account_notional_usdt=80.0),
+            ExecutionConfig(
+                mode="testnet", max_account_notional_usdt=80.0,
+                max_risk_fraction=0.5,
+            ),
         )
         self.assertFalse(result["accepted"])
         self.assertEqual(result["reason"], "account_notional_limit_exceeded")
