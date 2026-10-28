@@ -7,6 +7,7 @@ confirms the order is represented in the external exposure calculation.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from decimal import Decimal, InvalidOperation
 import os
 from pathlib import Path
@@ -53,7 +54,7 @@ class SQLiteRiskLedger:
         parent = Path(self.path).parent
         parent.mkdir(parents=True, exist_ok=True)
         try:
-            with self._connect() as connection:
+            with self._connection() as connection:
                 connection.execute("PRAGMA journal_mode=WAL")
                 connection.execute("PRAGMA synchronous=FULL")
                 connection.execute(
@@ -81,6 +82,14 @@ class SQLiteRiskLedger:
         connection.execute("PRAGMA synchronous=FULL")
         return connection
 
+    @contextmanager
+    def _connection(self):
+        connection = self._connect()
+        try:
+            yield connection
+        finally:
+            connection.close()
+
     @staticmethod
     def _validate_order_id(order_id):
         if not isinstance(order_id, str) or not order_id.strip() or len(order_id) > 128:
@@ -103,7 +112,7 @@ class SQLiteRiskLedger:
             raise RiskLedgerError("non_positive_reservation_or_cap")
         now = time.time()
         try:
-            with self._connect() as connection:
+            with self._connection() as connection:
                 connection.execute("BEGIN IMMEDIATE")
                 existing = connection.execute(
                     "SELECT notional_usdt, state FROM risk_reservations WHERE order_id = ?",
@@ -170,7 +179,7 @@ class SQLiteRiskLedger:
         }
         now = time.time()
         try:
-            with self._connect() as connection:
+            with self._connection() as connection:
                 connection.execute("BEGIN IMMEDIATE")
                 row = connection.execute(
                     "SELECT state FROM risk_reservations WHERE order_id = ?", (order_id,)
@@ -202,7 +211,7 @@ class SQLiteRiskLedger:
     def get(self, order_id):
         order_id = self._validate_order_id(order_id)
         try:
-            with self._connect() as connection:
+            with self._connection() as connection:
                 row = connection.execute(
                     """SELECT order_id, notional_usdt, state, created_at, updated_at, detail
                     FROM risk_reservations WHERE order_id = ?""",
@@ -224,7 +233,7 @@ class SQLiteRiskLedger:
     def active_reserved_notional(self):
         """Return unresolved reserved notional; never silently returns zero on DB errors."""
         try:
-            with self._connect() as connection:
+            with self._connection() as connection:
                 placeholders = ",".join("?" for _ in _ACTIVE_STATES)
                 rows = connection.execute(
                     f"SELECT notional_usdt FROM risk_reservations WHERE state IN ({placeholders})",
