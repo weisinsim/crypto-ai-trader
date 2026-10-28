@@ -1195,12 +1195,11 @@ class BinanceFuturesTestnet:
         }
 
     def reconcile_unresolved_testnet_entry_reservations(self, symbol_by_client_order_id, *, limit=100):
-        """Run a bounded, read-only reconciliation sweep over the recovery inventory.
+        """Run a bounded, read-only reconciliation sweep and persist per-order audit outcomes.
 
-        The caller must supply an explicit client-order-ID to symbol mapping:
-        the ledger intentionally does not guess a symbol from an opaque client ID.
-        RESERVED records are reported but not released because this method cannot
-        prove whether a crash happened before or after an exchange request.
+        The caller supplies an explicit client-order-ID to symbol mapping. RESERVED
+        records are deferred because the ledger alone cannot prove whether a POST
+        was attempted before a crash. This method never places, cancels, or retries.
         """
         if self._risk_ledger is None:
             return {
@@ -1228,17 +1227,46 @@ class BinanceFuturesTestnet:
             }
 
         results = []
+        audit_persisted = 0
+
+        def append_with_audit(item, state_before):
+            nonlocal audit_persisted
+            order_id = item["client_order_id"]
+            symbol = item.get("symbol", "")
+            outcome = "ok" if item.get("ok") is True else (
+                "deferred" if "symbol" not in item else "failed"
+            )
+            reason = item.get("reason", "unspecified_recovery_result")
+            try:
+                audit = self._risk_ledger.record_recovery_audit(
+                    order_id=order_id,
+                    symbol=symbol,
+                    state_before=state_before,
+                    outcome=outcome,
+                    reason=reason,
+                )
+                if not isinstance(audit, dict) or audit.get("ok") is not True:
+                    raise RiskLedgerError("recovery_audit_write_failed")
+                audit_persisted += 1
+                item["audit_persisted"] = True
+            except Exception as exc:
+                item["ok"] = False
+                item["requires_reconciliation"] = True
+                item["audit_persisted"] = False
+                item["audit_error"] = type(exc).__name__
+            results.append(item)
+
         for reservation in unresolved:
             client_order_id = reservation["order_id"]
             state = reservation["state"]
             if state == "RESERVED":
-                results.append({
+                append_with_audit({
                     "client_order_id": client_order_id,
                     "ok": False,
                     "state": state,
                     "reason": "reserved_state_requires_explicit_crash_recovery_review",
                     "requires_reconciliation": True,
-                })
+                }, state)
                 continue
             symbol = symbol_by_client_order_id.get(client_order_id)
             if (
@@ -1247,13 +1275,13 @@ class BinanceFuturesTestnet:
                 or not symbol.endswith("USDT")
                 or not symbol[:-4].isalnum()
             ):
-                results.append({
+                append_with_audit({
                     "client_order_id": client_order_id,
                     "ok": False,
                     "state": state,
                     "reason": "explicit_valid_symbol_mapping_missing",
                     "requires_reconciliation": True,
-                })
+                }, state)
                 continue
             try:
                 result = self.reconcile_testnet_entry_reservation(symbol, client_order_id)
@@ -1264,19 +1292,24 @@ class BinanceFuturesTestnet:
                     "exception_type": type(exc).__name__,
                     "requires_reconciliation": True,
                 }
-            results.append({
+            append_with_audit({
                 "client_order_id": client_order_id,
                 "symbol": symbol,
                 **result,
-            })
+            }, state)
 
         return {
-            "ok": all(item.get("ok") is True for item in results),
+            "ok": all(item.get("ok") is True and item.get("audit_persisted") is True for item in results),
             "mode": "read_only_testnet_recovery_sweep",
             "listed": len(unresolved),
             "reconciled": sum("symbol" in item for item in results),
             "deferred": sum("symbol" not in item for item in results),
-            "requires_reconciliation": any(item.get("requires_reconciliation") is True for item in results),
+            "audit_persisted": audit_persisted,
+            "audit_failures": sum(item.get("audit_persisted") is False for item in results),
+            "requires_reconciliation": any(
+                item.get("requires_reconciliation") is True or item.get("audit_persisted") is False
+                for item in results
+            ),
             "results": results,
         }
 
