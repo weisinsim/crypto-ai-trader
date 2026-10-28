@@ -395,6 +395,75 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertTrue(result["requires_reconciliation"])
         self.assertEqual(client.calls, [])
 
+    def test_open_order_notional_excludes_only_exact_ledger_matched_client_ids(self):
+        class TwoOpenOrdersClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/openOrders":
+                    self.get_calls.append((path, params))
+                    return FakeResponse([
+                        {
+                            "symbol": "BTCUSDT", "side": "BUY", "type": "LIMIT",
+                            "origQty": "0.5", "price": "100", "stopPrice": "0",
+                            "reduceOnly": False, "closePosition": False,
+                            "clientOrderId": "ledger-order-123",
+                        },
+                        {
+                            "symbol": "ETHUSDT", "side": "SELL", "type": "LIMIT",
+                            "origQty": "0.2", "price": "100", "stopPrice": "0",
+                            "reduceOnly": False, "closePosition": False,
+                            "clientOrderId": "untracked-order-456",
+                        },
+                    ])
+                return super().get(path, params)
+
+        client = TwoOpenOrdersClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.open_entry_order_notional(
+            exclude_client_order_ids={"ledger-order-123"}
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["open_entry_order_notional_usdt"], 20.0)
+        self.assertEqual(result["open_entry_orders"], 2)
+
+    def test_market_order_does_not_double_count_externalized_order_reservation(self):
+        client_order_id = "ledger-order-123"
+        ledger = SQLiteRiskLedger(os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"])
+        self.assertTrue(ledger.reserve(client_order_id, "50", "0", "130")["ok"])
+        self.assertTrue(ledger.transition(client_order_id, "SUBMITTING")["ok"])
+        self.assertTrue(ledger.transition(client_order_id, "UNKNOWN")["ok"])
+        self.assertTrue(ledger.transition(
+            client_order_id, "EXTERNALIZED",
+            detail="confirmed_snapshot: matching exchange open order",
+        )["ok"])
+
+        class ExistingReservedOrderClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/openOrders":
+                    self.get_calls.append((path, params))
+                    return FakeResponse([{
+                        "symbol": "BTCUSDT", "side": "BUY", "type": "LIMIT",
+                        "status": "NEW", "origQty": "0.5", "price": "100",
+                        "stopPrice": "0", "reduceOnly": False,
+                        "closePosition": False, "clientOrderId": client_order_id,
+                    }])
+                return super().get(path, params)
+
+        client = ExistingReservedOrderClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "new-order-789",
+            ExecutionConfig(mode="testnet", max_account_notional_usdt=130.0),
+        )
+        self.assertTrue(result["accepted"], result)
+        self.assertEqual(result["current_position_notional_usdt"], 25.0)
+        self.assertEqual(result["current_open_entry_order_notional_usdt"], 0.0)
+        self.assertEqual(len(client.calls), 1)
+        self.assertEqual(client.calls[0][0], "/fapi/v1/order")
+
     def test_market_order_fails_closed_when_projected_account_exposure_exceeds_cap(self):
         client = FakeClient()
         adapter = BinanceFuturesTestnet(
