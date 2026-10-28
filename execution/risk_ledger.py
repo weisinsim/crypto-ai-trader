@@ -191,6 +191,22 @@ class SQLiteRiskLedger:
                 if new_state == current:
                     connection.execute("COMMIT")
                     return {"ok": True, "reason": "state_unchanged", "state": current}
+                if new_state == "EXTERNALIZED" and current in {"SUBMITTING", "UNKNOWN"}:
+                    if not detail.startswith("confirmed_snapshot:"):
+                        connection.execute("ROLLBACK")
+                        return {
+                            "ok": False,
+                            "reason": "externalization_requires_snapshot_confirmation",
+                            "state": current,
+                        }
+                if new_state == "RELEASED" and current in {"SUBMITTING", "UNKNOWN", "EXTERNALIZED"}:
+                    if not detail.startswith("confirmed_terminal:"):
+                        connection.execute("ROLLBACK")
+                        return {
+                            "ok": False,
+                            "reason": "release_requires_terminal_confirmation",
+                            "state": current,
+                        }
                 if new_state not in transitions[current]:
                     connection.execute("ROLLBACK")
                     return {
