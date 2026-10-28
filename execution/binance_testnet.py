@@ -776,7 +776,7 @@ class BinanceFuturesTestnet:
             try:
                 self._risk_ledger.transition(
                     client_order_id, "RELEASED",
-                    detail=f"exchange returned definitive HTTP rejection {exc.response.status_code}",
+                    detail=f"confirmed_terminal: exchange returned definitive HTTP rejection {exc.response.status_code}",
                 )
             except RiskLedgerError:
                 return {
