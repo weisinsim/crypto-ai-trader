@@ -176,6 +176,82 @@ class BinanceFuturesTestnet:
             "total_notional_usdt": total_notional_float,
         }
 
+
+    def open_entry_order_notional(self):
+        """Return conservative notional reserved by outstanding entry orders.
+
+        Open orders are a separate snapshot from account positions. Unknown or
+        malformed orders fail closed; reduce-only/close-position exits are not
+        counted as new exposure. This is a preflight guard, not an atomic
+        reservation across exchange reads and order submission.
+        """
+        try:
+            response = self._get(
+                "/fapi/v1/openOrders", params=self._signed_params({})
+            )
+            response.raise_for_status()
+            orders = response.json()
+        except Exception as exc:
+            return {
+                "ok": False,
+                "reason": "open_entry_orders_request_failed",
+                "exception_type": type(exc).__name__,
+                "requires_reconciliation": True,
+            }
+        if not isinstance(orders, list):
+            return {
+                "ok": False,
+                "reason": "invalid_open_orders_response",
+                "requires_reconciliation": True,
+            }
+        total_notional = Decimal("0")
+        try:
+            for order in orders:
+                if not isinstance(order, dict):
+                    return {"ok": False, "reason": "invalid_open_order_record", "requires_reconciliation": True}
+                symbol = order.get("symbol")
+                side = order.get("side")
+                order_type = order.get("type")
+                if (
+                    not isinstance(symbol, str) or not symbol.isascii()
+                    or not symbol.endswith("USDT") or not symbol[:-4].isalnum()
+                    or side not in {"BUY", "SELL"}
+                    or not isinstance(order_type, str) or not order_type
+                ):
+                    return {"ok": False, "reason": "invalid_open_order_identity", "requires_reconciliation": True}
+                reduce_only = order.get("reduceOnly")
+                close_position = order.get("closePosition")
+                if not isinstance(reduce_only, (bool, str)) or not isinstance(close_position, (bool, str)):
+                    return {"ok": False, "reason": "open_order_exit_flags_missing", "requires_reconciliation": True}
+                reduce_only = reduce_only is True or (isinstance(reduce_only, str) and reduce_only.lower() == "true")
+                close_position = close_position is True or (isinstance(close_position, str) and close_position.lower() == "true")
+                if reduce_only or close_position:
+                    continue
+                if "origQty" not in order:
+                    return {"ok": False, "reason": "open_entry_order_quantity_missing", "requires_reconciliation": True}
+                quantity = Decimal(str(order["origQty"]))
+                if not quantity.is_finite() or quantity <= 0:
+                    return {"ok": False, "reason": "invalid_open_entry_order_quantity", "requires_reconciliation": True}
+                raw_price = order.get("price")
+                price = Decimal(str(raw_price)) if raw_price not in (None, "", "0", "0.0") else Decimal("0")
+                if price <= 0:
+                    raw_stop_price = order.get("stopPrice")
+                    price = Decimal(str(raw_stop_price)) if raw_stop_price not in (None, "", "0", "0.0") else Decimal("0")
+                if not price.is_finite() or price <= 0:
+                    return {"ok": False, "reason": "open_entry_order_price_unknown", "requires_reconciliation": True}
+                total_notional += quantity * price
+            total_float = float(total_notional)
+            if not math.isfinite(total_float):
+                return {"ok": False, "reason": "open_entry_order_notional_out_of_range", "requires_reconciliation": True}
+        except (InvalidOperation, TypeError, ValueError, OverflowError):
+            return {"ok": False, "reason": "invalid_open_entry_order_risk_values", "requires_reconciliation": True}
+        return {
+            "ok": True,
+            "mode": "testnet_open_entry_order_notional",
+            "open_entry_order_notional_usdt": total_float,
+            "open_entry_orders": len(orders),
+        }
+
     def symbol_rules(self, symbol):
         """Read testnet exchange filters; does not submit or create an order."""
         if not isinstance(symbol, str) or not symbol.isascii() or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
@@ -427,13 +503,40 @@ class BinanceFuturesTestnet:
                     "client_order_id": client_order_id,
                 }
             try:
-                current_account_notional = Decimal(str(risk_metrics["total_notional_usdt"]))
+                open_order_metrics = self.open_entry_order_notional()
+            except Exception as exc:
+                return {
+                    "accepted": False,
+                    "reason": "open_entry_orders_preflight_exception_requires_reconciliation",
+                    "requires_reconciliation": True,
+                    "exception_type": type(exc).__name__,
+                }
+            if (
+                not isinstance(open_order_metrics, dict)
+                or open_order_metrics.get("ok") is not True
+                or open_order_metrics.get("mode") != "testnet_open_entry_order_notional"
+            ):
+                return {
+                    "accepted": False,
+                    "reason": "open_entry_orders_preflight_failed_requires_reconciliation",
+                    "requires_reconciliation": True,
+                    "open_orders_reason": (
+                        open_order_metrics.get("reason") if isinstance(open_order_metrics, dict)
+                        else "invalid_open_orders_response"
+                    ),
+                }
+            try:
+                current_position_notional = Decimal(str(risk_metrics["total_notional_usdt"]))
+                current_open_order_notional = Decimal(str(open_order_metrics["open_entry_order_notional_usdt"]))
+                current_account_notional = current_position_notional + current_open_order_notional
                 account_notional_limit = Decimal(str(config.max_account_notional_usdt))
                 proposed_notional = max(Decimal(str(intent.entry)), mark_price) * quantity
                 projected_account_notional = current_account_notional + proposed_notional
                 if (
-                    not current_account_notional.is_finite()
-                    or current_account_notional < 0
+                    not current_position_notional.is_finite()
+                    or current_position_notional < 0
+                    or not current_open_order_notional.is_finite()
+                    or current_open_order_notional < 0
                     or not account_notional_limit.is_finite()
                     or account_notional_limit <= 0
                     or not proposed_notional.is_finite()
@@ -452,6 +555,8 @@ class BinanceFuturesTestnet:
                     "accepted": False,
                     "reason": "account_notional_limit_exceeded",
                     "current_account_notional_usdt": float(current_account_notional),
+                    "current_position_notional_usdt": float(current_position_notional),
+                    "current_open_entry_order_notional_usdt": float(current_open_order_notional),
                     "proposed_order_notional_usdt": float(proposed_notional),
                     "max_account_notional_usdt": float(account_notional_limit),
                 }
