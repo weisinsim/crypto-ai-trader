@@ -53,6 +53,10 @@ The adapter reads the persistent switch before sending a market entry. To ensure
 
 Uncertain outcomes intentionally retain capacity. Do not manually transition an ambiguous reservation based on a timeout alone. The ledger's explicit confirmation prefixes are guardrails against accidental transitions, not cryptographic proof of reconciliation.
 
+## Recovery inventory API
+
+The ledger provides `list_unresolved(limit=100)` to enumerate `RESERVED`, `SUBMITTING`, and `UNKNOWN` records oldest-first in bounded batches. It is read-only and does not infer whether a POST reached the exchange. Recovery tooling should use this inventory to schedule per-order reconciliation, while retaining unresolved reservations on any error. The inventory API alone is not an automated recovery worker.
+
 ## Per-order reconciliation primitive
 
 The adapter exposes `reconcile_testnet_entry_reservation(symbol, client_order_id)` for a deliberately narrow, read-only reconciliation step. It first queries the exchange order by client ID, then obtains a bounded position/open-order snapshot. It does not place, cancel, retry, or modify orders.
