@@ -48,20 +48,20 @@ The adapter reads the persistent switch before sending a market entry. To ensure
 - `RESERVED`: capacity allocated before order submission.
 - `SUBMITTING`: the exchange POST is about to be attempted.
 - `UNKNOWN`: the outcome may be ambiguous; do not blindly retry.
-- `EXTERNALIZED`: reconciliation has established that the external account/order snapshot includes the exposure.
+- `EXTERNALIZED`: reconciliation has established that the order is visible on the exchange. **The reservation still consumes local risk capacity** because an open entry can still fill; exchange visibility alone does not mean the exposure has disappeared.
 - `RELEASED`: the reservation no longer consumes reserved capacity.
 
 Uncertain outcomes intentionally retain capacity. A `RESERVED` record can be released only with a `confirmed_pre_submit:` detail prefix after independently establishing that submission never began; `SUBMITTING`/`UNKNOWN`/`EXTERNALIZED` releases require `confirmed_terminal:` evidence. Do not manually transition an ambiguous reservation based on a timeout alone. The ledger's explicit confirmation prefixes are guardrails against accidental transitions, not cryptographic proof of reconciliation.
 
 ## Recovery inventory API
 
-The ledger provides `list_unresolved(limit=100)` to enumerate `RESERVED`, `SUBMITTING`, and `UNKNOWN` records oldest-first in bounded batches. It is read-only and does not infer whether a POST reached the exchange. Recovery tooling should use this inventory to schedule per-order reconciliation, while retaining unresolved reservations on any error. The inventory API alone is not an automated recovery worker.
+The ledger provides `list_unresolved(limit=100)` to enumerate `RESERVED`, `SUBMITTING`, `UNKNOWN`, and `EXTERNALIZED` records oldest-first in bounded batches. All four states continue consuming local risk capacity until a permitted release transition reaches `RELEASED`. It is read-only and does not infer whether a POST reached the exchange. Recovery tooling should use this inventory to schedule per-order reconciliation, while retaining unresolved reservations on any error. The inventory API alone is not an automated recovery worker.
 
 ## Per-order reconciliation primitive
 
 The adapter exposes `reconcile_testnet_entry_reservation(symbol, client_order_id)` for a deliberately narrow, read-only reconciliation step. It first queries the exchange order by client ID, then obtains a bounded position/open-order snapshot. It does not place, cancel, retry, or modify orders.
 
-- A `NEW` or `PARTIALLY_FILLED` entry is externalized only when the open-order snapshot contains exactly one matching client ID and its status and quantities agree.
+- A `NEW` or `PARTIALLY_FILLED` entry is marked `EXTERNALIZED` only when the open-order snapshot contains exactly one matching client ID and its status and quantities agree. This state does not free local capacity; the order may still fill.
 - A `CANCELED`, `REJECTED`, or `EXPIRED` order is released only when the exchange reports zero executed quantity and the open-order snapshot does not contain it.
 - Filled orders, terminal orders with any fill, missing/mismatched snapshots, stale snapshots, HTTP/transport failures, and other ambiguous states remain unresolved and require further reconciliation.
 - The exchange order query and account/open-order snapshot are separate non-atomic reads. This helper is a primitive, not a complete recovery worker or fill ledger; it must not be treated as unattended operational readiness.
