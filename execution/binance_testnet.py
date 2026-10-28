@@ -1780,6 +1780,7 @@ class BinanceFuturesTestnet:
                 or not isinstance(order.get("reduce_only"), bool)
                 for order in snapshot.get("open_orders", [])
             )
+            or len({order.get("client_order_id") for order in snapshot["open_orders"]}) != len(snapshot["open_orders"])
         ):
             return {
                 "accepted": False,
@@ -2039,6 +2040,7 @@ class BinanceFuturesTestnet:
                 or not isinstance(order.get("reduce_only"), bool)
                 for order in final_snapshot.get("open_orders", [])
             )
+            or len({order.get("client_order_id") for order in final_snapshot["open_orders"]}) != len(final_snapshot["open_orders"])
         ):
             return {
                 "accepted": False,
