@@ -905,6 +905,36 @@ class BinanceFuturesTestnet:
                 "client_order_id": client_order_id,
             }
 
+        # A valid response confirms the exchange knows about this order, but
+        # the local account snapshot has not yet proved that its exposure is
+        # represented externally. Keep the reservation active in UNKNOWN until
+        # a separate reconciliation step confirms that relationship.
+        try:
+            state = self._risk_ledger.transition(
+                client_order_id, "UNKNOWN",
+                detail=(
+                    "exchange accepted order response; authoritative snapshot "
+                    "must confirm exposure before externalization"
+                ),
+            )
+        except RiskLedgerError as exc:
+            return {
+                "accepted": False,
+                "reason": "accepted_order_risk_state_update_requires_reconciliation",
+                "requires_reconciliation": True,
+                "exception_type": type(exc).__name__,
+                "client_order_id": client_order_id,
+                "exchange_order_id": str(payload["orderId"]),
+            }
+        if not isinstance(state, dict) or state.get("ok") is not True:
+            return {
+                "accepted": False,
+                "reason": "accepted_order_risk_state_update_requires_reconciliation",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+                "exchange_order_id": str(payload["orderId"]),
+            }
+
         return {
             "accepted": True,
             "mode": "testnet_order_submitted",
