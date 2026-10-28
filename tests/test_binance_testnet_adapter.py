@@ -421,11 +421,38 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
             api_key="test-key", api_secret="test-secret", client=client
         )
         result = adapter.open_entry_order_notional(
-            exclude_client_order_ids={"ledger-order-123"}
+            exclude_client_order_ids={"ledger-order-123"},
+            reserved_notional_by_client_order_id={"ledger-order-123": "50"},
         )
         self.assertTrue(result["ok"])
         self.assertEqual(result["open_entry_order_notional_usdt"], 20.0)
         self.assertEqual(result["open_entry_orders"], 2)
+
+    def test_matched_order_exceeding_ledger_reservation_remains_in_external_exposure(self):
+        class LargerMatchedOrderClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/openOrders":
+                    self.get_calls.append((path, params))
+                    return FakeResponse([{
+                        "symbol": "BTCUSDT", "side": "BUY", "type": "LIMIT",
+                        "origQty": "1", "price": "100", "stopPrice": "0",
+                        "reduceOnly": False, "closePosition": False,
+                        "clientOrderId": "ledger-order-123",
+                    }])
+                return super().get(path, params)
+
+        client = LargerMatchedOrderClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.open_entry_order_notional(
+            exclude_client_order_ids={"ledger-order-123"},
+            reserved_notional_by_client_order_id={"ledger-order-123": "50"},
+        )
+        self.assertTrue(result["ok"])
+        # The order is 100 USDT while its ledger reservation is only 50 USDT.
+        # Keep the full exchange notional counted rather than hiding the gap.
+        self.assertEqual(result["open_entry_order_notional_usdt"], 100.0)
 
     def test_market_order_does_not_double_count_externalized_order_reservation(self):
         client_order_id = "ledger-order-123"
