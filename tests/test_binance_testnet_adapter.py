@@ -461,7 +461,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
 
         now_ms = int(time.time() * 1000)
         payloads = (
-            {"symbol": "BTCUSDT", "markPrice": "100", "time": int(time.time() * 1000)},
+            {"symbol": "BTCUSDT", "markPrice": "100"},
             {"symbol": "BTCUSDT", "markPrice": "100", "time": now_ms - 5000},
             {"symbol": "BTCUSDT", "markPrice": "100", "time": now_ms + 5000},
             {"symbol": "BTCUSDT", "markPrice": "100", "time": True},
