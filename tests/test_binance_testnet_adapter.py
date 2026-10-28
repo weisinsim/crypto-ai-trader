@@ -207,6 +207,8 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         payloads = (
             {"canTrade": "false", "positions": []},
             {"canTrade": True, "positions": [{"symbol": "BTCUSDT", "positionAmt": "NaN", "entryPrice": "100"}]},
+            {"canTrade": True, "positions": [{"symbol": "BTCUSDT"}]},
+            {"canTrade": True, "positions": [{"positionAmt": "0"}]},
             {"canTrade": True, "positions": "malformed"},
         )
         for payload in payloads:
