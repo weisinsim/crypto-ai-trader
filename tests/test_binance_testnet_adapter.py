@@ -2207,5 +2207,95 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertTrue(result["requires_reconciliation"])
         self.assertEqual(client.calls, [])
 
+    def test_reconcile_open_entry_order_externalizes_only_after_matching_snapshot(self):
+        class OpenEntryClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/openOrders":
+                    self.get_calls.append((path, params))
+                    if "symbol" in params:
+                        return FakeResponse([{
+                            "orderId": 12345, "symbol": "BTCUSDT",
+                            "clientOrderId": params.get("origClientOrderId", "paper-reconcile-open"),
+                            "side": "BUY", "type": "LIMIT", "status": "PARTIALLY_FILLED",
+                            "reduceOnly": False, "stopPrice": "0", "origQty": "0.5",
+                            "executedQty": "0.2",
+                        }])
+                    return FakeResponse([])
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"),
+                        "orderId": 12345, "status": "PARTIALLY_FILLED",
+                        "origQty": "0.5", "executedQty": "0.2", "avgPrice": "100.1",
+                    })
+                return super().get(path, params)
+
+        client = OpenEntryClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        ledger = adapter._risk_ledger
+        ledger.reserve("paper-reconcile-open", "50", "0", "1000")
+        ledger.transition("paper-reconcile-open", "SUBMITTING")
+        ledger.transition("paper-reconcile-open", "UNKNOWN")
+        result = adapter.reconcile_testnet_entry_reservation("BTCUSDT", "paper-reconcile-open")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["state"], "EXTERNALIZED")
+        self.assertEqual(ledger.get("paper-reconcile-open")["state"], "EXTERNALIZED")
+        self.assertEqual(client.calls, [])
+
+    def test_reconcile_zero_fill_terminal_order_releases_only_when_absent_from_open_snapshot(self):
+        class CanceledOrderClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"),
+                        "orderId": 12345, "status": "CANCELED",
+                        "origQty": "0.5", "executedQty": "0", "avgPrice": "0",
+                    })
+                if path == "/fapi/v1/openOrders" and "symbol" in params:
+                    self.get_calls.append((path, params))
+                    return FakeResponse([])
+                return super().get(path, params)
+
+        client = CanceledOrderClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        ledger = adapter._risk_ledger
+        ledger.reserve("paper-reconcile-canceled", "50", "0", "1000")
+        ledger.transition("paper-reconcile-canceled", "SUBMITTING")
+        ledger.transition("paper-reconcile-canceled", "UNKNOWN")
+        result = adapter.reconcile_testnet_entry_reservation("BTCUSDT", "paper-reconcile-canceled")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["state"], "RELEASED")
+        self.assertEqual(ledger.get("paper-reconcile-canceled")["state"], "RELEASED")
+        self.assertEqual(client.calls, [])
+
+    def test_reconcile_filled_order_keeps_reservation_until_position_fill_reconciliation(self):
+        class FilledOrderClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"),
+                        "orderId": 12345, "status": "FILLED",
+                        "origQty": "0.5", "executedQty": "0.5", "avgPrice": "100",
+                    })
+                if path == "/fapi/v1/openOrders" and "symbol" in params:
+                    self.get_calls.append((path, params))
+                    return FakeResponse([])
+                return super().get(path, params)
+
+        client = FilledOrderClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        ledger = adapter._risk_ledger
+        ledger.reserve("paper-reconcile-filled", "50", "0", "1000")
+        ledger.transition("paper-reconcile-filled", "SUBMITTING")
+        ledger.transition("paper-reconcile-filled", "UNKNOWN")
+        result = adapter.reconcile_testnet_entry_reservation("BTCUSDT", "paper-reconcile-filled")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "filled_or_partially_executed_order_requires_position_fill_reconciliation")
+        self.assertEqual(ledger.get("paper-reconcile-filled")["state"], "UNKNOWN")
+        self.assertEqual(client.calls, [])
+
+
 if __name__ == "__main__":
     unittest.main()
