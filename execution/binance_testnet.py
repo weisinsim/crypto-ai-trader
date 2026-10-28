@@ -1485,11 +1485,12 @@ class BinanceFuturesTestnet:
         if reservation is None:
             return {"ok": False, "reason": "reservation_not_found", "requires_reconciliation": True}
         state = reservation.get("state")
-        if state == "EXTERNALIZED":
-            return {"ok": True, "reason": "reservation_already_externalized", "state": state}
         if state == "RELEASED":
             return {"ok": True, "reason": "reservation_already_released", "state": state}
-        if state not in {"SUBMITTING", "UNKNOWN"}:
+        # EXTERNALIZED reservations remain active risk. Re-query them during
+        # later sweeps so a confirmed zero-fill terminal exchange status can
+        # release capacity; visibility on the exchange is not a terminal state.
+        if state not in {"SUBMITTING", "UNKNOWN", "EXTERNALIZED"}:
             return {
                 "ok": False,
                 "reason": "reservation_state_not_reconcilable",
