@@ -188,7 +188,7 @@ class BinanceFuturesTestnet:
         }
 
 
-    def open_entry_order_notional(self, *, exclude_client_order_ids=()):
+    def open_entry_order_notional(self, *, exclude_client_order_ids=(), reserved_notional_by_client_order_id=None):
         """Return conservative notional reserved by outstanding entry orders.
 
         Open orders are a separate snapshot from account positions. Unknown or
@@ -205,6 +205,22 @@ class BinanceFuturesTestnet:
             if not isinstance(order_id, str) or not order_id.strip() or len(order_id) > 128:
                 return {"ok": False, "reason": "invalid_excluded_client_order_ids", "requires_reconciliation": True}
             excluded_ids.add(order_id)
+        reserved_notionals = {}
+        if excluded_ids:
+            if not isinstance(reserved_notional_by_client_order_id, dict):
+                return {"ok": False, "reason": "matched_order_reservation_amounts_unavailable", "requires_reconciliation": True}
+            try:
+                for order_id, raw_notional in reserved_notional_by_client_order_id.items():
+                    if not isinstance(order_id, str) or not order_id.strip() or len(order_id) > 128:
+                        return {"ok": False, "reason": "invalid_reserved_notional_identity", "requires_reconciliation": True}
+                    notional = Decimal(str(raw_notional))
+                    if not notional.is_finite() or notional <= 0:
+                        return {"ok": False, "reason": "invalid_reserved_notional_amount", "requires_reconciliation": True}
+                    reserved_notionals[order_id] = notional
+            except (InvalidOperation, TypeError, ValueError, OverflowError):
+                return {"ok": False, "reason": "invalid_reserved_notional_amount", "requires_reconciliation": True}
+            if not excluded_ids.issubset(reserved_notionals):
+                return {"ok": False, "reason": "matched_order_reservation_amount_missing", "requires_reconciliation": True}
         try:
             response = self._get(
                 "/fapi/v1/openOrders", params=self._signed_params({})
@@ -275,11 +291,16 @@ class BinanceFuturesTestnet:
                     price = Decimal(str(raw_stop_price)) if raw_stop_price not in (None, "", "0", "0.0") else Decimal("0")
                 if not price.is_finite() or price <= 0:
                     return {"ok": False, "reason": "open_entry_order_price_unknown", "requires_reconciliation": True}
-                # Exclude only exact identities already represented by
-                # active durable reservations. Unmatched exchange orders remain
-                # part of external exposure; no aggregate subtraction is used.
-                if client_order_id not in excluded_ids:
-                    total_notional += quantity * price
+                # Exclude only when both identity and reservation capacity
+                # agree. If the exchange order exceeds its ledger reservation,
+                # count the exchange notional as external exposure too (safe
+                # over-counting), rather than silently understate account risk.
+                order_notional = quantity * price
+                if (
+                    client_order_id not in excluded_ids
+                    or order_notional > reserved_notionals.get(client_order_id, Decimal("0"))
+                ):
+                    total_notional += order_notional
             total_float = float(total_notional)
             if not math.isfinite(total_float):
                 return {"ok": False, "reason": "open_entry_order_notional_out_of_range", "requires_reconciliation": True}
@@ -667,8 +688,13 @@ class BinanceFuturesTestnet:
                 excluded_client_order_ids = {
                     row["order_id"] for row in unresolved_reservations
                 }
+                reserved_notional_by_client_order_id = {
+                    row["order_id"]: row.get("notional_usdt")
+                    for row in unresolved_reservations
+                }
                 open_order_metrics = self.open_entry_order_notional(
-                    exclude_client_order_ids=excluded_client_order_ids
+                    exclude_client_order_ids=excluded_client_order_ids,
+                    reserved_notional_by_client_order_id=reserved_notional_by_client_order_id,
                 )
             except Exception as exc:
                 return {
