@@ -2774,6 +2774,28 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(ledger.get("sweep-unknown")["state"], "UNKNOWN")
         self.assertEqual(client.calls, [])
 
+    def test_recovery_sweep_records_audit_when_reconciler_returns_invalid_shape(self):
+        ledger = SQLiteRiskLedger(os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"])
+        ledger.reserve("sweep-invalid-result", "10", "0", "100")
+        ledger.transition("sweep-invalid-result", "SUBMITTING")
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=FakeClient()
+        )
+        adapter.reconcile_testnet_entry_reservation = lambda symbol, client_order_id: None
+
+        result = adapter.reconcile_unresolved_testnet_entry_reservations(
+            {"sweep-invalid-result": "BTCUSDT"}
+        )
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["audit_persisted"], 1)
+        self.assertEqual(result["results"][0]["reason"], "invalid_reconciliation_result_shape")
+        self.assertTrue(result["results"][0]["audit_persisted"])
+        self.assertEqual(ledger.get("sweep-invalid-result")["state"], "SUBMITTING")
+        audit = ledger.list_recovery_audit(limit=1)
+        self.assertEqual(audit[0]["order_id"], "sweep-invalid-result")
+        self.assertEqual(audit[0]["reason"], "invalid_reconciliation_result_shape")
+
     def test_recovery_sweep_rejects_non_mapping_without_exchange_requests(self):
         client = FakeClient()
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
