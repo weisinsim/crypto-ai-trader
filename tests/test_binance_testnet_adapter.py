@@ -2654,6 +2654,58 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(ledger.get("paper-reconcile-open")["state"], "EXTERNALIZED")
         self.assertEqual(client.calls, [])
 
+    def test_reconcile_already_externalized_open_order_is_idempotent(self):
+        class StillOpenExternalizedOrderClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "BTCUSDT",
+                        "clientOrderId": params.get("origClientOrderId"),
+                        "orderId": 12345,
+                        "status": "PARTIALLY_FILLED",
+                        "origQty": "0.5",
+                        "executedQty": "0.2",
+                        "avgPrice": "100.1",
+                    })
+                if path == "/fapi/v1/openOrders" and "symbol" in params:
+                    self.get_calls.append((path, params))
+                    return FakeResponse([{
+                        "orderId": 12345,
+                        "symbol": "BTCUSDT",
+                        "clientOrderId": params.get("origClientOrderId", "externalized-still-open"),
+                        "side": "BUY",
+                        "type": "LIMIT",
+                        "status": "PARTIALLY_FILLED",
+                        "reduceOnly": False,
+                        "stopPrice": "0",
+                        "origQty": "0.5",
+                        "executedQty": "0.2",
+                    }])
+                return super().get(path, params)
+
+        client = StillOpenExternalizedOrderClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        ledger = adapter._risk_ledger
+        order_id = "externalized-still-open"
+        ledger.reserve(order_id, "50", "0", "1000")
+        ledger.transition(order_id, "SUBMITTING")
+        ledger.transition(order_id, "UNKNOWN")
+        ledger.transition(
+            order_id, "EXTERNALIZED",
+            detail="confirmed_snapshot: order previously confirmed open",
+        )
+
+        result = adapter.reconcile_testnet_entry_reservation("BTCUSDT", order_id)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["reason"], "externalized_order_still_open_confirmed")
+        self.assertEqual(result["state"], "EXTERNALIZED")
+        self.assertEqual(ledger.get(order_id)["state"], "EXTERNALIZED")
+        self.assertEqual(ledger.active_reserved_notional(), "50")
+        self.assertEqual(client.calls, [])
+
     def test_reconcile_externalized_zero_fill_terminal_order_releases_reservation(self):
         class CanceledExternalizedOrderClient(FakeClient):
             def get(self, path, params):
