@@ -84,6 +84,19 @@ class SQLiteRiskLedger:
                 # A fresh ledger starts with the kill switch engaged. An
                 # operator must explicitly clear it after checking readiness.
                 connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS recovery_audit (
+                        audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        created_at REAL NOT NULL,
+                        order_id TEXT NOT NULL,
+                        symbol TEXT NOT NULL DEFAULT '',
+                        state_before TEXT NOT NULL DEFAULT '',
+                        outcome TEXT NOT NULL,
+                        reason TEXT NOT NULL
+                    )
+                    """
+                )
+                connection.execute(
                     """INSERT OR IGNORE INTO entry_control
                     (singleton_id, kill_switch_active, reason, updated_at)
                     VALUES (1, 1, 'default_fail_closed', ?)""",
@@ -356,6 +369,52 @@ class SQLiteRiskLedger:
                 "created_at": row[3],
                 "updated_at": row[4],
                 "detail": row[5],
+            }
+            for row in rows
+        ]
+
+    def record_recovery_audit(self, *, order_id, symbol="", state_before="", outcome, reason):
+        """Append a bounded-detail recovery outcome record to the durable ledger."""
+        order_id = self._validate_order_id(order_id)
+        for value, field, max_length in (
+            (symbol, "symbol", 32),
+            (state_before, "state_before", 32),
+            (outcome, "outcome", 32),
+            (reason, "reason", 200),
+        ):
+            if not isinstance(value, str) or len(value) > max_length:
+                raise RiskLedgerError(f"invalid_recovery_audit_{field}")
+        if not outcome.strip() or not reason.strip():
+            raise RiskLedgerError("invalid_recovery_audit_outcome_or_reason")
+        try:
+            with self._connection() as connection:
+                cursor = connection.execute(
+                    """INSERT INTO recovery_audit
+                    (created_at, order_id, symbol, state_before, outcome, reason)
+                    VALUES (?, ?, ?, ?, ?, ?)""",
+                    (time.time(), order_id, symbol, state_before, outcome, reason),
+                )
+                return {"ok": True, "audit_id": cursor.lastrowid}
+        except (sqlite3.Error, OSError) as exc:
+            raise RiskLedgerError("recovery_audit_write_failed") from exc
+
+    def list_recovery_audit(self, *, limit=100):
+        """Read recent recovery audit events newest-first without mutating state."""
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
+            raise RiskLedgerError("invalid_recovery_audit_limit")
+        try:
+            with self._connection() as connection:
+                rows = connection.execute(
+                    """SELECT audit_id, created_at, order_id, symbol, state_before, outcome, reason
+                    FROM recovery_audit ORDER BY audit_id DESC LIMIT ?""",
+                    (limit,),
+                ).fetchall()
+        except (sqlite3.Error, OSError) as exc:
+            raise RiskLedgerError("recovery_audit_read_failed") from exc
+        return [
+            {
+                "audit_id": row[0], "created_at": row[1], "order_id": row[2],
+                "symbol": row[3], "state_before": row[4], "outcome": row[5], "reason": row[6],
             }
             for row in rows
         ]
