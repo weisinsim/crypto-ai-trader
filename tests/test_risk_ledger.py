@@ -47,6 +47,23 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
         reopened.set_kill_switch(True, reason="emergency stop")
         self.assertTrue(self.ledger.kill_switch_status()["active"])
 
+    def test_kill_switch_activated_after_reservation_blocks_submission_transition(self):
+        reservation = self.ledger.reserve("switch-race-1", "20", "0", "100")
+        self.assertTrue(reservation["ok"])
+        self.ledger.set_kill_switch(True, reason="operator stopped entries before POST")
+
+        transition = self.ledger.transition(
+            "switch-race-1", "SUBMITTING",
+            detail="attempted submission transition after switch activation",
+        )
+        self.assertFalse(transition["ok"])
+        self.assertEqual(
+            transition["reason"], "operator_kill_switch_active_before_submission"
+        )
+        # Keep the reservation until reconciliation; do not silently free risk.
+        self.assertEqual(self.ledger.get("switch-race-1")["state"], "RESERVED")
+        self.assertEqual(self.ledger.active_reserved_notional(), "20")
+
     def test_reservation_counts_toward_next_account_cap_check(self):
         first = self.ledger.reserve("order-1", "60", "0", "100")
         second = self.ledger.reserve("order-2", "50", "0", "100")
