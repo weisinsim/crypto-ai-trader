@@ -10,7 +10,7 @@ import httpx
 
 from execution.binance_testnet import BinanceFuturesTestnet, BinanceTestnetConfigurationError, TESTNET_BASE_URL
 from execution.safety import ExecutionConfig, OrderIntent
-from execution.risk_ledger import SQLiteRiskLedger
+from execution.risk_ledger import RiskLedgerError, SQLiteRiskLedger
 
 
 class FakeResponse:
@@ -2333,6 +2333,44 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         result = adapter.reconcile_unresolved_testnet_entry_reservations(None)
         self.assertFalse(result["ok"])
         self.assertEqual(result["reason"], "explicit_client_order_symbol_mapping_required")
+        self.assertEqual(client.calls, [])
+
+
+    def test_recovery_sweep_audit_write_failure_fails_closed_and_keeps_reservation(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        ledger = adapter._risk_ledger
+        ledger.reserve("audit-failure-reserved", "10", "0", "100")
+
+        def fail_audit(**kwargs):
+            raise RiskLedgerError("simulated audit storage failure")
+
+        ledger.record_recovery_audit = fail_audit
+        result = adapter.reconcile_unresolved_testnet_entry_reservations({})
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["audit_failures"], 1)
+        self.assertEqual(result["audit_persisted"], 0)
+        self.assertFalse(result["results"][0]["audit_persisted"])
+        self.assertTrue(result["results"][0]["requires_reconciliation"])
+        self.assertEqual(ledger.get("audit-failure-reserved")["state"], "RESERVED")
+        self.assertEqual(client.calls, [])
+
+    def test_repeated_recovery_sweep_appends_attempts_without_mutating_reservation(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        ledger = adapter._risk_ledger
+        ledger.reserve("repeat-sweep-reserved", "10", "0", "100")
+
+        first = adapter.reconcile_unresolved_testnet_entry_reservations({})
+        second = adapter.reconcile_unresolved_testnet_entry_reservations({})
+
+        self.assertEqual(first["audit_persisted"], 1)
+        self.assertEqual(second["audit_persisted"], 1)
+        rows = ledger.list_recovery_audit(limit=10)
+        self.assertEqual(sum(row["order_id"] == "repeat-sweep-reserved" for row in rows), 2)
+        self.assertEqual(ledger.get("repeat-sweep-reserved")["state"], "RESERVED")
         self.assertEqual(client.calls, [])
 
 if __name__ == "__main__":
