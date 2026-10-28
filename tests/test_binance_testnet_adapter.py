@@ -1123,7 +1123,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                         {"symbol": "BTCUSDT", "positionAmt": "0.5", "entryPrice": "100"},
                     ]})
                 if path == "/fapi/v1/premiumIndex":
-                    time.sleep(0.7)
+                    time.sleep(0.3)
                     self.get_calls.append((path, params))
                     return FakeResponse({
                         "symbol": "BTCUSDT",
@@ -1143,7 +1143,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
             if "stopPrice" in params:
                 protective_signature_calls["count"] += 1
                 if protective_signature_calls["count"] == 2:
-                    time.sleep(1.5)
+                    time.sleep(1.8)
             return original_signed_params(params)
 
         adapter._signed_params = delayed_signed_params
