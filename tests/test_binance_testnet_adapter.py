@@ -1354,13 +1354,22 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         adapter = BinanceFuturesTestnet(
             api_key="test-key", api_secret="test-secret", client=client
         )
-        original_snapshot = adapter.testnet_position_snapshot
         calls = {"count": 0}
 
         def malformed_final_snapshot(symbol):
             calls["count"] += 1
-            snapshot = original_snapshot(symbol)
-            if calls["count"] == 2 and snapshot.get("ok") is True:
+            now_ms = int(time.time() * 1000)
+            snapshot = {
+                "ok": True,
+                "symbol": symbol,
+                "snapshot_started_at_ms": now_ms - 10,
+                "snapshot_completed_at_ms": now_ms,
+                "snapshot_duration_ms": 10,
+                "position_amount": "0.5",
+                "entry_price": "100",
+                "open_orders": [],
+            }
+            if calls["count"] == 2:
                 snapshot["open_orders"] = [None]
             return snapshot
 
@@ -1536,6 +1545,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         )
         base_snapshot = {
             "ok": True,
+            "symbol": "BTCUSDT",
             "snapshot_started_at_ms": 1000,
             "snapshot_completed_at_ms": 4000,
             "snapshot_duration_ms": 3000,
