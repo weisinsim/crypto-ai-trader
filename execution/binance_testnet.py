@@ -1461,6 +1461,12 @@ class BinanceFuturesTestnet:
             or not isinstance(snapshot.get("snapshot_started_at_ms"), (int, float))
             or not isinstance(snapshot.get("snapshot_completed_at_ms"), (int, float))
             or not isinstance(snapshot.get("snapshot_duration_ms"), (int, float))
+            or isinstance(snapshot.get("snapshot_started_at_ms"), bool)
+            or isinstance(snapshot.get("snapshot_completed_at_ms"), bool)
+            or isinstance(snapshot.get("snapshot_duration_ms"), bool)
+            or not math.isfinite(snapshot["snapshot_started_at_ms"])
+            or not math.isfinite(snapshot["snapshot_completed_at_ms"])
+            or not math.isfinite(snapshot["snapshot_duration_ms"])
             or snapshot["snapshot_completed_at_ms"] < snapshot["snapshot_started_at_ms"]
             or snapshot["snapshot_duration_ms"] < 0
             # Independently validate the declared duration against the actual
