@@ -1440,11 +1440,20 @@ class BinanceFuturesTestnet:
                     "exception_type": type(exc).__name__,
                     "requires_reconciliation": True,
                 }
-            append_with_audit({
-                "client_order_id": client_order_id,
-                "symbol": symbol,
-                **result,
-            }, state)
+            # A custom adapter or future refactor must not be able to abort the
+            # entire bounded sweep by returning a non-mapping result, nor may a
+            # result override the inventory's trusted order ID / symbol identity.
+            if not isinstance(result, dict):
+                result = {
+                    "ok": False,
+                    "reason": "invalid_reconciliation_result_shape",
+                    "requires_reconciliation": True,
+                }
+            else:
+                result = dict(result)
+                result["client_order_id"] = client_order_id
+                result["symbol"] = symbol
+            append_with_audit(result, state)
 
         return {
             "ok": all(item.get("ok") is True and item.get("audit_persisted") is True for item in results),
