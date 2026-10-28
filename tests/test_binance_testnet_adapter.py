@@ -2297,5 +2297,38 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(client.calls, [])
 
 
+
+    def test_recovery_sweep_defers_reserved_and_requires_explicit_symbol_mapping(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        ledger = adapter._risk_ledger
+        ledger.reserve("sweep-reserved", "10", "0", "100")
+        ledger.reserve("sweep-unknown", "10", "0", "100")
+        ledger.transition("sweep-unknown", "SUBMITTING")
+        ledger.transition("sweep-unknown", "UNKNOWN")
+
+        result = adapter.reconcile_unresolved_testnet_entry_reservations({})
+        self.assertEqual(result["mode"], "read_only_testnet_recovery_sweep")
+        self.assertEqual(result["listed"], 2)
+        self.assertEqual(result["reconciled"], 0)
+        self.assertEqual(result["deferred"], 2)
+        by_id = {item["client_order_id"]: item for item in result["results"]}
+        self.assertEqual(
+            by_id["sweep-reserved"]["reason"],
+            "reserved_state_requires_explicit_crash_recovery_review",
+        )
+        self.assertEqual(by_id["sweep-unknown"]["reason"], "explicit_valid_symbol_mapping_missing")
+        self.assertEqual(ledger.get("sweep-reserved")["state"], "RESERVED")
+        self.assertEqual(ledger.get("sweep-unknown")["state"], "UNKNOWN")
+        self.assertEqual(client.calls, [])
+
+    def test_recovery_sweep_rejects_non_mapping_without_exchange_requests(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.reconcile_unresolved_testnet_entry_reservations(None)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "explicit_client_order_symbol_mapping_required")
+        self.assertEqual(client.calls, [])
+
 if __name__ == "__main__":
     unittest.main()
