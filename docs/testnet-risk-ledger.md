@@ -71,3 +71,7 @@ The adapter exposes `reconcile_testnet_entry_reservation(symbol, client_order_id
 SQLite reservation transactions are atomic only among cooperating processes sharing the same database. They cannot atomically commit with the exchange's order API. A crash between database reservation and POST, or after POST but before recording the response, requires exchange reconciliation by client order ID.
 
 A complete unattended recovery/reconciliation worker and an independently verified end-to-end kill-switch audit are still required before any testnet automation should be treated as operationally ready. **Live trading remains disabled and unauthorized.**
+
+## Bounded recovery sweep
+
+`reconcile_unresolved_testnet_entry_reservations(symbol_by_client_order_id, limit=100)` provides a bounded, read-only sweep over the recovery inventory. The caller must supply an explicit mapping from each opaque client order ID to its symbol; the adapter does not guess symbols. `SUBMITTING` and `UNKNOWN` records with a valid mapping are passed to the per-order reconciliation primitive. Missing mappings and invalid states are reported without exchange writes. `RESERVED` records are deliberately deferred for crash-window review: the sweep cannot prove that no POST was attempted, so it never releases them. The returned summary is an inventory of outcomes, not proof of atomic exchange/account state or a replacement for a supervised recovery process.
