@@ -1158,6 +1158,142 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertTrue(result["requires_reconciliation"])
         self.assertFalse(any(path == "/fapi/v1/order" for path, _ in client.calls))
 
+    def test_protective_exit_rejects_position_change_in_final_snapshot(self):
+        class ChangedPositionClient(FakeClient):
+            def __init__(self):
+                super().__init__()
+                self.account_reads = 0
+
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.account_reads += 1
+                    amount = "0.5" if self.account_reads == 1 else "0.25"
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"canTrade": True, "positions": [
+                        {"symbol": "BTCUSDT", "positionAmt": amount, "entryPrice": "100"},
+                    ]})
+                if path == "/fapi/v1/openOrders":
+                    self.get_calls.append((path, params))
+                    return FakeResponse([])
+                if path == "/fapi/v1/premiumIndex":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "BTCUSDT",
+                        "markPrice": "100",
+                        "time": int(time.time() * 1000),
+                    })
+                return super().get(path, params)
+
+        client = ChangedPositionClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "stop-position-changed-final"
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(
+            result["reason"],
+            "protective_exit_position_changed_before_submit_requires_reconciliation",
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertFalse(any(path == "/fapi/v1/order" for path, _ in client.calls))
+
+    def test_protective_exit_rejects_new_conflicting_order_in_final_snapshot(self):
+        class NewConflictingOrderClient(FakeClient):
+            def __init__(self):
+                super().__init__()
+                self.order_reads = 0
+
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"canTrade": True, "positions": [
+                        {"symbol": "BTCUSDT", "positionAmt": "0.5", "entryPrice": "100"},
+                    ]})
+                if path == "/fapi/v1/openOrders":
+                    self.order_reads += 1
+                    self.get_calls.append((path, params))
+                    if self.order_reads == 1:
+                        return FakeResponse([])
+                    return FakeResponse([{
+                        "orderId": 12345,
+                        "symbol": "BTCUSDT",
+                        "clientOrderId": "existing-stop-order",
+                        "side": "SELL",
+                        "type": "STOP_MARKET",
+                        "status": "NEW",
+                        "reduceOnly": True,
+                        "stopPrice": "99.8",
+                        "origQty": "0.5",
+                        "executedQty": "0",
+                    }])
+                if path == "/fapi/v1/premiumIndex":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "BTCUSDT",
+                        "markPrice": "100",
+                        "time": int(time.time() * 1000),
+                    })
+                return super().get(path, params)
+
+        client = NewConflictingOrderClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "stop-conflict-final-snapshot"
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(
+            result["reason"],
+            "protective_exit_order_state_changed_before_submit_requires_reconciliation",
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertFalse(any(path == "/fapi/v1/order" for path, _ in client.calls))
+
+    def test_protective_exit_fails_closed_when_final_snapshot_times_out(self):
+        class FinalSnapshotTimeoutClient(FakeClient):
+            def __init__(self):
+                super().__init__()
+                self.account_reads = 0
+
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.account_reads += 1
+                    if self.account_reads == 2:
+                        raise httpx.TimeoutException("final position snapshot timeout")
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"canTrade": True, "positions": [
+                        {"symbol": "BTCUSDT", "positionAmt": "0.5", "entryPrice": "100"},
+                    ]})
+                if path == "/fapi/v1/openOrders":
+                    self.get_calls.append((path, params))
+                    return FakeResponse([])
+                if path == "/fapi/v1/premiumIndex":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "BTCUSDT",
+                        "markPrice": "100",
+                        "time": int(time.time() * 1000),
+                    })
+                return super().get(path, params)
+
+        client = FinalSnapshotTimeoutClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "stop-final-snapshot-timeout"
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(
+            result["reason"],
+            "protective_exit_final_snapshot_failed_requires_reconciliation",
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertFalse(any(path == "/fapi/v1/order" for path, _ in client.calls))
+
     def test_protective_exit_fails_closed_when_mark_price_is_invalid(self):
         class InvalidMarkClient(FakeClient):
             def get(self, path, params):
