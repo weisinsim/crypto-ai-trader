@@ -1463,6 +1463,13 @@ class BinanceFuturesTestnet:
             or not isinstance(snapshot.get("snapshot_duration_ms"), (int, float))
             or snapshot["snapshot_completed_at_ms"] < snapshot["snapshot_started_at_ms"]
             or snapshot["snapshot_duration_ms"] < 0
+            # Independently validate the declared duration against the actual
+            # observation window. A forged/buggy short duration must not make
+            # a slow snapshot appear fresh enough for recovery decisions.
+            or abs(
+                snapshot["snapshot_duration_ms"]
+                - (snapshot["snapshot_completed_at_ms"] - snapshot["snapshot_started_at_ms"])
+            ) > 1
             or snapshot["snapshot_duration_ms"] > MAX_PROTECTIVE_SNAPSHOT_DURATION_MS
             or int(time.time() * 1000) - snapshot["snapshot_completed_at_ms"] > MAX_PROTECTIVE_SNAPSHOT_DURATION_MS
             or not isinstance(snapshot.get("open_orders"), list)
