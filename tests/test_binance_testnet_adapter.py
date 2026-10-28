@@ -1349,6 +1349,34 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertTrue(result["requires_reconciliation"])
         self.assertFalse(any(path == "/fapi/v1/order" for path, _ in client.calls))
 
+    def test_protective_exit_rejects_malformed_final_open_order_snapshot(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        original_snapshot = adapter.testnet_position_snapshot
+        calls = {"count": 0}
+
+        def malformed_final_snapshot(symbol):
+            calls["count"] += 1
+            snapshot = original_snapshot(symbol)
+            if calls["count"] == 2 and snapshot.get("ok") is True:
+                snapshot["open_orders"] = [None]
+            return snapshot
+
+        adapter.testnet_position_snapshot = malformed_final_snapshot
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "stop-malformed-final-orders"
+        )
+
+        self.assertFalse(result["accepted"])
+        self.assertEqual(
+            result["reason"],
+            "protective_exit_final_snapshot_invalid_requires_reconciliation",
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertFalse(any(path == "/fapi/v1/order" for path, _ in client.calls))
+
     def test_protective_exit_fails_closed_when_final_snapshot_times_out(self):
         class FinalSnapshotTimeoutClient(FakeClient):
             def __init__(self):
