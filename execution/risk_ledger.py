@@ -292,6 +292,17 @@ class SQLiteRiskLedger:
                             "reason": "externalization_requires_snapshot_confirmation",
                             "state": current,
                         }
+                if new_state == "RELEASED" and current == "RESERVED":
+                    # A RESERVED row may survive a crash around the boundary
+                    # before SUBMITTING is committed. Release only when the
+                    # caller has independently established that no POST began.
+                    if not detail.startswith("confirmed_pre_submit:"):
+                        connection.execute("ROLLBACK")
+                        return {
+                            "ok": False,
+                            "reason": "reserved_release_requires_pre_submit_confirmation",
+                            "state": current,
+                        }
                 if new_state == "RELEASED" and current in {"SUBMITTING", "UNKNOWN", "EXTERNALIZED"}:
                     if not detail.startswith("confirmed_terminal:"):
                         connection.execute("ROLLBACK")
