@@ -115,6 +115,25 @@ class ProtectiveExitSnapshotRegressionTests(unittest.TestCase):
             "protective_exit_position_snapshot_stale_before_submit_requires_reconciliation",
         )
 
+    def test_inconsistent_final_snapshot_window_fails_closed_without_order_post(self):
+        now_ms = int(time.time() * 1000)
+        result = self.submit_with_final_snapshot({
+            "ok": True,
+            "symbol": "BTCUSDT",
+            "snapshot_started_at_ms": now_ms - 10,
+            "snapshot_completed_at_ms": now_ms,
+            "snapshot_duration_ms": 999,
+            "position_amount": "0.5",
+            "entry_price": "100",
+            "open_orders": [],
+        })
+        self.assertFalse(result["accepted"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(
+            result["reason"],
+            "protective_exit_final_snapshot_invalid_requires_reconciliation",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
