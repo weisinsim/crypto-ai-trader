@@ -1037,6 +1037,67 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                 self.assertEqual(result["mark_price"], mark_price)
                 self.assertEqual(client.calls, [])
 
+    def test_protective_exit_fails_closed_when_mark_price_timestamp_is_missing_or_stale(self):
+        now_ms = int(time.time() * 1000)
+        payloads = (
+            {"symbol": "BTCUSDT", "markPrice": "100"},
+            {"symbol": "BTCUSDT", "markPrice": "100", "time": now_ms - 5000},
+            {"symbol": "BTCUSDT", "markPrice": "100", "time": now_ms + 5000},
+            {"symbol": "BTCUSDT", "markPrice": "100", "time": True},
+        )
+        for index, payload in enumerate(payloads):
+            with self.subTest(payload=payload):
+                class MarkTimestampClient(FakeClient):
+                    def get(self, path, params):
+                        if path == "/fapi/v2/account":
+                            self.get_calls.append((path, params))
+                            return FakeResponse({"canTrade": True, "positions": [
+                                {"symbol": "BTCUSDT", "positionAmt": "0.5", "entryPrice": "100"},
+                            ]})
+                        if path == "/fapi/v1/premiumIndex":
+                            self.get_calls.append((path, params))
+                            return FakeResponse(payload)
+                        return super().get(path, params)
+
+                client = MarkTimestampClient()
+                adapter = BinanceFuturesTestnet(
+                    api_key="test-key", api_secret="test-secret", client=client
+                )
+                result = adapter.submit_testnet_protective_exit(
+                    "BTCUSDT", "stop_loss", "0.5", "99.8", f"stop-stale-mark-{index}"
+                )
+                self.assertFalse(result["accepted"])
+                self.assertEqual(result["reason"], "mark_price_preflight_failed")
+                self.assertTrue(result["requires_reconciliation"])
+                self.assertEqual(client.calls, [])
+
+    def test_protective_exit_rechecks_mark_price_age_immediately_before_post(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        original_signed_params = adapter._signed_params
+        protective_signature_calls = {"count": 0}
+
+        def delayed_signed_params(params):
+            if "stopPrice" in params:
+                protective_signature_calls["count"] += 1
+                if protective_signature_calls["count"] == 2:
+                    time.sleep(2.1)
+            return original_signed_params(params)
+
+        adapter._signed_params = delayed_signed_params
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "stop-aged-mark-prepost"
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(
+            result["reason"],
+            "protective_exit_mark_price_stale_before_submit_requires_reconciliation",
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertFalse(any(path == "/fapi/v1/order" for path, _ in client.calls))
+
     def test_protective_exit_fails_closed_when_mark_price_is_invalid(self):
         class InvalidMarkClient(FakeClient):
             def get(self, path, params):
