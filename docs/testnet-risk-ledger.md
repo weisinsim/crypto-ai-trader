@@ -66,6 +66,10 @@ The adapter exposes `reconcile_testnet_entry_reservation(symbol, client_order_id
 - Filled orders, terminal orders with any fill, missing/mismatched snapshots, stale snapshots, HTTP/transport failures, and other ambiguous states remain unresolved and require further reconciliation.
 - The exchange order query and account/open-order snapshot are separate non-atomic reads. This helper is a primitive, not a complete recovery worker or fill ledger; it must not be treated as unattended operational readiness.
 
+## Durable recovery audit
+
+Each per-order outcome produced by the bounded recovery sweep is appended to the SQLite `recovery_audit` table, including order ID, supplied symbol (if any), state before the attempt, outcome category, and a bounded reason code. Use `SQLiteRiskLedger.list_recovery_audit(limit=100)` to read the newest events; the read is bounded and does not mutate reservations. The sweep reports audit-write failures explicitly and marks those outcomes as requiring reconciliation. Audit records help trace attempts but do not prove exchange state, replace backups, or establish an immutable/tamper-proof audit trail.
+
 ## Important limitations
 
 SQLite reservation transactions are atomic only among cooperating processes sharing the same database. They cannot atomically commit with the exchange's order API. A crash between database reservation and POST, or after POST but before recording the response, requires exchange reconciliation by client order ID.
