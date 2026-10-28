@@ -247,6 +247,20 @@ class SQLiteRiskLedger:
         try:
             with self._connection() as connection:
                 connection.execute("BEGIN IMMEDIATE")
+                # Recheck the persistent kill switch in the same SQLite write
+                # transaction that begins submission. If an operator activates
+                # it after reservation but before this transition, no exchange
+                # POST should follow from this reservation.
+                if new_state == "SUBMITTING":
+                    control = connection.execute(
+                        "SELECT kill_switch_active FROM entry_control WHERE singleton_id = 1"
+                    ).fetchone()
+                    if control is None or control[0] != 0:
+                        connection.execute("ROLLBACK")
+                        return {
+                            "ok": False,
+                            "reason": "operator_kill_switch_active_before_submission",
+                        }
                 row = connection.execute(
                     "SELECT state FROM risk_reservations WHERE order_id = ?", (order_id,)
                 ).fetchone()
