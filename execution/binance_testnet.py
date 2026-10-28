@@ -1158,7 +1158,6 @@ class BinanceFuturesTestnet:
             or not _valid_exchange_order_id(payload.get("orderId"))
             or payload.get("symbol") != symbol
             or payload.get("clientOrderId") != client_order_id
-            or payload.get("side") not in {"BUY", "SELL"}
             or not isinstance(payload.get("status"), str)
             or payload.get("status") not in {
                 "NEW", "PARTIALLY_FILLED", "FILLED", "CANCELED", "REJECTED", "EXPIRED"
@@ -1217,7 +1216,7 @@ class BinanceFuturesTestnet:
             "symbol": payload["symbol"],
             "client_order_id": payload["clientOrderId"],
             "exchange_order_id": str(payload["orderId"]),
-            "side": payload["side"],
+            "side": payload.get("side"),
             "status": payload["status"],
             "executed_quantity": str(executed_quantity),
             "original_quantity": str(original_quantity),
