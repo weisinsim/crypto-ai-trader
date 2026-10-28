@@ -179,6 +179,21 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["reason"], "reservation_id_conflict")
 
+    def test_duplicate_active_reservation_is_idempotent_but_not_a_new_submission_grant(self):
+        first = self.ledger.reserve("duplicate-active-id", "10", "0", "100")
+        self.assertTrue(first["ok"])
+        self.assertEqual(first["reason"], "risk_reserved")
+        self.assertEqual(first["state"], "RESERVED")
+
+        duplicate = self.ledger.reserve("duplicate-active-id", "10", "0", "100")
+        self.assertTrue(duplicate["ok"])
+        self.assertEqual(duplicate["reason"], "existing_reservation")
+        self.assertEqual(duplicate["state"], "RESERVED")
+        # The caller must distinguish "existing_reservation" from a fresh
+        # "risk_reserved" result and refuse to blindly POST the same client ID.
+        self.assertEqual(self.ledger.active_reserved_notional(), "10")
+        self.assertEqual(self.ledger.list_unresolved(limit=10)[0]["order_id"], "duplicate-active-id")
+
     def test_invalid_values_raise_instead_of_understating_risk(self):
         for value in ("NaN", "Infinity", "-1", True, "not-a-number"):
             with self.subTest(value=value):
