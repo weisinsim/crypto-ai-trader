@@ -71,6 +71,24 @@ class SQLiteRiskLedger:
                     )
                     """
                 )
+                connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS entry_control (
+                        singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+                        kill_switch_active INTEGER NOT NULL CHECK (kill_switch_active IN (0, 1)),
+                        reason TEXT NOT NULL,
+                        updated_at REAL NOT NULL
+                    )
+                    """
+                )
+                # A fresh ledger starts with the kill switch engaged. An
+                # operator must explicitly clear it after checking readiness.
+                connection.execute(
+                    """INSERT OR IGNORE INTO entry_control
+                    (singleton_id, kill_switch_active, reason, updated_at)
+                    VALUES (1, 1, 'default_fail_closed', ?)""",
+                    (time.time(),),
+                )
         except (sqlite3.Error, OSError) as exc:
             raise RiskLedgerError("risk_ledger_initialization_failed") from exc
 
@@ -95,6 +113,48 @@ class SQLiteRiskLedger:
         if not isinstance(order_id, str) or not order_id.strip() or len(order_id) > 128:
             raise RiskLedgerError("invalid_order_id")
         return order_id
+
+    def kill_switch_status(self):
+        """Read the persistent entry kill switch; database errors fail closed."""
+        try:
+            with self._connection() as connection:
+                row = connection.execute(
+                    "SELECT kill_switch_active, reason, updated_at FROM entry_control WHERE singleton_id = 1"
+                ).fetchone()
+        except (sqlite3.Error, OSError) as exc:
+            raise RiskLedgerError("kill_switch_state_unavailable") from exc
+        if row is None or row[0] not in (0, 1):
+            raise RiskLedgerError("kill_switch_state_invalid")
+        return {"active": row[0] == 1, "reason": row[1], "updated_at": row[2]}
+
+    def set_kill_switch(self, active, *, reason):
+        """Persist operator-controlled entry stop/start state.
+
+        Activating is always permitted. Deactivating requires a non-empty
+        operator-supplied reason to create an auditable record in the ledger.
+        """
+        if not isinstance(active, bool):
+            raise RiskLedgerError("invalid_kill_switch_value")
+        if not isinstance(reason, str) or not reason.strip() or len(reason) > 500:
+            raise RiskLedgerError("invalid_kill_switch_reason")
+        now = time.time()
+        try:
+            with self._connection() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                connection.execute(
+                    """INSERT INTO entry_control
+                    (singleton_id, kill_switch_active, reason, updated_at)
+                    VALUES (1, ?, ?, ?)
+                    ON CONFLICT(singleton_id) DO UPDATE SET
+                    kill_switch_active = excluded.kill_switch_active,
+                    reason = excluded.reason,
+                    updated_at = excluded.updated_at""",
+                    (1 if active else 0, reason.strip(), now),
+                )
+                connection.execute("COMMIT")
+        except (sqlite3.Error, OSError) as exc:
+            raise RiskLedgerError("kill_switch_update_failed") from exc
+        return {"active": active, "reason": reason.strip(), "updated_at": now}
 
     def reserve(self, order_id, notional_usdt, external_exposure_usdt, max_account_notional_usdt):
         """Atomically reserve exposure, counting every unresolved reservation.
