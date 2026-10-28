@@ -2006,6 +2006,20 @@ class BinanceFuturesTestnet:
             or not final_snapshot.get("ok")
             or final_snapshot.get("symbol") != symbol
             or not isinstance(final_snapshot.get("open_orders"), list)
+            or any(
+                not isinstance(order, dict)
+                or not isinstance(order.get("client_order_id"), str)
+                or not order.get("client_order_id")
+                or len(order["client_order_id"]) > 36
+                or not order["client_order_id"].isascii()
+                or not order["client_order_id"].replace("-", "").replace("_", "").isalnum()
+                or order.get("side") not in {"BUY", "SELL"}
+                or not isinstance(order.get("type"), str)
+                or not order.get("type")
+                or order.get("status") not in {"NEW", "PARTIALLY_FILLED"}
+                or not isinstance(order.get("reduce_only"), bool)
+                for order in final_snapshot.get("open_orders", [])
+            )
         ):
             return {
                 "accepted": False,
