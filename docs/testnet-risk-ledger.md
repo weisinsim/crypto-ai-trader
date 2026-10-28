@@ -53,6 +53,15 @@ The adapter reads the persistent switch before sending a market entry. To ensure
 
 Uncertain outcomes intentionally retain capacity. Do not manually transition an ambiguous reservation based on a timeout alone. The ledger's explicit confirmation prefixes are guardrails against accidental transitions, not cryptographic proof of reconciliation.
 
+## Per-order reconciliation primitive
+
+The adapter exposes `reconcile_testnet_entry_reservation(symbol, client_order_id)` for a deliberately narrow, read-only reconciliation step. It first queries the exchange order by client ID, then obtains a bounded position/open-order snapshot. It does not place, cancel, retry, or modify orders.
+
+- A `NEW` or `PARTIALLY_FILLED` entry is externalized only when the open-order snapshot contains exactly one matching client ID and its status and quantities agree.
+- A `CANCELED`, `REJECTED`, or `EXPIRED` order is released only when the exchange reports zero executed quantity and the open-order snapshot does not contain it.
+- Filled orders, terminal orders with any fill, missing/mismatched snapshots, stale snapshots, HTTP/transport failures, and other ambiguous states remain unresolved and require further reconciliation.
+- The exchange order query and account/open-order snapshot are separate non-atomic reads. This helper is a primitive, not a complete recovery worker or fill ledger; it must not be treated as unattended operational readiness.
+
 ## Important limitations
 
 SQLite reservation transactions are atomic only among cooperating processes sharing the same database. They cannot atomically commit with the exchange's order API. A crash between database reservation and POST, or after POST but before recording the response, requires exchange reconciliation by client order ID.
