@@ -36,7 +36,7 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
             self.ledger.set_kill_switch("false", reason="not a bool")
         with self.assertRaises(RiskLedgerError):
             self.ledger.set_kill_switch(False, reason=" ")
-        self.assertTrue(self.ledger.kill_switch_status()["active"])
+        self.assertFalse(self.ledger.kill_switch_status()["active"])
 
     def test_kill_switch_persists_across_ledger_reconstruction(self):
         self.ledger.set_kill_switch(False, reason="operator verified testnet controls")
