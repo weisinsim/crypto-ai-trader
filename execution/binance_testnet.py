@@ -790,6 +790,25 @@ class BinanceFuturesTestnet:
                 "requires_reconciliation": True,
                 "client_order_id": client_order_id,
             }
+        # The mark price can become stale while account/open-order checks,
+        # durable reservation, and the final kill-switch read are in progress.
+        # Recheck immediately before the network mutation. The reservation has
+        # entered SUBMITTING, so preserve it as UNKNOWN if this final gate blocks
+        # the POST; never release capacity based on local timing alone.
+        if int(time.time() * 1000) - mark_time_ms > MAX_MARK_PRICE_AGE_MS:
+            try:
+                self._risk_ledger.transition(
+                    client_order_id, "UNKNOWN",
+                    detail="mark price aged out before POST; no POST issued; reconcile reservation",
+                )
+            except RiskLedgerError:
+                pass
+            return {
+                "accepted": False,
+                "reason": "market_order_mark_price_stale_before_submit_requires_reconciliation",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
         try:
             response = self._post("/fapi/v1/order", params=params)
             response.raise_for_status()
