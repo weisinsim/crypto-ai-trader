@@ -386,13 +386,6 @@ class BinanceFuturesTestnet:
         decision = validate_order_intent(intent, config)
         if not decision.allowed:
             return {"accepted": False, "reason": decision.reason}
-        if self._risk_ledger is None:
-            return {
-                "accepted": False,
-                "reason": "durable_risk_ledger_unavailable_requires_reconciliation",
-                "requires_reconciliation": True,
-                "client_order_id": client_order_id,
-            }
         if config.mode != "testnet":
             return {"accepted": False, "reason": "testnet_mode_required"}
         try:
