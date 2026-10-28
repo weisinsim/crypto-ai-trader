@@ -326,6 +326,40 @@ class SQLiteRiskLedger:
             "detail": row[5],
         }
 
+    def list_unresolved(self, *, limit=100):
+        """List unresolved reservations for recovery tooling without mutating state.
+
+        Results are ordered oldest-first so a recovery worker can process the
+        longest-lived ambiguity first. This method never infers an exchange
+        outcome and never releases capacity.
+        """
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
+            raise RiskLedgerError("invalid_unresolved_limit")
+        placeholders = ",".join("?" for _ in _ACTIVE_STATES)
+        try:
+            with self._connection() as connection:
+                rows = connection.execute(
+                    f"""SELECT order_id, notional_usdt, state, created_at, updated_at, detail
+                    FROM risk_reservations
+                    WHERE state IN ({placeholders})
+                    ORDER BY created_at ASC, order_id ASC
+                    LIMIT ?""",
+                    (*_ACTIVE_STATES, limit),
+                ).fetchall()
+        except (sqlite3.Error, OSError) as exc:
+            raise RiskLedgerError("risk_ledger_read_failed") from exc
+        return [
+            {
+                "order_id": row[0],
+                "notional_usdt": row[1],
+                "state": row[2],
+                "created_at": row[3],
+                "updated_at": row[4],
+                "detail": row[5],
+            }
+            for row in rows
+        ]
+
     def active_reserved_notional(self):
         """Return unresolved reserved notional; never silently returns zero on DB errors."""
         try:
