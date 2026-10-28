@@ -16,6 +16,27 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
+    def test_kill_switch_defaults_to_active(self):
+        status = self.ledger.kill_switch_status()
+        self.assertTrue(status["active"])
+        self.assertEqual(status["reason"], "default_fail_closed")
+
+    def test_kill_switch_requires_boolean_and_a_reason(self):
+        with self.assertRaises(RiskLedgerError):
+            self.ledger.set_kill_switch("false", reason="not a bool")
+        with self.assertRaises(RiskLedgerError):
+            self.ledger.set_kill_switch(False, reason=" ")
+        self.assertTrue(self.ledger.kill_switch_status()["active"])
+
+    def test_kill_switch_persists_across_ledger_reconstruction(self):
+        self.ledger.set_kill_switch(False, reason="operator verified testnet controls")
+        reopened = SQLiteRiskLedger(self.db_path)
+        status = reopened.kill_switch_status()
+        self.assertFalse(status["active"])
+        self.assertEqual(status["reason"], "operator verified testnet controls")
+        reopened.set_kill_switch(True, reason="emergency stop")
+        self.assertTrue(self.ledger.kill_switch_status()["active"])
+
     def test_reservation_counts_toward_next_account_cap_check(self):
         first = self.ledger.reserve("order-1", "60", "0", "100")
         second = self.ledger.reserve("order-2", "50", "0", "100")
