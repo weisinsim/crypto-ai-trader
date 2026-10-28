@@ -2712,6 +2712,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                         "symbol": "BTCUSDT",
                         "clientOrderId": params.get("origClientOrderId"),
                         "orderId": 12345,
+                        "side": "BUY",
                         "status": "PARTIALLY_FILLED",
                         "origQty": "0.5",
                         "executedQty": "0.2",
