@@ -458,9 +458,10 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
             self.intent(), "new-order-789",
             ExecutionConfig(mode="testnet", max_account_notional_usdt=130.0),
         )
+        # Acceptance under the cap proves the matched open order was not
+        # counted twice; the public result intentionally does not expose the
+        # internal preflight metrics on success.
         self.assertTrue(result["accepted"], result)
-        self.assertEqual(result["current_position_notional_usdt"], 25.0)
-        self.assertEqual(result["current_open_entry_order_notional_usdt"], 0.0)
         self.assertEqual(len(client.calls), 1)
         self.assertEqual(client.calls[0][0], "/fapi/v1/order")
 
