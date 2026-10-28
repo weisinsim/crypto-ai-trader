@@ -2637,7 +2637,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                     self.get_calls.append((path, params))
                     return FakeResponse({
                         "symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"),
-                        "orderId": 12345, "status": "PARTIALLY_FILLED",
+                        "orderId": 12345, "side": "BUY", "status": "PARTIALLY_FILLED",
                         "origQty": "0.5", "executedQty": "0.2", "avgPrice": "100.1",
                     })
                 return super().get(path, params)
@@ -2652,6 +2652,55 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["state"], "EXTERNALIZED")
         self.assertEqual(ledger.get("paper-reconcile-open")["state"], "EXTERNALIZED")
+        self.assertEqual(client.calls, [])
+
+    def test_reconcile_rejects_order_side_mismatch_between_order_and_snapshot(self):
+        class SideMismatchClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "BTCUSDT",
+                        "clientOrderId": params.get("origClientOrderId"),
+                        "orderId": 12345,
+                        "side": "BUY",
+                        "status": "PARTIALLY_FILLED",
+                        "origQty": "0.5",
+                        "executedQty": "0.2",
+                        "avgPrice": "100.1",
+                    })
+                if path == "/fapi/v1/openOrders" and "symbol" in params:
+                    self.get_calls.append((path, params))
+                    return FakeResponse([{
+                        "orderId": 12345,
+                        "symbol": "BTCUSDT",
+                        "clientOrderId": params.get("origClientOrderId", "side-mismatch-order"),
+                        "side": "SELL",
+                        "type": "LIMIT",
+                        "status": "PARTIALLY_FILLED",
+                        "reduceOnly": False,
+                        "stopPrice": "0",
+                        "origQty": "0.5",
+                        "executedQty": "0.2",
+                    }])
+                return super().get(path, params)
+
+        client = SideMismatchClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        ledger = adapter._risk_ledger
+        order_id = "side-mismatch-order"
+        ledger.reserve(order_id, "50", "0", "1000")
+        ledger.transition(order_id, "SUBMITTING")
+        ledger.transition(order_id, "UNKNOWN")
+
+        result = adapter.reconcile_testnet_entry_reservation("BTCUSDT", order_id)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "open_order_snapshot_mismatch")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(ledger.get(order_id)["state"], "UNKNOWN")
+        self.assertEqual(ledger.active_reserved_notional(), "50")
         self.assertEqual(client.calls, [])
 
     def test_reconcile_already_externalized_open_order_is_idempotent(self):
