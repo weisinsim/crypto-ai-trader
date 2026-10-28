@@ -1194,6 +1194,92 @@ class BinanceFuturesTestnet:
             ],
         }
 
+    def reconcile_unresolved_testnet_entry_reservations(self, symbol_by_client_order_id, *, limit=100):
+        """Run a bounded, read-only reconciliation sweep over the recovery inventory.
+
+        The caller must supply an explicit client-order-ID to symbol mapping:
+        the ledger intentionally does not guess a symbol from an opaque client ID.
+        RESERVED records are reported but not released because this method cannot
+        prove whether a crash happened before or after an exchange request.
+        """
+        if self._risk_ledger is None:
+            return {
+                "ok": False,
+                "reason": "durable_risk_ledger_unavailable_requires_reconciliation",
+                "requires_reconciliation": True,
+                "results": [],
+            }
+        if not isinstance(symbol_by_client_order_id, dict):
+            return {
+                "ok": False,
+                "reason": "explicit_client_order_symbol_mapping_required",
+                "requires_reconciliation": True,
+                "results": [],
+            }
+        try:
+            unresolved = self._risk_ledger.list_unresolved(limit=limit)
+        except RiskLedgerError as exc:
+            return {
+                "ok": False,
+                "reason": "risk_ledger_inventory_read_failed_requires_reconciliation",
+                "exception_type": type(exc).__name__,
+                "requires_reconciliation": True,
+                "results": [],
+            }
+
+        results = []
+        for reservation in unresolved:
+            client_order_id = reservation["order_id"]
+            state = reservation["state"]
+            if state == "RESERVED":
+                results.append({
+                    "client_order_id": client_order_id,
+                    "ok": False,
+                    "state": state,
+                    "reason": "reserved_state_requires_explicit_crash_recovery_review",
+                    "requires_reconciliation": True,
+                })
+                continue
+            symbol = symbol_by_client_order_id.get(client_order_id)
+            if (
+                not isinstance(symbol, str)
+                or not symbol.isascii()
+                or not symbol.endswith("USDT")
+                or not symbol[:-4].isalnum()
+            ):
+                results.append({
+                    "client_order_id": client_order_id,
+                    "ok": False,
+                    "state": state,
+                    "reason": "explicit_valid_symbol_mapping_missing",
+                    "requires_reconciliation": True,
+                })
+                continue
+            try:
+                result = self.reconcile_testnet_entry_reservation(symbol, client_order_id)
+            except Exception as exc:
+                result = {
+                    "ok": False,
+                    "reason": "unexpected_reconciliation_error",
+                    "exception_type": type(exc).__name__,
+                    "requires_reconciliation": True,
+                }
+            results.append({
+                "client_order_id": client_order_id,
+                "symbol": symbol,
+                **result,
+            })
+
+        return {
+            "ok": all(item.get("ok") is True for item in results),
+            "mode": "read_only_testnet_recovery_sweep",
+            "listed": len(unresolved),
+            "reconciled": sum("symbol" in item for item in results),
+            "deferred": sum("symbol" not in item for item in results),
+            "requires_reconciliation": any(item.get("requires_reconciliation") is True for item in results),
+            "results": results,
+        }
+
     def reconcile_testnet_entry_reservation(self, symbol: str, client_order_id: str):
         """Conservatively reconcile one durable entry reservation using read-only TESTNET reads.
 
