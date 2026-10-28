@@ -1194,6 +1194,219 @@ class BinanceFuturesTestnet:
             ],
         }
 
+    def reconcile_testnet_entry_reservation(self, symbol: str, client_order_id: str):
+        """Conservatively reconcile one durable entry reservation using read-only TESTNET reads.
+
+        This is a per-order primitive, not a background recovery worker. It never
+        submits, cancels, retries, or assumes that a timeout means an order is absent.
+        """
+        if self._risk_ledger is None:
+            return {
+                "ok": False,
+                "reason": "durable_risk_ledger_unavailable_requires_reconciliation",
+                "requires_reconciliation": True,
+            }
+        try:
+            reservation = self._risk_ledger.get(client_order_id)
+        except RiskLedgerError as exc:
+            return {
+                "ok": False,
+                "reason": "risk_ledger_read_failed_requires_reconciliation",
+                "exception_type": type(exc).__name__,
+                "requires_reconciliation": True,
+            }
+        if reservation is None:
+            return {"ok": False, "reason": "reservation_not_found", "requires_reconciliation": True}
+        state = reservation.get("state")
+        if state == "EXTERNALIZED":
+            return {"ok": True, "reason": "reservation_already_externalized", "state": state}
+        if state == "RELEASED":
+            return {"ok": True, "reason": "reservation_already_released", "state": state}
+        if state not in {"SUBMITTING", "UNKNOWN"}:
+            return {
+                "ok": False,
+                "reason": "reservation_state_not_reconcilable",
+                "state": state,
+                "requires_reconciliation": True,
+            }
+
+        order = self.query_testnet_order(symbol, client_order_id)
+        if order.get("found") is not True:
+            return {
+                "ok": False,
+                "reason": "order_lookup_not_authoritative",
+                "lookup_reason": order.get("reason", "unknown"),
+                "state": state,
+                "requires_reconciliation": True,
+            }
+
+        try:
+            snapshot = self.testnet_position_snapshot(symbol)
+        except Exception as exc:
+            return {
+                "ok": False,
+                "reason": "position_snapshot_failed_requires_reconciliation",
+                "exception_type": type(exc).__name__,
+                "state": state,
+                "requires_reconciliation": True,
+            }
+        if (
+            not isinstance(snapshot, dict)
+            or snapshot.get("ok") is not True
+            or snapshot.get("symbol") != symbol
+            or not isinstance(snapshot.get("snapshot_started_at_ms"), (int, float))
+            or not isinstance(snapshot.get("snapshot_completed_at_ms"), (int, float))
+            or not isinstance(snapshot.get("snapshot_duration_ms"), (int, float))
+            or snapshot["snapshot_completed_at_ms"] < snapshot["snapshot_started_at_ms"]
+            or snapshot["snapshot_duration_ms"] < 0
+            or snapshot["snapshot_duration_ms"] > MAX_PROTECTIVE_SNAPSHOT_DURATION_MS
+            or int(time.time() * 1000) - snapshot["snapshot_completed_at_ms"] > MAX_PROTECTIVE_SNAPSHOT_DURATION_MS
+            or not isinstance(snapshot.get("open_orders"), list)
+        ):
+            return {
+                "ok": False,
+                "reason": "position_snapshot_stale_or_invalid",
+                "state": state,
+                "requires_reconciliation": True,
+            }
+
+        matching_orders = [
+            item for item in snapshot["open_orders"]
+            if isinstance(item, dict) and item.get("client_order_id") == client_order_id
+        ]
+        if len(matching_orders) > 1:
+            return {
+                "ok": False,
+                "reason": "duplicate_client_order_in_open_snapshot",
+                "state": state,
+                "requires_reconciliation": True,
+            }
+        status = order["status"]
+        executed = Decimal(order["executed_quantity"])
+        original = Decimal(order["original_quantity"])
+
+        if status in {"NEW", "PARTIALLY_FILLED"}:
+            if len(matching_orders) != 1:
+                return {
+                    "ok": False,
+                    "reason": "open_order_not_confirmed_by_snapshot",
+                    "exchange_status": status,
+                    "state": state,
+                    "requires_reconciliation": True,
+                }
+            matched = matching_orders[0]
+            try:
+                snapshot_original = Decimal(str(matched["orig_quantity"]))
+                snapshot_executed = Decimal(str(matched["executed_quantity"]))
+            except (KeyError, InvalidOperation, TypeError, ValueError):
+                return {
+                    "ok": False,
+                    "reason": "open_order_snapshot_fields_invalid",
+                    "state": state,
+                    "requires_reconciliation": True,
+                }
+            if (
+                matched.get("client_order_id") != client_order_id
+                or matched.get("status") != status
+                or matched.get("reduce_only") is not False
+                or snapshot_original != original
+                or snapshot_executed != executed
+                or matched.get("side") not in {"BUY", "SELL"}
+            ):
+                return {
+                    "ok": False,
+                    "reason": "open_order_snapshot_mismatch",
+                    "state": state,
+                    "requires_reconciliation": True,
+                }
+            try:
+                result = self._risk_ledger.transition(
+                    client_order_id, "EXTERNALIZED",
+                    detail=(
+                        "confirmed_snapshot: matching open entry order; "
+                        f"symbol={symbol}; status={status}; "
+                        f"exchange_order_id={order['exchange_order_id']}"
+                    ),
+                )
+            except RiskLedgerError as exc:
+                return {
+                    "ok": False,
+                    "reason": "risk_ledger_externalization_failed",
+                    "exception_type": type(exc).__name__,
+                    "state": state,
+                    "requires_reconciliation": True,
+                }
+            if not isinstance(result, dict) or result.get("ok") is not True:
+                return {
+                    "ok": False,
+                    "reason": "risk_ledger_externalization_failed",
+                    "ledger_result": result,
+                    "state": state,
+                    "requires_reconciliation": True,
+                }
+            return {
+                "ok": True,
+                "reason": "open_entry_order_confirmed_external",
+                "state": "EXTERNALIZED",
+                "exchange_status": status,
+                "requires_reconciliation": False,
+            }
+
+        # Only a confirmed zero-fill terminal order that is absent from the
+        # current open-order snapshot can release its reservation. Filled orders
+        # and terminal orders with any fills remain reserved pending position /
+        # fill-ledger reconciliation; these two snapshots are not atomic.
+        if status in {"CANCELED", "REJECTED", "EXPIRED"} and executed == 0:
+            if matching_orders:
+                return {
+                    "ok": False,
+                    "reason": "terminal_order_still_present_in_open_snapshot",
+                    "state": state,
+                    "requires_reconciliation": True,
+                }
+            try:
+                result = self._risk_ledger.transition(
+                    client_order_id, "RELEASED",
+                    detail=(
+                        "confirmed_terminal: zero-fill terminal order absent "
+                        f"from open-order snapshot; symbol={symbol}; status={status}; "
+                        f"exchange_order_id={order['exchange_order_id']}"
+                    ),
+                )
+            except RiskLedgerError as exc:
+                return {
+                    "ok": False,
+                    "reason": "risk_ledger_release_failed",
+                    "exception_type": type(exc).__name__,
+                    "state": state,
+                    "requires_reconciliation": True,
+                }
+            if not isinstance(result, dict) or result.get("ok") is not True:
+                return {
+                    "ok": False,
+                    "reason": "risk_ledger_release_failed",
+                    "ledger_result": result,
+                    "state": state,
+                    "requires_reconciliation": True,
+                }
+            return {
+                "ok": True,
+                "reason": "zero_fill_terminal_order_confirmed",
+                "state": "RELEASED",
+                "exchange_status": status,
+                "requires_reconciliation": False,
+            }
+
+        return {
+            "ok": False,
+            "reason": "filled_or_partially_executed_order_requires_position_fill_reconciliation",
+            "exchange_status": status,
+            "executed_quantity": str(executed),
+            "original_quantity": str(original),
+            "state": state,
+            "requires_reconciliation": True,
+        }
+
     def submit_testnet_protective_exit(
         self,
         symbol: str,
