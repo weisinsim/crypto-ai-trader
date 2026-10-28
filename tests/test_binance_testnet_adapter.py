@@ -308,6 +308,11 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(client.calls[0][0], "/fapi/v1/order")
         self.assertEqual(client.calls[0][1]["newClientOrderId"], "paper-test-0001")
         self.assertEqual(client.calls[0][1]["quantity"], "0.5")
+        self.assertEqual(
+            SQLiteRiskLedger(os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"])
+            .get("paper-test-0001")["state"],
+            "UNKNOWN",
+        )
         self.assertNotIn("https://fapi.binance.com", client.base_url)
 
     def test_market_order_missing_fill_fields_requires_reconciliation(self):
