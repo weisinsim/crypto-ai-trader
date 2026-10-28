@@ -10,6 +10,7 @@ import httpx
 
 from execution.binance_testnet import BinanceFuturesTestnet, BinanceTestnetConfigurationError, TESTNET_BASE_URL
 from execution.safety import ExecutionConfig, OrderIntent
+from execution.risk_ledger import SQLiteRiskLedger
 
 
 class FakeResponse:
@@ -88,6 +89,9 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"] = os.path.join(
             self._risk_ledger_dir.name, "testnet-risk.sqlite3"
         )
+        SQLiteRiskLedger(os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"]).set_kill_switch(
+            False, reason="isolated fake-client unit test setup"
+        )
 
     def tearDown(self):
         if self._previous_risk_ledger_path is None:
@@ -104,6 +108,22 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         )
         values.update(overrides)
         return OrderIntent(**values)
+
+    def test_market_order_fails_closed_when_persistent_kill_switch_is_active(self):
+        ledger = SQLiteRiskLedger(os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"])
+        ledger.set_kill_switch(True, reason="test emergency stop")
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "kill-switch-active-0001", ExecutionConfig(mode="testnet")
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "operator_kill_switch_active")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(client.calls, [])
+        self.assertEqual(client.get_calls, [])
 
     def test_market_order_fails_closed_when_durable_risk_ledger_is_unavailable(self):
         previous = os.environ.pop("CRYPTO_TESTNET_RISK_LEDGER_PATH", None)
