@@ -432,6 +432,38 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertTrue(result["requires_reconciliation"])
         self.assertEqual(client.calls, [])
 
+    def test_market_order_fails_closed_when_open_order_exit_flags_are_malformed(self):
+        class MalformedFlagsClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/openOrders":
+                    self.get_calls.append((path, params))
+                    return FakeResponse([{
+                        "symbol": "ETHUSDT",
+                        "side": "BUY",
+                        "type": "LIMIT",
+                        "origQty": "0.5",
+                        "price": "100",
+                        "stopPrice": "0",
+                        "reduceOnly": "maybe",
+                        "closePosition": "false",
+                    }])
+                return super().get(path, params)
+
+        client = MalformedFlagsClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "risk-open-order-flags-0001",
+            ExecutionConfig(mode="testnet"),
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(
+            result["reason"], "open_entry_orders_preflight_failed_requires_reconciliation"
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(client.calls, [])
+
     def test_market_order_fails_closed_when_open_order_price_is_unknown(self):
         class UnknownPriceOrderClient(FakeClient):
             def get(self, path, params):
