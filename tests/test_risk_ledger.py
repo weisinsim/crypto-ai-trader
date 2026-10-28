@@ -109,6 +109,21 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(self.ledger.active_reserved_notional(), "0")
 
+    def test_reserved_reservation_cannot_be_released_without_pre_submit_evidence(self):
+        self.ledger.reserve("reserved-release-guard", "20", "0", "100")
+        denied = self.ledger.transition(
+            "reserved-release-guard", "RELEASED", detail="not sure whether POST started"
+        )
+        self.assertFalse(denied["ok"])
+        self.assertEqual(denied["reason"], "reserved_release_requires_pre_submit_confirmation")
+        self.assertEqual(self.ledger.get("reserved-release-guard")["state"], "RESERVED")
+        allowed = self.ledger.transition(
+            "reserved-release-guard", "RELEASED",
+            detail="confirmed_pre_submit: operator verified submission did not begin",
+        )
+        self.assertTrue(allowed["ok"])
+        self.assertEqual(self.ledger.get("reserved-release-guard")["state"], "RELEASED")
+
     def test_unknown_reservation_cannot_be_released_without_terminal_evidence(self):
         self.ledger.reserve("unknown-release", "20", "0", "100")
         self.ledger.transition("unknown-release", "SUBMITTING")
@@ -129,7 +144,7 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
 
     def test_released_reservation_cannot_be_reused(self):
         self.ledger.reserve("order-released", "10", "0", "100")
-        self.assertTrue(self.ledger.transition("order-released", "RELEASED")["ok"])
+        self.assertTrue(self.ledger.transition("order-released", "RELEASED", detail="confirmed_pre_submit: test proves no POST began")["ok"])
         result = self.ledger.reserve("order-released", "10", "0", "100")
         self.assertFalse(result["ok"])
         self.assertEqual(result["reason"], "reservation_not_reusable")
@@ -168,7 +183,7 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
         self.ledger.transition("older-unknown", "UNKNOWN")
         self.ledger.reserve("newer-reserved", "15", "0", "100")
         self.ledger.reserve("eventually-released", "5", "0", "100")
-        self.ledger.transition("eventually-released", "RELEASED")
+        self.ledger.transition("eventually-released", "RELEASED", detail="confirmed_pre_submit: fake test did not submit")
         rows = self.ledger.list_unresolved()
         self.assertEqual([row["order_id"] for row in rows], ["older-unknown", "newer-reserved"])
         self.assertEqual([row["state"] for row in rows], ["UNKNOWN", "RESERVED"])
