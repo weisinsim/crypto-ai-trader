@@ -1114,6 +1114,50 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertTrue(result["requires_reconciliation"])
         self.assertFalse(any(path == "/fapi/v1/order" for path, _ in client.calls))
 
+    def test_protective_exit_rechecks_position_snapshot_immediately_before_post(self):
+        class DelayedMarkClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"canTrade": True, "positions": [
+                        {"symbol": "BTCUSDT", "positionAmt": "0.5", "entryPrice": "100"},
+                    ]})
+                if path == "/fapi/v1/premiumIndex":
+                    time.sleep(0.3)
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "BTCUSDT",
+                        "markPrice": "100",
+                        "time": int(time.time() * 1000),
+                    })
+                return super().get(path, params)
+
+        client = DelayedMarkClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        original_signed_params = adapter._signed_params
+        protective_signature_calls = {"count": 0}
+
+        def delayed_signed_params(params):
+            if "stopPrice" in params:
+                protective_signature_calls["count"] += 1
+                if protective_signature_calls["count"] == 2:
+                    time.sleep(1.8)
+            return original_signed_params(params)
+
+        adapter._signed_params = delayed_signed_params
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "stop-aged-position-prepost"
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(
+            result["reason"],
+            "protective_exit_position_snapshot_stale_before_submit_requires_reconciliation",
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertFalse(any(path == "/fapi/v1/order" for path, _ in client.calls))
+
     def test_protective_exit_fails_closed_when_mark_price_is_invalid(self):
         class InvalidMarkClient(FakeClient):
             def get(self, path, params):

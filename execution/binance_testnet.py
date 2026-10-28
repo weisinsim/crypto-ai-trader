@@ -1868,6 +1868,17 @@ class BinanceFuturesTestnet:
                 "requires_reconciliation": True,
                 "client_order_id": client_order_id,
             }
+        # The position snapshot can age independently of the mark quote. Recheck
+        # it at the final mutation boundary so a slow signing step cannot submit
+        # an exit based on position quantity/state that is no longer recent.
+        final_snapshot_age_ms = int(time.time() * 1000) - completed_ms
+        if final_snapshot_age_ms < 0 or final_snapshot_age_ms > MAX_PROTECTIVE_SNAPSHOT_AGE_MS:
+            return {
+                "accepted": False,
+                "reason": "protective_exit_position_snapshot_stale_before_submit_requires_reconciliation",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
         try:
             response = self._post("/fapi/v1/order", params=params)
             response.raise_for_status()
