@@ -348,6 +348,72 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(result["max_account_notional_usdt"], 60.0)
         self.assertEqual(client.calls, [])
 
+
+    def test_market_order_account_cap_includes_outstanding_entry_orders(self):
+        class ExistingEntryOrderClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/openOrders":
+                    self.get_calls.append((path, params))
+                    return FakeResponse([{
+                        "symbol": "ETHUSDT",
+                        "side": "BUY",
+                        "type": "LIMIT",
+                        "status": "NEW",
+                        "origQty": "0.5",
+                        "price": "100",
+                        "stopPrice": "0",
+                        "reduceOnly": False,
+                        "closePosition": False,
+                    }])
+                return super().get(path, params)
+
+        client = ExistingEntryOrderClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(),
+            "risk-open-order-cap-0001",
+            ExecutionConfig(mode="testnet", max_account_notional_usdt=140.0),
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "account_notional_limit_exceeded")
+        self.assertEqual(result["current_position_notional_usdt"], 25.0)
+        self.assertEqual(result["current_open_entry_order_notional_usdt"], 50.0)
+        self.assertEqual(result["current_account_notional_usdt"], 75.0)
+        self.assertEqual(result["proposed_order_notional_usdt"], 50.0)
+        self.assertEqual(client.calls, [])
+
+    def test_market_order_fails_closed_when_open_order_price_is_unknown(self):
+        class UnknownPriceOrderClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/openOrders":
+                    self.get_calls.append((path, params))
+                    return FakeResponse([{
+                        "symbol": "ETHUSDT",
+                        "side": "BUY",
+                        "type": "LIMIT",
+                        "origQty": "0.5",
+                        "price": "0",
+                        "stopPrice": "0",
+                        "reduceOnly": False,
+                        "closePosition": False,
+                    }])
+                return super().get(path, params)
+
+        client = UnknownPriceOrderClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "risk-open-order-unknown-0001",
+            ExecutionConfig(mode="testnet"),
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "open_entry_orders_preflight_failed_requires_reconciliation")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(client.calls, [])
+
     def test_market_order_account_cap_uses_higher_fresh_mark_price(self):
         class HigherMarkPriceClient(FakeClient):
             def get(self, path, params):
