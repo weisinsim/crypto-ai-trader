@@ -2841,6 +2841,53 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(client.calls, [])
 
 
+    def test_reconcile_rejects_future_dated_snapshot_without_ledger_mutation(self):
+        class AuthoritativeOpenOrderClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "BTCUSDT",
+                        "clientOrderId": params.get("origClientOrderId"),
+                        "orderId": 12345,
+                        "status": "NEW",
+                        "origQty": "0.5",
+                        "executedQty": "0",
+                        "avgPrice": "0",
+                    })
+                if path == "/fapi/v1/openOrders" and "symbol" in params:
+                    self.get_calls.append((path, params))
+                    return FakeResponse([])
+                return super().get(path, params)
+
+        client = AuthoritativeOpenOrderClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        ledger = adapter._risk_ledger
+        order_id = "future-snapshot-test"
+        ledger.reserve(order_id, "50", "0", "1000")
+        ledger.transition(order_id, "SUBMITTING")
+        ledger.transition(order_id, "UNKNOWN")
+        now_ms = int(time.time() * 1000)
+        adapter.testnet_position_snapshot = lambda symbol: {
+            "ok": True,
+            "symbol": symbol,
+            "snapshot_started_at_ms": now_ms + 4990,
+            "snapshot_completed_at_ms": now_ms + 5000,
+            "snapshot_duration_ms": 10,
+            "position_amount": "0",
+            "entry_price": "0",
+            "open_orders": [],
+        }
+
+        result = adapter.reconcile_testnet_entry_reservation("BTCUSDT", order_id)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "position_snapshot_stale_or_invalid")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(ledger.get(order_id)["state"], "UNKNOWN")
+        self.assertEqual(client.calls, [])
+
     def test_reconcile_rejects_non_finite_snapshot_timestamps_and_duration(self):
         class AuthoritativeOpenOrderClient(FakeClient):
             def get(self, path, params):
