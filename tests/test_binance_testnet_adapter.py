@@ -1,5 +1,7 @@
 import hashlib
 import hmac
+import os
+import tempfile
 import time
 import unittest
 from urllib.parse import urlencode
@@ -80,6 +82,20 @@ class FakeClient:
 
 
 class BinanceTestnetAdapterTests(unittest.TestCase):
+    def setUp(self):
+        self._previous_risk_ledger_path = os.environ.get("CRYPTO_TESTNET_RISK_LEDGER_PATH")
+        self._risk_ledger_dir = tempfile.TemporaryDirectory()
+        os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"] = os.path.join(
+            self._risk_ledger_dir.name, "testnet-risk.sqlite3"
+        )
+
+    def tearDown(self):
+        if self._previous_risk_ledger_path is None:
+            os.environ.pop("CRYPTO_TESTNET_RISK_LEDGER_PATH", None)
+        else:
+            os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"] = self._previous_risk_ledger_path
+        self._risk_ledger_dir.cleanup()
+
     def intent(self, **overrides):
         values = dict(
             symbol="BTCUSDT", side="BUY", entry=100, stop_loss=99.8,
@@ -88,6 +104,27 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         )
         values.update(overrides)
         return OrderIntent(**values)
+
+    def test_market_order_fails_closed_when_durable_risk_ledger_is_unavailable(self):
+        previous = os.environ.pop("CRYPTO_TESTNET_RISK_LEDGER_PATH", None)
+        try:
+            client = FakeClient()
+            adapter = BinanceFuturesTestnet(
+                api_key="test-key", api_secret="test-secret", client=client
+            )
+            result = adapter.submit_testnet_market_order(
+                self.intent(), "ledger-missing-0001", ExecutionConfig(mode="testnet")
+            )
+            self.assertFalse(result["accepted"])
+            self.assertEqual(
+                result["reason"], "durable_risk_ledger_unavailable_requires_reconciliation"
+            )
+            self.assertTrue(result["requires_reconciliation"])
+            self.assertEqual(client.calls, [])
+            self.assertEqual(client.get_calls, [])
+        finally:
+            if previous is not None:
+                os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"] = previous
 
     def test_requires_testnet_credentials(self):
         with self.assertRaises(BinanceTestnetConfigurationError):
