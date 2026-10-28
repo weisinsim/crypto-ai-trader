@@ -20,6 +20,7 @@ from execution.risk_ledger import RiskLedgerError, SQLiteRiskLedger
 TESTNET_BASE_URL = "https://testnet.binancefuture.com"
 MAX_PROTECTIVE_SNAPSHOT_DURATION_MS = 2000
 MAX_PROTECTIVE_SNAPSHOT_AGE_MS = 2000
+MAX_MARK_PRICE_AGE_MS = 2000
 
 
 def _valid_exchange_order_id(value):
@@ -539,16 +540,35 @@ class BinanceFuturesTestnet:
             # Use a fresh, identity-checked mark price for the exposure estimate,
             # and conservatively use the larger of signal entry and mark price.
             try:
+                mark_request_started_ms = int(time.time() * 1000)
                 mark_response = self._get(
                     "/fapi/v1/premiumIndex", params={"symbol": intent.symbol}
                 )
                 mark_response.raise_for_status()
                 mark_payload = mark_response.json()
+                mark_response_received_ms = int(time.time() * 1000)
                 if (
                     not isinstance(mark_payload, dict)
                     or mark_payload.get("symbol") != intent.symbol
                 ):
                     raise ValueError("mark_price_symbol_mismatch")
+                # Binance premiumIndex includes the exchange observation time
+                # in milliseconds. A valid price without a trustworthy time is
+                # not sufficient for an entry-risk decision.
+                raw_mark_time = mark_payload.get("time")
+                if (
+                    isinstance(raw_mark_time, bool)
+                    or not isinstance(raw_mark_time, (int, float))
+                    or not math.isfinite(float(raw_mark_time))
+                    or int(raw_mark_time) != raw_mark_time
+                    or raw_mark_time <= 0
+                ):
+                    raise ValueError("mark_price_timestamp_missing_or_invalid")
+                mark_time_ms = int(raw_mark_time)
+                if mark_time_ms - mark_request_started_ms > 500:
+                    raise ValueError("mark_price_timestamp_in_future")
+                if mark_response_received_ms - mark_time_ms > MAX_MARK_PRICE_AGE_MS:
+                    raise ValueError("mark_price_stale")
                 mark_price = Decimal(str(mark_payload.get("markPrice", "NaN")))
                 if not mark_price.is_finite() or mark_price <= 0:
                     raise ValueError("invalid_mark_price")
