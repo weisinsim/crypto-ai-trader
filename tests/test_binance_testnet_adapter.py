@@ -374,7 +374,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         result = adapter.submit_testnet_market_order(
             self.intent(),
             "risk-open-order-cap-0001",
-            ExecutionConfig(mode="testnet", max_account_notional_usdt=140.0),
+            ExecutionConfig(mode="testnet", max_account_notional_usdt=120.0),
         )
         self.assertFalse(result["accepted"])
         self.assertEqual(result["reason"], "account_notional_limit_exceeded")
