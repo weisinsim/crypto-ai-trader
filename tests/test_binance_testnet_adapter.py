@@ -461,7 +461,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
 
         now_ms = int(time.time() * 1000)
         payloads = (
-            {"symbol": "BTCUSDT", "markPrice": "100"},
+            {"symbol": "BTCUSDT", "markPrice": "100", "time": int(time.time() * 1000)},
             {"symbol": "BTCUSDT", "markPrice": "100", "time": now_ms - 5000},
             {"symbol": "BTCUSDT", "markPrice": "100", "time": now_ms + 5000},
             {"symbol": "BTCUSDT", "markPrice": "100", "time": True},
@@ -599,8 +599,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                     self.get_calls.append((path, params))
                     return FakeResponse({
                         "symbol": params.get("symbol"),
-                        "markPrice": "120",
-                    })
+                        "markPrice": "120", "time": int(time.time() * 1000)})
                 return super().get(path, params)
 
         client = HigherMarkPriceClient()
@@ -935,7 +934,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                     ]})
                 if path == "/fapi/v1/premiumIndex":
                     self.get_calls.append((path, params))
-                    return FakeResponse({"symbol": params.get("symbol"), "markPrice": "99.5"})
+                    return FakeResponse({"symbol": params.get("symbol"), "markPrice": "99.5", "time": int(time.time() * 1000)})
                 return super().get(path, params)
 
         client = CrossedMarkClient()
@@ -967,7 +966,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                             ]})
                         if path == "/fapi/v1/premiumIndex":
                             self.get_calls.append((path, params))
-                            return FakeResponse({"symbol": params.get("symbol"), "markPrice": mark_price})
+                            return FakeResponse({"symbol": params.get("symbol"), "markPrice": mark_price, "time": int(time.time() * 1000)})
                         return super().get(path, params)
 
                 client = PositionMarkClient()
@@ -1000,7 +999,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                             ]})
                         if path == "/fapi/v1/premiumIndex":
                             self.get_calls.append((path, params))
-                            return FakeResponse({"symbol": "BTCUSDT", "markPrice": mark_price})
+                            return FakeResponse({"symbol": "BTCUSDT", "markPrice": mark_price, "time": int(time.time() * 1000)})
                         return super().get(path, params)
 
                 client = EqualMarkClient()
@@ -1025,7 +1024,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                     ]})
                 if path == "/fapi/v1/premiumIndex":
                     self.get_calls.append((path, params))
-                    return FakeResponse({"symbol": params.get("symbol"), "markPrice": "NaN"})
+                    return FakeResponse({"symbol": params.get("symbol"), "markPrice": "NaN", "time": int(time.time() * 1000)})
                 return super().get(path, params)
 
         client = InvalidMarkClient()
@@ -1050,7 +1049,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                     ]})
                 if path == "/fapi/v1/premiumIndex":
                     self.get_calls.append((path, params))
-                    return FakeResponse({"symbol": "ETHUSDT", "markPrice": "100"})
+                    return FakeResponse({"symbol": "ETHUSDT", "markPrice": "100", "time": int(time.time() * 1000)})
                 return super().get(path, params)
 
         client = MismatchedMarkClient()
