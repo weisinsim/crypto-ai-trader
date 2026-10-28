@@ -51,7 +51,7 @@ The adapter reads the persistent switch before sending a market entry. To ensure
 - `EXTERNALIZED`: reconciliation has established that the external account/order snapshot includes the exposure.
 - `RELEASED`: the reservation no longer consumes reserved capacity.
 
-Uncertain outcomes intentionally retain capacity. Do not manually transition an ambiguous reservation based on a timeout alone. The ledger's explicit confirmation prefixes are guardrails against accidental transitions, not cryptographic proof of reconciliation.
+Uncertain outcomes intentionally retain capacity. A `RESERVED` record can be released only with a `confirmed_pre_submit:` detail prefix after independently establishing that submission never began; `SUBMITTING`/`UNKNOWN`/`EXTERNALIZED` releases require `confirmed_terminal:` evidence. Do not manually transition an ambiguous reservation based on a timeout alone. The ledger's explicit confirmation prefixes are guardrails against accidental transitions, not cryptographic proof of reconciliation.
 
 ## Recovery inventory API
 
