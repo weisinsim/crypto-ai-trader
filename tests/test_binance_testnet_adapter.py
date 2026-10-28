@@ -1072,7 +1072,23 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                 self.assertEqual(client.calls, [])
 
     def test_protective_exit_rechecks_mark_price_age_immediately_before_post(self):
-        client = FakeClient()
+        class OpenPositionClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"canTrade": True, "positions": [
+                        {"symbol": "BTCUSDT", "positionAmt": "0.5", "entryPrice": "100"},
+                    ]})
+                if path == "/fapi/v1/premiumIndex":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "BTCUSDT",
+                        "markPrice": "100",
+                        "time": int(time.time() * 1000),
+                    })
+                return super().get(path, params)
+
+        client = OpenPositionClient()
         adapter = BinanceFuturesTestnet(
             api_key="test-key", api_secret="test-secret", client=client
         )
