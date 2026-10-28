@@ -1527,6 +1527,11 @@ class BinanceFuturesTestnet:
             or isinstance(snapshot.get("snapshot_started_at_ms"), bool)
             or isinstance(snapshot.get("snapshot_completed_at_ms"), bool)
             or isinstance(snapshot.get("snapshot_duration_ms"), bool)
+            # Bound numeric magnitude before float-based finiteness checks: an
+            # arbitrarily large Python int can make math.isfinite raise OverflowError.
+            or abs(snapshot["snapshot_started_at_ms"]) > 10**16
+            or abs(snapshot["snapshot_completed_at_ms"]) > 10**16
+            or abs(snapshot["snapshot_duration_ms"]) > MAX_PROTECTIVE_SNAPSHOT_DURATION_MS
             or not math.isfinite(snapshot["snapshot_started_at_ms"])
             or not math.isfinite(snapshot["snapshot_completed_at_ms"])
             or not math.isfinite(snapshot["snapshot_duration_ms"])
