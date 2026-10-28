@@ -2745,13 +2745,31 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
 
 
     def test_reconcile_rejects_non_finite_snapshot_timestamps_and_duration(self):
+        class AuthoritativeOpenOrderClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "BTCUSDT",
+                        "clientOrderId": params.get("origClientOrderId"),
+                        "orderId": 12345,
+                        "status": "NEW",
+                        "origQty": "0.5",
+                        "executedQty": "0",
+                        "avgPrice": "0",
+                    })
+                if path == "/fapi/v1/openOrders" and "symbol" in params:
+                    self.get_calls.append((path, params))
+                    return FakeResponse([])
+                return super().get(path, params)
+
         for field, bad_value in (
             ("snapshot_started_at_ms", float("nan")),
             ("snapshot_completed_at_ms", float("inf")),
             ("snapshot_duration_ms", float("nan")),
         ):
             with self.subTest(field=field):
-                client = FakeClient()
+                client = AuthoritativeOpenOrderClient()
                 adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
                 ledger = adapter._risk_ledger
                 order_id = "recovery-nonfinite-" + field.replace("_", "-")
