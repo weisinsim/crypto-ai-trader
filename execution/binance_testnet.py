@@ -502,6 +502,57 @@ class BinanceFuturesTestnet:
                     "exception_type": type(exc).__name__,
                     "client_order_id": client_order_id,
                 }
+            # The signal entry may be stale. Revalidate stop/target geometry
+            # and risk at the mark price before treating the market entry as
+            # eligible; the order's actual fill can still move after this read.
+            try:
+                entry_price = Decimal(str(intent.entry))
+                stop_price = Decimal(str(intent.stop_loss))
+                target_price = Decimal(str(intent.take_profit))
+                proposed_notional = max(entry_price, mark_price) * quantity
+                mark_risk = abs(mark_price - stop_price) * quantity
+                max_order_notional = Decimal(str(config.max_notional_usdt))
+                max_risk_fraction = Decimal(str(config.max_risk_fraction))
+                if intent.side == "BUY":
+                    geometry_valid = stop_price < mark_price < target_price
+                else:
+                    geometry_valid = target_price < mark_price < stop_price
+                if not geometry_valid:
+                    return {
+                        "accepted": False,
+                        "reason": "market_order_mark_price_invalidates_risk_geometry",
+                        "requires_reconciliation": True,
+                        "client_order_id": client_order_id,
+                    }
+                if (
+                    not proposed_notional.is_finite()
+                    or proposed_notional <= 0
+                    or proposed_notional > max_order_notional
+                ):
+                    return {
+                        "accepted": False,
+                        "reason": "market_order_mark_price_exceeds_order_notional_limit",
+                        "requires_reconciliation": True,
+                        "client_order_id": client_order_id,
+                    }
+                if (
+                    not mark_risk.is_finite()
+                    or mark_risk <= 0
+                    or mark_risk > proposed_notional * max_risk_fraction
+                ):
+                    return {
+                        "accepted": False,
+                        "reason": "market_order_mark_price_exceeds_risk_limit",
+                        "requires_reconciliation": True,
+                        "client_order_id": client_order_id,
+                    }
+            except (InvalidOperation, TypeError, ValueError, OverflowError):
+                return {
+                    "accepted": False,
+                    "reason": "market_order_mark_price_risk_calculation_failed",
+                    "requires_reconciliation": True,
+                    "client_order_id": client_order_id,
+                }
             try:
                 open_order_metrics = self.open_entry_order_notional()
             except Exception as exc:
@@ -530,7 +581,6 @@ class BinanceFuturesTestnet:
                 current_open_order_notional = Decimal(str(open_order_metrics["open_entry_order_notional_usdt"]))
                 current_account_notional = current_position_notional + current_open_order_notional
                 account_notional_limit = Decimal(str(config.max_account_notional_usdt))
-                proposed_notional = max(Decimal(str(intent.entry)), mark_price) * quantity
                 projected_account_notional = current_account_notional + proposed_notional
                 if (
                     not current_position_notional.is_finite()
