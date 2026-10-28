@@ -2772,7 +2772,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                 client = AuthoritativeOpenOrderClient()
                 adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
                 ledger = adapter._risk_ledger
-                order_id = "recovery-nonfinite-" + field.replace("_", "-")
+                order_id = "nf-" + {"snapshot_started_at_ms": "start", "snapshot_completed_at_ms": "complete", "snapshot_duration_ms": "duration"}[field]
                 ledger.reserve(order_id, "50", "0", "1000")
                 ledger.transition(order_id, "SUBMITTING")
                 ledger.transition(order_id, "UNKNOWN")
