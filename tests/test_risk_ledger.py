@@ -12,14 +12,24 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.db_path = str(Path(self.temp_dir.name) / "risk-ledger.sqlite3")
         self.ledger = SQLiteRiskLedger(self.db_path)
+        self.ledger.set_kill_switch(False, reason="unit test setup")
 
     def tearDown(self):
         self.temp_dir.cleanup()
 
     def test_kill_switch_defaults_to_active(self):
-        status = self.ledger.kill_switch_status()
+        fresh_path = str(Path(self.temp_dir.name) / "fresh-risk-ledger.sqlite3")
+        fresh = SQLiteRiskLedger(fresh_path)
+        status = fresh.kill_switch_status()
         self.assertTrue(status["active"])
         self.assertEqual(status["reason"], "default_fail_closed")
+
+    def test_active_kill_switch_blocks_reservation_atomically(self):
+        self.ledger.set_kill_switch(True, reason="test emergency stop")
+        result = self.ledger.reserve("blocked-by-switch", "10", "0", "100")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "operator_kill_switch_active_or_unavailable")
+        self.assertIsNone(self.ledger.get("blocked-by-switch"))
 
     def test_kill_switch_requires_boolean_and_a_reason(self):
         with self.assertRaises(RiskLedgerError):
