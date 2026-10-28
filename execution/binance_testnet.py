@@ -809,6 +809,113 @@ class BinanceFuturesTestnet:
                 "requires_reconciliation": True,
                 "client_order_id": client_order_id,
             }
+        # The first position/open-order snapshot can become outdated even
+        # while still inside its age limit. Re-read authoritative state at the
+        # final mutation boundary and refuse submission if position or protection
+        # state changed since preflight.
+        try:
+            final_snapshot = self.testnet_position_snapshot(symbol)
+        except Exception as exc:
+            return {
+                "accepted": False,
+                "reason": "protective_exit_final_snapshot_failed_requires_reconciliation",
+                "requires_reconciliation": True,
+                "exception_type": type(exc).__name__,
+                "client_order_id": client_order_id,
+            }
+        if (
+            not isinstance(final_snapshot, dict)
+            or not final_snapshot.get("ok")
+            or final_snapshot.get("symbol") != symbol
+            or not isinstance(final_snapshot.get("open_orders"), list)
+        ):
+            return {
+                "accepted": False,
+                "reason": "protective_exit_final_snapshot_invalid_requires_reconciliation",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
+        try:
+            final_started_ms = final_snapshot["snapshot_started_at_ms"]
+            final_completed_ms = final_snapshot["snapshot_completed_at_ms"]
+            final_duration_ms = Decimal(str(final_snapshot["snapshot_duration_ms"]))
+            final_position_amount = Decimal(str(final_snapshot["position_amount"]))
+            final_entry_price = Decimal(str(final_snapshot["entry_price"]))
+            if (
+                isinstance(final_started_ms, bool)
+                or not isinstance(final_started_ms, int)
+                or isinstance(final_completed_ms, bool)
+                or not isinstance(final_completed_ms, int)
+                or final_started_ms < 0
+                or final_completed_ms < final_started_ms
+                or not final_duration_ms.is_finite()
+                or final_duration_ms != Decimal(final_completed_ms - final_started_ms)
+                or final_duration_ms > MAX_PROTECTIVE_SNAPSHOT_DURATION_MS
+                or not final_position_amount.is_finite()
+                or not final_entry_price.is_finite()
+                or final_position_amount == 0
+                or final_entry_price <= 0
+            ):
+                raise ValueError("invalid_final_position_snapshot")
+        except (InvalidOperation, TypeError, ValueError, KeyError):
+            return {
+                "accepted": False,
+                "reason": "protective_exit_final_snapshot_invalid_requires_reconciliation",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
+        if (
+            final_position_amount != position_amount
+            or final_entry_price != entry_price
+        ):
+            return {
+                "accepted": False,
+                "reason": "protective_exit_position_changed_before_submit_requires_reconciliation",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
+        final_open_orders = final_snapshot["open_orders"]
+        final_client_ids = {
+            order.get("client_order_id")
+            for order in final_open_orders
+            if isinstance(order, dict)
+        }
+        final_conflicts = [
+            order for order in final_open_orders
+            if isinstance(order, dict)
+            and order.get("side") == ("SELL" if is_long else "BUY")
+            and order.get("type") == order_type
+            and order.get("status") in {"NEW", "PARTIALLY_FILLED"}
+        ]
+        if client_order_id in final_client_ids or final_conflicts:
+            return {
+                "accepted": False,
+                "reason": "protective_exit_order_state_changed_before_submit_requires_reconciliation",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
+        # The extra snapshot involves network calls, so refresh the signed
+        # timestamp and recheck both independent freshness bounds once more.
+        params = self._signed_params({
+            key: value for key, value in params.items()
+            if key not in {"timestamp", "signature"}
+        })
+        final_mark_age_ms = int(time.time() * 1000) - mark_time_ms
+        if final_mark_age_ms < 0 or final_mark_age_ms > MAX_MARK_PRICE_AGE_MS:
+            return {
+                "accepted": False,
+                "reason": "protective_exit_mark_price_stale_before_submit_requires_reconciliation",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
+        final_snapshot_age_ms = int(time.time() * 1000) - final_completed_ms
+        if final_snapshot_age_ms < 0 or final_snapshot_age_ms > MAX_PROTECTIVE_SNAPSHOT_AGE_MS:
+            return {
+                "accepted": False,
+                "reason": "protective_exit_position_snapshot_stale_before_submit_requires_reconciliation",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
         try:
             response = self._post("/fapi/v1/order", params=params)
             response.raise_for_status()
