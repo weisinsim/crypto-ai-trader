@@ -1795,14 +1795,30 @@ class BinanceFuturesTestnet:
         # geometry alone is insufficient if the market has already crossed the
         # trigger; read the current mark price and fail closed if unavailable.
         try:
+            mark_request_started_ms = int(time.time() * 1000)
             mark_response = self._get(
                 "/fapi/v1/premiumIndex",
                 params={"symbol": symbol},
             )
             mark_response.raise_for_status()
             mark_payload = mark_response.json()
+            mark_response_received_ms = int(time.time() * 1000)
             if not isinstance(mark_payload, dict) or mark_payload.get("symbol") != symbol:
                 raise ValueError("invalid_mark_price_response")
+            raw_mark_time = mark_payload.get("time")
+            if (
+                isinstance(raw_mark_time, bool)
+                or not isinstance(raw_mark_time, (int, float))
+                or not math.isfinite(float(raw_mark_time))
+                or int(raw_mark_time) != raw_mark_time
+                or raw_mark_time <= 0
+            ):
+                raise ValueError("mark_price_timestamp_missing_or_invalid")
+            mark_time_ms = int(raw_mark_time)
+            if mark_time_ms - mark_request_started_ms > 500:
+                raise ValueError("mark_price_timestamp_in_future")
+            if mark_response_received_ms - mark_time_ms > MAX_MARK_PRICE_AGE_MS:
+                raise ValueError("mark_price_stale")
             mark_price = Decimal(str(mark_payload.get("markPrice", "NaN")))
             if not mark_price.is_finite() or mark_price <= 0:
                 raise ValueError("invalid_mark_price")
@@ -1841,6 +1857,17 @@ class BinanceFuturesTestnet:
             key: value for key, value in params.items()
             if key not in {"timestamp", "signature"}
         })
+        # Conditional exits are safety-critical too: the mark quote may age
+        # during exchange-filter/signature preparation. Never submit from a
+        # quote that has crossed the same freshness window used for entries.
+        final_mark_age_ms = int(time.time() * 1000) - mark_time_ms
+        if final_mark_age_ms < 0 or final_mark_age_ms > MAX_MARK_PRICE_AGE_MS:
+            return {
+                "accepted": False,
+                "reason": "protective_exit_mark_price_stale_before_submit_requires_reconciliation",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
         try:
             response = self._post("/fapi/v1/order", params=params)
             response.raise_for_status()
