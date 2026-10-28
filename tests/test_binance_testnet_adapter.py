@@ -2911,6 +2911,8 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
             ("snapshot_started_at_ms", float("nan")),
             ("snapshot_completed_at_ms", float("inf")),
             ("snapshot_duration_ms", float("nan")),
+            ("snapshot_started_at_ms", 10**1000),
+            ("snapshot_duration_ms", 10**1000),
         ):
             with self.subTest(field=field):
                 client = AuthoritativeOpenOrderClient()
