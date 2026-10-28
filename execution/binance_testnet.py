@@ -1541,6 +1541,9 @@ class BinanceFuturesTestnet:
             ) > 1
             or snapshot["snapshot_duration_ms"] > MAX_PROTECTIVE_SNAPSHOT_DURATION_MS
             or int(time.time() * 1000) - snapshot["snapshot_completed_at_ms"] > MAX_PROTECTIVE_SNAPSHOT_DURATION_MS
+            # Reject timestamps implausibly ahead of the local clock; a future
+            # completion time would otherwise produce a negative age and look fresh.
+            or snapshot["snapshot_completed_at_ms"] > int(time.time() * 1000) + 1000
             or not isinstance(snapshot.get("open_orders"), list)
         ):
             return {
