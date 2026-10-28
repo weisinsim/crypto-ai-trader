@@ -52,8 +52,8 @@ class SQLiteRiskLedger:
             raise RiskLedgerError("invalid_timeout")
         self.timeout_seconds = float(timeout_seconds)
         parent = Path(self.path).parent
-        parent.mkdir(parents=True, exist_ok=True)
         try:
+            parent.mkdir(parents=True, exist_ok=True)
             with self._connection() as connection:
                 connection.execute("PRAGMA journal_mode=WAL")
                 connection.execute("PRAGMA synchronous=FULL")
@@ -174,6 +174,12 @@ class SQLiteRiskLedger:
         try:
             with self._connection() as connection:
                 connection.execute("BEGIN IMMEDIATE")
+                control = connection.execute(
+                    "SELECT kill_switch_active FROM entry_control WHERE singleton_id = 1"
+                ).fetchone()
+                if control is None or control[0] != 0:
+                    connection.execute("ROLLBACK")
+                    return {"ok": False, "reason": "operator_kill_switch_active_or_unavailable"}
                 existing = connection.execute(
                     "SELECT notional_usdt, state FROM risk_reservations WHERE order_id = ?",
                     (order_id,),
