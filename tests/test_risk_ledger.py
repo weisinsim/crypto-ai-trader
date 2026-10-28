@@ -56,10 +56,28 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
         self.ledger.transition("unknown-2", "UNKNOWN")
         result = self.ledger.transition(
             "unknown-2", "EXTERNALIZED",
-            detail="operator confirmed authoritative snapshot includes this order",
+            detail="confirmed_snapshot: operator verified authoritative snapshot includes this order",
         )
         self.assertTrue(result["ok"])
         self.assertEqual(self.ledger.active_reserved_notional(), "0")
+
+    def test_unknown_reservation_cannot_be_released_without_terminal_evidence(self):
+        self.ledger.reserve("unknown-release", "20", "0", "100")
+        self.ledger.transition("unknown-release", "SUBMITTING")
+        self.ledger.transition("unknown-release", "UNKNOWN")
+        result = self.ledger.transition("unknown-release", "RELEASED", detail="probably rejected")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "release_requires_terminal_confirmation")
+        self.assertEqual(self.ledger.active_reserved_notional(), "20")
+
+    def test_unknown_reservation_cannot_be_externalized_without_snapshot_evidence(self):
+        self.ledger.reserve("unknown-externalized", "20", "0", "100")
+        self.ledger.transition("unknown-externalized", "SUBMITTING")
+        self.ledger.transition("unknown-externalized", "UNKNOWN")
+        result = self.ledger.transition("unknown-externalized", "EXTERNALIZED", detail="I think it exists")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "externalization_requires_snapshot_confirmation")
+        self.assertEqual(self.ledger.active_reserved_notional(), "20")
 
     def test_released_reservation_cannot_be_reused(self):
         self.ledger.reserve("order-released", "10", "0", "100")
