@@ -188,14 +188,23 @@ class BinanceFuturesTestnet:
         }
 
 
-    def open_entry_order_notional(self):
+    def open_entry_order_notional(self, *, exclude_client_order_ids=()):
         """Return conservative notional reserved by outstanding entry orders.
 
         Open orders are a separate snapshot from account positions. Unknown or
         malformed orders fail closed; reduce-only/close-position exits are not
-        counted as new exposure. This is a preflight guard, not an atomic
-        reservation across exchange reads and order submission.
+        counted as new exposure. Exact client-order IDs may be excluded only
+        when the durable ledger already counts those reservations, preventing
+        aggregate double-counting without hiding unrelated exchange orders.
+        This remains a preflight guard, not an atomic exchange reservation.
         """
+        if not isinstance(exclude_client_order_ids, (set, frozenset, list, tuple)):
+            return {"ok": False, "reason": "invalid_excluded_client_order_ids", "requires_reconciliation": True}
+        excluded_ids = set()
+        for order_id in exclude_client_order_ids:
+            if not isinstance(order_id, str) or not order_id.strip() or len(order_id) > 128:
+                return {"ok": False, "reason": "invalid_excluded_client_order_ids", "requires_reconciliation": True}
+            excluded_ids.add(order_id)
         try:
             response = self._get(
                 "/fapi/v1/openOrders", params=self._signed_params({})
@@ -220,6 +229,13 @@ class BinanceFuturesTestnet:
             for order in orders:
                 if not isinstance(order, dict):
                     return {"ok": False, "reason": "invalid_open_order_record", "requires_reconciliation": True}
+                client_order_id = order.get("clientOrderId")
+                if excluded_ids and (
+                    not isinstance(client_order_id, str)
+                    or not client_order_id.strip()
+                    or len(client_order_id) > 128
+                ):
+                    return {"ok": False, "reason": "open_order_client_id_missing_or_invalid", "requires_reconciliation": True}
                 symbol = order.get("symbol")
                 side = order.get("side")
                 order_type = order.get("type")
@@ -259,7 +275,11 @@ class BinanceFuturesTestnet:
                     price = Decimal(str(raw_stop_price)) if raw_stop_price not in (None, "", "0", "0.0") else Decimal("0")
                 if not price.is_finite() or price <= 0:
                     return {"ok": False, "reason": "open_entry_order_price_unknown", "requires_reconciliation": True}
-                total_notional += quantity * price
+                # Exclude only exact identities already represented by
+                # active durable reservations. Unmatched exchange orders remain
+                # part of external exposure; no aggregate subtraction is used.
+                if client_order_id not in excluded_ids:
+                    total_notional += quantity * price
             total_float = float(total_notional)
             if not math.isfinite(total_float):
                 return {"ok": False, "reason": "open_entry_order_notional_out_of_range", "requires_reconciliation": True}
@@ -632,7 +652,24 @@ class BinanceFuturesTestnet:
                     "client_order_id": client_order_id,
                 }
             try:
-                open_order_metrics = self.open_entry_order_notional()
+                # Use exact IDs from the durable unresolved inventory. Orders
+                # already represented by any active reservation must not also
+                # be counted in the exchange-open-order aggregate. If inventory
+                # is unavailable, fail closed rather than guess.
+                unresolved_reservations = self._risk_ledger.list_unresolved(limit=1000)
+                if not isinstance(unresolved_reservations, list) or any(
+                    not isinstance(row, dict)
+                    or not isinstance(row.get("order_id"), str)
+                    or row.get("state") not in {"RESERVED", "SUBMITTING", "UNKNOWN", "EXTERNALIZED"}
+                    for row in unresolved_reservations
+                ):
+                    raise RiskLedgerError("invalid_unresolved_reservation_inventory")
+                excluded_client_order_ids = {
+                    row["order_id"] for row in unresolved_reservations
+                }
+                open_order_metrics = self.open_entry_order_notional(
+                    exclude_client_order_ids=excluded_client_order_ids
+                )
             except Exception as exc:
                 return {
                     "accepted": False,
