@@ -2316,6 +2316,32 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(result["exception_type"], "TimeoutException")
         self.assertEqual(client.calls, [])
 
+    def test_protective_exit_rejects_malformed_initial_snapshot_before_market_reads(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        adapter.testnet_position_snapshot = lambda symbol: {
+            "ok": True,
+            "symbol": symbol,
+            "snapshot_started_at_ms": int(time.time() * 1000) - 10,
+            "snapshot_completed_at_ms": int(time.time() * 1000),
+            "snapshot_duration_ms": 10,
+            "position_amount": "0.5",
+            "entry_price": "100",
+            "open_orders": [{"client_order_id": "malformed-order"}],
+        }
+
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "new-stop-id"
+        )
+
+        self.assertFalse(result["accepted"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["reason"], "position_snapshot_failed")
+        self.assertEqual(client.calls, [])
+        self.assertEqual(client.get_calls, [])
+
     def test_protective_exit_refuses_client_id_already_in_open_order_snapshot(self):
         class ExistingClientOrderClient(FakeClient):
             def get(self, path, params):
