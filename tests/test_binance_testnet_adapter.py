@@ -2654,6 +2654,41 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(ledger.get("paper-reconcile-open")["state"], "EXTERNALIZED")
         self.assertEqual(client.calls, [])
 
+    def test_reconcile_externalized_zero_fill_terminal_order_releases_reservation(self):
+        class CanceledExternalizedOrderClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"),
+                        "orderId": 12345, "status": "CANCELED",
+                        "origQty": "0.5", "executedQty": "0", "avgPrice": "0",
+                    })
+                if path == "/fapi/v1/openOrders" and "symbol" in params:
+                    self.get_calls.append((path, params))
+                    return FakeResponse([])
+                return super().get(path, params)
+
+        client = CanceledExternalizedOrderClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        ledger = adapter._risk_ledger
+        order_id = "externalized-then-canceled"
+        ledger.reserve(order_id, "50", "0", "1000")
+        ledger.transition(order_id, "SUBMITTING")
+        ledger.transition(order_id, "UNKNOWN")
+        ledger.transition(
+            order_id, "EXTERNALIZED",
+            detail="confirmed_snapshot: open order was visible in prior reconciliation",
+        )
+
+        result = adapter.reconcile_testnet_entry_reservation("BTCUSDT", order_id)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["reason"], "zero_fill_terminal_order_confirmed")
+        self.assertEqual(result["state"], "RELEASED")
+        self.assertEqual(ledger.get(order_id)["state"], "RELEASED")
+        self.assertEqual(ledger.active_reserved_notional(), "0")
+        self.assertEqual(client.calls, [])
+
     def test_reconcile_zero_fill_terminal_order_releases_only_when_absent_from_open_snapshot(self):
         class CanceledOrderClient(FakeClient):
             def get(self, path, params):
