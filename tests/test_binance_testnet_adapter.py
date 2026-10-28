@@ -2352,6 +2352,33 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(client.calls, [])
         self.assertEqual(client.get_calls, [])
 
+    def test_protective_exit_rejects_initial_snapshot_symbol_mismatch(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        now_ms = int(time.time() * 1000)
+        adapter.testnet_position_snapshot = lambda symbol: {
+            "ok": True,
+            "symbol": "ETHUSDT",
+            "snapshot_started_at_ms": now_ms - 10,
+            "snapshot_completed_at_ms": now_ms,
+            "snapshot_duration_ms": 10,
+            "position_amount": "0.5",
+            "entry_price": "100",
+            "open_orders": [],
+        }
+
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "stop-wrong-snapshot-symbol"
+        )
+
+        self.assertFalse(result["accepted"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["reason"], "position_snapshot_failed")
+        self.assertEqual(client.calls, [])
+        self.assertEqual(client.get_calls, [])
+
     def test_protective_exit_refuses_client_id_already_in_open_order_snapshot(self):
         class ExistingClientOrderClient(FakeClient):
             def get(self, path, params):
