@@ -2716,5 +2716,32 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(ledger.get("kill-switch-last-check-0001")["state"], "UNKNOWN")
         self.assertEqual(client.calls, [])
 
+
+    def test_reconcile_rejects_inconsistent_snapshot_duration_without_ledger_mutation(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        ledger = adapter._risk_ledger
+        ledger.reserve("recovery-duration-test", "50", "0", "1000")
+        ledger.transition("recovery-duration-test", "SUBMITTING")
+        ledger.transition("recovery-duration-test", "UNKNOWN")
+        now_ms = int(time.time() * 1000)
+        adapter.testnet_position_snapshot = lambda symbol: {
+            "ok": True,
+            "symbol": symbol,
+            "snapshot_started_at_ms": now_ms - 10,
+            "snapshot_completed_at_ms": now_ms,
+            "snapshot_duration_ms": 999,
+            "position_amount": "0",
+            "entry_price": "0",
+            "open_orders": [],
+        }
+
+        result = adapter.reconcile_testnet_entry_reservation("BTCUSDT", "recovery-duration-test")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "position_snapshot_stale_or_invalid")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(ledger.get("recovery-duration-test")["state"], "UNKNOWN")
+        self.assertEqual(client.calls, [])
+
 if __name__ == "__main__":
     unittest.main()
