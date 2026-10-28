@@ -15,6 +15,7 @@ from urllib.parse import urlencode
 import httpx
 
 from execution.safety import ExecutionConfig, OrderIntent, validate_order_intent
+from execution.risk_ledger import RiskLedgerError, SQLiteRiskLedger
 
 TESTNET_BASE_URL = "https://testnet.binancefuture.com"
 MAX_PROTECTIVE_SNAPSHOT_DURATION_MS = 2000
@@ -57,6 +58,15 @@ class BinanceFuturesTestnet:
                 headers={"X-MBX-APIKEY": self.api_key},
                 timeout=10.0,
             )
+        ledger_path = os.getenv("CRYPTO_TESTNET_RISK_LEDGER_PATH", "").strip()
+        self._risk_ledger = None
+        if ledger_path:
+            try:
+                self._risk_ledger = SQLiteRiskLedger(ledger_path)
+            except RiskLedgerError:
+                # Entry submission fails closed if persistent risk state is
+                # configured but cannot be initialized.
+                self._risk_ledger = None
 
     def _signed_params(self, params):
         payload = dict(params)
@@ -376,6 +386,13 @@ class BinanceFuturesTestnet:
         decision = validate_order_intent(intent, config)
         if not decision.allowed:
             return {"accepted": False, "reason": decision.reason}
+        if self._risk_ledger is None:
+            return {
+                "accepted": False,
+                "reason": "durable_risk_ledger_unavailable_requires_reconciliation",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
         if config.mode != "testnet":
             return {"accepted": False, "reason": "testnet_mode_required"}
         try:
@@ -619,8 +636,66 @@ class BinanceFuturesTestnet:
                     "proposed_order_notional_usdt": float(proposed_notional),
                     "max_account_notional_usdt": float(account_notional_limit),
                 }
+            # Reserve account capacity atomically across adapter instances and
+            # processes before the exchange POST. Existing reservations for the
+            # same client ID are never permission to blindly retry.
+            try:
+                reservation = self._risk_ledger.reserve(
+                    client_order_id,
+                    proposed_notional,
+                    current_account_notional,
+                    account_notional_limit,
+                )
+            except RiskLedgerError as exc:
+                return {
+                    "accepted": False,
+                    "reason": "durable_risk_reservation_failed_requires_reconciliation",
+                    "requires_reconciliation": True,
+                    "exception_type": type(exc).__name__,
+                    "client_order_id": client_order_id,
+                }
+            if not isinstance(reservation, dict) or reservation.get("ok") is not True:
+                return {
+                    "accepted": False,
+                    "reason": (
+                        reservation.get("reason", "invalid_risk_reservation_result")
+                        if isinstance(reservation, dict)
+                        else "invalid_risk_reservation_result"
+                    ),
+                    "requires_reconciliation": True,
+                    "client_order_id": client_order_id,
+                    "reservation": reservation if isinstance(reservation, dict) else None,
+                }
+            if reservation.get("reason") != "risk_reserved":
+                return {
+                    "accepted": False,
+                    "reason": "existing_risk_reservation_requires_reconciliation",
+                    "requires_reconciliation": True,
+                    "client_order_id": client_order_id,
+                    "reservation_state": reservation.get("state"),
+                }
         except (ValueError, InvalidOperation, TypeError, KeyError):
             return {"accepted": False, "reason": "exchange_preflight_failed"}
+        try:
+            state = self._risk_ledger.transition(
+                client_order_id, "SUBMITTING",
+                detail="durable reservation acquired; exchange submission about to begin",
+            )
+            if not isinstance(state, dict) or state.get("ok") is not True:
+                return {
+                    "accepted": False,
+                    "reason": "risk_reservation_transition_failed_requires_reconciliation",
+                    "requires_reconciliation": True,
+                    "client_order_id": client_order_id,
+                }
+        except RiskLedgerError as exc:
+            return {
+                "accepted": False,
+                "reason": "risk_reservation_transition_failed_requires_reconciliation",
+                "requires_reconciliation": True,
+                "exception_type": type(exc).__name__,
+                "client_order_id": client_order_id,
+            }
         params = self._signed_params({
             "symbol": intent.symbol,
             "side": intent.side,
@@ -633,7 +708,14 @@ class BinanceFuturesTestnet:
             response.raise_for_status()
             payload = response.json()
         except (httpx.TimeoutException, httpx.TransportError):
-            # A timeout after POST is ambiguous: never auto-retry an order.
+            # A timeout after POST is ambiguous: retain the reservation and
+            # mark the outcome unknown. Never auto-retry an order.
+            try:
+                self._risk_ledger.transition(
+                    client_order_id, "UNKNOWN", detail="ambiguous timeout/transport error after POST"
+                )
+            except RiskLedgerError:
+                pass
             return {
                 "accepted": False,
                 "reason": "testnet_order_outcome_unknown",
@@ -642,6 +724,12 @@ class BinanceFuturesTestnet:
             }
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code >= 500:
+                try:
+                    self._risk_ledger.transition(
+                        client_order_id, "UNKNOWN", detail="HTTP server error; order outcome ambiguous"
+                    )
+                except RiskLedgerError:
+                    pass
                 return {
                     "accepted": False,
                     "reason": "testnet_order_outcome_unknown",
@@ -672,9 +760,28 @@ class BinanceFuturesTestnet:
                 )
             )
             if duplicate_client_id:
+                try:
+                    self._risk_ledger.transition(
+                        client_order_id, "UNKNOWN", detail="client order ID conflict requires exchange reconciliation"
+                    )
+                except RiskLedgerError:
+                    pass
                 return {
                     "accepted": False,
                     "reason": "testnet_order_client_id_conflict_requires_reconciliation",
+                    "requires_reconciliation": True,
+                    "http_status": exc.response.status_code,
+                    "client_order_id": client_order_id,
+                }
+            try:
+                self._risk_ledger.transition(
+                    client_order_id, "RELEASED",
+                    detail=f"exchange returned definitive HTTP rejection {exc.response.status_code}",
+                )
+            except RiskLedgerError:
+                return {
+                    "accepted": False,
+                    "reason": "testnet_order_rejected_risk_release_requires_reconciliation",
                     "requires_reconciliation": True,
                     "http_status": exc.response.status_code,
                     "client_order_id": client_order_id,
@@ -686,6 +793,12 @@ class BinanceFuturesTestnet:
                 "client_order_id": client_order_id,
             }
         except (ValueError, TypeError):
+            try:
+                self._risk_ledger.transition(
+                    client_order_id, "UNKNOWN", detail="invalid or missing POST response; reconcile exchange state"
+                )
+            except RiskLedgerError:
+                pass
             return {
                 "accepted": False,
                 "reason": "testnet_order_outcome_unknown",
@@ -695,6 +808,12 @@ class BinanceFuturesTestnet:
         except Exception as exc:
             # Unexpected custom-client failures can happen after the exchange
             # receives the request. Treat the outcome as ambiguous; never retry.
+            try:
+                self._risk_ledger.transition(
+                    client_order_id, "UNKNOWN", detail="unexpected POST exception; reconcile exchange state"
+                )
+            except RiskLedgerError:
+                pass
             return {
                 "accepted": False,
                 "reason": "testnet_order_outcome_unknown",
@@ -709,6 +828,12 @@ class BinanceFuturesTestnet:
             or payload.get("clientOrderId") != client_order_id
             or payload.get("status") not in {"NEW", "PARTIALLY_FILLED", "FILLED"}
         ):
+            try:
+                self._risk_ledger.transition(
+                    client_order_id, "UNKNOWN", detail="unexpected order response; reconcile exchange state"
+                )
+            except RiskLedgerError:
+                pass
             return {
                 "accepted": False,
                 "reason": "unexpected_testnet_order_response",
@@ -746,6 +871,12 @@ class BinanceFuturesTestnet:
             ):
                 raise InvalidOperation
         except (InvalidOperation, TypeError, ValueError, KeyError):
+            try:
+                self._risk_ledger.transition(
+                    client_order_id, "UNKNOWN", detail="order fill fields contradictory; reconcile exchange state"
+                )
+            except RiskLedgerError:
+                pass
             return {
                 "accepted": False,
                 "reason": "testnet_order_fill_state_requires_reconciliation",
