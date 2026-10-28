@@ -221,10 +221,19 @@ class BinanceFuturesTestnet:
                     return {"ok": False, "reason": "invalid_open_order_identity", "requires_reconciliation": True}
                 reduce_only = order.get("reduceOnly")
                 close_position = order.get("closePosition")
-                if not isinstance(reduce_only, (bool, str)) or not isinstance(close_position, (bool, str)):
-                    return {"ok": False, "reason": "open_order_exit_flags_missing", "requires_reconciliation": True}
-                reduce_only = reduce_only is True or (isinstance(reduce_only, str) and reduce_only.lower() == "true")
-                close_position = close_position is True or (isinstance(close_position, str) and close_position.lower() == "true")
+                def parse_exchange_bool(value):
+                    if isinstance(value, bool):
+                        return value
+                    if isinstance(value, str) and value.lower() in {"true", "false"}:
+                        return value.lower() == "true"
+                    return None
+
+                reduce_only = parse_exchange_bool(order.get("reduceOnly"))
+                close_position = parse_exchange_bool(order.get("closePosition"))
+                if reduce_only is None or close_position is None:
+                    # Unknown flags cannot safely be assumed to indicate an
+                    # entry or an exit; refuse to undercount the account cap.
+                    return {"ok": False, "reason": "open_order_exit_flags_invalid", "requires_reconciliation": True}
                 if reduce_only or close_position:
                     continue
                 if "origQty" not in order:
