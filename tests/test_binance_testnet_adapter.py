@@ -2373,5 +2373,33 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(ledger.get("repeat-sweep-reserved")["state"], "RESERVED")
         self.assertEqual(client.calls, [])
 
+
+    def test_kill_switch_activated_after_submitting_transition_blocks_post(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        ledger = adapter._risk_ledger
+        original_transition = ledger.transition
+
+        def transition_then_activate(order_id, new_state, *, detail=""):
+            result = original_transition(order_id, new_state, detail=detail)
+            if new_state == "SUBMITTING" and result.get("ok") is True:
+                ledger.set_kill_switch(True, reason="simulated switch activation before POST")
+            return result
+
+        ledger.transition = transition_then_activate
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "kill-switch-last-check-0001", ExecutionConfig(mode="testnet")
+        )
+
+        self.assertFalse(result["accepted"])
+        self.assertEqual(
+            result["reason"], "operator_kill_switch_active_at_final_pre_submit_check"
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(ledger.get("kill-switch-last-check-0001")["state"], "UNKNOWN")
+        self.assertEqual(client.calls, [])
+
 if __name__ == "__main__":
     unittest.main()
