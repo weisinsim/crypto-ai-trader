@@ -457,6 +457,27 @@ class BinanceFuturesTestnet:
                 "client_order_id": client_order_id,
             }
         try:
+            kill_switch = self._risk_ledger.kill_switch_status()
+        except RiskLedgerError as exc:
+            return {
+                "accepted": False,
+                "reason": "operator_kill_switch_unavailable_requires_reconciliation",
+                "requires_reconciliation": True,
+                "exception_type": type(exc).__name__,
+                "client_order_id": client_order_id,
+            }
+        if not isinstance(kill_switch, dict) or kill_switch.get("active") is not False:
+            return {
+                "accepted": False,
+                "reason": "operator_kill_switch_active",
+                "requires_reconciliation": True,
+                "kill_switch_reason": (
+                    kill_switch.get("reason") if isinstance(kill_switch, dict)
+                    else "invalid_kill_switch_response"
+                ),
+                "client_order_id": client_order_id,
+            }
+        try:
             rules = self.symbol_rules(intent.symbol)
             if rules["status"] != "TRADING":
                 return {"accepted": False, "reason": "symbol_not_trading"}
