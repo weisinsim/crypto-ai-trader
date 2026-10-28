@@ -2318,6 +2318,11 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
             "reserved_state_requires_explicit_crash_recovery_review",
         )
         self.assertEqual(by_id["sweep-unknown"]["reason"], "explicit_valid_symbol_mapping_missing")
+        self.assertTrue(by_id["sweep-reserved"]["audit_persisted"])
+        self.assertTrue(by_id["sweep-unknown"]["audit_persisted"])
+        self.assertEqual(result["audit_persisted"], 2)
+        audit = ledger.list_recovery_audit(limit=10)
+        self.assertEqual({row["order_id"] for row in audit}, {"sweep-reserved", "sweep-unknown"})
         self.assertEqual(ledger.get("sweep-reserved")["state"], "RESERVED")
         self.assertEqual(ledger.get("sweep-unknown")["state"], "UNKNOWN")
         self.assertEqual(client.calls, [])
