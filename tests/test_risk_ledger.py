@@ -175,6 +175,32 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
         self.assertEqual(self.ledger.active_reserved_notional(), "25")
         self.assertEqual(self.ledger.get("eventually-released")["state"], "RELEASED")
 
+    def test_recovery_audit_is_durable_append_only_and_bounded(self):
+        first = self.ledger.record_recovery_audit(
+            order_id="audit-order-1",
+            symbol="BTCUSDT",
+            state_before="UNKNOWN",
+            outcome="deferred",
+            reason="order_snapshot_ambiguous",
+        )
+        second = self.ledger.record_recovery_audit(
+            order_id="audit-order-2",
+            state_before="RESERVED",
+            outcome="deferred",
+            reason="crash_window_review_required",
+        )
+        self.assertTrue(first["ok"])
+        self.assertTrue(second["ok"])
+        reopened = SQLiteRiskLedger(self.db_path)
+        rows = reopened.list_recovery_audit(limit=1)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["order_id"], "audit-order-2")
+        all_rows = reopened.list_recovery_audit(limit=10)
+        self.assertEqual([row["order_id"] for row in all_rows], ["audit-order-2", "audit-order-1"])
+        self.assertEqual(all_rows[1]["reason"], "order_snapshot_ambiguous")
+        with self.assertRaises(RiskLedgerError):
+            reopened.list_recovery_audit(limit=0)
+
     def test_list_unresolved_validates_limit_and_supports_bounded_batches(self):
         for invalid in (0, -1, 1001, True, 1.5, "10"):
             with self.subTest(invalid=invalid):
