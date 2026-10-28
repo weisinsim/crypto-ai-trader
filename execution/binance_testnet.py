@@ -1445,6 +1445,8 @@ class BinanceFuturesTestnet:
             # result override the inventory's trusted order ID / symbol identity.
             if not isinstance(result, dict):
                 result = {
+                    "client_order_id": client_order_id,
+                    "symbol": symbol,
                     "ok": False,
                     "reason": "invalid_reconciliation_result_shape",
                     "requires_reconciliation": True,
