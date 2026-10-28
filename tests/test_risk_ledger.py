@@ -162,5 +162,29 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
         self.assertEqual(self.ledger.active_reserved_notional(), "20")
 
 
+    def test_list_unresolved_returns_active_states_oldest_first_without_mutation(self):
+        self.ledger.reserve("older-unknown", "10", "0", "100")
+        self.ledger.transition("older-unknown", "SUBMITTING")
+        self.ledger.transition("older-unknown", "UNKNOWN")
+        self.ledger.reserve("newer-reserved", "15", "0", "100")
+        self.ledger.reserve("eventually-released", "5", "0", "100")
+        self.ledger.transition("eventually-released", "RELEASED")
+        rows = self.ledger.list_unresolved()
+        self.assertEqual([row["order_id"] for row in rows], ["older-unknown", "newer-reserved"])
+        self.assertEqual([row["state"] for row in rows], ["UNKNOWN", "RESERVED"])
+        self.assertEqual(self.ledger.active_reserved_notional(), "25")
+        self.assertEqual(self.ledger.get("eventually-released")["state"], "RELEASED")
+
+    def test_list_unresolved_validates_limit_and_supports_bounded_batches(self):
+        for invalid in (0, -1, 1001, True, 1.5, "10"):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(RiskLedgerError):
+                    self.ledger.list_unresolved(limit=invalid)
+        for index in range(3):
+            self.ledger.reserve(f"batch-{index}", "1", "0", "100")
+        self.assertEqual(len(self.ledger.list_unresolved(limit=2)), 2)
+        self.assertEqual(len(self.ledger.list_unresolved(limit=1)), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
