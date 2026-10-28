@@ -364,8 +364,19 @@ class BinanceFuturesTestnet:
             raise ValueError("invalid_testnet_account_response")
         open_position_count = 0
         for position in account["positions"]:
+            # Do not interpret missing identity or amount fields as a flat
+            # position. This is a readiness/preflight view, so malformed
+            # account snapshots must remain visibly unavailable.
+            symbol = position.get("symbol")
+            if (
+                not isinstance(symbol, str)
+                or not symbol
+                or not symbol.isascii()
+                or "positionAmt" not in position
+            ):
+                raise ValueError("invalid_testnet_account_position")
             try:
-                amount = Decimal(str(position.get("positionAmt", "0")))
+                amount = Decimal(str(position["positionAmt"]))
             except (InvalidOperation, TypeError, ValueError) as exc:
                 raise ValueError("invalid_testnet_account_position") from exc
             if not amount.is_finite():
