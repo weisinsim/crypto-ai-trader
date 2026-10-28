@@ -448,6 +448,29 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(result["proposed_order_notional_usdt"], 50.0)
         self.assertEqual(client.calls, [])
 
+    def test_market_order_rechecks_mark_price_age_immediately_before_post(self):
+        class SlowOpenOrdersClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/openOrders":
+                    # Simulate a slow preflight after a fresh mark-price read.
+                    time.sleep(2.1)
+                return super().get(path, params)
+
+        client = SlowOpenOrdersClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "aged-mark-prepost-0001", ExecutionConfig(mode="testnet")
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(
+            result["reason"],
+            "market_order_mark_price_stale_before_submit_requires_reconciliation",
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertFalse(any(path == "/fapi/v1/order" for path, _ in client.calls))
+
     def test_market_order_fails_closed_when_mark_price_timestamp_is_missing_or_stale(self):
         class MarkTimestampClient(FakeClient):
             def __init__(self, mark_payload):
