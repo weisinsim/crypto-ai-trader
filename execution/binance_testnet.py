@@ -724,6 +724,41 @@ class BinanceFuturesTestnet:
             "quantity": quantity_text,
             "newClientOrderId": client_order_id,
         })
+        # Recheck immediately before the network call as a second barrier. This
+        # narrows (but cannot eliminate) the race between a local kill-switch
+        # read and an exchange POST; an already-started request cannot be
+        # recalled by a local switch.
+        try:
+            switch_status = self._risk_ledger.kill_switch_status()
+        except Exception as exc:
+            try:
+                self._risk_ledger.transition(
+                    client_order_id, "UNKNOWN",
+                    detail="kill-switch recheck failed before POST; retain reservation for reconciliation",
+                )
+            except RiskLedgerError:
+                pass
+            return {
+                "accepted": False,
+                "reason": "kill_switch_recheck_failed_requires_reconciliation",
+                "requires_reconciliation": True,
+                "exception_type": type(exc).__name__,
+                "client_order_id": client_order_id,
+            }
+        if not isinstance(switch_status, dict) or switch_status.get("active") is not False:
+            try:
+                self._risk_ledger.transition(
+                    client_order_id, "UNKNOWN",
+                    detail="kill switch active at final pre-POST check; retain reservation for reconciliation",
+                )
+            except RiskLedgerError:
+                pass
+            return {
+                "accepted": False,
+                "reason": "operator_kill_switch_active_at_final_pre_submit_check",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
         try:
             response = self._post("/fapi/v1/order", params=params)
             response.raise_for_status()
