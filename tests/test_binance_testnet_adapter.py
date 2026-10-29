@@ -905,6 +905,45 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(result["reason"], "unexpected_or_mismatched_testnet_order_response")
         self.assertEqual(client.calls, [])
 
+    def test_query_order_rejects_missing_or_invalid_side(self):
+        base = {
+            "symbol": "BTCUSDT",
+            "clientOrderId": "paper-test-0001",
+            "orderId": 12345,
+            "status": "CANCELED",
+            "origQty": "0.5",
+            "executedQty": "0",
+            "avgPrice": "0",
+        }
+
+        class InvalidSideClient(FakeClient):
+            def __init__(self, payload):
+                super().__init__()
+                self.payload = payload
+
+            def get(self, path, params):
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    return FakeResponse(self.payload)
+                return super().get(path, params)
+
+        for side in (None, "", "BUY_SELL", 1):
+            with self.subTest(side=side):
+                payload = dict(base)
+                if side is not None:
+                    payload["side"] = side
+                client = InvalidSideClient(payload)
+                adapter = BinanceFuturesTestnet(
+                    api_key="test-key", api_secret="test-secret", client=client
+                )
+                result = adapter.query_testnet_order("BTCUSDT", "paper-test-0001")
+                self.assertFalse(result["found"])
+                self.assertTrue(result["requires_reconciliation"])
+                self.assertEqual(
+                    result["reason"], "unexpected_or_mismatched_testnet_order_response"
+                )
+                self.assertEqual(client.calls, [])
+
     def test_query_order_rejects_invalid_client_id_without_network_call(self):
         client = FakeClient()
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
