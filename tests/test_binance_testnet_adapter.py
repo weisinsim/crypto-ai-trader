@@ -44,7 +44,7 @@ class FakeClient:
         if path == "/fapi/v1/premiumIndex":
             return FakeResponse({"symbol": params.get("symbol"), "markPrice": "100", "time": int(time.time() * 1000)})
         if path == "/fapi/v1/order":
-            return FakeResponse({"symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"), "orderId": 12345, "status": "PARTIALLY_FILLED", "origQty": "0.5", "executedQty": "0.2", "avgPrice": "100.1"})
+            return FakeResponse({"symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"), "side": "BUY", "orderId": 12345, "status": "PARTIALLY_FILLED", "origQty": "0.5", "executedQty": "0.2", "avgPrice": "100.1"})
         if path == "/fapi/v2/account":
             return FakeResponse({"canTrade": True, "positions": [
                 {"symbol": "BTCUSDT", "positionAmt": "0", "entryPrice": "0", "notional": "0"},
@@ -77,7 +77,7 @@ class FakeClient:
 
     def delete(self, path, params):
         self.calls.append((path, params))
-        return FakeResponse({"symbol": params.get("symbol"), "clientOrderId": params.get("origClientOrderId"), "orderId": 12345, "status": "CANCELED", "origQty": "0.5", "executedQty": "0"})
+        return FakeResponse({"symbol": params.get("symbol"), "clientOrderId": params.get("origClientOrderId"), "side": "BUY", "orderId": 12345, "status": "CANCELED", "origQty": "0.5", "executedQty": "0"})
 
     def close(self):
         pass
@@ -352,6 +352,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                 return FakeResponse({
                     "symbol": params.get("symbol"),
                     "clientOrderId": params.get("newClientOrderId"),
+                    "side": "BUY",
                     "orderId": 12345,
                     "status": "NEW",
                 })
@@ -891,6 +892,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                     return FakeResponse({
                         "symbol": "ETHUSDT",
                         "clientOrderId": "different-client-id",
+                        "side": "BUY",
                         "orderId": 12345,
                         "status": "FILLED",
                         "executedQty": "0.5",
@@ -1927,6 +1929,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                 return FakeResponse({
                     "symbol": params.get("symbol"),
                     "clientOrderId": params.get("origClientOrderId"),
+                    "side": "BUY",
                     "orderId": 12345,
                     "status": "PARTIALLY_FILLED",
                     "origQty": "0.5",
@@ -1953,6 +1956,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                 return FakeResponse({
                     "symbol": params.get("symbol"),
                     "clientOrderId": params.get("origClientOrderId"),
+                    "side": "BUY",
                     "orderId": 12345,
                     "status": "CANCELED",
                     "origQty": "0.5",
@@ -1977,6 +1981,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                 return FakeResponse({
                     "symbol": params.get("symbol"),
                     "clientOrderId": params.get("origClientOrderId"),
+                    "side": "BUY",
                     "orderId": 12345,
                     "status": "CANCELED",
                 })
@@ -1998,6 +2003,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                 return FakeResponse({
                     "symbol": "ETHUSDT",
                     "clientOrderId": "different-client-id",
+                    "side": "BUY",
                     "orderId": 12345,
                     "status": "CANCELED",
                 })
@@ -2044,6 +2050,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         base = {
             "symbol": "BTCUSDT",
             "clientOrderId": "paper-test-0001",
+            "side": "BUY",
             "orderId": 12345,
             "origQty": "0.5",
             "avgPrice": "100.1",
@@ -2105,6 +2112,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         base = {
             "symbol": "BTCUSDT",
             "clientOrderId": "paper-test-0001",
+            "side": "BUY",
             "orderId": 12345,
             "status": "FILLED",
             "origQty": "0.5",
@@ -2142,6 +2150,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                     return FakeResponse({
                         "symbol": "BTCUSDT",
                         "clientOrderId": "paper-test-0001",
+                        "side": "BUY",
                         "orderId": self.order_id,
                         "status": "FILLED",
                         "origQty": "0.5",
@@ -2214,6 +2223,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                 return FakeResponse({
                     "symbol": params.get("symbol"),
                     "clientOrderId": params.get("newClientOrderId"),
+                    "side": "BUY",
                     "orderId": True,
                     "status": "NEW",
                 })
@@ -2237,6 +2247,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                 return FakeResponse({
                     "symbol": params.get("symbol"),
                     "clientOrderId": params.get("origClientOrderId"),
+                    "side": "BUY",
                     "orderId": True,
                     "status": "CANCELED",
                 })
@@ -2353,6 +2364,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                 return FakeResponse({
                     "symbol": params.get("symbol"),
                     "clientOrderId": params.get("newClientOrderId"),
+                    "side": "BUY",
                     "orderId": True,
                     "status": "NEW",
                 })
@@ -3081,6 +3093,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                     self.get_calls.append((path, params))
                     return FakeResponse({
                         "symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"),
+                        "side": "BUY",
                         "orderId": 12345, "status": "CANCELED",
                         "origQty": "0.5", "executedQty": "0", "avgPrice": "0",
                     })
@@ -3116,6 +3129,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                     self.get_calls.append((path, params))
                     return FakeResponse({
                         "symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"),
+                        "side": "BUY",
                         "orderId": 12345, "status": "CANCELED",
                         "origQty": "0.5", "executedQty": "0", "avgPrice": "0",
                     })
@@ -3144,6 +3158,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                     return FakeResponse({
                         "symbol": "BTCUSDT",
                         "clientOrderId": params.get("origClientOrderId"),
+                        "side": "BUY",
                         "orderId": 12345,
                         "status": "CANCELED",
                         "origQty": "0.5",
@@ -3204,6 +3219,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                     self.get_calls.append((path, params))
                     return FakeResponse({
                         "symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"),
+                        "side": "BUY",
                         "orderId": 12345, "status": "FILLED",
                         "origQty": "0.5", "executedQty": "0.5", "avgPrice": "100",
                     })
@@ -3387,6 +3403,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                     return FakeResponse({
                         "symbol": "BTCUSDT",
                         "clientOrderId": params.get("origClientOrderId"),
+                        "side": "BUY",
                         "orderId": 12345,
                         "status": "NEW",
                         "origQty": "0.5",
@@ -3434,6 +3451,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                     return FakeResponse({
                         "symbol": "BTCUSDT",
                         "clientOrderId": params.get("origClientOrderId"),
+                        "side": "BUY",
                         "orderId": 12345,
                         "status": "NEW",
                         "origQty": "0.5",
