@@ -936,6 +936,41 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(result["reason"], "testnet_open_order_symbol_mismatch")
         self.assertEqual(client.calls, [])
 
+    def test_position_snapshot_rejects_duplicate_open_order_identities(self):
+        base_order = {
+            "orderId": 99, "symbol": "BTCUSDT", "clientOrderId": "stop-0001",
+            "side": "SELL", "type": "STOP_MARKET", "status": "NEW",
+            "reduceOnly": True, "stopPrice": "99.8", "origQty": "0.5",
+            "executedQty": "0",
+        }
+        cases = (
+            (
+                [dict(base_order), {**base_order, "orderId": 100, "clientOrderId": "stop-0002"}],
+                "duplicate_testnet_open_order_client_id",
+            ),
+            (
+                [dict(base_order), {**base_order, "clientOrderId": "stop-0002"}],
+                "duplicate_testnet_open_order_id",
+            ),
+        )
+        for orders, expected_reason in cases:
+            with self.subTest(expected_reason=expected_reason):
+                class DuplicateIdentityClient(FakeClient):
+                    def get(self, path, params):
+                        if path == "/fapi/v1/openOrders":
+                            self.get_calls.append((path, params))
+                            return FakeResponse(orders)
+                        return super().get(path, params)
+
+                client = DuplicateIdentityClient()
+                adapter = BinanceFuturesTestnet(
+                    api_key="test-key", api_secret="test-secret", client=client
+                )
+                result = adapter.testnet_position_snapshot("BTCUSDT")
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["reason"], expected_reason)
+                self.assertEqual(client.calls, [])
+
     def test_position_snapshot_rejects_nonfinite_open_order_quantity(self):
         class InvalidQuantityOrderClient(FakeClient):
             def get(self, path, params):
