@@ -2023,7 +2023,7 @@ class BinanceFuturesTestnet:
             }
         if (
             not isinstance(final_snapshot, dict)
-            or not final_snapshot.get("ok")
+            or final_snapshot.get("ok") is not True
             or final_snapshot.get("symbol") != symbol
             or not isinstance(final_snapshot.get("open_orders"), list)
             or any(
