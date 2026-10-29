@@ -283,6 +283,8 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
         self.assertIsNone(self.ledger.get("must-not-be-created-state"))
         with self.assertRaises(RiskLedgerError):
             self.ledger.list_active_reservations()
+        with self.assertRaises(RiskLedgerError):
+            self.ledger.active_reserved_notional()
 
     def test_reserve_fails_closed_on_corrupted_active_reservation_notional(self):
         # The database can be damaged or edited outside the API. A negative
