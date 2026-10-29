@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import os
+import sqlite3
 import tempfile
 import time
 import unittest
@@ -145,6 +146,33 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         finally:
             if previous is not None:
                 os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"] = previous
+
+    def test_market_order_fails_closed_on_corrupted_active_reservation_inventory(self):
+        db_path = os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"]
+        # Simulate a damaged ledger written outside the public API. The adapter
+        # must reject the entry before any exchange POST can be attempted.
+        with sqlite3.connect(db_path) as connection:
+            connection.execute(
+                """INSERT INTO risk_reservations
+                (order_id, notional_usdt, state, created_at, updated_at, detail)
+                VALUES (?, ?, 'UNKNOWN', 1, 1, 'corruption fixture')""",
+                ("corrupted-active-inventory", "-999"),
+            )
+
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "corrupted-ledger-entry-0001", ExecutionConfig(mode="testnet")
+        )
+        self.assertFalse(result["accepted"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(
+            result["reason"],
+            "open_entry_orders_preflight_exception_requires_reconciliation",
+        )
+        self.assertEqual(client.calls, [])
 
     def test_requires_testnet_credentials(self):
         with self.assertRaises(BinanceTestnetConfigurationError):
