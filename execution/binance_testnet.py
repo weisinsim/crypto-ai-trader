@@ -1274,6 +1274,8 @@ class BinanceFuturesTestnet:
             "orderId", "symbol", "clientOrderId", "side", "type", "status",
             "reduceOnly", "stopPrice", "origQty", "executedQty",
         )
+        seen_order_ids = set()
+        seen_client_order_ids = set()
         for order in orders:
             if any(field not in order for field in required_order_fields):
                 return {"ok": False, "reason": "invalid_testnet_open_order_record"}
@@ -1288,6 +1290,14 @@ class BinanceFuturesTestnet:
                 or not order["clientOrderId"].replace("-", "").replace("_", "").isalnum()
             ):
                 return {"ok": False, "reason": "invalid_testnet_open_order_identity"}
+            order_id = str(order["orderId"])
+            client_order_id = order["clientOrderId"]
+            if order_id in seen_order_ids:
+                return {"ok": False, "reason": "duplicate_testnet_open_order_id"}
+            if client_order_id in seen_client_order_ids:
+                return {"ok": False, "reason": "duplicate_testnet_open_client_order_id"}
+            seen_order_ids.add(order_id)
+            seen_client_order_ids.add(client_order_id)
             if not isinstance(order["reduceOnly"], bool):
                 return {"ok": False, "reason": "invalid_testnet_open_order_reduce_only"}
             if not all(isinstance(order[field], str) and order[field] for field in ("side", "type", "status")):
