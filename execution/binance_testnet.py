@@ -892,10 +892,17 @@ class BinanceFuturesTestnet:
                 "client_order_id": client_order_id,
             }
         except httpx.HTTPStatusError as exc:
-            if exc.response.status_code >= 500:
+            if exc.response.status_code >= 500 or exc.response.status_code in {408, 418, 429}:
+                # Treat timeout and rate-limit/ban responses conservatively at
+                # this boundary: an intermediary may have timed out after
+                # forwarding the POST. Retain capacity and reconcile by client ID.
                 try:
                     self._risk_ledger.transition(
-                        client_order_id, "UNKNOWN", detail="HTTP server error; order outcome ambiguous"
+                        client_order_id, "UNKNOWN",
+                        detail=(
+                            f"ambiguous HTTP status {exc.response.status_code}; "
+                            "retain reservation and reconcile exchange state"
+                        )
                     )
                 except RiskLedgerError:
                     pass
