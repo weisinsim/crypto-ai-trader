@@ -322,6 +322,30 @@ def cancel_testnet_sibling_after_flatten(
         or filled.get("client_order_id") != filled_exit_client_order_id
     ):
         return {"ok": False, "reason": "filled_exit_identity_mismatch", "requires_reconciliation": True}
+    # Real adapter results carry authoritative Binance order metadata. If any
+    # identity field is present, require the complete protective-exit identity;
+    # do not allow an entry or unrelated order to drive sibling cancellation.
+    filled_identity_present = any(
+        key in filled for key in ("type", "side", "reduce_only")
+    )
+    if filled_identity_present:
+        if (
+            filled.get("type") not in {"STOP_MARKET", "TAKE_PROFIT_MARKET"}
+            or filled.get("side") not in {"BUY", "SELL"}
+            or filled.get("reduce_only") is not True
+        ):
+            return {
+                "ok": False,
+                "reason": "filled_exit_not_verified_protective_order",
+                "requires_reconciliation": True,
+            }
+        expected_filled_suffix = "-sl" if filled.get("type") == "STOP_MARKET" else "-tp"
+        if not filled_exit_client_order_id.endswith(expected_filled_suffix):
+            return {
+                "ok": False,
+                "reason": "filled_exit_client_id_type_mismatch",
+                "requires_reconciliation": True,
+            }
     if filled.get("status") != "FILLED":
         return {
             "ok": False,
@@ -377,6 +401,26 @@ def cancel_testnet_sibling_after_flatten(
         or sibling.get("client_order_id") != sibling_exit_client_order_id
     ):
         return {"ok": False, "reason": "sibling_order_identity_mismatch", "requires_reconciliation": True}
+    if filled_identity_present:
+        expected_sibling_type = (
+            "TAKE_PROFIT_MARKET"
+            if filled.get("type") == "STOP_MARKET"
+            else "STOP_MARKET"
+        )
+        expected_sibling_suffix = "-tp" if expected_sibling_type == "TAKE_PROFIT_MARKET" else "-sl"
+        if (
+            sibling.get("type") != expected_sibling_type
+            or sibling.get("side") != filled.get("side")
+            or sibling.get("reduce_only") is not True
+            or not sibling_exit_client_order_id.endswith(expected_sibling_suffix)
+            or filled_exit_client_order_id.rsplit("-", 1)[0]
+            != sibling_exit_client_order_id.rsplit("-", 1)[0]
+        ):
+            return {
+                "ok": False,
+                "reason": "sibling_not_verified_as_matching_protective_pair",
+                "requires_reconciliation": True,
+            }
     if sibling.get("status") in {"CANCELED", "EXPIRED", "REJECTED"}:
         # An inactive status does not erase a possible partial execution before
         # cancellation. Reconcile the execution fields before declaring cleanup.
