@@ -482,14 +482,9 @@ class SQLiteRiskLedger:
         ]
 
     def active_reserved_notional(self):
-        """Return unresolved reserved notional; never silently returns zero on DB errors."""
-        try:
-            with self._connection() as connection:
-                placeholders = ",".join("?" for _ in _ACTIVE_STATES)
-                rows = connection.execute(
-                    f"SELECT notional_usdt FROM risk_reservations WHERE state IN ({placeholders})",
-                    _ACTIVE_STATES,
-                ).fetchall()
-            return str(sum((Decimal(row[0]) for row in rows), Decimal("0")))
-        except (sqlite3.Error, OSError, InvalidOperation) as exc:
-            raise RiskLedgerError("risk_ledger_read_failed") from exc
+        """Return validated active notional; corrupted inventory must fail closed."""
+        inventory = self.list_active_reservations()
+        return str(sum(
+            (Decimal(row["notional_usdt"]) for row in inventory),
+            Decimal("0"),
+        ))
