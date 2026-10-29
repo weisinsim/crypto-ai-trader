@@ -218,7 +218,7 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
                     self.ledger.transition(order_id, invalid_state)
         reservation = self.ledger.get(order_id)
         self.assertEqual(reservation["state"], "RESERVED")
-        self.assertEqual(self.ledger.active_reserved_notional(), 50.0)
+        self.assertEqual(self.ledger.active_reserved_notional(), "50")
 
     def test_invalid_state_transition_does_not_release_reservation(self):
         self.ledger.reserve("state-1", "20", "0", "100")
