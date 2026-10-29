@@ -3097,6 +3097,57 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(ledger.get("paper-reconcile-canceled")["state"], "RELEASED")
         self.assertEqual(client.calls, [])
 
+    def test_reconcile_does_not_release_when_terminal_order_conflicts_with_open_snapshot(self):
+        class ContradictoryTerminalClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "BTCUSDT",
+                        "clientOrderId": params.get("origClientOrderId"),
+                        "orderId": 12345,
+                        "status": "CANCELED",
+                        "origQty": "0.5",
+                        "executedQty": "0",
+                        "avgPrice": "0",
+                    })
+                if path == "/fapi/v1/openOrders" and "symbol" in params:
+                    self.get_calls.append((path, params))
+                    return FakeResponse([{
+                        "orderId": 12345,
+                        "symbol": "BTCUSDT",
+                        "clientOrderId": params.get("origClientOrderId"),
+                        "side": "BUY",
+                        "type": "LIMIT",
+                        "status": "NEW",
+                        "reduceOnly": False,
+                        "stopPrice": "0",
+                        "origQty": "0.5",
+                        "executedQty": "0",
+                    }])
+                return super().get(path, params)
+
+        client = ContradictoryTerminalClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        ledger = adapter._risk_ledger
+        order_id = "terminal-open-conflict"
+        ledger.reserve(order_id, "50", "0", "1000")
+        ledger.transition(order_id, "SUBMITTING")
+        ledger.transition(order_id, "UNKNOWN")
+
+        result = adapter.reconcile_testnet_entry_reservation("BTCUSDT", order_id)
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(
+            result["reason"], "terminal_order_still_present_in_open_snapshot"
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(ledger.get(order_id)["state"], "UNKNOWN")
+        self.assertEqual(ledger.active_reserved_notional(), "50")
+        self.assertEqual(client.calls, [])
+
     def test_reconcile_filled_order_keeps_reservation_until_position_fill_reconciliation(self):
         class FilledOrderClient(FakeClient):
             def get(self, path, params):
