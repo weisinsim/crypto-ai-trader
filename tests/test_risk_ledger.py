@@ -267,6 +267,23 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
         self.assertEqual(len(self.ledger.list_unresolved(limit=1)), 1)
 
 
+    def test_reserve_fails_closed_on_unknown_corrupted_reservation_state(self):
+        # Simulate on-disk corruption that bypasses SQLite CHECK constraints.
+        with sqlite3.connect(self.db_path) as connection:
+            connection.execute("PRAGMA ignore_check_constraints = ON")
+            connection.execute(
+                """INSERT INTO risk_reservations
+                (order_id, notional_usdt, state, created_at, updated_at, detail)
+                VALUES (?, ?, 'CORRUPTED', 1, 1, 'corruption fixture')""",
+                ("corrupted-state-reservation", "50"),
+            )
+
+        with self.assertRaises(RiskLedgerError):
+            self.ledger.reserve("must-not-be-created-state", "10", "0", "100")
+        self.assertIsNone(self.ledger.get("must-not-be-created-state"))
+        with self.assertRaises(RiskLedgerError):
+            self.ledger.list_active_reservations()
+
     def test_reserve_fails_closed_on_corrupted_active_reservation_notional(self):
         # The database can be damaged or edited outside the API. A negative
         # active amount must never reduce projected exposure and admit an entry.
