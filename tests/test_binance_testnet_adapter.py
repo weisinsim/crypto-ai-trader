@@ -1740,37 +1740,44 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(client.calls[0][0], "/fapi/v1/order")
 
     def test_market_order_ambiguous_http_status_retains_reservation(self):
+        original_path = os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"]
         for status_code in (408, 418, 429):
-            with self.subTest(status_code=status_code):
-                class AmbiguousHttpStatusClient(FakeClient):
-                    def post(self, path, params):
-                        self.calls.append((path, params))
-                        request = httpx.Request(
-                            "POST", "https://testnet.binancefuture.com/fapi/v1/order"
-                        )
-                        response = httpx.Response(
-                            status_code,
-                            request=request,
-                            json={"code": -1007, "msg": "Request outcome requires reconciliation"},
-                        )
-                        response.raise_for_status()
-                        return response
+            with self.subTest(status_code=status_code), tempfile.TemporaryDirectory() as temp_dir:
+                os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"] = os.path.join(
+                    temp_dir, "risk-ledger.sqlite3"
+                )
+                try:
+                    class AmbiguousHttpStatusClient(FakeClient):
+                        def post(self, path, params):
+                            self.calls.append((path, params))
+                            request = httpx.Request(
+                                "POST", "https://testnet.binancefuture.com/fapi/v1/order"
+                            )
+                            response = httpx.Response(
+                                status_code,
+                                request=request,
+                                json={"code": -1007, "msg": "Request outcome requires reconciliation"},
+                            )
+                            response.raise_for_status()
+                            return response
 
-                client = AmbiguousHttpStatusClient()
-                adapter = BinanceFuturesTestnet(
-                    api_key="test-key", api_secret="test-secret", client=client
-                )
-                order_id = f"ambiguous-http-{status_code}"
-                result = adapter.submit_testnet_market_order(
-                    self.intent(), order_id, ExecutionConfig(mode="testnet")
-                )
-                self.assertFalse(result["accepted"])
-                self.assertEqual(result["reason"], "testnet_order_outcome_unknown")
-                self.assertTrue(result["requires_reconciliation"])
-                self.assertEqual(len(client.calls), 1)
-                reservation = adapter._risk_ledger.get(order_id)
-                self.assertEqual(reservation["state"], "UNKNOWN")
-                self.assertGreater(Decimal(reservation["notional_usdt"]), Decimal("0"))
+                    client = AmbiguousHttpStatusClient()
+                    adapter = BinanceFuturesTestnet(
+                        api_key="test-key", api_secret="test-secret", client=client
+                    )
+                    order_id = f"ambiguous-http-{status_code}"
+                    result = adapter.submit_testnet_market_order(
+                        self.intent(), order_id, ExecutionConfig(mode="testnet")
+                    )
+                    self.assertFalse(result["accepted"])
+                    self.assertEqual(result["reason"], "testnet_order_outcome_unknown")
+                    self.assertTrue(result["requires_reconciliation"])
+                    self.assertEqual(len(client.calls), 1)
+                    reservation = adapter._risk_ledger.get(order_id)
+                    self.assertEqual(reservation["state"], "UNKNOWN")
+                    self.assertGreater(float(reservation["notional_usdt"]), 0.0)
+                finally:
+                    os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"] = original_path
 
     def test_market_order_timeout_is_ambiguous_and_never_retried(self):
         class TimeoutClient(FakeClient):
