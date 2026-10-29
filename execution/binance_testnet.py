@@ -677,7 +677,7 @@ class BinanceFuturesTestnet:
                 # already represented by any active reservation must not also
                 # be counted in the exchange-open-order aggregate. If inventory
                 # is unavailable, fail closed rather than guess.
-                unresolved_reservations = self._risk_ledger.list_unresolved(limit=1000)
+                unresolved_reservations = self._risk_ledger.list_active_reservations()
                 if not isinstance(unresolved_reservations, list) or any(
                     not isinstance(row, dict)
                     or not isinstance(row.get("order_id"), str)
