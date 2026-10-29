@@ -371,30 +371,42 @@ class SQLiteRiskLedger:
         """
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
             raise RiskLedgerError("invalid_unresolved_limit")
-        placeholders = ",".join("?" for _ in _ACTIVE_STATES)
         try:
             with self._connection() as connection:
+                # Read all rows before applying the result limit. Filtering by
+                # known states in SQL would silently hide a corrupted state,
+                # preventing recovery tooling from surfacing the damaged row.
                 rows = connection.execute(
-                    f"""SELECT order_id, notional_usdt, state, created_at, updated_at, detail
+                    """SELECT order_id, notional_usdt, state, created_at, updated_at, detail
                     FROM risk_reservations
-                    WHERE state IN ({placeholders})
-                    ORDER BY created_at ASC, order_id ASC
-                    LIMIT ?""",
-                    (*_ACTIVE_STATES, limit),
+                    ORDER BY created_at ASC, order_id ASC"""
                 ).fetchall()
         except (sqlite3.Error, OSError) as exc:
             raise RiskLedgerError("risk_ledger_read_failed") from exc
-        return [
-            {
-                "order_id": row[0],
-                "notional_usdt": row[1],
-                "state": row[2],
-                "created_at": row[3],
-                "updated_at": row[4],
-                "detail": row[5],
-            }
-            for row in rows
-        ]
+
+        unresolved = []
+        try:
+            for row in rows:
+                order_id, raw_notional, state, created_at, updated_at, detail = row
+                if state not in _ALLOWED_STATES:
+                    raise RiskLedgerError("invalid_reservation_state_in_ledger")
+                if state == "RELEASED":
+                    continue
+                self._validate_order_id(order_id)
+                notional = _decimal(raw_notional, "stored_reservation_notional")
+                if notional <= 0:
+                    raise RiskLedgerError("invalid_active_reservation_record")
+                unresolved.append({
+                    "order_id": order_id,
+                    "notional_usdt": str(notional),
+                    "state": state,
+                    "created_at": created_at,
+                    "updated_at": updated_at,
+                    "detail": detail,
+                })
+        except (TypeError, ValueError, InvalidOperation) as exc:
+            raise RiskLedgerError("invalid_unresolved_reservation_inventory") from exc
+        return unresolved[:limit]
 
     def list_active_reservations(self):
         """Return the complete active reservation inventory for risk-cap checks.
