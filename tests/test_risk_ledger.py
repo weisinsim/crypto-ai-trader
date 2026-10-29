@@ -267,6 +267,26 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
         self.assertEqual(len(self.ledger.list_unresolved(limit=1)), 1)
 
 
+    def test_transition_fails_closed_on_unknown_corrupted_reservation_state(self):
+        # State corruption must not escape as KeyError or permit a lifecycle
+        # transition/release based on an unrecognized persisted state.
+        with sqlite3.connect(self.db_path) as connection:
+            connection.execute("PRAGMA ignore_check_constraints = ON")
+            connection.execute(
+                """INSERT INTO risk_reservations
+                (order_id, notional_usdt, state, created_at, updated_at, detail)
+                VALUES (?, ?, 'CORRUPTED', 1, 1, 'corruption fixture')""",
+                ("transition-corrupted-state", "20"),
+            )
+
+        with self.assertRaisesRegex(RiskLedgerError, "invalid_reservation_state_in_ledger"):
+            self.ledger.transition(
+                "transition-corrupted-state", "RELEASED",
+                detail="confirmed_terminal: must not bypass corrupt state",
+            )
+        with self.assertRaises(RiskLedgerError):
+            self.ledger.list_active_reservations()
+
     def test_reserve_fails_closed_on_unknown_corrupted_reservation_state(self):
         # Simulate on-disk corruption that bypasses SQLite CHECK constraints.
         with sqlite3.connect(self.db_path) as connection:
