@@ -3255,6 +3255,65 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(ledger.active_reserved_notional(), "50")
         self.assertEqual(client.calls, [])
 
+    def test_reconcile_rejects_mismatched_terminal_order_identity_without_release(self):
+        for mismatch_field, mismatch_value in (
+            ("symbol", "ETHUSDT"),
+            ("clientOrderId", "different-client-order-id"),
+        ):
+            with self.subTest(mismatch_field=mismatch_field), tempfile.TemporaryDirectory() as temp_dir:
+                original_path = os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"]
+                os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"] = os.path.join(
+                    temp_dir, "risk-ledger.sqlite3"
+                )
+                try:
+                    ledger = SQLiteRiskLedger(
+                        os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"]
+                    )
+                    ledger.set_kill_switch(False, reason="isolated identity mismatch test")
+                    order_id = f"identity-mismatch-{mismatch_field}"
+                    ledger.reserve(order_id, "50", "0", "1000")
+                    ledger.transition(order_id, "SUBMITTING")
+                    ledger.transition(order_id, "UNKNOWN")
+
+                    class MismatchedTerminalOrderClient(FakeClient):
+                        def get(self, path, params):
+                            if path == "/fapi/v1/order":
+                                self.get_calls.append((path, params))
+                                payload = {
+                                    "symbol": "BTCUSDT",
+                                    "clientOrderId": params.get("origClientOrderId"),
+                                    "side": "BUY",
+                                    "orderId": 12345,
+                                    "status": "CANCELED",
+                                    "origQty": "0.5",
+                                    "executedQty": "0",
+                                    "avgPrice": "0",
+                                }
+                                payload[mismatch_field] = mismatch_value
+                                return FakeResponse(payload)
+                            return super().get(path, params)
+
+                    client = MismatchedTerminalOrderClient()
+                    adapter = BinanceFuturesTestnet(
+                        api_key="test-key", api_secret="test-secret", client=client
+                    )
+                    result = adapter.reconcile_testnet_entry_reservation("BTCUSDT", order_id)
+
+                    self.assertFalse(result["ok"])
+                    self.assertTrue(result["requires_reconciliation"])
+                    self.assertEqual(
+                        result["reason"], "order_lookup_not_authoritative"
+                    )
+                    self.assertEqual(ledger.get(order_id)["state"], "UNKNOWN")
+                    self.assertEqual(ledger.active_reserved_notional(), "50")
+                    self.assertEqual(
+                        [call[0] for call in client.get_calls],
+                        ["/fapi/v1/order"],
+                    )
+                    self.assertEqual(client.calls, [])
+                finally:
+                    os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"] = original_path
+
     def test_reconcile_filled_order_keeps_reservation_until_position_fill_reconciliation(self):
         class FilledOrderClient(FakeClient):
             def get(self, path, params):
