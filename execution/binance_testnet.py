@@ -1582,9 +1582,36 @@ class BinanceFuturesTestnet:
                 "requires_reconciliation": True,
             }
 
+        # Do not silently filter malformed snapshot rows: doing so could
+        # make a terminal order appear absent and release its reservation.
+        snapshot_order_ids = []
+        for item in snapshot["open_orders"]:
+            if (
+                not isinstance(item, dict)
+                or not isinstance(item.get("client_order_id"), str)
+                or not item["client_order_id"]
+                or len(item["client_order_id"]) > 36
+                or not item["client_order_id"].isascii()
+                or not item["client_order_id"].replace("-", "").replace("_", "").isalnum()
+            ):
+                return {
+                    "ok": False,
+                    "reason": "position_snapshot_open_order_identity_invalid",
+                    "state": state,
+                    "requires_reconciliation": True,
+                }
+            snapshot_order_ids.append(item["client_order_id"])
+        if len(set(snapshot_order_ids)) != len(snapshot_order_ids):
+            return {
+                "ok": False,
+                "reason": "position_snapshot_duplicate_open_order_identity",
+                "state": state,
+                "requires_reconciliation": True,
+            }
+
         matching_orders = [
             item for item in snapshot["open_orders"]
-            if isinstance(item, dict) and item.get("client_order_id") == client_order_id
+            if item["client_order_id"] == client_order_id
         ]
         if len(matching_orders) > 1:
             return {
