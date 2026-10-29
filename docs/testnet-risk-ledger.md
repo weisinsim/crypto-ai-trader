@@ -48,20 +48,20 @@ The adapter reads the persistent switch before sending a market entry. To ensure
 - `RESERVED`: capacity allocated before order submission.
 - `SUBMITTING`: the exchange POST is about to be attempted.
 - `UNKNOWN`: the outcome may be ambiguous; do not blindly retry.
-- `EXTERNALIZED`: reconciliation has established that the external account/order snapshot includes the exposure.
+- `EXTERNALIZED`: reconciliation has established that the order is visible on the exchange. **The reservation still consumes local risk capacity** because an open entry can still fill; exchange visibility alone does not mean the exposure has disappeared.
 - `RELEASED`: the reservation no longer consumes reserved capacity.
 
 Uncertain outcomes intentionally retain capacity. A `RESERVED` record can be released only with a `confirmed_pre_submit:` detail prefix after independently establishing that submission never began; `SUBMITTING`/`UNKNOWN`/`EXTERNALIZED` releases require `confirmed_terminal:` evidence. Do not manually transition an ambiguous reservation based on a timeout alone. The ledger's explicit confirmation prefixes are guardrails against accidental transitions, not cryptographic proof of reconciliation.
 
 ## Recovery inventory API
 
-The ledger provides `list_unresolved(limit=100)` to enumerate `RESERVED`, `SUBMITTING`, and `UNKNOWN` records oldest-first in bounded batches. It is read-only and does not infer whether a POST reached the exchange. Recovery tooling should use this inventory to schedule per-order reconciliation, while retaining unresolved reservations on any error. The inventory API alone is not an automated recovery worker.
+The ledger provides `list_unresolved(limit=100)` to enumerate `RESERVED`, `SUBMITTING`, `UNKNOWN`, and `EXTERNALIZED` records oldest-first in bounded batches. All four states continue consuming local risk capacity until a permitted release transition reaches `RELEASED`. It is read-only and does not infer whether a POST reached the exchange. Recovery tooling should use this inventory to schedule per-order reconciliation, while retaining unresolved reservations on any error. The inventory API alone is not an automated recovery worker.
 
 ## Per-order reconciliation primitive
 
 The adapter exposes `reconcile_testnet_entry_reservation(symbol, client_order_id)` for a deliberately narrow, read-only reconciliation step. It first queries the exchange order by client ID, then obtains a bounded position/open-order snapshot. It does not place, cancel, retry, or modify orders.
 
-- A `NEW` or `PARTIALLY_FILLED` entry is externalized only when the open-order snapshot contains exactly one matching client ID and its status and quantities agree.
+- A `NEW` or `PARTIALLY_FILLED` entry is marked `EXTERNALIZED` only when the open-order snapshot contains exactly one matching client ID and its status and quantities agree. This state does not free local capacity; the order may still fill.
 - A `CANCELED`, `REJECTED`, or `EXPIRED` order is released only when the exchange reports zero executed quantity and the open-order snapshot does not contain it.
 - Filled orders, terminal orders with any fill, missing/mismatched snapshots, stale snapshots, HTTP/transport failures, and other ambiguous states remain unresolved and require further reconciliation.
 - The exchange order query and account/open-order snapshot are separate non-atomic reads. This helper is a primitive, not a complete recovery worker or fill ledger; it must not be treated as unattended operational readiness.
@@ -78,4 +78,11 @@ A complete unattended recovery/reconciliation worker and an independently verifi
 
 ## Bounded recovery sweep
 
-`reconcile_unresolved_testnet_entry_reservations(symbol_by_client_order_id, limit=100)` provides a bounded, read-only sweep over the recovery inventory. The caller must supply an explicit mapping from each opaque client order ID to its symbol; the adapter does not guess symbols. `SUBMITTING` and `UNKNOWN` records with a valid mapping are passed to the per-order reconciliation primitive. Missing mappings and invalid states are reported without exchange writes. `RESERVED` records are deliberately deferred for crash-window review: the sweep cannot prove that no POST was attempted, so it never releases them. The returned summary is an inventory of outcomes, not proof of atomic exchange/account state or a replacement for a supervised recovery process.
+`reconcile_unresolved_testnet_entry_reservations(symbol_by_client_order_id, limit=100)` provides a bounded, read-only sweep over the recovery inventory. The caller must supply an explicit mapping from each opaque client order ID to its symbol; the adapter does not guess symbols. `SUBMITTING`, `UNKNOWN`, and `EXTERNALIZED` records with a valid mapping are passed to the per-order reconciliation primitive. `EXTERNALIZED` is rechecked on later sweeps because an exchange-visible order can subsequently reach a confirmed zero-fill terminal state and release its reservation. Missing mappings and invalid states are reported without exchange writes. `RESERVED` records are deliberately deferred for crash-window review: the sweep cannot prove that no POST was attempted, so it never releases them. The returned summary is an inventory of outcomes, not proof of atomic exchange/account state or a replacement for a supervised recovery process.
+
+
+## Account-cap exposure de-duplication
+
+The entry preflight obtains the bounded durable unresolved-reservation inventory and excludes an exchange open entry order from the aggregate open-order exposure only when its exact `clientOrderId` matches an active ledger reservation **and** that reservation's notional covers the exchange order's calculated notional. If the exchange order exceeds its ledger reservation, the full exchange-order notional remains in external exposure (conservative over-counting) rather than hiding the uncovered difference. The ledger continues counting each active reservation in the atomic cap calculation. Unmatched exchange orders remain in external exposure; the implementation never subtracts aggregate reservation totals from aggregate exchange exposure. If the reservation inventory is unavailable, malformed, a matching reservation amount is missing/invalid, or a required client ID is missing when matching is needed, entry preflight fails closed.
+
+This identity-based accounting avoids double-counting an entirely unfilled matched order. A partially filled order may still be conservatively over-counted because the exchange position snapshot can include its filled portion while the ledger retains the full original reservation until terminal reconciliation. Separate exchange reads are not atomic, so this is still a conservative preflight rather than a race-free account snapshot. Do not weaken unresolved reservations or infer terminal status from a missing open-order row alone.

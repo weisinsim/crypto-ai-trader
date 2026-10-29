@@ -76,7 +76,7 @@ class FakeClient:
 
     def delete(self, path, params):
         self.calls.append((path, params))
-        return FakeResponse({"symbol": params.get("symbol"), "clientOrderId": params.get("origClientOrderId"), "orderId": 12345, "status": "CANCELED"})
+        return FakeResponse({"symbol": params.get("symbol"), "clientOrderId": params.get("origClientOrderId"), "orderId": 12345, "status": "CANCELED", "origQty": "0.5", "executedQty": "0"})
 
     def close(self):
         pass
@@ -394,6 +394,103 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         )
         self.assertTrue(result["requires_reconciliation"])
         self.assertEqual(client.calls, [])
+
+    def test_open_order_notional_excludes_only_exact_ledger_matched_client_ids(self):
+        class TwoOpenOrdersClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/openOrders":
+                    self.get_calls.append((path, params))
+                    return FakeResponse([
+                        {
+                            "symbol": "BTCUSDT", "side": "BUY", "type": "LIMIT",
+                            "origQty": "0.5", "price": "100", "stopPrice": "0",
+                            "reduceOnly": False, "closePosition": False,
+                            "clientOrderId": "ledger-order-123",
+                        },
+                        {
+                            "symbol": "ETHUSDT", "side": "SELL", "type": "LIMIT",
+                            "origQty": "0.2", "price": "100", "stopPrice": "0",
+                            "reduceOnly": False, "closePosition": False,
+                            "clientOrderId": "untracked-order-456",
+                        },
+                    ])
+                return super().get(path, params)
+
+        client = TwoOpenOrdersClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.open_entry_order_notional(
+            exclude_client_order_ids={"ledger-order-123"},
+            reserved_notional_by_client_order_id={"ledger-order-123": "50"},
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["open_entry_order_notional_usdt"], 20.0)
+        self.assertEqual(result["open_entry_orders"], 2)
+
+    def test_matched_order_exceeding_ledger_reservation_remains_in_external_exposure(self):
+        class LargerMatchedOrderClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/openOrders":
+                    self.get_calls.append((path, params))
+                    return FakeResponse([{
+                        "symbol": "BTCUSDT", "side": "BUY", "type": "LIMIT",
+                        "origQty": "1", "price": "100", "stopPrice": "0",
+                        "reduceOnly": False, "closePosition": False,
+                        "clientOrderId": "ledger-order-123",
+                    }])
+                return super().get(path, params)
+
+        client = LargerMatchedOrderClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.open_entry_order_notional(
+            exclude_client_order_ids={"ledger-order-123"},
+            reserved_notional_by_client_order_id={"ledger-order-123": "50"},
+        )
+        self.assertTrue(result["ok"])
+        # The order is 100 USDT while its ledger reservation is only 50 USDT.
+        # Keep the full exchange notional counted rather than hiding the gap.
+        self.assertEqual(result["open_entry_order_notional_usdt"], 100.0)
+
+    def test_market_order_does_not_double_count_externalized_order_reservation(self):
+        client_order_id = "ledger-order-123"
+        ledger = SQLiteRiskLedger(os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"])
+        self.assertTrue(ledger.reserve(client_order_id, "50", "0", "130")["ok"])
+        self.assertTrue(ledger.transition(client_order_id, "SUBMITTING")["ok"])
+        self.assertTrue(ledger.transition(client_order_id, "UNKNOWN")["ok"])
+        self.assertTrue(ledger.transition(
+            client_order_id, "EXTERNALIZED",
+            detail="confirmed_snapshot: matching exchange open order",
+        )["ok"])
+
+        class ExistingReservedOrderClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/openOrders":
+                    self.get_calls.append((path, params))
+                    return FakeResponse([{
+                        "symbol": "BTCUSDT", "side": "BUY", "type": "LIMIT",
+                        "status": "NEW", "origQty": "0.5", "price": "100",
+                        "stopPrice": "0", "reduceOnly": False,
+                        "closePosition": False, "clientOrderId": client_order_id,
+                    }])
+                return super().get(path, params)
+
+        client = ExistingReservedOrderClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "new-order-789",
+            ExecutionConfig(mode="testnet", max_account_notional_usdt=130.0),
+        )
+        # Acceptance under the cap proves the matched open order was not
+        # counted twice; the public result intentionally does not expose the
+        # internal preflight metrics on success.
+        self.assertTrue(result["accepted"], result)
+        self.assertEqual(len(client.calls), 1)
+        self.assertEqual(client.calls[0][0], "/fapi/v1/order")
 
     def test_market_order_fails_closed_when_projected_account_exposure_exceeds_cap(self):
         client = FakeClient()
@@ -839,6 +936,41 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(result["reason"], "testnet_open_order_symbol_mismatch")
         self.assertEqual(client.calls, [])
 
+    def test_position_snapshot_rejects_duplicate_open_order_identities(self):
+        base_order = {
+            "orderId": 99, "symbol": "BTCUSDT", "clientOrderId": "stop-0001",
+            "side": "SELL", "type": "STOP_MARKET", "status": "NEW",
+            "reduceOnly": True, "stopPrice": "99.8", "origQty": "0.5",
+            "executedQty": "0",
+        }
+        cases = (
+            (
+                [dict(base_order), {**base_order, "orderId": 100}],
+                "duplicate_testnet_open_client_order_id",
+            ),
+            (
+                [dict(base_order), {**base_order, "clientOrderId": "stop-0002"}],
+                "duplicate_testnet_open_order_id",
+            ),
+        )
+        for orders, expected_reason in cases:
+            with self.subTest(expected_reason=expected_reason):
+                class DuplicateIdentityClient(FakeClient):
+                    def get(self, path, params):
+                        if path == "/fapi/v1/openOrders":
+                            self.get_calls.append((path, params))
+                            return FakeResponse(orders)
+                        return super().get(path, params)
+
+                client = DuplicateIdentityClient()
+                adapter = BinanceFuturesTestnet(
+                    api_key="test-key", api_secret="test-secret", client=client
+                )
+                result = adapter.testnet_position_snapshot("BTCUSDT")
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["reason"], expected_reason)
+                self.assertEqual(client.calls, [])
+
     def test_position_snapshot_rejects_nonfinite_open_order_quantity(self):
         class InvalidQuantityOrderClient(FakeClient):
             def get(self, path, params):
@@ -1252,6 +1384,77 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertTrue(result["requires_reconciliation"])
         self.assertFalse(any(path == "/fapi/v1/order" for path, _ in client.calls))
 
+    def test_protective_exit_rejects_malformed_final_open_order_snapshot(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        calls = {"count": 0}
+
+        def malformed_final_snapshot(symbol):
+            calls["count"] += 1
+            now_ms = int(time.time() * 1000)
+            snapshot = {
+                "ok": True,
+                "symbol": symbol,
+                "snapshot_started_at_ms": now_ms - 10,
+                "snapshot_completed_at_ms": now_ms,
+                "snapshot_duration_ms": 10,
+                "position_amount": "0.5",
+                "entry_price": "100",
+                "open_orders": [],
+            }
+            if calls["count"] == 2:
+                snapshot["open_orders"] = [None]
+            return snapshot
+
+        adapter.testnet_position_snapshot = malformed_final_snapshot
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "stop-malformed-final-orders"
+        )
+
+        self.assertFalse(result["accepted"])
+        self.assertEqual(
+            result["reason"],
+            "protective_exit_final_snapshot_invalid_requires_reconciliation",
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertFalse(any(path == "/fapi/v1/order" for path, _ in client.calls))
+
+    def test_protective_exit_rejects_non_boolean_success_flag_in_final_snapshot(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        calls = {"count": 0}
+
+        def snapshot(symbol):
+            calls["count"] += 1
+            now_ms = int(time.time() * 1000)
+            return {
+                "ok": True if calls["count"] == 1 else 1,
+                "symbol": symbol,
+                "snapshot_started_at_ms": now_ms - 10,
+                "snapshot_completed_at_ms": now_ms,
+                "snapshot_duration_ms": 10,
+                "position_amount": "0.5",
+                "entry_price": "100",
+                "open_orders": [],
+            }
+
+        adapter.testnet_position_snapshot = snapshot
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "stop-final-nonbool-ok"
+        )
+
+        self.assertFalse(result["accepted"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(
+            result["reason"], "protective_exit_final_snapshot_invalid_requires_reconciliation"
+        )
+        self.assertEqual(calls["count"], 2)
+        self.assertFalse(any(path == "/fapi/v1/order" for path, _ in client.calls))
+
     def test_protective_exit_fails_closed_when_final_snapshot_times_out(self):
         class FinalSnapshotTimeoutClient(FakeClient):
             def __init__(self):
@@ -1411,6 +1614,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         )
         base_snapshot = {
             "ok": True,
+            "symbol": "BTCUSDT",
             "snapshot_started_at_ms": 1000,
             "snapshot_completed_at_ms": 4000,
             "snapshot_duration_ms": 3000,
@@ -1693,6 +1897,8 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                     "clientOrderId": params.get("origClientOrderId"),
                     "orderId": 12345,
                     "status": "PARTIALLY_FILLED",
+                    "origQty": "0.5",
+                    "executedQty": "0.2",
                 })
 
         client = StillActiveCancelClient()
@@ -1706,6 +1912,51 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         )
         self.assertTrue(result["requires_reconciliation"])
         self.assertEqual(result["status"], "PARTIALLY_FILLED")
+        self.assertEqual(len(client.calls), 1)
+
+    def test_cancel_order_partial_fill_is_not_reported_as_clean_cancel(self):
+        class PartiallyFilledCancelClient(FakeClient):
+            def delete(self, path, params):
+                self.calls.append((path, params))
+                return FakeResponse({
+                    "symbol": params.get("symbol"),
+                    "clientOrderId": params.get("origClientOrderId"),
+                    "orderId": 12345,
+                    "status": "CANCELED",
+                    "origQty": "0.5",
+                    "executedQty": "0.2",
+                })
+
+        client = PartiallyFilledCancelClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.cancel_testnet_order("BTCUSDT", "btc-stop-partial-fill")
+        self.assertFalse(result["cancelled"])
+        self.assertEqual(
+            result["reason"], "testnet_cancel_partial_fill_requires_position_reconciliation"
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["executed_quantity"], "0.2")
+        self.assertEqual(len(client.calls), 1)
+
+    def test_cancel_order_missing_fill_fields_requires_reconciliation(self):
+        class MissingFillFieldsClient(FakeClient):
+            def delete(self, path, params):
+                self.calls.append((path, params))
+                return FakeResponse({
+                    "symbol": params.get("symbol"),
+                    "clientOrderId": params.get("origClientOrderId"),
+                    "orderId": 12345,
+                    "status": "CANCELED",
+                })
+
+        client = MissingFillFieldsClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.cancel_testnet_order("BTCUSDT", "btc-stop-missing-fills")
+        self.assertFalse(result["cancelled"])
+        self.assertEqual(
+            result["reason"], "testnet_cancel_fill_state_unreadable_requires_reconciliation"
+        )
+        self.assertTrue(result["requires_reconciliation"])
         self.assertEqual(len(client.calls), 1)
 
     def test_cancel_order_rejects_mismatched_exchange_identity(self):
@@ -2055,6 +2306,46 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(result["status"], "FILLED")
         self.assertEqual(len(client.calls), 1)
 
+    def test_protective_exit_rejects_new_status_with_nonzero_execution(self):
+        class InconsistentNewFillClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"canTrade": True, "positions": [
+                        {"symbol": "BTCUSDT", "positionAmt": "0.5", "entryPrice": "100"},
+                    ]})
+                return super().get(path, params)
+
+            def post(self, path, params):
+                self.calls.append((path, params))
+                return FakeResponse({
+                    "symbol": params.get("symbol"),
+                    "clientOrderId": params.get("newClientOrderId"),
+                    "orderId": 12345,
+                    "status": "NEW",
+                    "side": params.get("side"),
+                    "type": params.get("type"),
+                    "reduceOnly": True,
+                    "workingType": params.get("workingType"),
+                    "origQty": params.get("quantity"),
+                    "executedQty": "0.1",
+                    "stopPrice": params.get("stopPrice"),
+                })
+
+        client = InconsistentNewFillClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "btc-new-with-fill"
+        )
+        self.assertFalse(result["accepted"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(
+            result["reason"], "protective_exit_submission_fill_state_requires_reconciliation"
+        )
+        self.assertEqual(len(client.calls), 1)
+
     def test_protective_exit_rejects_malformed_exchange_order_id(self):
         class PositionClient(FakeClient):
             def get(self, path, params):
@@ -2189,6 +2480,138 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
             result["reason"], "position_snapshot_failed_requires_reconciliation"
         )
         self.assertEqual(result["exception_type"], "TimeoutException")
+        self.assertEqual(client.calls, [])
+
+    def test_protective_exit_rejects_malformed_initial_snapshot_before_market_reads(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        adapter.testnet_position_snapshot = lambda symbol: {
+            "ok": True,
+            "symbol": symbol,
+            "snapshot_started_at_ms": int(time.time() * 1000) - 10,
+            "snapshot_completed_at_ms": int(time.time() * 1000),
+            "snapshot_duration_ms": 10,
+            "position_amount": "0.5",
+            "entry_price": "100",
+            "open_orders": [{"client_order_id": "malformed-order"}],
+        }
+
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "new-stop-id"
+        )
+
+        self.assertFalse(result["accepted"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["reason"], "position_snapshot_failed")
+        self.assertEqual(client.calls, [])
+        self.assertEqual(client.get_calls, [])
+
+    def test_protective_exit_rejects_initial_snapshot_symbol_mismatch(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        now_ms = int(time.time() * 1000)
+        adapter.testnet_position_snapshot = lambda symbol: {
+            "ok": True,
+            "symbol": "ETHUSDT",
+            "snapshot_started_at_ms": now_ms - 10,
+            "snapshot_completed_at_ms": now_ms,
+            "snapshot_duration_ms": 10,
+            "position_amount": "0.5",
+            "entry_price": "100",
+            "open_orders": [],
+        }
+
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "stop-wrong-snapshot-symbol"
+        )
+
+        self.assertFalse(result["accepted"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["reason"], "position_snapshot_failed")
+        self.assertEqual(client.calls, [])
+        self.assertEqual(client.get_calls, [])
+
+    def test_protective_exit_rejects_duplicate_client_ids_in_initial_snapshot(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        now_ms = int(time.time() * 1000)
+        duplicate_order = {
+            "client_order_id": "duplicate-existing-id",
+            "side": "BUY",
+            "type": "LIMIT",
+            "status": "NEW",
+            "reduce_only": False,
+        }
+        adapter.testnet_position_snapshot = lambda symbol: {
+            "ok": True,
+            "symbol": symbol,
+            "snapshot_started_at_ms": now_ms - 10,
+            "snapshot_completed_at_ms": now_ms,
+            "snapshot_duration_ms": 10,
+            "position_amount": "0.5",
+            "entry_price": "100",
+            "open_orders": [dict(duplicate_order), dict(duplicate_order)],
+        }
+
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "stop-duplicate-initial"
+        )
+
+        self.assertFalse(result["accepted"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["reason"], "position_snapshot_failed")
+        self.assertEqual(client.get_calls, [])
+        self.assertEqual(client.calls, [])
+
+    def test_protective_exit_rejects_duplicate_client_ids_in_final_snapshot(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        calls = {"count": 0}
+        duplicate_order = {
+            "client_order_id": "duplicate-existing-id",
+            "side": "BUY",
+            "type": "LIMIT",
+            "status": "NEW",
+            "reduce_only": False,
+        }
+
+        def snapshot(symbol):
+            calls["count"] += 1
+            now_ms = int(time.time() * 1000)
+            return {
+                "ok": True,
+                "symbol": symbol,
+                "snapshot_started_at_ms": now_ms - 10,
+                "snapshot_completed_at_ms": now_ms,
+                "snapshot_duration_ms": 10,
+                "position_amount": "0.5",
+                "entry_price": "100",
+                "open_orders": (
+                    []
+                    if calls["count"] == 1
+                    else [dict(duplicate_order), dict(duplicate_order)]
+                ),
+            }
+
+        adapter.testnet_position_snapshot = snapshot
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "stop-duplicate-final"
+        )
+
+        self.assertFalse(result["accepted"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(
+            result["reason"], "protective_exit_final_snapshot_invalid_requires_reconciliation"
+        )
+        self.assertEqual(calls["count"], 2)
         self.assertEqual(client.calls, [])
 
     def test_protective_exit_refuses_client_id_already_in_open_order_snapshot(self):
@@ -2540,7 +2963,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                     self.get_calls.append((path, params))
                     return FakeResponse({
                         "symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"),
-                        "orderId": 12345, "status": "PARTIALLY_FILLED",
+                        "orderId": 12345, "side": "BUY", "status": "PARTIALLY_FILLED",
                         "origQty": "0.5", "executedQty": "0.2", "avgPrice": "100.1",
                     })
                 return super().get(path, params)
@@ -2555,6 +2978,143 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["state"], "EXTERNALIZED")
         self.assertEqual(ledger.get("paper-reconcile-open")["state"], "EXTERNALIZED")
+        self.assertEqual(client.calls, [])
+
+    def test_reconcile_rejects_order_side_mismatch_between_order_and_snapshot(self):
+        class SideMismatchClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "BTCUSDT",
+                        "clientOrderId": params.get("origClientOrderId"),
+                        "orderId": 12345,
+                        "side": "BUY",
+                        "status": "PARTIALLY_FILLED",
+                        "origQty": "0.5",
+                        "executedQty": "0.2",
+                        "avgPrice": "100.1",
+                    })
+                if path == "/fapi/v1/openOrders" and "symbol" in params:
+                    self.get_calls.append((path, params))
+                    return FakeResponse([{
+                        "orderId": 12345,
+                        "symbol": "BTCUSDT",
+                        "clientOrderId": params.get("origClientOrderId", "side-mismatch-order"),
+                        "side": "SELL",
+                        "type": "LIMIT",
+                        "status": "PARTIALLY_FILLED",
+                        "reduceOnly": False,
+                        "stopPrice": "0",
+                        "origQty": "0.5",
+                        "executedQty": "0.2",
+                    }])
+                return super().get(path, params)
+
+        client = SideMismatchClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        ledger = adapter._risk_ledger
+        order_id = "side-mismatch-order"
+        ledger.reserve(order_id, "50", "0", "1000")
+        ledger.transition(order_id, "SUBMITTING")
+        ledger.transition(order_id, "UNKNOWN")
+
+        result = adapter.reconcile_testnet_entry_reservation("BTCUSDT", order_id)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "open_order_snapshot_mismatch")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(ledger.get(order_id)["state"], "UNKNOWN")
+        self.assertEqual(ledger.active_reserved_notional(), "50")
+        self.assertEqual(client.calls, [])
+
+    def test_reconcile_already_externalized_open_order_is_idempotent(self):
+        class StillOpenExternalizedOrderClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "BTCUSDT",
+                        "clientOrderId": params.get("origClientOrderId"),
+                        "orderId": 12345,
+                        "side": "BUY",
+                        "status": "PARTIALLY_FILLED",
+                        "origQty": "0.5",
+                        "executedQty": "0.2",
+                        "avgPrice": "100.1",
+                    })
+                if path == "/fapi/v1/openOrders" and "symbol" in params:
+                    self.get_calls.append((path, params))
+                    return FakeResponse([{
+                        "orderId": 12345,
+                        "symbol": "BTCUSDT",
+                        "clientOrderId": params.get("origClientOrderId", "externalized-still-open"),
+                        "side": "BUY",
+                        "type": "LIMIT",
+                        "status": "PARTIALLY_FILLED",
+                        "reduceOnly": False,
+                        "stopPrice": "0",
+                        "origQty": "0.5",
+                        "executedQty": "0.2",
+                    }])
+                return super().get(path, params)
+
+        client = StillOpenExternalizedOrderClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        ledger = adapter._risk_ledger
+        order_id = "externalized-still-open"
+        ledger.reserve(order_id, "50", "0", "1000")
+        ledger.transition(order_id, "SUBMITTING")
+        ledger.transition(order_id, "UNKNOWN")
+        ledger.transition(
+            order_id, "EXTERNALIZED",
+            detail="confirmed_snapshot: order previously confirmed open",
+        )
+
+        result = adapter.reconcile_testnet_entry_reservation("BTCUSDT", order_id)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["reason"], "externalized_order_still_open_confirmed")
+        self.assertEqual(result["state"], "EXTERNALIZED")
+        self.assertEqual(ledger.get(order_id)["state"], "EXTERNALIZED")
+        self.assertEqual(ledger.active_reserved_notional(), "50")
+        self.assertEqual(client.calls, [])
+
+    def test_reconcile_externalized_zero_fill_terminal_order_releases_reservation(self):
+        class CanceledExternalizedOrderClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"),
+                        "orderId": 12345, "status": "CANCELED",
+                        "origQty": "0.5", "executedQty": "0", "avgPrice": "0",
+                    })
+                if path == "/fapi/v1/openOrders" and "symbol" in params:
+                    self.get_calls.append((path, params))
+                    return FakeResponse([])
+                return super().get(path, params)
+
+        client = CanceledExternalizedOrderClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        ledger = adapter._risk_ledger
+        order_id = "externalized-then-canceled"
+        ledger.reserve(order_id, "50", "0", "1000")
+        ledger.transition(order_id, "SUBMITTING")
+        ledger.transition(order_id, "UNKNOWN")
+        ledger.transition(
+            order_id, "EXTERNALIZED",
+            detail="confirmed_snapshot: open order was visible in prior reconciliation",
+        )
+
+        result = adapter.reconcile_testnet_entry_reservation("BTCUSDT", order_id)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["reason"], "zero_fill_terminal_order_confirmed")
+        self.assertEqual(result["state"], "RELEASED")
+        self.assertEqual(ledger.get(order_id)["state"], "RELEASED")
+        self.assertEqual(ledger.active_reserved_notional(), "0")
         self.assertEqual(client.calls, [])
 
     def test_reconcile_zero_fill_terminal_order_releases_only_when_absent_from_open_snapshot(self):
@@ -2642,6 +3202,28 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(ledger.get("sweep-unknown")["state"], "UNKNOWN")
         self.assertEqual(client.calls, [])
 
+    def test_recovery_sweep_records_audit_when_reconciler_returns_invalid_shape(self):
+        ledger = SQLiteRiskLedger(os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"])
+        ledger.reserve("sweep-invalid-result", "10", "0", "100")
+        ledger.transition("sweep-invalid-result", "SUBMITTING")
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=FakeClient()
+        )
+        adapter.reconcile_testnet_entry_reservation = lambda symbol, client_order_id: None
+
+        result = adapter.reconcile_unresolved_testnet_entry_reservations(
+            {"sweep-invalid-result": "BTCUSDT"}
+        )
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["audit_persisted"], 1)
+        self.assertEqual(result["results"][0]["reason"], "invalid_reconciliation_result_shape")
+        self.assertTrue(result["results"][0]["audit_persisted"])
+        self.assertEqual(ledger.get("sweep-invalid-result")["state"], "SUBMITTING")
+        audit = ledger.list_recovery_audit(limit=1)
+        self.assertEqual(audit[0]["order_id"], "sweep-invalid-result")
+        self.assertEqual(audit[0]["reason"], "invalid_reconciliation_result_shape")
+
     def test_recovery_sweep_rejects_non_mapping_without_exchange_requests(self):
         client = FakeClient()
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
@@ -2715,6 +3297,136 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertTrue(result["requires_reconciliation"])
         self.assertEqual(ledger.get("kill-switch-last-check-0001")["state"], "UNKNOWN")
         self.assertEqual(client.calls, [])
+
+
+    def test_reconcile_rejects_inconsistent_snapshot_duration_without_ledger_mutation(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        ledger = adapter._risk_ledger
+        ledger.reserve("recovery-duration-test", "50", "0", "1000")
+        ledger.transition("recovery-duration-test", "SUBMITTING")
+        ledger.transition("recovery-duration-test", "UNKNOWN")
+        now_ms = int(time.time() * 1000)
+        adapter.testnet_position_snapshot = lambda symbol: {
+            "ok": True,
+            "symbol": symbol,
+            "snapshot_started_at_ms": now_ms - 10,
+            "snapshot_completed_at_ms": now_ms,
+            "snapshot_duration_ms": 999,
+            "position_amount": "0",
+            "entry_price": "0",
+            "open_orders": [],
+        }
+
+        result = adapter.reconcile_testnet_entry_reservation("BTCUSDT", "recovery-duration-test")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "position_snapshot_stale_or_invalid")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(ledger.get("recovery-duration-test")["state"], "UNKNOWN")
+        self.assertEqual(client.calls, [])
+
+
+    def test_reconcile_rejects_future_dated_snapshot_without_ledger_mutation(self):
+        class AuthoritativeOpenOrderClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "BTCUSDT",
+                        "clientOrderId": params.get("origClientOrderId"),
+                        "orderId": 12345,
+                        "status": "NEW",
+                        "origQty": "0.5",
+                        "executedQty": "0",
+                        "avgPrice": "0",
+                    })
+                if path == "/fapi/v1/openOrders" and "symbol" in params:
+                    self.get_calls.append((path, params))
+                    return FakeResponse([])
+                return super().get(path, params)
+
+        client = AuthoritativeOpenOrderClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        ledger = adapter._risk_ledger
+        order_id = "future-snapshot-test"
+        ledger.reserve(order_id, "50", "0", "1000")
+        ledger.transition(order_id, "SUBMITTING")
+        ledger.transition(order_id, "UNKNOWN")
+        now_ms = int(time.time() * 1000)
+        adapter.testnet_position_snapshot = lambda symbol: {
+            "ok": True,
+            "symbol": symbol,
+            "snapshot_started_at_ms": now_ms + 4990,
+            "snapshot_completed_at_ms": now_ms + 5000,
+            "snapshot_duration_ms": 10,
+            "position_amount": "0",
+            "entry_price": "0",
+            "open_orders": [],
+        }
+
+        result = adapter.reconcile_testnet_entry_reservation("BTCUSDT", order_id)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "position_snapshot_stale_or_invalid")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(ledger.get(order_id)["state"], "UNKNOWN")
+        self.assertEqual(client.calls, [])
+
+    def test_reconcile_rejects_non_finite_snapshot_timestamps_and_duration(self):
+        class AuthoritativeOpenOrderClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "BTCUSDT",
+                        "clientOrderId": params.get("origClientOrderId"),
+                        "orderId": 12345,
+                        "status": "NEW",
+                        "origQty": "0.5",
+                        "executedQty": "0",
+                        "avgPrice": "0",
+                    })
+                if path == "/fapi/v1/openOrders" and "symbol" in params:
+                    self.get_calls.append((path, params))
+                    return FakeResponse([])
+                return super().get(path, params)
+
+        for field, bad_value in (
+            ("snapshot_started_at_ms", float("nan")),
+            ("snapshot_completed_at_ms", float("inf")),
+            ("snapshot_duration_ms", float("nan")),
+            ("snapshot_started_at_ms", 10**1000),
+            ("snapshot_duration_ms", 10**1000),
+        ):
+            with self.subTest(field=field):
+                client = AuthoritativeOpenOrderClient()
+                adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+                ledger = adapter._risk_ledger
+                order_id = "nf-" + {"snapshot_started_at_ms": "start", "snapshot_completed_at_ms": "complete", "snapshot_duration_ms": "duration"}[field] + ("-large" if isinstance(bad_value, int) else "")
+                ledger.reserve(order_id, "50", "0", "1000")
+                ledger.transition(order_id, "SUBMITTING")
+                ledger.transition(order_id, "UNKNOWN")
+                now_ms = int(time.time() * 1000)
+                snapshot = {
+                    "ok": True,
+                    "symbol": "BTCUSDT",
+                    "snapshot_started_at_ms": now_ms - 10,
+                    "snapshot_completed_at_ms": now_ms,
+                    "snapshot_duration_ms": 10,
+                    "position_amount": "0",
+                    "entry_price": "0",
+                    "open_orders": [],
+                }
+                snapshot[field] = bad_value
+                adapter.testnet_position_snapshot = lambda symbol, value=snapshot: value
+
+                result = adapter.reconcile_testnet_entry_reservation("BTCUSDT", order_id)
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["reason"], "position_snapshot_stale_or_invalid")
+                self.assertTrue(result["requires_reconciliation"])
+                self.assertEqual(ledger.get(order_id)["state"], "UNKNOWN")
+                self.assertEqual(client.calls, [])
 
 if __name__ == "__main__":
     unittest.main()

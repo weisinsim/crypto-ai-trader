@@ -188,14 +188,39 @@ class BinanceFuturesTestnet:
         }
 
 
-    def open_entry_order_notional(self):
+    def open_entry_order_notional(self, *, exclude_client_order_ids=(), reserved_notional_by_client_order_id=None):
         """Return conservative notional reserved by outstanding entry orders.
 
         Open orders are a separate snapshot from account positions. Unknown or
         malformed orders fail closed; reduce-only/close-position exits are not
-        counted as new exposure. This is a preflight guard, not an atomic
-        reservation across exchange reads and order submission.
+        counted as new exposure. Exact client-order IDs may be excluded only
+        when the durable ledger already counts those reservations, preventing
+        aggregate double-counting without hiding unrelated exchange orders.
+        This remains a preflight guard, not an atomic exchange reservation.
         """
+        if not isinstance(exclude_client_order_ids, (set, frozenset, list, tuple)):
+            return {"ok": False, "reason": "invalid_excluded_client_order_ids", "requires_reconciliation": True}
+        excluded_ids = set()
+        for order_id in exclude_client_order_ids:
+            if not isinstance(order_id, str) or not order_id.strip() or len(order_id) > 128:
+                return {"ok": False, "reason": "invalid_excluded_client_order_ids", "requires_reconciliation": True}
+            excluded_ids.add(order_id)
+        reserved_notionals = {}
+        if excluded_ids:
+            if not isinstance(reserved_notional_by_client_order_id, dict):
+                return {"ok": False, "reason": "matched_order_reservation_amounts_unavailable", "requires_reconciliation": True}
+            try:
+                for order_id, raw_notional in reserved_notional_by_client_order_id.items():
+                    if not isinstance(order_id, str) or not order_id.strip() or len(order_id) > 128:
+                        return {"ok": False, "reason": "invalid_reserved_notional_identity", "requires_reconciliation": True}
+                    notional = Decimal(str(raw_notional))
+                    if not notional.is_finite() or notional <= 0:
+                        return {"ok": False, "reason": "invalid_reserved_notional_amount", "requires_reconciliation": True}
+                    reserved_notionals[order_id] = notional
+            except (InvalidOperation, TypeError, ValueError, OverflowError):
+                return {"ok": False, "reason": "invalid_reserved_notional_amount", "requires_reconciliation": True}
+            if not excluded_ids.issubset(reserved_notionals):
+                return {"ok": False, "reason": "matched_order_reservation_amount_missing", "requires_reconciliation": True}
         try:
             response = self._get(
                 "/fapi/v1/openOrders", params=self._signed_params({})
@@ -220,6 +245,13 @@ class BinanceFuturesTestnet:
             for order in orders:
                 if not isinstance(order, dict):
                     return {"ok": False, "reason": "invalid_open_order_record", "requires_reconciliation": True}
+                client_order_id = order.get("clientOrderId")
+                if excluded_ids and (
+                    not isinstance(client_order_id, str)
+                    or not client_order_id.strip()
+                    or len(client_order_id) > 128
+                ):
+                    return {"ok": False, "reason": "open_order_client_id_missing_or_invalid", "requires_reconciliation": True}
                 symbol = order.get("symbol")
                 side = order.get("side")
                 order_type = order.get("type")
@@ -259,7 +291,16 @@ class BinanceFuturesTestnet:
                     price = Decimal(str(raw_stop_price)) if raw_stop_price not in (None, "", "0", "0.0") else Decimal("0")
                 if not price.is_finite() or price <= 0:
                     return {"ok": False, "reason": "open_entry_order_price_unknown", "requires_reconciliation": True}
-                total_notional += quantity * price
+                # Exclude only when both identity and reservation capacity
+                # agree. If the exchange order exceeds its ledger reservation,
+                # count the exchange notional as external exposure too (safe
+                # over-counting), rather than silently understate account risk.
+                order_notional = quantity * price
+                if (
+                    client_order_id not in excluded_ids
+                    or order_notional > reserved_notionals.get(client_order_id, Decimal("0"))
+                ):
+                    total_notional += order_notional
             total_float = float(total_notional)
             if not math.isfinite(total_float):
                 return {"ok": False, "reason": "open_entry_order_notional_out_of_range", "requires_reconciliation": True}
@@ -632,7 +673,29 @@ class BinanceFuturesTestnet:
                     "client_order_id": client_order_id,
                 }
             try:
-                open_order_metrics = self.open_entry_order_notional()
+                # Use exact IDs from the durable unresolved inventory. Orders
+                # already represented by any active reservation must not also
+                # be counted in the exchange-open-order aggregate. If inventory
+                # is unavailable, fail closed rather than guess.
+                unresolved_reservations = self._risk_ledger.list_unresolved(limit=1000)
+                if not isinstance(unresolved_reservations, list) or any(
+                    not isinstance(row, dict)
+                    or not isinstance(row.get("order_id"), str)
+                    or row.get("state") not in {"RESERVED", "SUBMITTING", "UNKNOWN", "EXTERNALIZED"}
+                    for row in unresolved_reservations
+                ):
+                    raise RiskLedgerError("invalid_unresolved_reservation_inventory")
+                excluded_client_order_ids = {
+                    row["order_id"] for row in unresolved_reservations
+                }
+                reserved_notional_by_client_order_id = {
+                    row["order_id"]: row.get("notional_usdt")
+                    for row in unresolved_reservations
+                }
+                open_order_metrics = self.open_entry_order_notional(
+                    exclude_client_order_ids=excluded_client_order_ids,
+                    reserved_notional_by_client_order_id=reserved_notional_by_client_order_id,
+                )
             except Exception as exc:
                 return {
                     "accepted": False,
@@ -1153,6 +1216,7 @@ class BinanceFuturesTestnet:
             "symbol": payload["symbol"],
             "client_order_id": payload["clientOrderId"],
             "exchange_order_id": str(payload["orderId"]),
+            "side": payload.get("side"),
             "status": payload["status"],
             "executed_quantity": str(executed_quantity),
             "original_quantity": str(original_quantity),
@@ -1210,6 +1274,8 @@ class BinanceFuturesTestnet:
             "orderId", "symbol", "clientOrderId", "side", "type", "status",
             "reduceOnly", "stopPrice", "origQty", "executedQty",
         )
+        seen_order_ids = set()
+        seen_client_order_ids = set()
         for order in orders:
             if any(field not in order for field in required_order_fields):
                 return {"ok": False, "reason": "invalid_testnet_open_order_record"}
@@ -1224,6 +1290,14 @@ class BinanceFuturesTestnet:
                 or not order["clientOrderId"].replace("-", "").replace("_", "").isalnum()
             ):
                 return {"ok": False, "reason": "invalid_testnet_open_order_identity"}
+            order_id = str(order["orderId"])
+            client_order_id = order["clientOrderId"]
+            if order_id in seen_order_ids:
+                return {"ok": False, "reason": "duplicate_testnet_open_order_id"}
+            if client_order_id in seen_client_order_ids:
+                return {"ok": False, "reason": "duplicate_testnet_open_client_order_id"}
+            seen_order_ids.add(order_id)
+            seen_client_order_ids.add(client_order_id)
             if not isinstance(order["reduceOnly"], bool):
                 return {"ok": False, "reason": "invalid_testnet_open_order_reduce_only"}
             if not all(isinstance(order[field], str) and order[field] for field in ("side", "type", "status")):
@@ -1377,11 +1451,22 @@ class BinanceFuturesTestnet:
                     "exception_type": type(exc).__name__,
                     "requires_reconciliation": True,
                 }
-            append_with_audit({
-                "client_order_id": client_order_id,
-                "symbol": symbol,
-                **result,
-            }, state)
+            # A custom adapter or future refactor must not be able to abort the
+            # entire bounded sweep by returning a non-mapping result, nor may a
+            # result override the inventory's trusted order ID / symbol identity.
+            if not isinstance(result, dict):
+                result = {
+                    "client_order_id": client_order_id,
+                    "symbol": symbol,
+                    "ok": False,
+                    "reason": "invalid_reconciliation_result_shape",
+                    "requires_reconciliation": True,
+                }
+            else:
+                result = dict(result)
+                result["client_order_id"] = client_order_id
+                result["symbol"] = symbol
+            append_with_audit(result, state)
 
         return {
             "ok": all(item.get("ok") is True and item.get("audit_persisted") is True for item in results),
@@ -1422,11 +1507,12 @@ class BinanceFuturesTestnet:
         if reservation is None:
             return {"ok": False, "reason": "reservation_not_found", "requires_reconciliation": True}
         state = reservation.get("state")
-        if state == "EXTERNALIZED":
-            return {"ok": True, "reason": "reservation_already_externalized", "state": state}
         if state == "RELEASED":
             return {"ok": True, "reason": "reservation_already_released", "state": state}
-        if state not in {"SUBMITTING", "UNKNOWN"}:
+        # EXTERNALIZED reservations remain active risk. Re-query them during
+        # later sweeps so a confirmed zero-fill terminal exchange status can
+        # release capacity; visibility on the exchange is not a terminal state.
+        if state not in {"SUBMITTING", "UNKNOWN", "EXTERNALIZED"}:
             return {
                 "ok": False,
                 "reason": "reservation_state_not_reconcilable",
@@ -1461,10 +1547,31 @@ class BinanceFuturesTestnet:
             or not isinstance(snapshot.get("snapshot_started_at_ms"), (int, float))
             or not isinstance(snapshot.get("snapshot_completed_at_ms"), (int, float))
             or not isinstance(snapshot.get("snapshot_duration_ms"), (int, float))
+            or isinstance(snapshot.get("snapshot_started_at_ms"), bool)
+            or isinstance(snapshot.get("snapshot_completed_at_ms"), bool)
+            or isinstance(snapshot.get("snapshot_duration_ms"), bool)
+            # Bound numeric magnitude before float-based finiteness checks: an
+            # arbitrarily large Python int can make math.isfinite raise OverflowError.
+            or abs(snapshot["snapshot_started_at_ms"]) > 10**16
+            or abs(snapshot["snapshot_completed_at_ms"]) > 10**16
+            or abs(snapshot["snapshot_duration_ms"]) > MAX_PROTECTIVE_SNAPSHOT_DURATION_MS
+            or not math.isfinite(snapshot["snapshot_started_at_ms"])
+            or not math.isfinite(snapshot["snapshot_completed_at_ms"])
+            or not math.isfinite(snapshot["snapshot_duration_ms"])
             or snapshot["snapshot_completed_at_ms"] < snapshot["snapshot_started_at_ms"]
             or snapshot["snapshot_duration_ms"] < 0
+            # Independently validate the declared duration against the actual
+            # observation window. A forged/buggy short duration must not make
+            # a slow snapshot appear fresh enough for recovery decisions.
+            or abs(
+                snapshot["snapshot_duration_ms"]
+                - (snapshot["snapshot_completed_at_ms"] - snapshot["snapshot_started_at_ms"])
+            ) > 1
             or snapshot["snapshot_duration_ms"] > MAX_PROTECTIVE_SNAPSHOT_DURATION_MS
             or int(time.time() * 1000) - snapshot["snapshot_completed_at_ms"] > MAX_PROTECTIVE_SNAPSHOT_DURATION_MS
+            # Reject timestamps implausibly ahead of the local clock; a future
+            # completion time would otherwise produce a negative age and look fresh.
+            or snapshot["snapshot_completed_at_ms"] > int(time.time() * 1000) + 1000
             or not isinstance(snapshot.get("open_orders"), list)
         ):
             return {
@@ -1516,6 +1623,7 @@ class BinanceFuturesTestnet:
                 or snapshot_original != original
                 or snapshot_executed != executed
                 or matched.get("side") not in {"BUY", "SELL"}
+                or matched.get("side") != order.get("side")
             ):
                 return {
                     "ok": False,
@@ -1523,34 +1631,44 @@ class BinanceFuturesTestnet:
                     "state": state,
                     "requires_reconciliation": True,
                 }
-            try:
-                result = self._risk_ledger.transition(
-                    client_order_id, "EXTERNALIZED",
-                    detail=(
-                        "confirmed_snapshot: matching open entry order; "
-                        f"symbol={symbol}; status={status}; "
-                        f"exchange_order_id={order['exchange_order_id']}"
-                    ),
-                )
-            except RiskLedgerError as exc:
-                return {
-                    "ok": False,
-                    "reason": "risk_ledger_externalization_failed",
-                    "exception_type": type(exc).__name__,
-                    "state": state,
-                    "requires_reconciliation": True,
-                }
-            if not isinstance(result, dict) or result.get("ok") is not True:
-                return {
-                    "ok": False,
-                    "reason": "risk_ledger_externalization_failed",
-                    "ledger_result": result,
-                    "state": state,
-                    "requires_reconciliation": True,
-                }
+            # An already-EXTERNALIZED reservation is still active risk, but
+            # it must not be transitioned to the same state again: the ledger
+            # transition graph intentionally disallows self-transitions.
+            # The fresh matching snapshot is sufficient to confirm it remains
+            # externalized without mutating the durable state.
+            if state != "EXTERNALIZED":
+                try:
+                    result = self._risk_ledger.transition(
+                        client_order_id, "EXTERNALIZED",
+                        detail=(
+                            "confirmed_snapshot: matching open entry order; "
+                            f"symbol={symbol}; status={status}; "
+                            f"exchange_order_id={order['exchange_order_id']}"
+                        ),
+                    )
+                except RiskLedgerError as exc:
+                    return {
+                        "ok": False,
+                        "reason": "risk_ledger_externalization_failed",
+                        "exception_type": type(exc).__name__,
+                        "state": state,
+                        "requires_reconciliation": True,
+                    }
+                if not isinstance(result, dict) or result.get("ok") is not True:
+                    return {
+                        "ok": False,
+                        "reason": "risk_ledger_externalization_failed",
+                        "ledger_result": result,
+                        "state": state,
+                        "requires_reconciliation": True,
+                    }
             return {
                 "ok": True,
-                "reason": "open_entry_order_confirmed_external",
+                "reason": (
+                    "externalized_order_still_open_confirmed"
+                    if state == "EXTERNALIZED"
+                    else "open_entry_order_confirmed_external"
+                ),
                 "state": "EXTERNALIZED",
                 "exchange_status": status,
                 "requires_reconciliation": False,
@@ -1653,7 +1771,27 @@ class BinanceFuturesTestnet:
                 "exception_type": type(exc).__name__,
                 "client_order_id": client_order_id,
             }
-        if not isinstance(snapshot, dict) or not snapshot.get("ok"):
+        if (
+            not isinstance(snapshot, dict)
+            or snapshot.get("ok") is not True
+            or snapshot.get("symbol") != symbol
+            or not isinstance(snapshot.get("open_orders"), list)
+            or any(
+                not isinstance(order, dict)
+                or not isinstance(order.get("client_order_id"), str)
+                or not order.get("client_order_id")
+                or len(order["client_order_id"]) > 36
+                or not order["client_order_id"].isascii()
+                or not order["client_order_id"].replace("-", "").replace("_", "").isalnum()
+                or order.get("side") not in {"BUY", "SELL"}
+                or not isinstance(order.get("type"), str)
+                or not order.get("type")
+                or order.get("status") not in {"NEW", "PARTIALLY_FILLED"}
+                or not isinstance(order.get("reduce_only"), bool)
+                for order in snapshot.get("open_orders", [])
+            )
+            or len({order.get("client_order_id") for order in snapshot["open_orders"]}) != len(snapshot["open_orders"])
+        ):
             return {
                 "accepted": False,
                 "reason": "position_snapshot_failed",
@@ -1895,9 +2033,24 @@ class BinanceFuturesTestnet:
             }
         if (
             not isinstance(final_snapshot, dict)
-            or not final_snapshot.get("ok")
+            or final_snapshot.get("ok") is not True
             or final_snapshot.get("symbol") != symbol
             or not isinstance(final_snapshot.get("open_orders"), list)
+            or any(
+                not isinstance(order, dict)
+                or not isinstance(order.get("client_order_id"), str)
+                or not order.get("client_order_id")
+                or len(order["client_order_id"]) > 36
+                or not order["client_order_id"].isascii()
+                or not order["client_order_id"].replace("-", "").replace("_", "").isalnum()
+                or order.get("side") not in {"BUY", "SELL"}
+                or not isinstance(order.get("type"), str)
+                or not order.get("type")
+                or order.get("status") not in {"NEW", "PARTIALLY_FILLED"}
+                or not isinstance(order.get("reduce_only"), bool)
+                for order in final_snapshot.get("open_orders", [])
+            )
+            or len({order.get("client_order_id") for order in final_snapshot["open_orders"]}) != len(final_snapshot["open_orders"])
         ):
             return {
                 "accepted": False,
@@ -2099,11 +2252,25 @@ class BinanceFuturesTestnet:
             }
         # Conditional exits should initially be resting. A response that is
         # already partially filled/filled is an execution race, not a verified
-        # installation; require a fresh exchange snapshot and manual reconciliation.
+        # installation; require reconciliation before checking NEW fill consistency.
         if payload.get("status") != "NEW":
             return {
                 "accepted": False,
                 "reason": "protective_exit_submission_state_requires_reconciliation",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+                "status": payload.get("status"),
+            }
+        # Do not trust status alone: a malformed/inconsistent NEW response with
+        # non-zero executedQty can hide an execution race and changed position.
+        try:
+            executed_quantity = Decimal(str(payload.get("executedQty", "NaN")))
+            if not executed_quantity.is_finite() or executed_quantity != 0:
+                raise InvalidOperation
+        except (InvalidOperation, TypeError, ValueError):
+            return {
+                "accepted": False,
+                "reason": "protective_exit_submission_fill_state_requires_reconciliation",
                 "requires_reconciliation": True,
                 "client_order_id": client_order_id,
                 "status": payload.get("status"),
@@ -2193,6 +2360,30 @@ class BinanceFuturesTestnet:
                 "requires_reconciliation": True,
                 "client_order_id": client_order_id,
             }
+        # A terminal cancellation can still have partial fills. Never report
+        # a clean cancellation unless the response proves the order's execution
+        # quantity is zero; otherwise the position may need immediate protection.
+        try:
+            original_quantity = Decimal(str(payload.get("origQty", "NaN")))
+            executed_quantity = Decimal(str(payload.get("executedQty", "NaN")))
+            if (
+                not original_quantity.is_finite()
+                or not executed_quantity.is_finite()
+                or original_quantity <= 0
+                or executed_quantity < 0
+                or executed_quantity > original_quantity
+            ):
+                raise InvalidOperation
+        except (InvalidOperation, TypeError, ValueError):
+            return {
+                "cancelled": False,
+                "reason": "testnet_cancel_fill_state_unreadable_requires_reconciliation",
+                "requires_reconciliation": True,
+                "symbol": payload["symbol"],
+                "client_order_id": payload["clientOrderId"],
+                "exchange_order_id": str(payload["orderId"]),
+                "status": payload["status"],
+            }
         if payload["status"] != "CANCELED":
             return {
                 "cancelled": False,
@@ -2202,6 +2393,18 @@ class BinanceFuturesTestnet:
                 "client_order_id": payload["clientOrderId"],
                 "exchange_order_id": str(payload["orderId"]),
                 "status": payload["status"],
+            }
+        if executed_quantity != 0:
+            return {
+                "cancelled": False,
+                "reason": "testnet_cancel_partial_fill_requires_position_reconciliation",
+                "requires_reconciliation": True,
+                "symbol": payload["symbol"],
+                "client_order_id": payload["clientOrderId"],
+                "exchange_order_id": str(payload["orderId"]),
+                "status": payload["status"],
+                "executed_quantity": str(executed_quantity),
+                "original_quantity": str(original_quantity),
             }
         return {
             "cancelled": True,

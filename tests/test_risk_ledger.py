@@ -107,6 +107,30 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
             detail="confirmed_snapshot: operator verified authoritative snapshot includes this order",
         )
         self.assertTrue(result["ok"])
+        # Exchange visibility is not the same as risk disappearance: an open
+        # entry can still fill, so its reservation remains in the account cap.
+        self.assertEqual(self.ledger.active_reserved_notional(), "25")
+        blocked = self.ledger.reserve("next-after-externalized", "80", "0", "100")
+        self.assertFalse(blocked["ok"])
+        self.assertEqual(blocked["reason"], "account_notional_limit_exceeded")
+
+    def test_externalized_reservation_stays_in_cap_until_terminal_release(self):
+        self.ledger.reserve("externalized-cap", "70", "0", "100")
+        self.ledger.transition("externalized-cap", "SUBMITTING")
+        self.ledger.transition("externalized-cap", "UNKNOWN")
+        self.ledger.transition(
+            "externalized-cap", "EXTERNALIZED",
+            detail="confirmed_snapshot: open entry order confirmed",
+        )
+        self.assertEqual(self.ledger.active_reserved_notional(), "70")
+        blocked = self.ledger.reserve("would-overrun", "31", "0", "100")
+        self.assertFalse(blocked["ok"])
+        self.assertEqual(blocked["reason"], "account_notional_limit_exceeded")
+        released = self.ledger.transition(
+            "externalized-cap", "RELEASED",
+            detail="confirmed_terminal: exchange confirmed zero-fill cancellation",
+        )
+        self.assertTrue(released["ok"])
         self.assertEqual(self.ledger.active_reserved_notional(), "0")
 
     def test_reserved_reservation_cannot_be_released_without_pre_submit_evidence(self):
@@ -154,6 +178,21 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
         result = self.ledger.reserve("same-id", "11", "0", "100")
         self.assertFalse(result["ok"])
         self.assertEqual(result["reason"], "reservation_id_conflict")
+
+    def test_duplicate_active_reservation_is_idempotent_but_not_a_new_submission_grant(self):
+        first = self.ledger.reserve("duplicate-active-id", "10", "0", "100")
+        self.assertTrue(first["ok"])
+        self.assertEqual(first["reason"], "risk_reserved")
+        self.assertEqual(first["state"], "RESERVED")
+
+        duplicate = self.ledger.reserve("duplicate-active-id", "10", "0", "100")
+        self.assertTrue(duplicate["ok"])
+        self.assertEqual(duplicate["reason"], "existing_reservation")
+        self.assertEqual(duplicate["state"], "RESERVED")
+        # The caller must distinguish "existing_reservation" from a fresh
+        # "risk_reserved" result and refuse to blindly POST the same client ID.
+        self.assertEqual(self.ledger.active_reserved_notional(), "10")
+        self.assertEqual(self.ledger.list_unresolved(limit=10)[0]["order_id"], "duplicate-active-id")
 
     def test_invalid_values_raise_instead_of_understating_risk(self):
         for value in ("NaN", "Infinity", "-1", True, "not-a-number"):
