@@ -2146,6 +2146,38 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertTrue(result["requires_reconciliation"])
         self.assertEqual(len(client.calls), 1)
 
+    def test_cancel_order_rejects_missing_or_malformed_side(self):
+        class MalformedSideClient(FakeClient):
+            def __init__(self, side):
+                super().__init__()
+                self.side = side
+
+            def delete(self, path, params):
+                self.calls.append((path, params))
+                return FakeResponse({
+                    "symbol": params.get("symbol"),
+                    "clientOrderId": params.get("origClientOrderId"),
+                    "side": self.side,
+                    "orderId": 12345,
+                    "status": "CANCELED",
+                    "origQty": "0.5",
+                    "executedQty": "0",
+                })
+
+        for side in (None, "", "BUY_SELL", 1, [], {}):
+            with self.subTest(side=side):
+                client = MalformedSideClient(side)
+                adapter = BinanceFuturesTestnet(
+                    api_key="test-key", api_secret="test-secret", client=client
+                )
+                result = adapter.cancel_testnet_order("BTCUSDT", "cancel-bad-side-0001")
+                self.assertFalse(result["cancelled"])
+                self.assertEqual(
+                    result["reason"], "unexpected_or_mismatched_testnet_cancel_response"
+                )
+                self.assertTrue(result["requires_reconciliation"])
+                self.assertEqual(len(client.calls), 1)
+
     def test_cancel_order_rejects_mismatched_exchange_identity(self):
         class MismatchedClient(FakeClient):
             def delete(self, path, params):
