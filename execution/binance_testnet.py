@@ -2336,6 +2336,30 @@ class BinanceFuturesTestnet:
                 "requires_reconciliation": True,
                 "client_order_id": client_order_id,
             }
+        # A terminal cancellation can still have partial fills. Never report
+        # a clean cancellation unless the response proves the order's execution
+        # quantity is zero; otherwise the position may need immediate protection.
+        try:
+            original_quantity = Decimal(str(payload.get("origQty", "NaN")))
+            executed_quantity = Decimal(str(payload.get("executedQty", "NaN")))
+            if (
+                not original_quantity.is_finite()
+                or not executed_quantity.is_finite()
+                or original_quantity <= 0
+                or executed_quantity < 0
+                or executed_quantity > original_quantity
+            ):
+                raise InvalidOperation
+        except (InvalidOperation, TypeError, ValueError):
+            return {
+                "cancelled": False,
+                "reason": "testnet_cancel_fill_state_unreadable_requires_reconciliation",
+                "requires_reconciliation": True,
+                "symbol": payload["symbol"],
+                "client_order_id": payload["clientOrderId"],
+                "exchange_order_id": str(payload["orderId"]),
+                "status": payload["status"],
+            }
         if payload["status"] != "CANCELED":
             return {
                 "cancelled": False,
@@ -2345,6 +2369,18 @@ class BinanceFuturesTestnet:
                 "client_order_id": payload["clientOrderId"],
                 "exchange_order_id": str(payload["orderId"]),
                 "status": payload["status"],
+            }
+        if executed_quantity != 0:
+            return {
+                "cancelled": False,
+                "reason": "testnet_cancel_partial_fill_requires_position_reconciliation",
+                "requires_reconciliation": True,
+                "symbol": payload["symbol"],
+                "client_order_id": payload["clientOrderId"],
+                "exchange_order_id": str(payload["orderId"]),
+                "status": payload["status"],
+                "executed_quantity": str(executed_quantity),
+                "original_quantity": str(original_quantity),
             }
         return {
             "cancelled": True,
