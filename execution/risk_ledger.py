@@ -209,10 +209,19 @@ class SQLiteRiskLedger:
                     return {"ok": False, "reason": "reservation_not_reusable", "state": state}
                 placeholders = ",".join("?" for _ in _ACTIVE_STATES)
                 rows = connection.execute(
-                    f"SELECT notional_usdt FROM risk_reservations WHERE state IN ({placeholders})",
+                    f"SELECT order_id, notional_usdt, state FROM risk_reservations WHERE state IN ({placeholders})",
                     _ACTIVE_STATES,
                 ).fetchall()
-                reserved = sum((Decimal(row[0]) for row in rows), Decimal("0"))
+                reserved_values = []
+                for stored_order_id, raw_notional, stored_state in rows:
+                    self._validate_order_id(stored_order_id)
+                    if stored_state not in _ACTIVE_STATES:
+                        raise RiskLedgerError("invalid_active_reservation_state")
+                    stored_notional = _decimal(raw_notional, "stored_reservation_notional")
+                    if stored_notional <= 0:
+                        raise RiskLedgerError("invalid_active_reservation_notional")
+                    reserved_values.append(stored_notional)
+                reserved = sum(reserved_values, Decimal("0"))
                 projected = external + reserved + notional
                 if projected > cap:
                     connection.execute("ROLLBACK")
