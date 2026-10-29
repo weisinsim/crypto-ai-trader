@@ -929,7 +929,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                     return FakeResponse(self.payload)
                 return super().get(path, params)
 
-        for side in (None, "", "BUY_SELL", 1):
+        for side in (None, "", "BUY_SELL", 1, [], {}):
             with self.subTest(side=side):
                 payload = dict(base)
                 if side is not None:
