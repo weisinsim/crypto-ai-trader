@@ -288,11 +288,16 @@ class BinanceFuturesTestnet:
         raw_filters = matches[0].get("filters")
         if not isinstance(raw_filters, list) or any(not isinstance(item, dict) for item in raw_filters):
             raise ValueError("invalid_exchange_filter_records")
-        filters = {
-            item.get("filterType"): item
-            for item in raw_filters
-            if isinstance(item.get("filterType"), str)
-        }
+        filters = {}
+        for item in raw_filters:
+            filter_type = item.get("filterType")
+            if not isinstance(filter_type, str) or not filter_type:
+                raise ValueError("invalid_exchange_filter_type")
+            # Duplicate filter types make the effective rules ambiguous. Do
+            # not silently let a later record overwrite a stricter earlier one.
+            if filter_type in filters:
+                raise ValueError("duplicate_exchange_filter_type")
+            filters[filter_type] = item
         lot = filters.get("MARKET_LOT_SIZE") or filters.get("LOT_SIZE")
         if not lot:
             raise ValueError("market_lot_size_filter_missing")
