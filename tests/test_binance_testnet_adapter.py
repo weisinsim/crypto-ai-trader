@@ -3395,46 +3395,41 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(client.calls, [])
 
     def test_reconcile_does_not_release_when_snapshot_contains_malformed_open_order_identity(self):
-        for malformed in (None, {}, {"client_order_id": []}, {"client_order_id": ""}):
-            with self.subTest(malformed=malformed), tempfile.TemporaryDirectory() as temp_dir:
-                original_path = os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"]
-                os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"] = os.path.join(
-                    temp_dir, "risk-ledger.sqlite3"
+        for index, malformed in enumerate(
+            (None, {}, {"client_order_id": []}, {"client_order_id": ""})
+        ):
+            with self.subTest(malformed=malformed):
+                client = FakeClient()
+                adapter = BinanceFuturesTestnet(
+                    api_key="test-key", api_secret="test-secret", client=client
                 )
-                try:
-                    client = FakeClient()
-                    adapter = BinanceFuturesTestnet(
-                        api_key="test-key", api_secret="test-secret", client=client
-                    )
-                    ledger = adapter._risk_ledger
-                    order_id = "snapshot-malformed-identity"
-                    ledger.reserve(order_id, "50", "0", "1000")
-                    ledger.transition(order_id, "SUBMITTING")
-                    ledger.transition(order_id, "UNKNOWN")
-                    now_ms = int(time.time() * 1000)
-                    adapter.testnet_position_snapshot = lambda symbol, row=malformed: {
-                        "ok": True,
-                        "symbol": symbol,
-                        "snapshot_started_at_ms": now_ms - 10,
-                        "snapshot_completed_at_ms": now_ms,
-                        "snapshot_duration_ms": 10,
-                        "position_amount": "0",
-                        "entry_price": "0",
-                        "open_orders": [row],
-                    }
-                    result = adapter.reconcile_testnet_entry_reservation(
-                        "BTCUSDT", order_id
-                    )
-                    self.assertFalse(result["ok"])
-                    self.assertEqual(
-                        result["reason"], "position_snapshot_open_order_identity_invalid"
-                    )
-                    self.assertTrue(result["requires_reconciliation"])
-                    self.assertEqual(ledger.get(order_id)["state"], "UNKNOWN")
-                    self.assertEqual(ledger.active_reserved_notional(), "50")
-                    self.assertEqual(client.calls, [])
-                finally:
-                    os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"] = original_path
+                ledger = adapter._risk_ledger
+                order_id = f"snapshot-malformed-{index}"
+                ledger.reserve(order_id, "50", "0", "1000")
+                ledger.transition(order_id, "SUBMITTING")
+                ledger.transition(order_id, "UNKNOWN")
+                now_ms = int(time.time() * 1000)
+                adapter.testnet_position_snapshot = lambda symbol, row=malformed: {
+                    "ok": True,
+                    "symbol": symbol,
+                    "snapshot_started_at_ms": now_ms - 10,
+                    "snapshot_completed_at_ms": now_ms,
+                    "snapshot_duration_ms": 10,
+                    "position_amount": "0",
+                    "entry_price": "0",
+                    "open_orders": [row],
+                }
+                result = adapter.reconcile_testnet_entry_reservation(
+                    "BTCUSDT", order_id
+                )
+                self.assertFalse(result["ok"])
+                self.assertEqual(
+                    result["reason"], "position_snapshot_open_order_identity_invalid"
+                )
+                self.assertTrue(result["requires_reconciliation"])
+                self.assertEqual(ledger.get(order_id)["state"], "UNKNOWN")
+                self.assertEqual(ledger.active_reserved_notional(), str(50 * (index + 1)))
+                self.assertEqual(client.calls, [])
 
     def test_reconcile_rejects_mismatched_terminal_order_identity_without_release(self):
         for mismatch_field, mismatch_value in (
