@@ -1386,6 +1386,40 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertTrue(result["requires_reconciliation"])
         self.assertFalse(any(path == "/fapi/v1/order" for path, _ in client.calls))
 
+    def test_protective_exit_rejects_non_boolean_success_flag_in_final_snapshot(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        calls = {"count": 0}
+
+        def snapshot(symbol):
+            calls["count"] += 1
+            now_ms = int(time.time() * 1000)
+            return {
+                "ok": True if calls["count"] == 1 else 1,
+                "symbol": symbol,
+                "snapshot_started_at_ms": now_ms - 10,
+                "snapshot_completed_at_ms": now_ms,
+                "snapshot_duration_ms": 10,
+                "position_amount": "0.5",
+                "entry_price": "100",
+                "open_orders": [],
+            }
+
+        adapter.testnet_position_snapshot = snapshot
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "stop-final-nonbool-ok"
+        )
+
+        self.assertFalse(result["accepted"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(
+            result["reason"], "protective_exit_final_snapshot_invalid_requires_reconciliation"
+        )
+        self.assertEqual(calls["count"], 2)
+        self.assertFalse(any(path == "/fapi/v1/order" for path, _ in client.calls))
+
     def test_protective_exit_fails_closed_when_final_snapshot_times_out(self):
         class FinalSnapshotTimeoutClient(FakeClient):
             def __init__(self):
