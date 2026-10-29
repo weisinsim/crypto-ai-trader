@@ -1194,5 +1194,55 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertEqual(adapter.cancel_calls, 0)
 
 
+    def test_post_cancel_identity_change_requires_reconciliation(self):
+        class PostCancelIdentityChangeAdapter:
+            def __init__(self):
+                self.sibling_queries = 0
+                self.cancel_calls = 0
+                self.snapshot_calls = 0
+
+            def query_testnet_order(self, symbol, client_id):
+                if client_id == "btc-sl":
+                    return {
+                        "found": True, "symbol": symbol, "client_order_id": client_id,
+                        "status": "FILLED", "executed_quantity": "0.5",
+                        "original_quantity": "0.5", "type": "STOP_MARKET",
+                        "side": "SELL", "reduce_only": True,
+                    }
+                self.sibling_queries += 1
+                if self.sibling_queries == 1:
+                    return {
+                        "found": True, "symbol": symbol, "client_order_id": client_id,
+                        "status": "NEW", "executed_quantity": "0",
+                        "original_quantity": "0.5", "type": "TAKE_PROFIT_MARKET",
+                        "side": "SELL", "reduce_only": True,
+                    }
+                return {
+                    "found": True, "symbol": symbol, "client_order_id": client_id,
+                    "status": "CANCELED", "executed_quantity": "0",
+                    "original_quantity": "0.5", "type": "LIMIT",
+                    "side": "SELL", "reduce_only": False,
+                }
+
+            def testnet_position_snapshot(self, symbol):
+                self.snapshot_calls += 1
+                return {"ok": True, "symbol": symbol, "position_amount": "0", "open_orders": []}
+
+            def cancel_testnet_order(self, symbol, client_id):
+                self.cancel_calls += 1
+                return {"cancelled": True}
+
+        adapter = PostCancelIdentityChangeAdapter()
+        result = cancel_testnet_sibling_after_flatten(adapter, "BTCUSDT", "btc-sl", "btc-tp")
+        self.assertFalse(result["ok"])
+        self.assertEqual(
+            result["reason"], "post_cancel_sibling_protective_identity_mismatch"
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(adapter.cancel_calls, 1)
+        # The post-cancel identity mismatch must stop before a clean final snapshot.
+        self.assertEqual(adapter.snapshot_calls, 1)
+
+
 if __name__ == "__main__":
     unittest.main()
