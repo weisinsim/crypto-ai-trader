@@ -258,6 +258,7 @@ class BinanceFuturesTestnet:
                 if (
                     not isinstance(symbol, str) or not symbol.isascii()
                     or not symbol.endswith("USDT") or not symbol[:-4].isalnum()
+                    or not isinstance(side, str)
                     or side not in {"BUY", "SELL"}
                     or not isinstance(order_type, str) or not order_type
                 ):
