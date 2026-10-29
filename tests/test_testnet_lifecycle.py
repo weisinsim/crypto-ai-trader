@@ -1129,5 +1129,70 @@ class TestnetLifecycleTests(unittest.TestCase):
         self.assertEqual(adapter.snapshot_calls, 1)
 
 
+    def test_cancel_rejects_filled_non_protective_order_before_snapshot_or_cancel(self):
+        class NonProtectiveFilledOrderAdapter:
+            def __init__(self):
+                self.snapshot_calls = 0
+                self.cancel_calls = 0
+
+            def query_testnet_order(self, symbol, client_id):
+                return {
+                    "found": True, "symbol": symbol, "client_order_id": client_id,
+                    "status": "FILLED", "executed_quantity": "0.5",
+                    "original_quantity": "0.5", "type": "LIMIT",
+                    "side": "SELL", "reduce_only": False,
+                }
+
+            def testnet_position_snapshot(self, symbol):
+                self.snapshot_calls += 1
+                return {"ok": True, "symbol": symbol, "position_amount": "0", "open_orders": []}
+
+            def cancel_testnet_order(self, symbol, client_id):
+                self.cancel_calls += 1
+                return {"cancelled": True}
+
+        adapter = NonProtectiveFilledOrderAdapter()
+        result = cancel_testnet_sibling_after_flatten(adapter, "BTCUSDT", "btc-sl", "btc-tp")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "filled_exit_not_verified_protective_order")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(adapter.snapshot_calls, 0)
+        self.assertEqual(adapter.cancel_calls, 0)
+
+    def test_cancel_rejects_mismatched_sibling_type_or_side_before_cancel(self):
+        class MismatchedProtectivePairAdapter:
+            def __init__(self):
+                self.cancel_calls = 0
+
+            def query_testnet_order(self, symbol, client_id):
+                if client_id == "btc-sl":
+                    return {
+                        "found": True, "symbol": symbol, "client_order_id": client_id,
+                        "status": "FILLED", "executed_quantity": "0.5",
+                        "original_quantity": "0.5", "type": "STOP_MARKET",
+                        "side": "SELL", "reduce_only": True,
+                    }
+                return {
+                    "found": True, "symbol": symbol, "client_order_id": client_id,
+                    "status": "NEW", "executed_quantity": "0",
+                    "original_quantity": "0.5", "type": "TAKE_PROFIT_MARKET",
+                    "side": "BUY", "reduce_only": True,
+                }
+
+            def testnet_position_snapshot(self, symbol):
+                return {"ok": True, "symbol": symbol, "position_amount": "0", "open_orders": []}
+
+            def cancel_testnet_order(self, symbol, client_id):
+                self.cancel_calls += 1
+                return {"cancelled": True}
+
+        adapter = MismatchedProtectivePairAdapter()
+        result = cancel_testnet_sibling_after_flatten(adapter, "BTCUSDT", "btc-sl", "btc-tp")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "sibling_not_verified_as_matching_protective_pair")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(adapter.cancel_calls, 0)
+
+
 if __name__ == "__main__":
     unittest.main()
