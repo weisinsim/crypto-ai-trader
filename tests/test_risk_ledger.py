@@ -1,6 +1,7 @@
 """Regression tests for durable SQLite risk reservations."""
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+import sqlite3
 import tempfile
 import unittest
 
