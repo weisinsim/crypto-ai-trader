@@ -254,7 +254,7 @@ class SQLiteRiskLedger:
     def transition(self, order_id, new_state, *, detail=""):
         """Move a reservation forward without automatically releasing risk."""
         order_id = self._validate_order_id(order_id)
-        if new_state not in _ALLOWED_STATES:
+        if not isinstance(new_state, str) or new_state not in _ALLOWED_STATES:
             raise RiskLedgerError("invalid_reservation_state")
         if not isinstance(detail, str) or len(detail) > 500:
             raise RiskLedgerError("invalid_reservation_detail")
