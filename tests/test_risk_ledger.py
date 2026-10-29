@@ -209,6 +209,17 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
         self.assertEqual(row["state"], "RESERVED")
         self.assertEqual(row["notional_usdt"], "12.5")
 
+    def test_transition_rejects_non_string_state_without_type_error(self):
+        order_id = "ledger-invalid-state-type-01"
+        self.assertTrue(self.ledger.reserve(order_id, "50", "0", "100")["ok"])
+        for invalid_state in (None, [], {}, 1):
+            with self.subTest(invalid_state=invalid_state):
+                with self.assertRaisesRegex(RiskLedgerError, "invalid_reservation_state"):
+                    self.ledger.transition(order_id, invalid_state)
+        reservation = self.ledger.get(order_id)
+        self.assertEqual(reservation["state"], "RESERVED")
+        self.assertEqual(self.ledger.active_reserved_notional(), 50.0)
+
     def test_invalid_state_transition_does_not_release_reservation(self):
         self.ledger.reserve("state-1", "20", "0", "100")
         result = self.ledger.transition("state-1", "EXTERNALIZED")
