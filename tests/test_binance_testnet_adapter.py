@@ -457,6 +457,28 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(result["open_entry_order_notional_usdt"], 20.0)
         self.assertEqual(result["open_entry_orders"], 2)
 
+    def test_open_order_notional_fails_closed_on_unhashable_side(self):
+        class MalformedSideClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/openOrders":
+                    self.get_calls.append((path, params))
+                    return FakeResponse([{
+                        "symbol": "BTCUSDT", "side": [], "type": "LIMIT",
+                        "origQty": "0.5", "price": "100", "stopPrice": "0",
+                        "reduceOnly": False, "closePosition": False,
+                        "clientOrderId": "malformed-side-order",
+                    }])
+                return super().get(path, params)
+
+        client = MalformedSideClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.open_entry_order_notional()
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "invalid_open_order_identity")
+        self.assertTrue(result["requires_reconciliation"])
+
     def test_matched_order_exceeding_ledger_reservation_remains_in_external_exposure(self):
         class LargerMatchedOrderClient(FakeClient):
             def get(self, path, params):
