@@ -2240,9 +2240,21 @@ class BinanceFuturesTestnet:
                 "requires_reconciliation": True,
                 "client_order_id": client_order_id,
             }
-        # Conditional exits should initially be resting. A response that is
-        # already partially filled/filled is an execution race, not a verified
-        # installation; require a fresh exchange snapshot and manual reconciliation.
+        # Conditional exits should initially be resting with zero execution.
+        # Do not trust status alone: a malformed/inconsistent NEW response with
+        # non-zero executedQty can hide an execution race and changed position.
+        try:
+            executed_quantity = Decimal(str(payload.get("executedQty", "NaN")))
+            if not executed_quantity.is_finite() or executed_quantity != 0:
+                raise InvalidOperation
+        except (InvalidOperation, TypeError, ValueError):
+            return {
+                "accepted": False,
+                "reason": "protective_exit_submission_fill_state_requires_reconciliation",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+                "status": payload.get("status"),
+            }
         if payload.get("status") != "NEW":
             return {
                 "accepted": False,
