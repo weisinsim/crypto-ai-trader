@@ -266,5 +266,24 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
         self.assertEqual(len(self.ledger.list_unresolved(limit=1)), 1)
 
 
+    def test_active_reservation_inventory_is_complete_beyond_recovery_page_limit(self):
+        # Recovery listing is intentionally bounded; account-cap inventory
+        # must not inherit that limit or silently omit active risk.
+        for index in range(1001):
+            result = self.ledger.reserve(
+                f"inventory-order-{index:04d}", "1", "0", "2000"
+            )
+            self.assertTrue(result["ok"], result)
+
+        bounded = self.ledger.list_unresolved(limit=1000)
+        complete = self.ledger.list_active_reservations()
+        self.assertEqual(len(bounded), 1000)
+        self.assertEqual(len(complete), 1001)
+        self.assertEqual(
+            {row["order_id"] for row in complete},
+            {f"inventory-order-{index:04d}" for index in range(1001)},
+        )
+        self.assertEqual(self.ledger.active_reserved_notional(), "1001")
+
 if __name__ == "__main__":
     unittest.main()
