@@ -287,6 +287,21 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
         with self.assertRaises(RiskLedgerError):
             self.ledger.list_active_reservations()
 
+    def test_unresolved_inventory_fails_closed_on_unknown_corrupted_reservation_state(self):
+        # Recovery inventory must not silently filter out damaged rows by
+        # querying only recognized active states in SQL.
+        with sqlite3.connect(self.db_path) as connection:
+            connection.execute("PRAGMA ignore_check_constraints = ON")
+            connection.execute(
+                """INSERT INTO risk_reservations
+                (order_id, notional_usdt, state, created_at, updated_at, detail)
+                VALUES (?, ?, 'CORRUPTED', 1, 1, 'corruption fixture')""",
+                ("unresolved-corrupted-state", "20"),
+            )
+
+        with self.assertRaisesRegex(RiskLedgerError, "invalid_reservation_state_in_ledger"):
+            self.ledger.list_unresolved(limit=10)
+
     def test_reserve_fails_closed_on_unknown_corrupted_reservation_state(self):
         # Simulate on-disk corruption that bypasses SQLite CHECK constraints.
         with sqlite3.connect(self.db_path) as connection:
