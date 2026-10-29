@@ -1158,6 +1158,7 @@ class BinanceFuturesTestnet:
             or not _valid_exchange_order_id(payload.get("orderId"))
             or payload.get("symbol") != symbol
             or payload.get("clientOrderId") != client_order_id
+            or payload.get("side") not in {"BUY", "SELL"}
             or not isinstance(payload.get("status"), str)
             or payload.get("status") not in {
                 "NEW", "PARTIALLY_FILLED", "FILLED", "CANCELED", "REJECTED", "EXPIRED"
