@@ -1,5 +1,7 @@
 import hashlib
 import hmac
+import os
+import tempfile
 import time
 import unittest
 from urllib.parse import urlencode
@@ -8,6 +10,7 @@ import httpx
 
 from execution.binance_testnet import BinanceFuturesTestnet, BinanceTestnetConfigurationError, TESTNET_BASE_URL
 from execution.safety import ExecutionConfig, OrderIntent
+from execution.risk_ledger import RiskLedgerError, SQLiteRiskLedger
 
 
 class FakeResponse:
@@ -43,8 +46,8 @@ class FakeClient:
             return FakeResponse({"symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"), "orderId": 12345, "status": "PARTIALLY_FILLED", "origQty": "0.5", "executedQty": "0.2", "avgPrice": "100.1"})
         if path == "/fapi/v2/account":
             return FakeResponse({"canTrade": True, "positions": [
-                {"symbol": "BTCUSDT", "positionAmt": "0", "entryPrice": "0"},
-                {"symbol": "ETHUSDT", "positionAmt": "0.25", "entryPrice": "100"},
+                {"symbol": "BTCUSDT", "positionAmt": "0", "entryPrice": "0", "notional": "0"},
+                {"symbol": "ETHUSDT", "positionAmt": "0.25", "entryPrice": "100", "notional": "25"},
             ]})
         return FakeResponse(self.exchange_payload)
 
@@ -56,6 +59,8 @@ class FakeClient:
                 "clientOrderId": params.get("newClientOrderId"),
                 "orderId": 12345,
                 "status": "NEW",
+                "origQty": params.get("quantity"),
+                "executedQty": "0",
             }
             if params.get("type") in {"STOP_MARKET", "TAKE_PROFIT_MARKET"}:
                 payload.update({
@@ -78,6 +83,23 @@ class FakeClient:
 
 
 class BinanceTestnetAdapterTests(unittest.TestCase):
+    def setUp(self):
+        self._previous_risk_ledger_path = os.environ.get("CRYPTO_TESTNET_RISK_LEDGER_PATH")
+        self._risk_ledger_dir = tempfile.TemporaryDirectory()
+        os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"] = os.path.join(
+            self._risk_ledger_dir.name, "testnet-risk.sqlite3"
+        )
+        SQLiteRiskLedger(os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"]).set_kill_switch(
+            False, reason="isolated fake-client unit test setup"
+        )
+
+    def tearDown(self):
+        if self._previous_risk_ledger_path is None:
+            os.environ.pop("CRYPTO_TESTNET_RISK_LEDGER_PATH", None)
+        else:
+            os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"] = self._previous_risk_ledger_path
+        self._risk_ledger_dir.cleanup()
+
     def intent(self, **overrides):
         values = dict(
             symbol="BTCUSDT", side="BUY", entry=100, stop_loss=99.8,
@@ -86,6 +108,43 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         )
         values.update(overrides)
         return OrderIntent(**values)
+
+    def test_market_order_fails_closed_when_persistent_kill_switch_is_active(self):
+        ledger = SQLiteRiskLedger(os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"])
+        ledger.set_kill_switch(True, reason="test emergency stop")
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "kill-switch-active-0001", ExecutionConfig(mode="testnet")
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "operator_kill_switch_active")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(client.calls, [])
+        self.assertEqual(client.get_calls, [])
+
+    def test_market_order_fails_closed_when_durable_risk_ledger_is_unavailable(self):
+        previous = os.environ.pop("CRYPTO_TESTNET_RISK_LEDGER_PATH", None)
+        try:
+            client = FakeClient()
+            adapter = BinanceFuturesTestnet(
+                api_key="test-key", api_secret="test-secret", client=client
+            )
+            result = adapter.submit_testnet_market_order(
+                self.intent(), "ledger-missing-0001", ExecutionConfig(mode="testnet")
+            )
+            self.assertFalse(result["accepted"])
+            self.assertEqual(
+                result["reason"], "durable_risk_ledger_unavailable_requires_reconciliation"
+            )
+            self.assertTrue(result["requires_reconciliation"])
+            self.assertEqual(client.calls, [])
+            self.assertEqual(client.get_calls, [])
+        finally:
+            if previous is not None:
+                os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"] = previous
 
     def test_requires_testnet_credentials(self):
         with self.assertRaises(BinanceTestnetConfigurationError):
@@ -148,6 +207,8 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         payloads = (
             {"canTrade": "false", "positions": []},
             {"canTrade": True, "positions": [{"symbol": "BTCUSDT", "positionAmt": "NaN", "entryPrice": "100"}]},
+            {"canTrade": True, "positions": [{"symbol": "BTCUSDT"}]},
+            {"canTrade": True, "positions": [{"positionAmt": "0"}]},
             {"canTrade": True, "positions": "malformed"},
         )
         for payload in payloads:
@@ -182,6 +243,13 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
             {"symbols": [{"symbol": "BTCUSDT", "filters": "malformed"}]},
             {"symbols": [{"symbol": "BTCUSDT", "filters": [
                 {"filterType": "MARKET_LOT_SIZE", "stepSize": "NaN", "minQty": "0.001", "maxQty": "100"}
+            ]}]},
+            {"symbols": [{"symbol": "BTCUSDT", "status": "TRADING", "filters": [
+                {"filterType": "MARKET_LOT_SIZE", "stepSize": "0.001", "minQty": "0.001", "maxQty": "100"},
+                {"filterType": "MARKET_LOT_SIZE", "stepSize": "0.01", "minQty": "0.01", "maxQty": "10"}
+            ]}]},
+            {"symbols": [{"symbol": "BTCUSDT", "status": "TRADING", "filters": [
+                {"stepSize": "0.001", "minQty": "0.001", "maxQty": "100"}
             ]}]},
         )
         for payload in payloads:
@@ -249,7 +317,37 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(client.calls[0][0], "/fapi/v1/order")
         self.assertEqual(client.calls[0][1]["newClientOrderId"], "paper-test-0001")
         self.assertEqual(client.calls[0][1]["quantity"], "0.5")
+        self.assertEqual(
+            SQLiteRiskLedger(os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"])
+            .get("paper-test-0001")["state"],
+            "UNKNOWN",
+        )
         self.assertNotIn("https://fapi.binance.com", client.base_url)
+
+    def test_market_order_missing_fill_fields_requires_reconciliation(self):
+        class MissingFillResponseClient(FakeClient):
+            def post(self, path, params):
+                self.calls.append((path, params))
+                return FakeResponse({
+                    "symbol": params.get("symbol"),
+                    "clientOrderId": params.get("newClientOrderId"),
+                    "orderId": 12345,
+                    "status": "NEW",
+                })
+
+        client = MissingFillResponseClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "missing-fill-0001", ExecutionConfig(mode="testnet")
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(
+            result["reason"], "testnet_order_fill_state_requires_reconciliation"
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(len(client.calls), 1)
 
     def test_testnet_order_rejects_paper_or_live_mode_without_submission(self):
         client = FakeClient()
@@ -280,6 +378,250 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         )
         self.assertFalse(result["accepted"])
         self.assertEqual(result["reason"], "invalid_client_order_id")
+        self.assertEqual(client.calls, [])
+
+    def test_market_order_fails_closed_when_account_risk_snapshot_is_unavailable(self):
+        class UnavailableAccountClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    raise httpx.ReadTimeout("simulated account risk timeout")
+                return super().get(path, params)
+
+        client = UnavailableAccountClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "risk-timeout-0001", ExecutionConfig(mode="testnet")
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(
+            result["reason"], "account_risk_preflight_failed_requires_reconciliation"
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(client.calls, [])
+
+    def test_market_order_fails_closed_when_projected_account_exposure_exceeds_cap(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(),
+            "risk-cap-0001",
+            ExecutionConfig(mode="testnet", max_account_notional_usdt=60.0),
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "account_notional_limit_exceeded")
+        self.assertEqual(result["current_account_notional_usdt"], 25.0)
+        self.assertEqual(result["proposed_order_notional_usdt"], 50.0)
+        self.assertEqual(result["max_account_notional_usdt"], 60.0)
+        self.assertEqual(client.calls, [])
+
+
+    def test_market_order_account_cap_includes_outstanding_entry_orders(self):
+        class ExistingEntryOrderClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/openOrders":
+                    self.get_calls.append((path, params))
+                    return FakeResponse([{
+                        "symbol": "ETHUSDT",
+                        "side": "BUY",
+                        "type": "LIMIT",
+                        "status": "NEW",
+                        "origQty": "0.5",
+                        "price": "100",
+                        "stopPrice": "0",
+                        "reduceOnly": False,
+                        "closePosition": False,
+                    }])
+                return super().get(path, params)
+
+        client = ExistingEntryOrderClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(),
+            "risk-open-order-cap-0001",
+            ExecutionConfig(mode="testnet", max_account_notional_usdt=120.0),
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "account_notional_limit_exceeded")
+        self.assertEqual(result["current_position_notional_usdt"], 25.0)
+        self.assertEqual(result["current_open_entry_order_notional_usdt"], 50.0)
+        self.assertEqual(result["current_account_notional_usdt"], 75.0)
+        self.assertEqual(result["proposed_order_notional_usdt"], 50.0)
+        self.assertEqual(client.calls, [])
+
+    def test_market_order_mark_price_crossing_target_fails_closed(self):
+        class TargetCrossedMarkClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/premiumIndex":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"symbol": params.get("symbol"), "markPrice": "101"})
+                return super().get(path, params)
+
+        client = TargetCrossedMarkClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(take_profit=100.6),
+            "risk-mark-target-crossed-0001",
+            ExecutionConfig(mode="testnet"),
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(
+            result["reason"], "market_order_mark_price_invalidates_risk_geometry"
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(client.calls, [])
+
+    def test_market_order_mark_price_risk_exceeds_fraction_fails_closed(self):
+        class HigherRiskMarkClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/premiumIndex":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"symbol": params.get("symbol"), "markPrice": "101"})
+                return super().get(path, params)
+
+        client = HigherRiskMarkClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(stop_loss=99.8, take_profit=102),
+            "risk-mark-risk-fraction-0001",
+            ExecutionConfig(mode="testnet", max_risk_fraction=0.005),
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(
+            result["reason"], "market_order_mark_price_exceeds_risk_limit"
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(client.calls, [])
+
+    def test_market_order_fails_closed_when_open_order_exit_flags_are_malformed(self):
+        class MalformedFlagsClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/openOrders":
+                    self.get_calls.append((path, params))
+                    return FakeResponse([{
+                        "symbol": "ETHUSDT",
+                        "side": "BUY",
+                        "type": "LIMIT",
+                        "origQty": "0.5",
+                        "price": "100",
+                        "stopPrice": "0",
+                        "reduceOnly": "maybe",
+                        "closePosition": "false",
+                    }])
+                return super().get(path, params)
+
+        client = MalformedFlagsClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "risk-open-order-flags-0001",
+            ExecutionConfig(mode="testnet"),
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(
+            result["reason"], "open_entry_orders_preflight_failed_requires_reconciliation"
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(client.calls, [])
+
+    def test_market_order_fails_closed_when_open_order_price_is_unknown(self):
+        class UnknownPriceOrderClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/openOrders":
+                    self.get_calls.append((path, params))
+                    return FakeResponse([{
+                        "symbol": "ETHUSDT",
+                        "side": "BUY",
+                        "type": "LIMIT",
+                        "origQty": "0.5",
+                        "price": "0",
+                        "stopPrice": "0",
+                        "reduceOnly": False,
+                        "closePosition": False,
+                    }])
+                return super().get(path, params)
+
+        client = UnknownPriceOrderClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "risk-open-order-unknown-0001",
+            ExecutionConfig(mode="testnet"),
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "open_entry_orders_preflight_failed_requires_reconciliation")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(client.calls, [])
+
+    def test_market_order_account_cap_uses_higher_fresh_mark_price(self):
+        class HigherMarkPriceClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/premiumIndex":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": params.get("symbol"),
+                        "markPrice": "120",
+                    })
+                return super().get(path, params)
+
+        client = HigherMarkPriceClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(take_profit=130),
+            "risk-mark-cap-0001",
+            ExecutionConfig(
+                mode="testnet", max_account_notional_usdt=80.0,
+                max_risk_fraction=0.5,
+            ),
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "account_notional_limit_exceeded")
+        self.assertEqual(result["current_account_notional_usdt"], 25.0)
+        self.assertEqual(result["proposed_order_notional_usdt"], 60.0)
+        self.assertEqual(result["max_account_notional_usdt"], 80.0)
+        self.assertEqual(client.calls, [])
+
+    def test_market_order_fails_closed_when_existing_position_notional_is_missing(self):
+        class MissingExistingNotionalClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "canTrade": True,
+                        "positions": [{
+                            "symbol": "ETHUSDT",
+                            "positionAmt": "0.25",
+                            "entryPrice": "100",
+                        }],
+                    })
+                return super().get(path, params)
+
+        client = MissingExistingNotionalClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "risk-missing-0001", ExecutionConfig(mode="testnet")
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(
+            result["reason"], "account_risk_preflight_failed_requires_reconciliation"
+        )
+        self.assertTrue(result["requires_reconciliation"])
         self.assertEqual(client.calls, [])
 
     def test_query_order_reconciles_by_client_order_id_without_submission(self):
@@ -819,6 +1161,40 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(client.calls, [])
 
 
+    def test_market_order_duplicate_client_id_requires_reconciliation(self):
+        class DuplicateClientIdClient(FakeClient):
+            def post(self, path, params):
+                self.calls.append((path, params))
+                response = httpx.Response(
+                    400,
+                    json={"code": -4116, "msg": "Client order ID is not unique."},
+                    request=httpx.Request(
+                        "POST", "https://testnet.binancefuture.com/fapi/v1/order"
+                    ),
+                )
+                raise httpx.HTTPStatusError(
+                    "duplicate client order ID",
+                    request=response.request,
+                    response=response,
+                )
+
+        client = DuplicateClientIdClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "btc-recovery-entry-01", ExecutionConfig(mode="testnet")
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(
+            result["reason"],
+            "testnet_order_client_id_conflict_requires_reconciliation",
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["client_order_id"], "btc-recovery-entry-01")
+        self.assertEqual(len(client.calls), 1)
+        self.assertEqual(client.calls[0][0], "/fapi/v1/order")
+
     def test_market_order_timeout_is_ambiguous_and_never_retried(self):
         class TimeoutClient(FakeClient):
             def post(self, path, params):
@@ -833,6 +1209,26 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertFalse(result["accepted"])
         self.assertEqual(result["reason"], "testnet_order_outcome_unknown")
         self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(len(client.calls), 1)
+        self.assertEqual(client.calls[0][0], "/fapi/v1/order")
+
+    def test_market_order_unexpected_post_exception_is_ambiguous_and_never_retried(self):
+        class UnexpectedPostClient(FakeClient):
+            def post(self, path, params):
+                self.calls.append((path, params))
+                raise RuntimeError("unexpected custom adapter failure")
+
+        client = UnexpectedPostClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "btc-runtime-error-0001", ExecutionConfig(mode="testnet")
+        )
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "testnet_order_outcome_unknown")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["exception_type"], "RuntimeError")
         self.assertEqual(len(client.calls), 1)
         self.assertEqual(client.calls[0][0], "/fapi/v1/order")
 
@@ -1630,6 +2026,389 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         )
         self.assertEqual(result["client_order_id"], "btc-recovery-sl")
         self.assertEqual(len(client.calls), 1)
+
+    def test_market_order_fails_closed_when_account_trading_flag_is_false_or_missing(self):
+        for account_payload in (
+            {"canTrade": False, "positions": []},
+            {"positions": []},
+        ):
+            with self.subTest(account_payload=account_payload):
+                class TradingDisabledAccountClient(FakeClient):
+                    def get(self, path, params):
+                        if path == "/fapi/v2/account":
+                            self.get_calls.append((path, params))
+                            return FakeResponse(account_payload)
+                        return super().get(path, params)
+
+                client = TradingDisabledAccountClient()
+                adapter = BinanceFuturesTestnet(
+                    api_key="test-key", api_secret="test-secret", client=client
+                )
+                result = adapter.submit_testnet_market_order(
+                    self.intent(), "account-trade-flag-0001", ExecutionConfig(mode="testnet")
+                )
+                self.assertFalse(result["accepted"])
+                self.assertEqual(
+                    result["reason"], "account_risk_preflight_failed_requires_reconciliation"
+                )
+                self.assertTrue(result["requires_reconciliation"])
+                self.assertEqual(client.calls, [])
+
+    def test_account_risk_metrics_network_failure_fails_closed(self):
+        class FailingAccountClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    raise httpx.ReadTimeout("simulated account timeout")
+                return super().get(path, params)
+
+        client = FailingAccountClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.account_risk_metrics("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "account_risk_metrics_request_failed")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["detail"]["exception_type"], "ReadTimeout")
+        self.assertEqual(len(client.get_calls), 1)
+        self.assertEqual(client.calls, [])
+
+    def test_account_risk_metrics_rejects_notional_outside_float_range(self):
+        class HugeNotionalClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "canTrade": True,
+                        "positions": [{
+                            "symbol": "BTCUSDT",
+                            "positionAmt": "1",
+                            "notional": "1e10000",
+                        }],
+                    })
+                return super().get(path, params)
+
+        client = HugeNotionalClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.account_risk_metrics("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "risk_metrics_out_of_float_range")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(client.calls, [])
+
+    def test_account_risk_metrics_missing_open_position_notional_fails_closed(self):
+        class MissingNotionalClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "canTrade": True,
+                        "positions": [{
+                            "symbol": "BTCUSDT",
+                            "positionAmt": "0.1",
+                        }],
+                    })
+                return super().get(path, params)
+
+        client = MissingNotionalClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.account_risk_metrics("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "position_notional_missing")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(client.calls, [])
+
+
+    def test_account_risk_metrics_duplicate_position_symbol_fails_closed(self):
+        class DuplicatePositionClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "canTrade": True,
+                        "positions": [
+                            {"symbol": "BTCUSDT", "positionAmt": "0.1", "notional": "10"},
+                            {"symbol": "BTCUSDT", "positionAmt": "0.2", "notional": "20"},
+                        ],
+                    })
+                return super().get(path, params)
+
+        client = DuplicatePositionClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.account_risk_metrics("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "duplicate_position_symbol")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(client.calls, [])
+
+    def test_account_risk_metrics_flat_position_with_nonzero_notional_fails_closed(self):
+        class InconsistentFlatPositionClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "canTrade": True,
+                        "positions": [{
+                            "symbol": "BTCUSDT",
+                            "positionAmt": "0",
+                            "notional": "10",
+                        }],
+                    })
+                return super().get(path, params)
+
+        client = InconsistentFlatPositionClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.account_risk_metrics("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "flat_position_has_nonzero_notional")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(client.calls, [])
+
+    def test_account_risk_metrics_zero_notional_for_open_position_fails_closed(self):
+        class ZeroNotionalClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "canTrade": True,
+                        "positions": [{
+                            "symbol": "BTCUSDT",
+                            "positionAmt": "0.1",
+                            "notional": "0",
+                        }],
+                    })
+                return super().get(path, params)
+
+        client = ZeroNotionalClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.account_risk_metrics("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "position_notional_non_positive")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(client.calls, [])
+
+    def test_account_risk_metrics_missing_position_amount_fails_closed(self):
+        class MissingPositionAmountClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "canTrade": True,
+                        "positions": [{
+                            "symbol": "BTCUSDT",
+                            "notional": "2500",
+                        }],
+                    })
+                return super().get(path, params)
+
+        client = MissingPositionAmountClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.account_risk_metrics("BTCUSDT")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "invalid_position_record")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(client.calls, [])
+
+    def test_reconcile_open_entry_order_externalizes_only_after_matching_snapshot(self):
+        class OpenEntryClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/openOrders":
+                    self.get_calls.append((path, params))
+                    if "symbol" in params:
+                        return FakeResponse([{
+                            "orderId": 12345, "symbol": "BTCUSDT",
+                            "clientOrderId": params.get("origClientOrderId", "paper-reconcile-open"),
+                            "side": "BUY", "type": "LIMIT", "status": "PARTIALLY_FILLED",
+                            "reduceOnly": False, "stopPrice": "0", "origQty": "0.5",
+                            "executedQty": "0.2",
+                        }])
+                    return FakeResponse([])
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"),
+                        "orderId": 12345, "status": "PARTIALLY_FILLED",
+                        "origQty": "0.5", "executedQty": "0.2", "avgPrice": "100.1",
+                    })
+                return super().get(path, params)
+
+        client = OpenEntryClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        ledger = adapter._risk_ledger
+        ledger.reserve("paper-reconcile-open", "50", "0", "1000")
+        ledger.transition("paper-reconcile-open", "SUBMITTING")
+        ledger.transition("paper-reconcile-open", "UNKNOWN")
+        result = adapter.reconcile_testnet_entry_reservation("BTCUSDT", "paper-reconcile-open")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["state"], "EXTERNALIZED")
+        self.assertEqual(ledger.get("paper-reconcile-open")["state"], "EXTERNALIZED")
+        self.assertEqual(client.calls, [])
+
+    def test_reconcile_zero_fill_terminal_order_releases_only_when_absent_from_open_snapshot(self):
+        class CanceledOrderClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"),
+                        "orderId": 12345, "status": "CANCELED",
+                        "origQty": "0.5", "executedQty": "0", "avgPrice": "0",
+                    })
+                if path == "/fapi/v1/openOrders" and "symbol" in params:
+                    self.get_calls.append((path, params))
+                    return FakeResponse([])
+                return super().get(path, params)
+
+        client = CanceledOrderClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        ledger = adapter._risk_ledger
+        ledger.reserve("paper-reconcile-canceled", "50", "0", "1000")
+        ledger.transition("paper-reconcile-canceled", "SUBMITTING")
+        ledger.transition("paper-reconcile-canceled", "UNKNOWN")
+        result = adapter.reconcile_testnet_entry_reservation("BTCUSDT", "paper-reconcile-canceled")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["state"], "RELEASED")
+        self.assertEqual(ledger.get("paper-reconcile-canceled")["state"], "RELEASED")
+        self.assertEqual(client.calls, [])
+
+    def test_reconcile_filled_order_keeps_reservation_until_position_fill_reconciliation(self):
+        class FilledOrderClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v1/order":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({
+                        "symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"),
+                        "orderId": 12345, "status": "FILLED",
+                        "origQty": "0.5", "executedQty": "0.5", "avgPrice": "100",
+                    })
+                if path == "/fapi/v1/openOrders" and "symbol" in params:
+                    self.get_calls.append((path, params))
+                    return FakeResponse([])
+                return super().get(path, params)
+
+        client = FilledOrderClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        ledger = adapter._risk_ledger
+        ledger.reserve("paper-reconcile-filled", "50", "0", "1000")
+        ledger.transition("paper-reconcile-filled", "SUBMITTING")
+        ledger.transition("paper-reconcile-filled", "UNKNOWN")
+        result = adapter.reconcile_testnet_entry_reservation("BTCUSDT", "paper-reconcile-filled")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "filled_or_partially_executed_order_requires_position_fill_reconciliation")
+        self.assertEqual(ledger.get("paper-reconcile-filled")["state"], "UNKNOWN")
+        self.assertEqual(client.calls, [])
+
+
+
+    def test_recovery_sweep_defers_reserved_and_requires_explicit_symbol_mapping(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        ledger = adapter._risk_ledger
+        ledger.reserve("sweep-reserved", "10", "0", "100")
+        ledger.reserve("sweep-unknown", "10", "0", "100")
+        ledger.transition("sweep-unknown", "SUBMITTING")
+        ledger.transition("sweep-unknown", "UNKNOWN")
+
+        result = adapter.reconcile_unresolved_testnet_entry_reservations({})
+        self.assertEqual(result["mode"], "read_only_testnet_recovery_sweep")
+        self.assertEqual(result["listed"], 2)
+        self.assertEqual(result["reconciled"], 0)
+        self.assertEqual(result["deferred"], 2)
+        by_id = {item["client_order_id"]: item for item in result["results"]}
+        self.assertEqual(
+            by_id["sweep-reserved"]["reason"],
+            "reserved_state_requires_explicit_crash_recovery_review",
+        )
+        self.assertEqual(by_id["sweep-unknown"]["reason"], "explicit_valid_symbol_mapping_missing")
+        self.assertTrue(by_id["sweep-reserved"]["audit_persisted"])
+        self.assertTrue(by_id["sweep-unknown"]["audit_persisted"])
+        self.assertEqual(result["audit_persisted"], 2)
+        audit = ledger.list_recovery_audit(limit=10)
+        self.assertEqual({row["order_id"] for row in audit}, {"sweep-reserved", "sweep-unknown"})
+        self.assertEqual(ledger.get("sweep-reserved")["state"], "RESERVED")
+        self.assertEqual(ledger.get("sweep-unknown")["state"], "UNKNOWN")
+        self.assertEqual(client.calls, [])
+
+    def test_recovery_sweep_rejects_non_mapping_without_exchange_requests(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.reconcile_unresolved_testnet_entry_reservations(None)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "explicit_client_order_symbol_mapping_required")
+        self.assertEqual(client.calls, [])
+
+
+    def test_recovery_sweep_audit_write_failure_fails_closed_and_keeps_reservation(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        ledger = adapter._risk_ledger
+        ledger.reserve("audit-failure-reserved", "10", "0", "100")
+
+        def fail_audit(**kwargs):
+            raise RiskLedgerError("simulated audit storage failure")
+
+        ledger.record_recovery_audit = fail_audit
+        result = adapter.reconcile_unresolved_testnet_entry_reservations({})
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["audit_failures"], 1)
+        self.assertEqual(result["audit_persisted"], 0)
+        self.assertFalse(result["results"][0]["audit_persisted"])
+        self.assertTrue(result["results"][0]["requires_reconciliation"])
+        self.assertEqual(ledger.get("audit-failure-reserved")["state"], "RESERVED")
+        self.assertEqual(client.calls, [])
+
+    def test_repeated_recovery_sweep_appends_attempts_without_mutating_reservation(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        ledger = adapter._risk_ledger
+        ledger.reserve("repeat-sweep-reserved", "10", "0", "100")
+
+        first = adapter.reconcile_unresolved_testnet_entry_reservations({})
+        second = adapter.reconcile_unresolved_testnet_entry_reservations({})
+
+        self.assertEqual(first["audit_persisted"], 1)
+        self.assertEqual(second["audit_persisted"], 1)
+        rows = ledger.list_recovery_audit(limit=10)
+        self.assertEqual(sum(row["order_id"] == "repeat-sweep-reserved" for row in rows), 2)
+        self.assertEqual(ledger.get("repeat-sweep-reserved")["state"], "RESERVED")
+        self.assertEqual(client.calls, [])
+
+
+    def test_kill_switch_activated_after_submitting_transition_blocks_post(self):
+        client = FakeClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        ledger = adapter._risk_ledger
+        original_transition = ledger.transition
+
+        def transition_then_activate(order_id, new_state, *, detail=""):
+            result = original_transition(order_id, new_state, detail=detail)
+            if new_state == "SUBMITTING" and result.get("ok") is True:
+                ledger.set_kill_switch(True, reason="simulated switch activation before POST")
+            return result
+
+        ledger.transition = transition_then_activate
+        result = adapter.submit_testnet_market_order(
+            self.intent(), "kill-switch-last-check-0001", ExecutionConfig(mode="testnet")
+        )
+
+        self.assertFalse(result["accepted"])
+        self.assertEqual(
+            result["reason"], "operator_kill_switch_active_at_final_pre_submit_check"
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(ledger.get("kill-switch-last-check-0001")["state"], "UNKNOWN")
+        self.assertEqual(client.calls, [])
 
 if __name__ == "__main__":
     unittest.main()

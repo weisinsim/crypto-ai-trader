@@ -7,6 +7,7 @@ environment variables and must never be committed to the repository.
 import hashlib
 from decimal import Decimal, InvalidOperation, ROUND_DOWN
 import hmac
+import math
 import os
 import time
 from urllib.parse import urlencode
@@ -14,6 +15,7 @@ from urllib.parse import urlencode
 import httpx
 
 from execution.safety import ExecutionConfig, OrderIntent, validate_order_intent
+from execution.risk_ledger import RiskLedgerError, SQLiteRiskLedger
 
 TESTNET_BASE_URL = "https://testnet.binancefuture.com"
 MAX_PROTECTIVE_SNAPSHOT_DURATION_MS = 2000
@@ -56,6 +58,15 @@ class BinanceFuturesTestnet:
                 headers={"X-MBX-APIKEY": self.api_key},
                 timeout=10.0,
             )
+        ledger_path = os.getenv("CRYPTO_TESTNET_RISK_LEDGER_PATH", "").strip()
+        self._risk_ledger = None
+        if ledger_path:
+            try:
+                self._risk_ledger = SQLiteRiskLedger(ledger_path)
+            except RiskLedgerError:
+                # Entry submission fails closed if persistent risk state is
+                # configured but cannot be initialized.
+                self._risk_ledger = None
 
     def _signed_params(self, params):
         payload = dict(params)
@@ -86,46 +97,178 @@ class BinanceFuturesTestnet:
         return self._client.delete(path, params=params)
 
     def account_risk_metrics(self, symbol):
-        """Return gross account exposure metrics from signed TESTNET account state.
+        """Return gross exposure from signed TESTNET account state.
 
-        Fails closed if exchange notional is missing for an open position.
+        Network/HTTP/JSON failures and unusable risk values fail closed. The
+        caller must not treat an incomplete snapshot as zero exposure.
         """
         if not isinstance(symbol, str) or not symbol.isascii() or not symbol.endswith("USDT") or not symbol[:-4].isalnum():
             return {"ok": False, "reason": "invalid_symbol"}
-        response = self._get("/fapi/v2/account", params=self._signed_params({}))
-        response.raise_for_status()
-        account = response.json()
-        if not isinstance(account, dict) or not isinstance(account.get("positions"), list):
-            return {"ok": False, "reason": "invalid_testnet_account_response"}
+        try:
+            response = self._get("/fapi/v2/account", params=self._signed_params({}))
+            response.raise_for_status()
+            account = response.json()
+        except Exception as exc:
+            return {
+                "ok": False,
+                "reason": "account_risk_metrics_request_failed",
+                "detail": {"exception_type": type(exc).__name__},
+                "requires_reconciliation": True,
+            }
+        if (
+            not isinstance(account, dict)
+            or not isinstance(account.get("positions"), list)
+            or account.get("canTrade") is not True
+        ):
+            return {
+                "ok": False,
+                "reason": "invalid_or_trading_disabled_testnet_account_response",
+                "requires_reconciliation": True,
+            }
         open_positions = 0
         total_notional = Decimal("0")
         symbol_notional = Decimal("0")
+        seen_symbols = set()
         try:
             for position in account["positions"]:
-                if not isinstance(position, dict):
-                    return {"ok": False, "reason": "invalid_position_record"}
-                amount = Decimal(str(position.get("positionAmt", "0")))
+                if (
+                    not isinstance(position, dict)
+                    or not isinstance(position.get("symbol"), str)
+                    or not position.get("symbol")
+                    or "positionAmt" not in position
+                ):
+                    # Missing position fields must never be interpreted as a
+                    # flat position; that could understate account exposure.
+                    return {"ok": False, "reason": "invalid_position_record", "requires_reconciliation": True}
+                position_symbol = position["symbol"]
+                if position_symbol in seen_symbols:
+                    return {"ok": False, "reason": "duplicate_position_symbol", "requires_reconciliation": True}
+                seen_symbols.add(position_symbol)
+                amount = Decimal(str(position["positionAmt"]))
                 if not amount.is_finite():
-                    return {"ok": False, "reason": "invalid_position_amount"}
+                    return {"ok": False, "reason": "invalid_position_amount", "requires_reconciliation": True}
+                raw_notional = position.get("notional")
                 if amount == 0:
+                    # A flat amount paired with non-zero (or malformed)
+                    # notional is internally inconsistent and cannot safely
+                    # be counted as zero exposure.
+                    if raw_notional not in (None, ""):
+                        reported_notional = abs(Decimal(str(raw_notional)))
+                        if not reported_notional.is_finite():
+                            return {"ok": False, "reason": "position_notional_invalid", "requires_reconciliation": True}
+                        if reported_notional > 0:
+                            return {"ok": False, "reason": "flat_position_has_nonzero_notional", "requires_reconciliation": True}
                     continue
                 open_positions += 1
-                raw_notional = position.get("notional")
                 if raw_notional in (None, ""):
-                    return {"ok": False, "reason": "position_notional_missing"}
+                    return {"ok": False, "reason": "position_notional_missing", "requires_reconciliation": True}
                 notional = abs(Decimal(str(raw_notional)))
                 if not notional.is_finite():
-                    return {"ok": False, "reason": "position_notional_invalid"}
+                    return {"ok": False, "reason": "position_notional_invalid", "requires_reconciliation": True}
+                # A non-zero position with zero reported notional is not a
+                # trustworthy exposure snapshot. Treating it as zero could let
+                # a new entry pass the gross account cap incorrectly.
+                if notional <= 0:
+                    return {"ok": False, "reason": "position_notional_non_positive", "requires_reconciliation": True}
                 total_notional += notional
                 if position.get("symbol") == symbol:
                     symbol_notional += notional
-        except (InvalidOperation, TypeError, ValueError):
-            return {"ok": False, "reason": "invalid_position_risk_values"}
+            symbol_notional_float = float(symbol_notional)
+            total_notional_float = float(total_notional)
+            if not math.isfinite(symbol_notional_float) or not math.isfinite(total_notional_float):
+                return {"ok": False, "reason": "risk_metrics_out_of_float_range", "requires_reconciliation": True}
+        except (InvalidOperation, TypeError, ValueError, OverflowError):
+            return {"ok": False, "reason": "invalid_position_risk_values", "requires_reconciliation": True}
         return {
             "ok": True, "mode": "testnet_account_risk_metrics",
             "open_positions": open_positions,
-            "symbol_notional_usdt": float(symbol_notional),
-            "total_notional_usdt": float(total_notional),
+            "symbol_notional_usdt": symbol_notional_float,
+            "total_notional_usdt": total_notional_float,
+        }
+
+
+    def open_entry_order_notional(self):
+        """Return conservative notional reserved by outstanding entry orders.
+
+        Open orders are a separate snapshot from account positions. Unknown or
+        malformed orders fail closed; reduce-only/close-position exits are not
+        counted as new exposure. This is a preflight guard, not an atomic
+        reservation across exchange reads and order submission.
+        """
+        try:
+            response = self._get(
+                "/fapi/v1/openOrders", params=self._signed_params({})
+            )
+            response.raise_for_status()
+            orders = response.json()
+        except Exception as exc:
+            return {
+                "ok": False,
+                "reason": "open_entry_orders_request_failed",
+                "exception_type": type(exc).__name__,
+                "requires_reconciliation": True,
+            }
+        if not isinstance(orders, list):
+            return {
+                "ok": False,
+                "reason": "invalid_open_orders_response",
+                "requires_reconciliation": True,
+            }
+        total_notional = Decimal("0")
+        try:
+            for order in orders:
+                if not isinstance(order, dict):
+                    return {"ok": False, "reason": "invalid_open_order_record", "requires_reconciliation": True}
+                symbol = order.get("symbol")
+                side = order.get("side")
+                order_type = order.get("type")
+                if (
+                    not isinstance(symbol, str) or not symbol.isascii()
+                    or not symbol.endswith("USDT") or not symbol[:-4].isalnum()
+                    or side not in {"BUY", "SELL"}
+                    or not isinstance(order_type, str) or not order_type
+                ):
+                    return {"ok": False, "reason": "invalid_open_order_identity", "requires_reconciliation": True}
+                reduce_only = order.get("reduceOnly")
+                close_position = order.get("closePosition")
+                def parse_exchange_bool(value):
+                    if isinstance(value, bool):
+                        return value
+                    if isinstance(value, str) and value.lower() in {"true", "false"}:
+                        return value.lower() == "true"
+                    return None
+
+                reduce_only = parse_exchange_bool(order.get("reduceOnly"))
+                close_position = parse_exchange_bool(order.get("closePosition"))
+                if reduce_only is None or close_position is None:
+                    # Unknown flags cannot safely be assumed to indicate an
+                    # entry or an exit; refuse to undercount the account cap.
+                    return {"ok": False, "reason": "open_order_exit_flags_invalid", "requires_reconciliation": True}
+                if reduce_only or close_position:
+                    continue
+                if "origQty" not in order:
+                    return {"ok": False, "reason": "open_entry_order_quantity_missing", "requires_reconciliation": True}
+                quantity = Decimal(str(order["origQty"]))
+                if not quantity.is_finite() or quantity <= 0:
+                    return {"ok": False, "reason": "invalid_open_entry_order_quantity", "requires_reconciliation": True}
+                raw_price = order.get("price")
+                price = Decimal(str(raw_price)) if raw_price not in (None, "", "0", "0.0") else Decimal("0")
+                if price <= 0:
+                    raw_stop_price = order.get("stopPrice")
+                    price = Decimal(str(raw_stop_price)) if raw_stop_price not in (None, "", "0", "0.0") else Decimal("0")
+                if not price.is_finite() or price <= 0:
+                    return {"ok": False, "reason": "open_entry_order_price_unknown", "requires_reconciliation": True}
+                total_notional += quantity * price
+            total_float = float(total_notional)
+            if not math.isfinite(total_float):
+                return {"ok": False, "reason": "open_entry_order_notional_out_of_range", "requires_reconciliation": True}
+        except (InvalidOperation, TypeError, ValueError, OverflowError):
+            return {"ok": False, "reason": "invalid_open_entry_order_risk_values", "requires_reconciliation": True}
+        return {
+            "ok": True,
+            "mode": "testnet_open_entry_order_notional",
+            "open_entry_order_notional_usdt": total_float,
+            "open_entry_orders": len(orders),
         }
 
     def symbol_rules(self, symbol):
@@ -145,11 +288,16 @@ class BinanceFuturesTestnet:
         raw_filters = matches[0].get("filters")
         if not isinstance(raw_filters, list) or any(not isinstance(item, dict) for item in raw_filters):
             raise ValueError("invalid_exchange_filter_records")
-        filters = {
-            item.get("filterType"): item
-            for item in raw_filters
-            if isinstance(item.get("filterType"), str)
-        }
+        filters = {}
+        for item in raw_filters:
+            filter_type = item.get("filterType")
+            if not isinstance(filter_type, str) or not filter_type:
+                raise ValueError("invalid_exchange_filter_type")
+            # Duplicate filter types make the effective rules ambiguous. Do
+            # not silently let a later record overwrite a stricter earlier one.
+            if filter_type in filters:
+                raise ValueError("duplicate_exchange_filter_type")
+            filters[filter_type] = item
         lot = filters.get("MARKET_LOT_SIZE") or filters.get("LOT_SIZE")
         if not lot:
             raise ValueError("market_lot_size_filter_missing")
@@ -221,8 +369,19 @@ class BinanceFuturesTestnet:
             raise ValueError("invalid_testnet_account_response")
         open_position_count = 0
         for position in account["positions"]:
+            # Do not interpret missing identity or amount fields as a flat
+            # position. This is a readiness/preflight view, so malformed
+            # account snapshots must remain visibly unavailable.
+            symbol = position.get("symbol")
+            if (
+                not isinstance(symbol, str)
+                or not symbol
+                or not symbol.isascii()
+                or "positionAmt" not in position
+            ):
+                raise ValueError("invalid_testnet_account_position")
             try:
-                amount = Decimal(str(position.get("positionAmt", "0")))
+                amount = Decimal(str(position["positionAmt"]))
             except (InvalidOperation, TypeError, ValueError) as exc:
                 raise ValueError("invalid_testnet_account_position") from exc
             if not amount.is_finite():
@@ -306,6 +465,34 @@ class BinanceFuturesTestnet:
         decision = validate_order_intent(intent, config)
         if not decision.allowed:
             return {"accepted": False, "reason": decision.reason}
+        if self._risk_ledger is None:
+            return {
+                "accepted": False,
+                "reason": "durable_risk_ledger_unavailable_requires_reconciliation",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
+        try:
+            kill_switch = self._risk_ledger.kill_switch_status()
+        except RiskLedgerError as exc:
+            return {
+                "accepted": False,
+                "reason": "operator_kill_switch_unavailable_requires_reconciliation",
+                "requires_reconciliation": True,
+                "exception_type": type(exc).__name__,
+                "client_order_id": client_order_id,
+            }
+        if not isinstance(kill_switch, dict) or kill_switch.get("active") is not False:
+            return {
+                "accepted": False,
+                "reason": "operator_kill_switch_active",
+                "requires_reconciliation": True,
+                "kill_switch_reason": (
+                    kill_switch.get("reason") if isinstance(kill_switch, dict)
+                    else "invalid_kill_switch_response"
+                ),
+                "client_order_id": client_order_id,
+            }
         try:
             rules = self.symbol_rules(intent.symbol)
             if rules["status"] != "TRADING":
@@ -327,8 +514,225 @@ class BinanceFuturesTestnet:
             quantity_text = format(quantity, "f")
             if "." in quantity_text:
                 quantity_text = quantity_text.rstrip("0").rstrip(".")
+
+            # A valid per-order decision is not sufficient if account exposure
+            # is unknown or the new order would exceed the explicit gross cap.
+            try:
+                risk_metrics = self.account_risk_metrics(intent.symbol)
+            except Exception as exc:
+                return {
+                    "accepted": False,
+                    "reason": "account_risk_preflight_exception_requires_reconciliation",
+                    "requires_reconciliation": True,
+                    "exception_type": type(exc).__name__,
+                }
+            if (
+                not isinstance(risk_metrics, dict)
+                or risk_metrics.get("ok") is not True
+                or risk_metrics.get("mode") != "testnet_account_risk_metrics"
+            ):
+                return {
+                    "accepted": False,
+                    "reason": "account_risk_preflight_failed_requires_reconciliation",
+                    "requires_reconciliation": True,
+                    "risk_metrics_reason": (
+                        risk_metrics.get("reason") if isinstance(risk_metrics, dict)
+                        else "invalid_risk_metrics_response"
+                    ),
+                }
+            # A MARKET order can fill away from the signal's intended entry.
+            # Use a fresh, identity-checked mark price for the exposure estimate,
+            # and conservatively use the larger of signal entry and mark price.
+            try:
+                mark_response = self._get(
+                    "/fapi/v1/premiumIndex", params={"symbol": intent.symbol}
+                )
+                mark_response.raise_for_status()
+                mark_payload = mark_response.json()
+                if (
+                    not isinstance(mark_payload, dict)
+                    or mark_payload.get("symbol") != intent.symbol
+                ):
+                    raise ValueError("mark_price_symbol_mismatch")
+                mark_price = Decimal(str(mark_payload.get("markPrice", "NaN")))
+                if not mark_price.is_finite() or mark_price <= 0:
+                    raise ValueError("invalid_mark_price")
+            except Exception as exc:
+                return {
+                    "accepted": False,
+                    "reason": "market_order_mark_price_requires_reconciliation",
+                    "requires_reconciliation": True,
+                    "exception_type": type(exc).__name__,
+                    "client_order_id": client_order_id,
+                }
+            # The signal entry may be stale. Revalidate stop/target geometry
+            # and risk at the mark price before treating the market entry as
+            # eligible; the order's actual fill can still move after this read.
+            try:
+                entry_price = Decimal(str(intent.entry))
+                stop_price = Decimal(str(intent.stop_loss))
+                target_price = Decimal(str(intent.take_profit))
+                proposed_notional = max(entry_price, mark_price) * quantity
+                mark_risk = abs(mark_price - stop_price) * quantity
+                max_order_notional = Decimal(str(config.max_notional_usdt))
+                max_risk_fraction = Decimal(str(config.max_risk_fraction))
+                if intent.side == "BUY":
+                    geometry_valid = stop_price < mark_price < target_price
+                else:
+                    geometry_valid = target_price < mark_price < stop_price
+                if not geometry_valid:
+                    return {
+                        "accepted": False,
+                        "reason": "market_order_mark_price_invalidates_risk_geometry",
+                        "requires_reconciliation": True,
+                        "client_order_id": client_order_id,
+                    }
+                if (
+                    not proposed_notional.is_finite()
+                    or proposed_notional <= 0
+                    or proposed_notional > max_order_notional
+                ):
+                    return {
+                        "accepted": False,
+                        "reason": "market_order_mark_price_exceeds_order_notional_limit",
+                        "requires_reconciliation": True,
+                        "client_order_id": client_order_id,
+                    }
+                if (
+                    not mark_risk.is_finite()
+                    or mark_risk <= 0
+                    or mark_risk > proposed_notional * max_risk_fraction
+                ):
+                    return {
+                        "accepted": False,
+                        "reason": "market_order_mark_price_exceeds_risk_limit",
+                        "requires_reconciliation": True,
+                        "client_order_id": client_order_id,
+                    }
+            except (InvalidOperation, TypeError, ValueError, OverflowError):
+                return {
+                    "accepted": False,
+                    "reason": "market_order_mark_price_risk_calculation_failed",
+                    "requires_reconciliation": True,
+                    "client_order_id": client_order_id,
+                }
+            try:
+                open_order_metrics = self.open_entry_order_notional()
+            except Exception as exc:
+                return {
+                    "accepted": False,
+                    "reason": "open_entry_orders_preflight_exception_requires_reconciliation",
+                    "requires_reconciliation": True,
+                    "exception_type": type(exc).__name__,
+                }
+            if (
+                not isinstance(open_order_metrics, dict)
+                or open_order_metrics.get("ok") is not True
+                or open_order_metrics.get("mode") != "testnet_open_entry_order_notional"
+            ):
+                return {
+                    "accepted": False,
+                    "reason": "open_entry_orders_preflight_failed_requires_reconciliation",
+                    "requires_reconciliation": True,
+                    "open_orders_reason": (
+                        open_order_metrics.get("reason") if isinstance(open_order_metrics, dict)
+                        else "invalid_open_orders_response"
+                    ),
+                }
+            try:
+                current_position_notional = Decimal(str(risk_metrics["total_notional_usdt"]))
+                current_open_order_notional = Decimal(str(open_order_metrics["open_entry_order_notional_usdt"]))
+                current_account_notional = current_position_notional + current_open_order_notional
+                account_notional_limit = Decimal(str(config.max_account_notional_usdt))
+                projected_account_notional = current_account_notional + proposed_notional
+                if (
+                    not current_position_notional.is_finite()
+                    or current_position_notional < 0
+                    or not current_open_order_notional.is_finite()
+                    or current_open_order_notional < 0
+                    or not account_notional_limit.is_finite()
+                    or account_notional_limit <= 0
+                    or not proposed_notional.is_finite()
+                    or proposed_notional <= 0
+                    or not projected_account_notional.is_finite()
+                ):
+                    raise InvalidOperation
+            except (KeyError, InvalidOperation, TypeError, ValueError, OverflowError):
+                return {
+                    "accepted": False,
+                    "reason": "invalid_account_risk_preflight_values_requires_reconciliation",
+                    "requires_reconciliation": True,
+                }
+            if projected_account_notional > account_notional_limit:
+                return {
+                    "accepted": False,
+                    "reason": "account_notional_limit_exceeded",
+                    "current_account_notional_usdt": float(current_account_notional),
+                    "current_position_notional_usdt": float(current_position_notional),
+                    "current_open_entry_order_notional_usdt": float(current_open_order_notional),
+                    "proposed_order_notional_usdt": float(proposed_notional),
+                    "max_account_notional_usdt": float(account_notional_limit),
+                }
+            # Reserve account capacity atomically across adapter instances and
+            # processes before the exchange POST. Existing reservations for the
+            # same client ID are never permission to blindly retry.
+            try:
+                reservation = self._risk_ledger.reserve(
+                    client_order_id,
+                    proposed_notional,
+                    current_account_notional,
+                    account_notional_limit,
+                )
+            except RiskLedgerError as exc:
+                return {
+                    "accepted": False,
+                    "reason": "durable_risk_reservation_failed_requires_reconciliation",
+                    "requires_reconciliation": True,
+                    "exception_type": type(exc).__name__,
+                    "client_order_id": client_order_id,
+                }
+            if not isinstance(reservation, dict) or reservation.get("ok") is not True:
+                return {
+                    "accepted": False,
+                    "reason": (
+                        reservation.get("reason", "invalid_risk_reservation_result")
+                        if isinstance(reservation, dict)
+                        else "invalid_risk_reservation_result"
+                    ),
+                    "requires_reconciliation": True,
+                    "client_order_id": client_order_id,
+                    "reservation": reservation if isinstance(reservation, dict) else None,
+                }
+            if reservation.get("reason") != "risk_reserved":
+                return {
+                    "accepted": False,
+                    "reason": "existing_risk_reservation_requires_reconciliation",
+                    "requires_reconciliation": True,
+                    "client_order_id": client_order_id,
+                    "reservation_state": reservation.get("state"),
+                }
         except (ValueError, InvalidOperation, TypeError, KeyError):
             return {"accepted": False, "reason": "exchange_preflight_failed"}
+        try:
+            state = self._risk_ledger.transition(
+                client_order_id, "SUBMITTING",
+                detail="durable reservation acquired; exchange submission about to begin",
+            )
+            if not isinstance(state, dict) or state.get("ok") is not True:
+                return {
+                    "accepted": False,
+                    "reason": "risk_reservation_transition_failed_requires_reconciliation",
+                    "requires_reconciliation": True,
+                    "client_order_id": client_order_id,
+                }
+        except RiskLedgerError as exc:
+            return {
+                "accepted": False,
+                "reason": "risk_reservation_transition_failed_requires_reconciliation",
+                "requires_reconciliation": True,
+                "exception_type": type(exc).__name__,
+                "client_order_id": client_order_id,
+            }
         params = self._signed_params({
             "symbol": intent.symbol,
             "side": intent.side,
@@ -336,12 +740,54 @@ class BinanceFuturesTestnet:
             "quantity": quantity_text,
             "newClientOrderId": client_order_id,
         })
+        # Recheck immediately before the network call as a second barrier. This
+        # narrows (but cannot eliminate) the race between a local kill-switch
+        # read and an exchange POST; an already-started request cannot be
+        # recalled by a local switch.
+        try:
+            switch_status = self._risk_ledger.kill_switch_status()
+        except Exception as exc:
+            try:
+                self._risk_ledger.transition(
+                    client_order_id, "UNKNOWN",
+                    detail="kill-switch recheck failed before POST; retain reservation for reconciliation",
+                )
+            except RiskLedgerError:
+                pass
+            return {
+                "accepted": False,
+                "reason": "kill_switch_recheck_failed_requires_reconciliation",
+                "requires_reconciliation": True,
+                "exception_type": type(exc).__name__,
+                "client_order_id": client_order_id,
+            }
+        if not isinstance(switch_status, dict) or switch_status.get("active") is not False:
+            try:
+                self._risk_ledger.transition(
+                    client_order_id, "UNKNOWN",
+                    detail="kill switch active at final pre-POST check; retain reservation for reconciliation",
+                )
+            except RiskLedgerError:
+                pass
+            return {
+                "accepted": False,
+                "reason": "operator_kill_switch_active_at_final_pre_submit_check",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
         try:
             response = self._post("/fapi/v1/order", params=params)
             response.raise_for_status()
             payload = response.json()
         except (httpx.TimeoutException, httpx.TransportError):
-            # A timeout after POST is ambiguous: never auto-retry an order.
+            # A timeout after POST is ambiguous: retain the reservation and
+            # mark the outcome unknown. Never auto-retry an order.
+            try:
+                self._risk_ledger.transition(
+                    client_order_id, "UNKNOWN", detail="ambiguous timeout/transport error after POST"
+                )
+            except RiskLedgerError:
+                pass
             return {
                 "accepted": False,
                 "reason": "testnet_order_outcome_unknown",
@@ -350,10 +796,66 @@ class BinanceFuturesTestnet:
             }
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code >= 500:
+                try:
+                    self._risk_ledger.transition(
+                        client_order_id, "UNKNOWN", detail="HTTP server error; order outcome ambiguous"
+                    )
+                except RiskLedgerError:
+                    pass
                 return {
                     "accepted": False,
                     "reason": "testnet_order_outcome_unknown",
                     "requires_reconciliation": True,
+                    "client_order_id": client_order_id,
+                }
+            # Binance -4116 means this client ID is already in use. The order
+            # may belong to a prior attempt that reached the exchange; don't
+            # classify it as a clean rejection or let callers blindly retry.
+            error_payload = {}
+            try:
+                parsed_payload = exc.response.json()
+                if isinstance(parsed_payload, dict):
+                    error_payload = parsed_payload
+            except (ValueError, TypeError):
+                pass
+            error_code = error_payload.get("code")
+            error_message = error_payload.get("msg", "")
+            duplicate_client_id = (
+                str(error_code) == "-4116"
+                or (
+                    isinstance(error_message, str)
+                    and "client order id" in error_message.lower()
+                    and (
+                        "not unique" in error_message.lower()
+                        or "already exists" in error_message.lower()
+                    )
+                )
+            )
+            if duplicate_client_id:
+                try:
+                    self._risk_ledger.transition(
+                        client_order_id, "UNKNOWN", detail="client order ID conflict requires exchange reconciliation"
+                    )
+                except RiskLedgerError:
+                    pass
+                return {
+                    "accepted": False,
+                    "reason": "testnet_order_client_id_conflict_requires_reconciliation",
+                    "requires_reconciliation": True,
+                    "http_status": exc.response.status_code,
+                    "client_order_id": client_order_id,
+                }
+            try:
+                self._risk_ledger.transition(
+                    client_order_id, "RELEASED",
+                    detail=f"confirmed_terminal: exchange returned definitive HTTP rejection {exc.response.status_code}",
+                )
+            except RiskLedgerError:
+                return {
+                    "accepted": False,
+                    "reason": "testnet_order_rejected_risk_release_requires_reconciliation",
+                    "requires_reconciliation": True,
+                    "http_status": exc.response.status_code,
                     "client_order_id": client_order_id,
                 }
             return {
@@ -363,10 +865,32 @@ class BinanceFuturesTestnet:
                 "client_order_id": client_order_id,
             }
         except (ValueError, TypeError):
+            try:
+                self._risk_ledger.transition(
+                    client_order_id, "UNKNOWN", detail="invalid or missing POST response; reconcile exchange state"
+                )
+            except RiskLedgerError:
+                pass
             return {
                 "accepted": False,
                 "reason": "testnet_order_outcome_unknown",
                 "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
+        except Exception as exc:
+            # Unexpected custom-client failures can happen after the exchange
+            # receives the request. Treat the outcome as ambiguous; never retry.
+            try:
+                self._risk_ledger.transition(
+                    client_order_id, "UNKNOWN", detail="unexpected POST exception; reconcile exchange state"
+                )
+            except RiskLedgerError:
+                pass
+            return {
+                "accepted": False,
+                "reason": "testnet_order_outcome_unknown",
+                "requires_reconciliation": True,
+                "exception_type": type(exc).__name__,
                 "client_order_id": client_order_id,
             }
         if (
@@ -376,12 +900,92 @@ class BinanceFuturesTestnet:
             or payload.get("clientOrderId") != client_order_id
             or payload.get("status") not in {"NEW", "PARTIALLY_FILLED", "FILLED"}
         ):
+            try:
+                self._risk_ledger.transition(
+                    client_order_id, "UNKNOWN", detail="unexpected order response; reconcile exchange state"
+                )
+            except RiskLedgerError:
+                pass
             return {
                 "accepted": False,
                 "reason": "unexpected_testnet_order_response",
                 "requires_reconciliation": True,
                 "client_order_id": client_order_id,
             }
+
+        # A matching order ID/status is not enough: validate the exchange's
+        # quantity fields before callers decide whether protection is needed.
+        # Missing or contradictory fill data is ambiguous and must be reconciled.
+        try:
+            original_quantity = Decimal(str(payload.get("origQty", "NaN")))
+            executed_quantity = Decimal(str(payload.get("executedQty", "NaN")))
+            requested_quantity = Decimal(quantity_text)
+            if (
+                not original_quantity.is_finite()
+                or not executed_quantity.is_finite()
+                or original_quantity <= 0
+                or original_quantity != requested_quantity
+                or executed_quantity < 0
+                or executed_quantity > original_quantity
+            ):
+                raise InvalidOperation
+            status = payload["status"]
+            if (
+                (status == "NEW" and executed_quantity != 0)
+                or (
+                    status == "PARTIALLY_FILLED"
+                    and not (Decimal("0") < executed_quantity < original_quantity)
+                )
+                or (
+                    status == "FILLED"
+                    and executed_quantity != original_quantity
+                )
+            ):
+                raise InvalidOperation
+        except (InvalidOperation, TypeError, ValueError, KeyError):
+            try:
+                self._risk_ledger.transition(
+                    client_order_id, "UNKNOWN", detail="order fill fields contradictory; reconcile exchange state"
+                )
+            except RiskLedgerError:
+                pass
+            return {
+                "accepted": False,
+                "reason": "testnet_order_fill_state_requires_reconciliation",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+            }
+
+        # A valid response confirms the exchange knows about this order, but
+        # the local account snapshot has not yet proved that its exposure is
+        # represented externally. Keep the reservation active in UNKNOWN until
+        # a separate reconciliation step confirms that relationship.
+        try:
+            state = self._risk_ledger.transition(
+                client_order_id, "UNKNOWN",
+                detail=(
+                    "exchange accepted order response; authoritative snapshot "
+                    "must confirm exposure before externalization"
+                ),
+            )
+        except RiskLedgerError as exc:
+            return {
+                "accepted": False,
+                "reason": "accepted_order_risk_state_update_requires_reconciliation",
+                "requires_reconciliation": True,
+                "exception_type": type(exc).__name__,
+                "client_order_id": client_order_id,
+                "exchange_order_id": str(payload["orderId"]),
+            }
+        if not isinstance(state, dict) or state.get("ok") is not True:
+            return {
+                "accepted": False,
+                "reason": "accepted_order_risk_state_update_requires_reconciliation",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+                "exchange_order_id": str(payload["orderId"]),
+            }
+
         return {
             "accepted": True,
             "mode": "testnet_order_submitted",
@@ -639,6 +1243,338 @@ class BinanceFuturesTestnet:
                 }
                 for order in orders
             ],
+        }
+
+    def reconcile_unresolved_testnet_entry_reservations(self, symbol_by_client_order_id, *, limit=100):
+        """Run a bounded, read-only reconciliation sweep and persist per-order audit outcomes.
+
+        The caller supplies an explicit client-order-ID to symbol mapping. RESERVED
+        records are deferred because the ledger alone cannot prove whether a POST
+        was attempted before a crash. This method never places, cancels, or retries.
+        """
+        if self._risk_ledger is None:
+            return {
+                "ok": False,
+                "reason": "durable_risk_ledger_unavailable_requires_reconciliation",
+                "requires_reconciliation": True,
+                "results": [],
+            }
+        if not isinstance(symbol_by_client_order_id, dict):
+            return {
+                "ok": False,
+                "reason": "explicit_client_order_symbol_mapping_required",
+                "requires_reconciliation": True,
+                "results": [],
+            }
+        try:
+            unresolved = self._risk_ledger.list_unresolved(limit=limit)
+        except RiskLedgerError as exc:
+            return {
+                "ok": False,
+                "reason": "risk_ledger_inventory_read_failed_requires_reconciliation",
+                "exception_type": type(exc).__name__,
+                "requires_reconciliation": True,
+                "results": [],
+            }
+
+        results = []
+        audit_persisted = 0
+
+        def append_with_audit(item, state_before):
+            nonlocal audit_persisted
+            order_id = item["client_order_id"]
+            symbol = item.get("symbol", "")
+            outcome = "ok" if item.get("ok") is True else (
+                "deferred" if "symbol" not in item else "failed"
+            )
+            reason = item.get("reason", "unspecified_recovery_result")
+            try:
+                audit = self._risk_ledger.record_recovery_audit(
+                    order_id=order_id,
+                    symbol=symbol,
+                    state_before=state_before,
+                    outcome=outcome,
+                    reason=reason,
+                )
+                if not isinstance(audit, dict) or audit.get("ok") is not True:
+                    raise RiskLedgerError("recovery_audit_write_failed")
+                audit_persisted += 1
+                item["audit_persisted"] = True
+            except Exception as exc:
+                item["ok"] = False
+                item["requires_reconciliation"] = True
+                item["audit_persisted"] = False
+                item["audit_error"] = type(exc).__name__
+            results.append(item)
+
+        for reservation in unresolved:
+            client_order_id = reservation["order_id"]
+            state = reservation["state"]
+            if state == "RESERVED":
+                append_with_audit({
+                    "client_order_id": client_order_id,
+                    "ok": False,
+                    "state": state,
+                    "reason": "reserved_state_requires_explicit_crash_recovery_review",
+                    "requires_reconciliation": True,
+                }, state)
+                continue
+            symbol = symbol_by_client_order_id.get(client_order_id)
+            if (
+                not isinstance(symbol, str)
+                or not symbol.isascii()
+                or not symbol.endswith("USDT")
+                or not symbol[:-4].isalnum()
+            ):
+                append_with_audit({
+                    "client_order_id": client_order_id,
+                    "ok": False,
+                    "state": state,
+                    "reason": "explicit_valid_symbol_mapping_missing",
+                    "requires_reconciliation": True,
+                }, state)
+                continue
+            try:
+                result = self.reconcile_testnet_entry_reservation(symbol, client_order_id)
+            except Exception as exc:
+                result = {
+                    "ok": False,
+                    "reason": "unexpected_reconciliation_error",
+                    "exception_type": type(exc).__name__,
+                    "requires_reconciliation": True,
+                }
+            append_with_audit({
+                "client_order_id": client_order_id,
+                "symbol": symbol,
+                **result,
+            }, state)
+
+        return {
+            "ok": all(item.get("ok") is True and item.get("audit_persisted") is True for item in results),
+            "mode": "read_only_testnet_recovery_sweep",
+            "listed": len(unresolved),
+            "reconciled": sum("symbol" in item for item in results),
+            "deferred": sum("symbol" not in item for item in results),
+            "audit_persisted": audit_persisted,
+            "audit_failures": sum(item.get("audit_persisted") is False for item in results),
+            "requires_reconciliation": any(
+                item.get("requires_reconciliation") is True or item.get("audit_persisted") is False
+                for item in results
+            ),
+            "results": results,
+        }
+
+    def reconcile_testnet_entry_reservation(self, symbol: str, client_order_id: str):
+        """Conservatively reconcile one durable entry reservation using read-only TESTNET reads.
+
+        This is a per-order primitive, not a background recovery worker. It never
+        submits, cancels, retries, or assumes that a timeout means an order is absent.
+        """
+        if self._risk_ledger is None:
+            return {
+                "ok": False,
+                "reason": "durable_risk_ledger_unavailable_requires_reconciliation",
+                "requires_reconciliation": True,
+            }
+        try:
+            reservation = self._risk_ledger.get(client_order_id)
+        except RiskLedgerError as exc:
+            return {
+                "ok": False,
+                "reason": "risk_ledger_read_failed_requires_reconciliation",
+                "exception_type": type(exc).__name__,
+                "requires_reconciliation": True,
+            }
+        if reservation is None:
+            return {"ok": False, "reason": "reservation_not_found", "requires_reconciliation": True}
+        state = reservation.get("state")
+        if state == "EXTERNALIZED":
+            return {"ok": True, "reason": "reservation_already_externalized", "state": state}
+        if state == "RELEASED":
+            return {"ok": True, "reason": "reservation_already_released", "state": state}
+        if state not in {"SUBMITTING", "UNKNOWN"}:
+            return {
+                "ok": False,
+                "reason": "reservation_state_not_reconcilable",
+                "state": state,
+                "requires_reconciliation": True,
+            }
+
+        order = self.query_testnet_order(symbol, client_order_id)
+        if order.get("found") is not True:
+            return {
+                "ok": False,
+                "reason": "order_lookup_not_authoritative",
+                "lookup_reason": order.get("reason", "unknown"),
+                "state": state,
+                "requires_reconciliation": True,
+            }
+
+        try:
+            snapshot = self.testnet_position_snapshot(symbol)
+        except Exception as exc:
+            return {
+                "ok": False,
+                "reason": "position_snapshot_failed_requires_reconciliation",
+                "exception_type": type(exc).__name__,
+                "state": state,
+                "requires_reconciliation": True,
+            }
+        if (
+            not isinstance(snapshot, dict)
+            or snapshot.get("ok") is not True
+            or snapshot.get("symbol") != symbol
+            or not isinstance(snapshot.get("snapshot_started_at_ms"), (int, float))
+            or not isinstance(snapshot.get("snapshot_completed_at_ms"), (int, float))
+            or not isinstance(snapshot.get("snapshot_duration_ms"), (int, float))
+            or snapshot["snapshot_completed_at_ms"] < snapshot["snapshot_started_at_ms"]
+            or snapshot["snapshot_duration_ms"] < 0
+            or snapshot["snapshot_duration_ms"] > MAX_PROTECTIVE_SNAPSHOT_DURATION_MS
+            or int(time.time() * 1000) - snapshot["snapshot_completed_at_ms"] > MAX_PROTECTIVE_SNAPSHOT_DURATION_MS
+            or not isinstance(snapshot.get("open_orders"), list)
+        ):
+            return {
+                "ok": False,
+                "reason": "position_snapshot_stale_or_invalid",
+                "state": state,
+                "requires_reconciliation": True,
+            }
+
+        matching_orders = [
+            item for item in snapshot["open_orders"]
+            if isinstance(item, dict) and item.get("client_order_id") == client_order_id
+        ]
+        if len(matching_orders) > 1:
+            return {
+                "ok": False,
+                "reason": "duplicate_client_order_in_open_snapshot",
+                "state": state,
+                "requires_reconciliation": True,
+            }
+        status = order["status"]
+        executed = Decimal(order["executed_quantity"])
+        original = Decimal(order["original_quantity"])
+
+        if status in {"NEW", "PARTIALLY_FILLED"}:
+            if len(matching_orders) != 1:
+                return {
+                    "ok": False,
+                    "reason": "open_order_not_confirmed_by_snapshot",
+                    "exchange_status": status,
+                    "state": state,
+                    "requires_reconciliation": True,
+                }
+            matched = matching_orders[0]
+            try:
+                snapshot_original = Decimal(str(matched["orig_quantity"]))
+                snapshot_executed = Decimal(str(matched["executed_quantity"]))
+            except (KeyError, InvalidOperation, TypeError, ValueError):
+                return {
+                    "ok": False,
+                    "reason": "open_order_snapshot_fields_invalid",
+                    "state": state,
+                    "requires_reconciliation": True,
+                }
+            if (
+                matched.get("client_order_id") != client_order_id
+                or matched.get("status") != status
+                or matched.get("reduce_only") is not False
+                or snapshot_original != original
+                or snapshot_executed != executed
+                or matched.get("side") not in {"BUY", "SELL"}
+            ):
+                return {
+                    "ok": False,
+                    "reason": "open_order_snapshot_mismatch",
+                    "state": state,
+                    "requires_reconciliation": True,
+                }
+            try:
+                result = self._risk_ledger.transition(
+                    client_order_id, "EXTERNALIZED",
+                    detail=(
+                        "confirmed_snapshot: matching open entry order; "
+                        f"symbol={symbol}; status={status}; "
+                        f"exchange_order_id={order['exchange_order_id']}"
+                    ),
+                )
+            except RiskLedgerError as exc:
+                return {
+                    "ok": False,
+                    "reason": "risk_ledger_externalization_failed",
+                    "exception_type": type(exc).__name__,
+                    "state": state,
+                    "requires_reconciliation": True,
+                }
+            if not isinstance(result, dict) or result.get("ok") is not True:
+                return {
+                    "ok": False,
+                    "reason": "risk_ledger_externalization_failed",
+                    "ledger_result": result,
+                    "state": state,
+                    "requires_reconciliation": True,
+                }
+            return {
+                "ok": True,
+                "reason": "open_entry_order_confirmed_external",
+                "state": "EXTERNALIZED",
+                "exchange_status": status,
+                "requires_reconciliation": False,
+            }
+
+        # Only a confirmed zero-fill terminal order that is absent from the
+        # current open-order snapshot can release its reservation. Filled orders
+        # and terminal orders with any fills remain reserved pending position /
+        # fill-ledger reconciliation; these two snapshots are not atomic.
+        if status in {"CANCELED", "REJECTED", "EXPIRED"} and executed == 0:
+            if matching_orders:
+                return {
+                    "ok": False,
+                    "reason": "terminal_order_still_present_in_open_snapshot",
+                    "state": state,
+                    "requires_reconciliation": True,
+                }
+            try:
+                result = self._risk_ledger.transition(
+                    client_order_id, "RELEASED",
+                    detail=(
+                        "confirmed_terminal: zero-fill terminal order absent "
+                        f"from open-order snapshot; symbol={symbol}; status={status}; "
+                        f"exchange_order_id={order['exchange_order_id']}"
+                    ),
+                )
+            except RiskLedgerError as exc:
+                return {
+                    "ok": False,
+                    "reason": "risk_ledger_release_failed",
+                    "exception_type": type(exc).__name__,
+                    "state": state,
+                    "requires_reconciliation": True,
+                }
+            if not isinstance(result, dict) or result.get("ok") is not True:
+                return {
+                    "ok": False,
+                    "reason": "risk_ledger_release_failed",
+                    "ledger_result": result,
+                    "state": state,
+                    "requires_reconciliation": True,
+                }
+            return {
+                "ok": True,
+                "reason": "zero_fill_terminal_order_confirmed",
+                "state": "RELEASED",
+                "exchange_status": status,
+                "requires_reconciliation": False,
+            }
+
+        return {
+            "ok": False,
+            "reason": "filled_or_partially_executed_order_requires_position_fill_reconciliation",
+            "exchange_status": status,
+            "executed_quantity": str(executed),
+            "original_quantity": str(original),
+            "state": state,
+            "requires_reconciliation": True,
         }
 
     def submit_testnet_protective_exit(
