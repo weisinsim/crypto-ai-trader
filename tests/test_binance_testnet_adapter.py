@@ -1862,6 +1862,8 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                     "clientOrderId": params.get("origClientOrderId"),
                     "orderId": 12345,
                     "status": "PARTIALLY_FILLED",
+                    "origQty": "0.5",
+                    "executedQty": "0.2",
                 })
 
         client = StillActiveCancelClient()
