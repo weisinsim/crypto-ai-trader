@@ -290,6 +290,9 @@ class SQLiteRiskLedger:
                     connection.execute("ROLLBACK")
                     return {"ok": False, "reason": "reservation_not_found"}
                 current = row[0]
+                if current not in _ALLOWED_STATES:
+                    connection.execute("ROLLBACK")
+                    raise RiskLedgerError("invalid_reservation_state_in_ledger")
                 if new_state == current:
                     connection.execute("COMMIT")
                     return {"ok": True, "reason": "state_unchanged", "state": current}
