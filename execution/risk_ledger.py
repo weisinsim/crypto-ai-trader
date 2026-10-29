@@ -207,16 +207,16 @@ class SQLiteRiskLedger:
                         return {"ok": True, "reason": "existing_reservation", "state": state}
                     connection.execute("ROLLBACK")
                     return {"ok": False, "reason": "reservation_not_reusable", "state": state}
-                placeholders = ",".join("?" for _ in _ACTIVE_STATES)
                 rows = connection.execute(
-                    f"SELECT order_id, notional_usdt, state FROM risk_reservations WHERE state IN ({placeholders})",
-                    _ACTIVE_STATES,
+                    "SELECT order_id, notional_usdt, state FROM risk_reservations"
                 ).fetchall()
                 reserved_values = []
                 for stored_order_id, raw_notional, stored_state in rows:
+                    if stored_state not in _ALLOWED_STATES:
+                        raise RiskLedgerError("invalid_reservation_state_in_ledger")
+                    if stored_state == "RELEASED":
+                        continue
                     self._validate_order_id(stored_order_id)
-                    if stored_state not in _ACTIVE_STATES:
-                        raise RiskLedgerError("invalid_active_reservation_state")
                     stored_notional = _decimal(raw_notional, "stored_reservation_notional")
                     if stored_notional <= 0:
                         raise RiskLedgerError("invalid_active_reservation_notional")
@@ -402,15 +402,12 @@ class SQLiteRiskLedger:
         statement snapshot. Database or decoding failures raise and must cause
         the caller to fail closed.
         """
-        placeholders = ",".join("?" for _ in _ACTIVE_STATES)
         try:
             with self._connection() as connection:
                 rows = connection.execute(
-                    f"""SELECT order_id, notional_usdt, state, created_at, updated_at, detail
+                    """SELECT order_id, notional_usdt, state, created_at, updated_at, detail
                     FROM risk_reservations
-                    WHERE state IN ({placeholders})
-                    ORDER BY created_at ASC, order_id ASC""",
-                    _ACTIVE_STATES,
+                    ORDER BY created_at ASC, order_id ASC"""
                 ).fetchall()
         except (sqlite3.Error, OSError) as exc:
             raise RiskLedgerError("risk_ledger_read_failed") from exc
@@ -418,9 +415,13 @@ class SQLiteRiskLedger:
         try:
             for row in rows:
                 order_id, raw_notional, state, created_at, updated_at, detail = row
+                if state not in _ALLOWED_STATES:
+                    raise RiskLedgerError("invalid_reservation_state_in_ledger")
+                if state == "RELEASED":
+                    continue
                 self._validate_order_id(order_id)
                 notional = _decimal(raw_notional, "notional")
-                if notional <= 0 or state not in _ACTIVE_STATES:
+                if notional <= 0:
                     raise RiskLedgerError("invalid_active_reservation_record")
                 inventory.append({
                     "order_id": order_id,
