@@ -3098,7 +3098,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(client.calls, [])
 
     def test_reconcile_does_not_release_when_terminal_order_conflicts_with_open_snapshot(self):
-        class ContradictoryTerminalClient(FakeClient):
+        class TerminalOrderClient(FakeClient):
             def get(self, path, params):
                 if path == "/fapi/v1/order":
                     self.get_calls.append((path, params))
@@ -3111,23 +3111,9 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                         "executedQty": "0",
                         "avgPrice": "0",
                     })
-                if path == "/fapi/v1/openOrders" and "symbol" in params:
-                    self.get_calls.append((path, params))
-                    return FakeResponse([{
-                        "orderId": 12345,
-                        "symbol": "BTCUSDT",
-                        "clientOrderId": params.get("origClientOrderId"),
-                        "side": "BUY",
-                        "type": "LIMIT",
-                        "status": "NEW",
-                        "reduceOnly": False,
-                        "stopPrice": "0",
-                        "origQty": "0.5",
-                        "executedQty": "0",
-                    }])
                 return super().get(path, params)
 
-        client = ContradictoryTerminalClient()
+        client = TerminalOrderClient()
         adapter = BinanceFuturesTestnet(
             api_key="test-key", api_secret="test-secret", client=client
         )
@@ -3136,6 +3122,30 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         ledger.reserve(order_id, "50", "0", "1000")
         ledger.transition(order_id, "SUBMITTING")
         ledger.transition(order_id, "UNKNOWN")
+
+        # Return a valid, fresh snapshot that contradicts the terminal order
+        # lookup. This isolates the reconciliation branch under test.
+        now_ms = int(time.time() * 1000)
+        adapter.testnet_position_snapshot = lambda symbol: {
+            "ok": True,
+            "symbol": symbol,
+            "snapshot_started_at_ms": now_ms - 10,
+            "snapshot_completed_at_ms": now_ms,
+            "snapshot_duration_ms": 10,
+            "position_amount": "0",
+            "entry_price": "0",
+            "open_orders": [{
+                "order_id": "12345",
+                "client_order_id": order_id,
+                "symbol": "BTCUSDT",
+                "side": "BUY",
+                "type": "LIMIT",
+                "status": "NEW",
+                "reduce_only": False,
+                "original_quantity": "0.5",
+                "executed_quantity": "0",
+            }],
+        }
 
         result = adapter.reconcile_testnet_entry_reservation("BTCUSDT", order_id)
 
