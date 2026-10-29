@@ -40,7 +40,7 @@ class FakeClient:
         if path == "/fapi/v1/premiumIndex":
             return FakeResponse({"symbol": params.get("symbol"), "markPrice": "100"})
         if path == "/fapi/v1/order":
-            return FakeResponse({"symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"), "orderId": 12345, "status": "PARTIALLY_FILLED", "origQty": "0.5", "executedQty": "0.2", "avgPrice": "100.1"})
+            return FakeResponse({"symbol": "BTCUSDT", "clientOrderId": params.get("origClientOrderId"), "orderId": 12345, "status": "PARTIALLY_FILLED", "origQty": "0.5", "executedQty": "0.2", "avgPrice": "100.1", "type": "LIMIT", "side": "BUY", "reduceOnly": False})
         if path == "/fapi/v2/account":
             return FakeResponse({"canTrade": True, "positions": [
                 {"symbol": "BTCUSDT", "positionAmt": "0", "entryPrice": "0"},
@@ -289,6 +289,9 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertTrue(result["found"])
         self.assertEqual(result["status"], "PARTIALLY_FILLED")
         self.assertEqual(result["executed_quantity"], "0.2")
+        self.assertEqual(result["type"], "LIMIT")
+        self.assertEqual(result["side"], "BUY")
+        self.assertIs(result["reduce_only"], False)
         self.assertEqual(client.get_calls[0][0], "/fapi/v1/order")
         self.assertEqual(client.get_calls[0][1]["origClientOrderId"], "paper-test-0001")
         self.assertIn("signature", client.get_calls[0][1])
