@@ -248,6 +248,9 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                 {"filterType": "MARKET_LOT_SIZE", "stepSize": "0.001", "minQty": "0.001", "maxQty": "100"},
                 {"filterType": "MARKET_LOT_SIZE", "stepSize": "0.01", "minQty": "0.01", "maxQty": "10"}
             ]}]},
+            {"symbols": [{"symbol": "BTCUSDT", "status": "TRADING", "filters": [
+                {"stepSize": "0.001", "minQty": "0.001", "maxQty": "100"}
+            ]}]},
         )
         for payload in payloads:
             with self.subTest(payload=payload):
