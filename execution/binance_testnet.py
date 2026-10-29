@@ -2240,7 +2240,17 @@ class BinanceFuturesTestnet:
                 "requires_reconciliation": True,
                 "client_order_id": client_order_id,
             }
-        # Conditional exits should initially be resting with zero execution.
+        # Conditional exits should initially be resting. A response that is
+        # already partially filled/filled is an execution race, not a verified
+        # installation; require reconciliation before checking NEW fill consistency.
+        if payload.get("status") != "NEW":
+            return {
+                "accepted": False,
+                "reason": "protective_exit_submission_state_requires_reconciliation",
+                "requires_reconciliation": True,
+                "client_order_id": client_order_id,
+                "status": payload.get("status"),
+            }
         # Do not trust status alone: a malformed/inconsistent NEW response with
         # non-zero executedQty can hide an execution race and changed position.
         try:
@@ -2251,14 +2261,6 @@ class BinanceFuturesTestnet:
             return {
                 "accepted": False,
                 "reason": "protective_exit_submission_fill_state_requires_reconciliation",
-                "requires_reconciliation": True,
-                "client_order_id": client_order_id,
-                "status": payload.get("status"),
-            }
-        if payload.get("status") != "NEW":
-            return {
-                "accepted": False,
-                "reason": "protective_exit_submission_state_requires_reconciliation",
                 "requires_reconciliation": True,
                 "client_order_id": client_order_id,
                 "status": payload.get("status"),
