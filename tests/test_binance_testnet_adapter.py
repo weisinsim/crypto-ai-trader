@@ -1890,6 +1890,38 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertTrue(result["requires_reconciliation"])
         self.assertEqual(len(client.calls), 1)
 
+    def test_market_order_unhashable_status_payload_requires_reconciliation_without_retry(self):
+        class MalformedStatusClient(FakeClient):
+            def post(self, path, params):
+                self.calls.append((path, params))
+                return FakeResponse({
+                    "symbol": "BTCUSDT",
+                    "clientOrderId": params.get("newClientOrderId"),
+                    "orderId": 12345,
+                    "status": ["FILLED"],
+                    "origQty": "0.5",
+                    "executedQty": "0.5",
+                    "avgPrice": "100",
+                })
+
+        client = MalformedStatusClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        order_id = "btc-malformed-status-0001"
+        result = adapter.submit_testnet_market_order(
+            self.intent(), order_id, ExecutionConfig(mode="testnet")
+        )
+
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["reason"], "unexpected_testnet_order_response")
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(len(client.calls), 1)
+        reservation = adapter._risk_ledger.get(order_id)
+        self.assertEqual(reservation["state"], "UNKNOWN")
+        self.assertGreater(float(reservation["notional_usdt"]), 0)
+        self.assertEqual(adapter._risk_ledger.active_reserved_notional(), reservation["notional_usdt"])
+
     def test_cancel_order_uses_signed_specific_testnet_client_id(self):
         client = FakeClient()
         adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
