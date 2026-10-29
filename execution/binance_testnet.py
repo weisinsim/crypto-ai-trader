@@ -1621,6 +1621,7 @@ class BinanceFuturesTestnet:
                 or matched.get("reduce_only") is not False
                 or snapshot_original != original
                 or snapshot_executed != executed
+                or not isinstance(matched.get("side"), str)
                 or matched.get("side") not in {"BUY", "SELL"}
                 or matched.get("side") != order.get("side")
             ):
