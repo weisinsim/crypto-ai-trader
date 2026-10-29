@@ -384,6 +384,47 @@ class SQLiteRiskLedger:
             for row in rows
         ]
 
+    def list_active_reservations(self):
+        """Return the complete active reservation inventory for risk-cap checks.
+
+        Unlike list_unresolved(), this method intentionally has no page limit:
+        callers using the inventory to de-duplicate exchange exposure must not
+        silently omit active reservations. SQLite executes the SELECT as one
+        statement snapshot. Database or decoding failures raise and must cause
+        the caller to fail closed.
+        """
+        placeholders = ",".join("?" for _ in _ACTIVE_STATES)
+        try:
+            with self._connection() as connection:
+                rows = connection.execute(
+                    f"""SELECT order_id, notional_usdt, state, created_at, updated_at, detail
+                    FROM risk_reservations
+                    WHERE state IN ({placeholders})
+                    ORDER BY created_at ASC, order_id ASC""",
+                    _ACTIVE_STATES,
+                ).fetchall()
+        except (sqlite3.Error, OSError) as exc:
+            raise RiskLedgerError("risk_ledger_read_failed") from exc
+        inventory = []
+        try:
+            for row in rows:
+                order_id, raw_notional, state, created_at, updated_at, detail = row
+                self._validate_order_id(order_id)
+                notional = _decimal(raw_notional, "notional")
+                if notional <= 0 or state not in _ACTIVE_STATES:
+                    raise RiskLedgerError("invalid_active_reservation_record")
+                inventory.append({
+                    "order_id": order_id,
+                    "notional_usdt": str(notional),
+                    "state": state,
+                    "created_at": created_at,
+                    "updated_at": updated_at,
+                    "detail": detail,
+                })
+        except (TypeError, ValueError, InvalidOperation) as exc:
+            raise RiskLedgerError("invalid_active_reservation_inventory") from exc
+        return inventory
+
     def record_recovery_audit(self, *, order_id, symbol="", state_before="", outcome, reason):
         """Append a bounded-detail recovery outcome record to the durable ledger."""
         order_id = self._validate_order_id(order_id)
