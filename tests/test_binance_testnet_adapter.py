@@ -945,7 +945,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         }
         cases = (
             (
-                [dict(base_order), {**base_order, "orderId": 100, "clientOrderId": "stop-0002"}],
+                [dict(base_order), {**base_order, "orderId": 100}],
                 "duplicate_testnet_open_order_client_id",
             ),
             (
