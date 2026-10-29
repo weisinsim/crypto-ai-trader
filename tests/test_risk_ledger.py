@@ -266,6 +266,34 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
         self.assertEqual(len(self.ledger.list_unresolved(limit=1)), 1)
 
 
+    def test_reserve_fails_closed_on_corrupted_active_reservation_notional(self):
+        # The database can be damaged or edited outside the API. A negative
+        # active amount must never reduce projected exposure and admit an entry.
+        with sqlite3.connect(self.db_path) as connection:
+            connection.execute(
+                """INSERT INTO risk_reservations
+                (order_id, notional_usdt, state, created_at, updated_at, detail)
+                VALUES (?, ?, 'UNKNOWN', 1, 1, 'corruption fixture')""",
+                ("corrupted-negative-reservation", "-999",),
+            )
+
+        with self.assertRaises(RiskLedgerError):
+            self.ledger.reserve("must-not-be-created", "10", "0", "100")
+        self.assertIsNone(self.ledger.get("must-not-be-created"))
+
+    def test_reserve_fails_closed_on_non_finite_active_reservation_notional(self):
+        with sqlite3.connect(self.db_path) as connection:
+            connection.execute(
+                """INSERT INTO risk_reservations
+                (order_id, notional_usdt, state, created_at, updated_at, detail)
+                VALUES (?, ?, 'UNKNOWN', 1, 1, 'corruption fixture')""",
+                ("corrupted-nan-reservation", "NaN",),
+            )
+
+        with self.assertRaises(RiskLedgerError):
+            self.ledger.reserve("must-not-be-created-nan", "10", "0", "100")
+        self.assertIsNone(self.ledger.get("must-not-be-created-nan"))
+
     def test_active_reservation_inventory_is_complete_beyond_recovery_page_limit(self):
         # Recovery listing is intentionally bounded; account-cap inventory
         # must not inherit that limit or silently omit active risk.
