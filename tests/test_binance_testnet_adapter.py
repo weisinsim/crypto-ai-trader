@@ -1455,6 +1455,59 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertTrue(result["requires_reconciliation"])
         self.assertFalse(any(path == "/fapi/v1/order" for path, _ in client.calls))
 
+    def test_protective_exit_fails_closed_on_unhashable_snapshot_side_or_status(self):
+        # JSON fields are untrusted. A list/dict in a membership test would
+        # otherwise raise TypeError instead of returning a safe refusal.
+        for stage in ("initial", "final"):
+            for field, malformed_value in (("side", []), ("status", {})):
+                with self.subTest(stage=stage, field=field):
+                    client = FakeClient()
+                    adapter = BinanceFuturesTestnet(
+                        api_key="test-key", api_secret="test-secret", client=client
+                    )
+                    calls = {"count": 0}
+
+                    def snapshot(symbol):
+                        calls["count"] += 1
+                        now_ms = int(time.time() * 1000)
+                        item = {
+                            "client_order_id": "existing-order-0001",
+                            "side": "SELL",
+                            "type": "STOP_MARKET",
+                            "status": "NEW",
+                            "reduce_only": True,
+                        }
+                        if stage == "initial" or calls["count"] == 2:
+                            item[field] = malformed_value
+                        return {
+                            "ok": True,
+                            "symbol": symbol,
+                            "snapshot_started_at_ms": now_ms - 10,
+                            "snapshot_completed_at_ms": now_ms,
+                            "snapshot_duration_ms": 10,
+                            "position_amount": "0.5",
+                            "entry_price": "100",
+                            "open_orders": [item] if stage == "initial" or calls["count"] == 2 else [],
+                        }
+
+                    adapter.testnet_position_snapshot = snapshot
+                    result = adapter.submit_testnet_protective_exit(
+                        "BTCUSDT", "stop_loss", "0.5", "99.8",
+                        f"stop-malformed-{stage}-{field}",
+                    )
+
+                    self.assertFalse(result["accepted"])
+                    self.assertTrue(result["requires_reconciliation"])
+                    expected_reason = (
+                        "position_snapshot_failed" if stage == "initial"
+                        else "protective_exit_final_snapshot_invalid_requires_reconciliation"
+                    )
+                    self.assertEqual(result["reason"], expected_reason)
+                    self.assertFalse(any(
+                        path == "/fapi/v1/order" and params.get("type") == "STOP_MARKET"
+                        for path, params in client.calls
+                    ))
+
     def test_protective_exit_rejects_non_boolean_success_flag_in_final_snapshot(self):
         client = FakeClient()
         adapter = BinanceFuturesTestnet(
