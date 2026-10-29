@@ -2271,6 +2271,46 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         self.assertEqual(result["status"], "FILLED")
         self.assertEqual(len(client.calls), 1)
 
+    def test_protective_exit_rejects_new_status_with_nonzero_execution(self):
+        class InconsistentNewFillClient(FakeClient):
+            def get(self, path, params):
+                if path == "/fapi/v2/account":
+                    self.get_calls.append((path, params))
+                    return FakeResponse({"canTrade": True, "positions": [
+                        {"symbol": "BTCUSDT", "positionAmt": "0.5", "entryPrice": "100"},
+                    ]})
+                return super().get(path, params)
+
+            def post(self, path, params):
+                self.calls.append((path, params))
+                return FakeResponse({
+                    "symbol": params.get("symbol"),
+                    "clientOrderId": params.get("newClientOrderId"),
+                    "orderId": 12345,
+                    "status": "NEW",
+                    "side": params.get("side"),
+                    "type": params.get("type"),
+                    "reduceOnly": True,
+                    "workingType": params.get("workingType"),
+                    "origQty": params.get("quantity"),
+                    "executedQty": "0.1",
+                    "stopPrice": params.get("stopPrice"),
+                })
+
+        client = InconsistentNewFillClient()
+        adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=client
+        )
+        result = adapter.submit_testnet_protective_exit(
+            "BTCUSDT", "stop_loss", "0.5", "99.8", "btc-new-with-fill"
+        )
+        self.assertFalse(result["accepted"])
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(
+            result["reason"], "protective_exit_submission_fill_state_requires_reconciliation"
+        )
+        self.assertEqual(len(client.calls), 1)
+
     def test_protective_exit_rejects_malformed_exchange_order_id(self):
         class PositionClient(FakeClient):
             def get(self, path, params):
