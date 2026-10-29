@@ -541,6 +541,24 @@ def cancel_testnet_sibling_after_flatten(
         or sibling_after_cancel.get("client_order_id") != sibling_exit_client_order_id
     ):
         return {"ok": False, "reason": "post_cancel_sibling_identity_mismatch", "requires_reconciliation": True}
+    # Re-check the authoritative protective-order identity after cancellation;
+    # order state may change between reads, and an inactive status alone is not enough.
+    if filled_identity_present:
+        expected_post_cancel_type = (
+            "TAKE_PROFIT_MARKET"
+            if filled.get("type") == "STOP_MARKET"
+            else "STOP_MARKET"
+        )
+        if (
+            sibling_after_cancel.get("type") != expected_post_cancel_type
+            or sibling_after_cancel.get("side") != filled.get("side")
+            or sibling_after_cancel.get("reduce_only") is not True
+        ):
+            return {
+                "ok": False,
+                "reason": "post_cancel_sibling_protective_identity_mismatch",
+                "requires_reconciliation": True,
+            }
     if sibling_after_cancel.get("status") not in {"CANCELED", "EXPIRED", "REJECTED"}:
         return {
             "ok": False,
