@@ -1784,9 +1784,11 @@ class BinanceFuturesTestnet:
                 or len(order["client_order_id"]) > 36
                 or not order["client_order_id"].isascii()
                 or not order["client_order_id"].replace("-", "").replace("_", "").isalnum()
+                or not isinstance(order.get("side"), str)
                 or order.get("side") not in {"BUY", "SELL"}
                 or not isinstance(order.get("type"), str)
                 or not order.get("type")
+                or not isinstance(order.get("status"), str)
                 or order.get("status") not in {"NEW", "PARTIALLY_FILLED"}
                 or not isinstance(order.get("reduce_only"), bool)
                 for order in snapshot.get("open_orders", [])
@@ -2044,9 +2046,11 @@ class BinanceFuturesTestnet:
                 or len(order["client_order_id"]) > 36
                 or not order["client_order_id"].isascii()
                 or not order["client_order_id"].replace("-", "").replace("_", "").isalnum()
+                or not isinstance(order.get("side"), str)
                 or order.get("side") not in {"BUY", "SELL"}
                 or not isinstance(order.get("type"), str)
                 or not order.get("type")
+                or not isinstance(order.get("status"), str)
                 or order.get("status") not in {"NEW", "PARTIALLY_FILLED"}
                 or not isinstance(order.get("reduce_only"), bool)
                 for order in final_snapshot.get("open_orders", [])
