@@ -1746,6 +1746,9 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                 os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"] = os.path.join(
                     temp_dir, "risk-ledger.sqlite3"
                 )
+                SQLiteRiskLedger(
+                    os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"]
+                ).set_kill_switch(False, reason="isolated ambiguous HTTP test")
                 try:
                     class AmbiguousHttpStatusClient(FakeClient):
                         def post(self, path, params):
