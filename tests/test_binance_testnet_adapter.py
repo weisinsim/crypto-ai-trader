@@ -76,7 +76,7 @@ class FakeClient:
 
     def delete(self, path, params):
         self.calls.append((path, params))
-        return FakeResponse({"symbol": params.get("symbol"), "clientOrderId": params.get("origClientOrderId"), "orderId": 12345, "status": "CANCELED"})
+        return FakeResponse({"symbol": params.get("symbol"), "clientOrderId": params.get("origClientOrderId"), "orderId": 12345, "status": "CANCELED", "origQty": "0.5", "executedQty": "0"})
 
     def close(self):
         pass
@@ -1875,6 +1875,51 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         )
         self.assertTrue(result["requires_reconciliation"])
         self.assertEqual(result["status"], "PARTIALLY_FILLED")
+        self.assertEqual(len(client.calls), 1)
+
+    def test_cancel_order_partial_fill_is_not_reported_as_clean_cancel(self):
+        class PartiallyFilledCancelClient(FakeClient):
+            def delete(self, path, params):
+                self.calls.append((path, params))
+                return FakeResponse({
+                    "symbol": params.get("symbol"),
+                    "clientOrderId": params.get("origClientOrderId"),
+                    "orderId": 12345,
+                    "status": "CANCELED",
+                    "origQty": "0.5",
+                    "executedQty": "0.2",
+                })
+
+        client = PartiallyFilledCancelClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.cancel_testnet_order("BTCUSDT", "btc-stop-partial-fill")
+        self.assertFalse(result["cancelled"])
+        self.assertEqual(
+            result["reason"], "testnet_cancel_partial_fill_requires_position_reconciliation"
+        )
+        self.assertTrue(result["requires_reconciliation"])
+        self.assertEqual(result["executed_quantity"], "0.2")
+        self.assertEqual(len(client.calls), 1)
+
+    def test_cancel_order_missing_fill_fields_requires_reconciliation(self):
+        class MissingFillFieldsClient(FakeClient):
+            def delete(self, path, params):
+                self.calls.append((path, params))
+                return FakeResponse({
+                    "symbol": params.get("symbol"),
+                    "clientOrderId": params.get("origClientOrderId"),
+                    "orderId": 12345,
+                    "status": "CANCELED",
+                })
+
+        client = MissingFillFieldsClient()
+        adapter = BinanceFuturesTestnet(api_key="test-key", api_secret="test-secret", client=client)
+        result = adapter.cancel_testnet_order("BTCUSDT", "btc-stop-missing-fills")
+        self.assertFalse(result["cancelled"])
+        self.assertEqual(
+            result["reason"], "testnet_cancel_fill_state_unreadable_requires_reconciliation"
+        )
+        self.assertTrue(result["requires_reconciliation"])
         self.assertEqual(len(client.calls), 1)
 
     def test_cancel_order_rejects_mismatched_exchange_identity(self):
