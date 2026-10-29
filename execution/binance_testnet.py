@@ -509,6 +509,21 @@ class BinanceFuturesTestnet:
                 "reason": "filled_testnet_order_quantity_mismatch",
                 "requires_reconciliation": True,
             }
+        order_type = payload.get("type")
+        side = payload.get("side")
+        reduce_only = payload.get("reduceOnly")
+        # Preserve identity metadata from Binance's authoritative order record.
+        # If supplied but malformed, fail closed rather than discarding it.
+        if (
+            ("type" in payload and (not isinstance(order_type, str) or not order_type))
+            or ("side" in payload and side not in {"BUY", "SELL"})
+            or ("reduceOnly" in payload and not isinstance(reduce_only, bool))
+        ):
+            return {
+                "found": False,
+                "reason": "invalid_testnet_order_identity_metadata",
+                "requires_reconciliation": True,
+            }
         return {
             "found": True,
             "mode": "testnet_order_reconciliation",
@@ -519,6 +534,9 @@ class BinanceFuturesTestnet:
             "executed_quantity": str(executed_quantity),
             "original_quantity": str(original_quantity),
             "average_price": str(average_price),
+            "type": order_type,
+            "side": side,
+            "reduce_only": reduce_only,
         }
 
     def testnet_position_snapshot(self, symbol: str):
