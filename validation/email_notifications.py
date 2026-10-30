@@ -23,13 +23,13 @@ EVENT_LABELS = {
 
 def notification_config(environ: Mapping[str, str] | None = None) -> dict:
     env = os.environ if environ is None else environ
-    configured = all((
+    raw = env.get("ALERT_EMAIL_TO", "").strip()
+    recipients = [item.strip() for item in raw.split(",") if item.strip()] if raw else list(DEFAULT_ALERT_RECIPIENTS)
+    configured = bool(all((
         env.get("SMTP_HOST", "").strip(),
         env.get("SMTP_PASSWORD", ""),
         (env.get("ALERT_EMAIL_FROM", "").strip() or env.get("SMTP_USER", "").strip()),
-    ))
-    raw = env.get("ALERT_EMAIL_TO", "").strip()
-    recipients = [item.strip() for item in raw.split(",") if item.strip()] if raw else list(DEFAULT_ALERT_RECIPIENTS)
+    )) and recipients)
     return {
         "configured": bool(configured),
         "status": "CONFIGURED" if configured else "NOT_CONFIGURED",
