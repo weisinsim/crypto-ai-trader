@@ -8,7 +8,7 @@ from validation.signal_confirmation import invalidate_stale_confirmation
 from validation.xrp_model import evaluate_xrp_signal
 from research.v12_hybrid_engine import evaluate_hybrid, MODEL_VERSION as HYBRID_MODEL_VERSION
 from validation.email_notifications import send_email_alert, notification_config
-from validation.email_outbox import EmailOutbox
+from validation.email_outbox import EmailOutbox, dispatch_outbox_batch
 from pathlib import Path
 
 import httpx
@@ -333,39 +333,18 @@ def queue_email_alert(event):
 
 
 async def dispatch_email_outbox_once():
-    """Claim and send a bounded batch; SMTP runs outside SQLite transactions."""
+    """Dispatch a durable outbox batch; SMTP work remains outside SQLite transactions."""
     if email_outbox is None:
         return
-    if not notification_config().get("configured"):
-        diagnostics["email_alert_status"] = "NOT_CONFIGURED"
-        return
-    try:
-        claimed = email_outbox.claim_due(limit=10)
-    except Exception as exc:
-        log_error("EMAIL OUTBOX CLAIM", exc)
-        diagnostics["email_alert_status"] = "QUEUE_FAILED"
-        return
-    for item in claimed:
-        try:
-            accepted = await asyncio.to_thread(send_email_alert, item["event"])
-            if accepted:
-                if email_outbox.mark_sent(item["event_id"], item["lease_token"]):
-                    diagnostics["email_alert_status"] = "SENT_TO_SMTP"
-                else:
-                    diagnostics["email_alert_status"] = "DELIVERY_STATE_UNKNOWN"
-            else:
-                email_outbox.mark_failed(item["event_id"], item["lease_token"],
-                                         "SMTP configuration unavailable")
-                diagnostics["email_alert_status"] = "NOT_CONFIGURED"
-        except Exception as exc:
-            # Store a bounded error string; never log SMTP credentials or message bodies.
-            error = f"{type(exc).__name__}: {str(exc)[:350]}"
-            try:
-                email_outbox.mark_failed(item["event_id"], item["lease_token"], error)
-            except Exception as ledger_exc:
-                log_error("EMAIL OUTBOX UPDATE", ledger_exc)
-            log_error("EMAIL ALERT", error)
-            diagnostics["email_alert_status"] = "FAILED"
+    async def _send(event):
+        return await asyncio.to_thread(send_email_alert, event)
+    result = await dispatch_outbox_batch(
+        email_outbox, _send, configured=notification_config().get("configured", False)
+    )
+    if result not in ("IDLE",):
+        diagnostics["email_alert_status"] = result
+    if result in ("FAILED", "QUEUE_FAILED"):
+        log_error("EMAIL OUTBOX", result)
 
 
 async def email_outbox_worker():
