@@ -394,11 +394,10 @@ async def email_exit_monitor_loop():
                 if hit2 and not flags["tp2_sent"]:
                     flags["tp2_sent"] = True
                     row["confirmed_status"] = "EXIT_TAKE_PROFIT_2"
-                    queue_email_alert({
-                        "event_id": f"{symbol}:{row.get('confirmed_signal_time')}:TP2",
-                        "event": "TAKE_PROFIT_2", "symbol": symbol, "direction": state,
-                        "price": price, "level": tp2, "signal_time": row.get("confirmed_signal_time"),
-                    })
+                    queue_email_alert(build_signal_notification_event(
+                        "TAKE_PROFIT_2", symbol=symbol, direction=state,
+                        signal_time=row.get("confirmed_signal_time"), price=price, level=tp2,
+                    ))
                     confirmed_state[symbol] = "NO-TRADE"
         await asyncio.sleep(5)
 
