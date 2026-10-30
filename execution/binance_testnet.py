@@ -1391,6 +1391,10 @@ class BinanceFuturesTestnet:
 
         def append_with_audit(item, state_before):
             nonlocal audit_persisted
+            if item.get("audit_persisted") is True:
+                audit_persisted += 1
+                results.append(item)
+                return
             order_id = item["client_order_id"]
             symbol = item.get("symbol", "")
             outcome = "ok" if item.get("ok") is True else (
@@ -1444,7 +1448,9 @@ class BinanceFuturesTestnet:
                 }, state)
                 continue
             try:
-                result = self.reconcile_testnet_entry_reservation(symbol, client_order_id)
+                result = self.reconcile_testnet_entry_reservation(
+                    symbol, client_order_id, recovery_audit=True
+                )
             except Exception as exc:
                 result = {
                     "ok": False,
@@ -1484,7 +1490,9 @@ class BinanceFuturesTestnet:
             "results": results,
         }
 
-    def reconcile_testnet_entry_reservation(self, symbol: str, client_order_id: str):
+    def reconcile_testnet_entry_reservation(
+        self, symbol: str, client_order_id: str, *, recovery_audit=False
+    ):
         """Conservatively reconcile one durable entry reservation using read-only TESTNET reads.
 
         This is a per-order primitive, not a background recovery worker. It never
@@ -1667,14 +1675,21 @@ class BinanceFuturesTestnet:
             # externalized without mutating the durable state.
             if state != "EXTERNALIZED":
                 try:
-                    result = self._risk_ledger.transition(
-                        client_order_id, "EXTERNALIZED",
-                        detail=(
-                            "confirmed_snapshot: matching open entry order; "
-                            f"symbol={symbol}; status={status}; "
-                            f"exchange_order_id={order['exchange_order_id']}"
-                        ),
+                    transition_detail = (
+                        "confirmed_snapshot: matching open entry order; "
+                        f"symbol={symbol}; status={status}; "
+                        f"exchange_order_id={order['exchange_order_id']}"
                     )
+                    if recovery_audit:
+                        result = self._risk_ledger.transition_with_recovery_audit(
+                            client_order_id, "EXTERNALIZED", detail=transition_detail,
+                            symbol=symbol, outcome="ok",
+                            reason="open_entry_order_confirmed_external",
+                        )
+                    else:
+                        result = self._risk_ledger.transition(
+                            client_order_id, "EXTERNALIZED", detail=transition_detail
+                        )
                 except RiskLedgerError as exc:
                     return {
                         "ok": False,
@@ -1701,6 +1716,7 @@ class BinanceFuturesTestnet:
                 "state": "EXTERNALIZED",
                 "exchange_status": status,
                 "requires_reconciliation": False,
+                **({"audit_persisted": True} if state != "EXTERNALIZED" and recovery_audit else {}),
             }
 
         # Only a confirmed zero-fill terminal order that is absent from the
@@ -1716,14 +1732,21 @@ class BinanceFuturesTestnet:
                     "requires_reconciliation": True,
                 }
             try:
-                result = self._risk_ledger.transition(
-                    client_order_id, "RELEASED",
-                    detail=(
-                        "confirmed_terminal: zero-fill terminal order absent "
-                        f"from open-order snapshot; symbol={symbol}; status={status}; "
-                        f"exchange_order_id={order['exchange_order_id']}"
-                    ),
+                transition_detail = (
+                    "confirmed_terminal: zero-fill terminal order absent "
+                    f"from open-order snapshot; symbol={symbol}; status={status}; "
+                    f"exchange_order_id={order['exchange_order_id']}"
                 )
+                if recovery_audit:
+                    result = self._risk_ledger.transition_with_recovery_audit(
+                        client_order_id, "RELEASED", detail=transition_detail,
+                        symbol=symbol, outcome="ok",
+                        reason="zero_fill_terminal_order_confirmed",
+                    )
+                else:
+                    result = self._risk_ledger.transition(
+                        client_order_id, "RELEASED", detail=transition_detail
+                    )
             except RiskLedgerError as exc:
                 return {
                     "ok": False,
@@ -1746,6 +1769,7 @@ class BinanceFuturesTestnet:
                 "state": "RELEASED",
                 "exchange_status": status,
                 "requires_reconciliation": False,
+                **({"audit_persisted": True} if recovery_audit else {}),
             }
 
         return {
