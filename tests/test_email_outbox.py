@@ -96,6 +96,21 @@ class EmailOutboxTests(unittest.TestCase):
         row = self.outbox.list_recent()[0]
         self.assertNotIn("smtp_password", row)
         self.assertEqual(row["event"], "ENTRY_CONFIRMED")
+        import sqlite3
+        with sqlite3.connect(self.path) as db:
+            raw_payload = db.execute("SELECT event_json FROM email_outbox").fetchone()[0]
+        self.assertNotIn("never-store-this", raw_payload)
+        self.assertNotIn("smtp_password", raw_payload)
+
+    def test_outbox_persists_only_allowlisted_signal_fields(self):
+        event = {**self.event(), "smtp_user": "private-user", "custom_headers": {"Authorization": "secret"}}
+        self.assertTrue(self.outbox.enqueue(event, now=100))
+        import sqlite3
+        with sqlite3.connect(self.path) as db:
+            raw_payload = db.execute("SELECT event_json FROM email_outbox").fetchone()[0]
+        self.assertIn("BTCUSDT", raw_payload)
+        self.assertNotIn("private-user", raw_payload)
+        self.assertNotIn("Authorization", raw_payload)
 
 
 if __name__ == "__main__":
