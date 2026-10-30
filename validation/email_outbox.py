@@ -15,6 +15,12 @@ from typing import Mapping
 
 
 class EmailOutbox:
+    # Persist only fields needed to render an informational signal email.
+    # Arbitrary caller metadata (credentials, headers, SMTP settings) is discarded.
+    EVENT_FIELDS = frozenset({
+        "event_id", "event", "symbol", "direction", "price", "entry", "sl",
+        "tp1", "tp2", "level", "score", "signal_time",
+    })
     def __init__(self, path: str | os.PathLike | None = None, *, max_attempts: int = 5,
                  lease_seconds: int = 120, retry_base_seconds: int = 30,
                  retry_max_seconds: int = 1800):
@@ -62,7 +68,8 @@ class EmailOutbox:
     def enqueue(self, event: Mapping, *, now: float | None = None) -> bool:
         event_id = self._event_id(event)
         timestamp = time.time() if now is None else float(now)
-        payload = json.dumps(dict(event), sort_keys=True, separators=(",", ":"), allow_nan=False)
+        safe_event = {key: value for key, value in event.items() if key in self.EVENT_FIELDS}
+        payload = json.dumps(safe_event, sort_keys=True, separators=(",", ":"), allow_nan=False)
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             cursor = db.execute("""
