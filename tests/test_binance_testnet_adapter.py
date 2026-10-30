@@ -3296,12 +3296,19 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
             detail="confirmed_snapshot: open order was visible in prior reconciliation",
         )
 
-        result = adapter.reconcile_testnet_entry_reservation("BTCUSDT", order_id)
+        result = adapter.reconcile_testnet_entry_reservation(
+            "BTCUSDT", order_id, recovery_audit=True
+        )
         self.assertTrue(result["ok"], result)
+        self.assertTrue(result["audit_persisted"])
         self.assertEqual(result["reason"], "zero_fill_terminal_order_confirmed")
         self.assertEqual(result["state"], "RELEASED")
         self.assertEqual(ledger.get(order_id)["state"], "RELEASED")
         self.assertEqual(ledger.active_reserved_notional(), "0")
+        audit = ledger.list_recovery_audit(limit=1)
+        self.assertEqual(audit[0]["order_id"], order_id)
+        self.assertEqual(audit[0]["state_before"], "EXTERNALIZED")
+        self.assertEqual(audit[0]["reason"], "zero_fill_terminal_order_confirmed")
         self.assertEqual(client.calls, [])
 
     def test_reconcile_zero_fill_terminal_order_releases_only_when_absent_from_open_snapshot(self):
