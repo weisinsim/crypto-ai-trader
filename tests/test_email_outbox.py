@@ -89,7 +89,7 @@ class EmailOutboxTests(unittest.TestCase):
 
     def test_invalid_event_json_values_are_rejected(self):
         with self.assertRaises(ValueError):
-            self.outbox.enqueue({**self.event(), "bad": float("nan")}, now=100)
+            self.outbox.enqueue({**self.event(), "price": float("nan")}, now=100)
 
     def test_history_does_not_expose_event_payload_secrets(self):
         self.outbox.enqueue({**self.event(), "smtp_password": "never-store-this"}, now=100)
