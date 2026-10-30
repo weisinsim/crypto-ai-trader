@@ -374,11 +374,10 @@ async def email_exit_monitor_loop():
             stop_hit = price <= stop if long_side else price >= stop
             if stop_hit:
                 row["confirmed_status"] = "EXIT_STOP_LOSS"
-                queue_email_alert({
-                    "event_id": f"{symbol}:{row.get('confirmed_signal_time')}:STOP_LOSS",
-                    "event": "STOP_LOSS", "symbol": symbol, "direction": state,
-                    "price": price, "level": stop, "signal_time": row.get("confirmed_signal_time"),
-                })
+                queue_email_alert(build_signal_notification_event(
+                    "STOP_LOSS", symbol=symbol, direction=state,
+                    signal_time=row.get("confirmed_signal_time"), price=price, level=stop,
+                ))
                 confirmed_state[symbol] = "NO-TRADE"
                 continue
             flags = email_exit_state[symbol]
