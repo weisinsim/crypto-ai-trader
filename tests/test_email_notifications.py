@@ -1,7 +1,7 @@
 import unittest
 from email.message import EmailMessage
 
-from validation.email_notifications import build_alert_message, send_email_alert
+from validation.email_notifications import build_alert_message, notification_config, send_email_alert
 
 
 class FakeSMTP:
@@ -41,7 +41,7 @@ class EmailNotificationTests(unittest.TestCase):
         self.assertIn("Take profit 2: 67000", body)
         self.assertIn("No order has been placed", body)
 
-    def test_missing_smtp_configuration_does_not_attempt_network(self):
+    def test_default_recipients_are_both_configured_addresses(self):\n        config = notification_config({})\n        self.assertEqual(config["recipients"], ["wei_sin_sim@hotmail.com", "weisinsim2018@gmail.com"])\n        self.assertEqual(config["status"], "NOT_CONFIGURED")\n\n    def test_multiple_recipients_are_sent_in_one_message(self):\n        instances = []\n        def factory(host, port, timeout):\n            client = FakeSMTP(host, port, timeout)\n            instances.append(client)\n            return client\n        env = {"SMTP_HOST":"smtp.example.com", "SMTP_USER":"bot@example.com", "SMTP_PASSWORD":"secret"}\n        self.assertTrue(send_email_alert({"event":"ENTRY_CONFIRMED"}, environ=env, smtp_factory=factory))\n        self.assertEqual(instances[0].message["To"], "wei_sin_sim@hotmail.com, weisinsim2018@gmail.com")\n\n    def test_missing_smtp_configuration_does_not_attempt_network(self):
         self.assertFalse(send_email_alert({"event": "STOP_LOSS"}, environ={}))
 
     def test_send_uses_starttls_and_environment_credentials(self):
