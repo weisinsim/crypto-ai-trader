@@ -7,7 +7,7 @@ from validation.dashboard_health import build_health_payload
 from validation.signal_confirmation import invalidate_stale_confirmation
 from validation.xrp_model import evaluate_xrp_signal
 from research.v12_hybrid_engine import evaluate_hybrid, MODEL_VERSION as HYBRID_MODEL_VERSION
-from validation.email_notifications import send_email_alert
+from validation.email_notifications import send_email_alert, notification_config
 from pathlib import Path
 
 import httpx
@@ -118,7 +118,7 @@ async def health():
     source = diagnostics["rest_source"] or diagnostics["ws_source"] or diagnostics["fallback_source"]
     return build_health_payload(now, cache, SYMBOLS, market_status["status"], source)
 
-@app.get("/api/debug")
+@app.get("/api/notifications")\nasync def notifications():\n    config = notification_config()\n    return {**config, "delivery_status": diagnostics.get("email_alert_status", config["status"]),\n            "signal_only": True, "automatic_orders": False}\n\n@app.get("/api/debug")
 async def debug():
     now = time.time()
     return {
