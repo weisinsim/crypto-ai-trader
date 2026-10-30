@@ -3296,6 +3296,25 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
             detail="confirmed_snapshot: open order was visible in prior reconciliation",
         )
 
+        with sqlite3.connect(ledger.path) as connection:
+            connection.execute("""
+                CREATE TRIGGER reject_terminal_recovery_audit
+                BEFORE INSERT ON recovery_audit
+                BEGIN
+                    SELECT RAISE(ABORT, 'injected adapter audit failure');
+                END
+            """)
+        failed = adapter.reconcile_testnet_entry_reservation(
+            "BTCUSDT", order_id, recovery_audit=True
+        )
+        self.assertFalse(failed["ok"])
+        self.assertEqual(failed["reason"], "risk_ledger_release_failed")
+        self.assertEqual(ledger.get(order_id)["state"], "EXTERNALIZED")
+        self.assertEqual(ledger.active_reserved_notional(), "50")
+        self.assertEqual(ledger.list_recovery_audit(limit=10), [])
+        with sqlite3.connect(ledger.path) as connection:
+            connection.execute("DROP TRIGGER reject_terminal_recovery_audit")
+
         result = adapter.reconcile_testnet_entry_reservation(
             "BTCUSDT", order_id, recovery_audit=True
         )
