@@ -426,5 +426,36 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
         )
         self.assertEqual(self.ledger.active_reserved_notional(), "1001")
 
+    def test_concurrent_recovery_release_audit_distinguishes_idempotent_worker(self):
+        self.assertTrue(self.ledger.reserve("parallel-recovery-release", "23", "0", "100")["ok"])
+        self.assertTrue(self.ledger.transition("parallel-recovery-release", "SUBMITTING")["ok"])
+        self.assertTrue(self.ledger.transition(
+            "parallel-recovery-release", "UNKNOWN", detail="ambiguous POST; reconcile"
+        )["ok"])
+        other = SQLiteRiskLedger(self.db_path)
+
+        def release(ledger):
+            return ledger.transition_with_recovery_audit(
+                "parallel-recovery-release", "RELEASED",
+                detail="confirmed_terminal: zero-fill terminal order absent from snapshot",
+                symbol="BTCUSDT", outcome="ok",
+                reason="zero_fill_terminal_order_confirmed",
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(release, (self.ledger, other)))
+
+        self.assertTrue(all(result["ok"] is True for result in results))
+        self.assertTrue(all(result["audit_persisted"] is True for result in results))
+        self.assertEqual(self.ledger.get("parallel-recovery-release")["state"], "RELEASED")
+        self.assertEqual(self.ledger.active_reserved_notional(), "0")
+        events = self.ledger.list_recovery_audit(limit=10)
+        self.assertEqual(len(events), 2)
+        self.assertEqual(sorted(event["outcome"] for event in events), ["ok", "unchanged"])
+        unchanged = [event for event in events if event["outcome"] == "unchanged"]
+        self.assertEqual(len(unchanged), 1)
+        self.assertEqual(unchanged[0]["state_before"], "RELEASED")
+        self.assertEqual(unchanged[0]["reason"], "concurrent_recovery_already_completed")
+
 if __name__ == "__main__":
     unittest.main()
