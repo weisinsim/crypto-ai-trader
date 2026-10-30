@@ -1,6 +1,7 @@
 """Regression tests for durable SQLite risk reservations."""
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+import sqlite3
 import tempfile
 import unittest
 
@@ -208,6 +209,17 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
         self.assertEqual(row["state"], "RESERVED")
         self.assertEqual(row["notional_usdt"], "12.5")
 
+    def test_transition_rejects_non_string_state_without_type_error(self):
+        order_id = "ledger-invalid-state-type-01"
+        self.assertTrue(self.ledger.reserve(order_id, "50", "0", "100")["ok"])
+        for invalid_state in (None, [], {}, 1):
+            with self.subTest(invalid_state=invalid_state):
+                with self.assertRaisesRegex(RiskLedgerError, "invalid_reservation_state"):
+                    self.ledger.transition(order_id, invalid_state)
+        reservation = self.ledger.get(order_id)
+        self.assertEqual(reservation["state"], "RESERVED")
+        self.assertEqual(self.ledger.active_reserved_notional(), "50")
+
     def test_invalid_state_transition_does_not_release_reservation(self):
         self.ledger.reserve("state-1", "20", "0", "100")
         result = self.ledger.transition("state-1", "EXTERNALIZED")
@@ -228,6 +240,53 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
         self.assertEqual([row["state"] for row in rows], ["UNKNOWN", "RESERVED"])
         self.assertEqual(self.ledger.active_reserved_notional(), "25")
         self.assertEqual(self.ledger.get("eventually-released")["state"], "RELEASED")
+
+    def test_transition_with_recovery_audit_commits_state_and_event_together(self):
+        self.assertTrue(self.ledger.reserve("atomic-audit-success", "12", "0", "100")["ok"])
+        result = self.ledger.transition_with_recovery_audit(
+            "atomic-audit-success", "RELEASED",
+            detail="confirmed_pre_submit: test proves no POST began",
+            symbol="BTCUSDT", outcome="ok", reason="zero_submit_confirmed",
+        )
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["audit_persisted"])
+        self.assertEqual(self.ledger.get("atomic-audit-success")["state"], "RELEASED")
+        events = self.ledger.list_recovery_audit(limit=10)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["state_before"], "RESERVED")
+        self.assertEqual(events[0]["outcome"], "ok")
+
+    def test_transition_with_recovery_audit_rolls_back_state_when_audit_insert_fails(self):
+        self.assertTrue(self.ledger.reserve("atomic-audit-rollback", "17", "0", "100")["ok"])
+        with sqlite3.connect(self.db_path) as connection:
+            connection.execute("""
+                CREATE TRIGGER reject_recovery_audit
+                BEFORE INSERT ON recovery_audit
+                BEGIN
+                    SELECT RAISE(ABORT, 'injected audit insert failure');
+                END
+            """)
+        with self.assertRaisesRegex(RiskLedgerError, "risk_ledger_transition_audit_failed"):
+            self.ledger.transition_with_recovery_audit(
+                "atomic-audit-rollback", "RELEASED",
+                detail="confirmed_pre_submit: test proves no POST began",
+                symbol="BTCUSDT", outcome="ok", reason="zero_submit_confirmed",
+            )
+        self.assertEqual(self.ledger.get("atomic-audit-rollback")["state"], "RESERVED")
+        self.assertEqual(self.ledger.active_reserved_notional(), "17")
+        self.assertEqual(self.ledger.list_recovery_audit(limit=10), [])
+
+    def test_transition_with_recovery_audit_does_not_audit_rejected_transition(self):
+        self.assertTrue(self.ledger.reserve("atomic-audit-rejected", "9", "0", "100")["ok"])
+        result = self.ledger.transition_with_recovery_audit(
+            "atomic-audit-rejected", "RELEASED",
+            detail="not independently confirmed",
+            symbol="BTCUSDT", outcome="ok", reason="should_not_be_written",
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "reserved_release_requires_pre_submit_confirmation")
+        self.assertEqual(self.ledger.get("atomic-audit-rejected")["state"], "RESERVED")
+        self.assertEqual(self.ledger.list_recovery_audit(limit=10), [])
 
     def test_recovery_audit_is_durable_append_only_and_bounded(self):
         first = self.ledger.record_recovery_audit(
@@ -265,6 +324,138 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
         self.assertEqual(len(self.ledger.list_unresolved(limit=2)), 2)
         self.assertEqual(len(self.ledger.list_unresolved(limit=1)), 1)
 
+
+    def test_transition_fails_closed_on_unknown_corrupted_reservation_state(self):
+        # State corruption must not escape as KeyError or permit a lifecycle
+        # transition/release based on an unrecognized persisted state.
+        with sqlite3.connect(self.db_path) as connection:
+            connection.execute("PRAGMA ignore_check_constraints = ON")
+            connection.execute(
+                """INSERT INTO risk_reservations
+                (order_id, notional_usdt, state, created_at, updated_at, detail)
+                VALUES (?, ?, 'CORRUPTED', 1, 1, 'corruption fixture')""",
+                ("transition-corrupted-state", "20"),
+            )
+
+        with self.assertRaisesRegex(RiskLedgerError, "invalid_reservation_state_in_ledger"):
+            self.ledger.transition(
+                "transition-corrupted-state", "RELEASED",
+                detail="confirmed_terminal: must not bypass corrupt state",
+            )
+        with self.assertRaises(RiskLedgerError):
+            self.ledger.list_active_reservations()
+
+    def test_unresolved_inventory_fails_closed_on_unknown_corrupted_reservation_state(self):
+        # Recovery inventory must not silently filter out damaged rows by
+        # querying only recognized active states in SQL.
+        with sqlite3.connect(self.db_path) as connection:
+            connection.execute("PRAGMA ignore_check_constraints = ON")
+            connection.execute(
+                """INSERT INTO risk_reservations
+                (order_id, notional_usdt, state, created_at, updated_at, detail)
+                VALUES (?, ?, 'CORRUPTED', 1, 1, 'corruption fixture')""",
+                ("unresolved-corrupted-state", "20"),
+            )
+
+        with self.assertRaisesRegex(RiskLedgerError, "invalid_reservation_state_in_ledger"):
+            self.ledger.list_unresolved(limit=10)
+
+    def test_reserve_fails_closed_on_unknown_corrupted_reservation_state(self):
+        # Simulate on-disk corruption that bypasses SQLite CHECK constraints.
+        with sqlite3.connect(self.db_path) as connection:
+            connection.execute("PRAGMA ignore_check_constraints = ON")
+            connection.execute(
+                """INSERT INTO risk_reservations
+                (order_id, notional_usdt, state, created_at, updated_at, detail)
+                VALUES (?, ?, 'CORRUPTED', 1, 1, 'corruption fixture')""",
+                ("corrupted-state-reservation", "50"),
+            )
+
+        with self.assertRaises(RiskLedgerError):
+            self.ledger.reserve("must-not-be-created-state", "10", "0", "100")
+        self.assertIsNone(self.ledger.get("must-not-be-created-state"))
+        with self.assertRaises(RiskLedgerError):
+            self.ledger.list_active_reservations()
+        with self.assertRaises(RiskLedgerError):
+            self.ledger.active_reserved_notional()
+
+    def test_reserve_fails_closed_on_corrupted_active_reservation_notional(self):
+        # The database can be damaged or edited outside the API. A negative
+        # active amount must never reduce projected exposure and admit an entry.
+        with sqlite3.connect(self.db_path) as connection:
+            connection.execute(
+                """INSERT INTO risk_reservations
+                (order_id, notional_usdt, state, created_at, updated_at, detail)
+                VALUES (?, ?, 'UNKNOWN', 1, 1, 'corruption fixture')""",
+                ("corrupted-negative-reservation", "-999",),
+            )
+
+        with self.assertRaises(RiskLedgerError):
+            self.ledger.reserve("must-not-be-created", "10", "0", "100")
+        self.assertIsNone(self.ledger.get("must-not-be-created"))
+
+    def test_reserve_fails_closed_on_non_finite_active_reservation_notional(self):
+        with sqlite3.connect(self.db_path) as connection:
+            connection.execute(
+                """INSERT INTO risk_reservations
+                (order_id, notional_usdt, state, created_at, updated_at, detail)
+                VALUES (?, ?, 'UNKNOWN', 1, 1, 'corruption fixture')""",
+                ("corrupted-nan-reservation", "NaN",),
+            )
+
+        with self.assertRaises(RiskLedgerError):
+            self.ledger.reserve("must-not-be-created-nan", "10", "0", "100")
+        self.assertIsNone(self.ledger.get("must-not-be-created-nan"))
+
+    def test_active_reservation_inventory_is_complete_beyond_recovery_page_limit(self):
+        # Recovery listing is intentionally bounded; account-cap inventory
+        # must not inherit that limit or silently omit active risk.
+        for index in range(1001):
+            result = self.ledger.reserve(
+                f"inventory-order-{index:04d}", "1", "0", "2000"
+            )
+            self.assertTrue(result["ok"], result)
+
+        bounded = self.ledger.list_unresolved(limit=1000)
+        complete = self.ledger.list_active_reservations()
+        self.assertEqual(len(bounded), 1000)
+        self.assertEqual(len(complete), 1001)
+        self.assertEqual(
+            {row["order_id"] for row in complete},
+            {f"inventory-order-{index:04d}" for index in range(1001)},
+        )
+        self.assertEqual(self.ledger.active_reserved_notional(), "1001")
+
+    def test_concurrent_recovery_release_audit_distinguishes_idempotent_worker(self):
+        self.assertTrue(self.ledger.reserve("parallel-recovery-release", "23", "0", "100")["ok"])
+        self.assertTrue(self.ledger.transition("parallel-recovery-release", "SUBMITTING")["ok"])
+        self.assertTrue(self.ledger.transition(
+            "parallel-recovery-release", "UNKNOWN", detail="ambiguous POST; reconcile"
+        )["ok"])
+        other = SQLiteRiskLedger(self.db_path)
+
+        def release(ledger):
+            return ledger.transition_with_recovery_audit(
+                "parallel-recovery-release", "RELEASED",
+                detail="confirmed_terminal: zero-fill terminal order absent from snapshot",
+                symbol="BTCUSDT", outcome="ok",
+                reason="zero_fill_terminal_order_confirmed",
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(release, (self.ledger, other)))
+
+        self.assertTrue(all(result["ok"] is True for result in results))
+        self.assertTrue(all(result["audit_persisted"] is True for result in results))
+        self.assertEqual(self.ledger.get("parallel-recovery-release")["state"], "RELEASED")
+        self.assertEqual(self.ledger.active_reserved_notional(), "0")
+        events = self.ledger.list_recovery_audit(limit=10)
+        self.assertEqual(len(events), 2)
+        self.assertEqual(sorted(event["outcome"] for event in events), ["ok", "unchanged"])
+        unchanged = [event for event in events if event["outcome"] == "unchanged"]
+        self.assertEqual(len(unchanged), 1)
+        self.assertEqual(unchanged[0]["state_before"], "RELEASED")
+        self.assertEqual(unchanged[0]["reason"], "concurrent_recovery_already_completed")
 
 if __name__ == "__main__":
     unittest.main()
