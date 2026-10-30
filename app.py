@@ -420,12 +420,10 @@ def record_confirmed_signal(s, candle_close_ms=None):
     if prev == "NO-TRADE":
         confirmed_state[s] = "NO-TRADE"
         if previous_direction in ("LONG", "SHORT"):
-            queue_email_alert({
-                "event_id": f"{s}:{ts_ms}:SIGNAL_INVALIDATED",
-                "event": "SIGNAL_INVALIDATED", "symbol": s,
-                "direction": previous_direction, "price": cache[s].get("price"),
-                "level": None, "signal_time": ts_ms,
-            })
+            queue_email_alert(build_signal_notification_event(
+                "SIGNAL_INVALIDATED", symbol=s, direction=previous_direction,
+                signal_time=ts_ms, price=cache[s].get("price"),
+            ))
 
     # Only independently validated candidate/frozen models may become executable confirmations.
     cfg = MODEL_LIBRARY.get(s, {})
