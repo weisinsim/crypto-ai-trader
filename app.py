@@ -8,6 +8,7 @@ from validation.signal_confirmation import invalidate_stale_confirmation
 from validation.xrp_model import evaluate_xrp_signal
 from research.v12_hybrid_engine import evaluate_hybrid, MODEL_VERSION as HYBRID_MODEL_VERSION
 from validation.email_notifications import send_email_alert, notification_config
+from validation.email_outbox import EmailOutbox
 from pathlib import Path
 
 import httpx
@@ -61,6 +62,8 @@ signal_history = {s: [] for s in SYMBOLS}
 confirmed_state = {s: "NO-TRADE" for s in SYMBOLS}
 email_exit_state = {s: {"tp1_sent": False, "tp2_sent": False} for s in SYMBOLS}
 http_client = None
+email_outbox = None
+email_outbox_task = None
 
 MODEL_NAME = "Crypto AI Trader Multi-Asset Adaptive"
 MODEL_VERSION = "V28.4-V12 Adaptive Hybrid Research + Closed-Candle Freshness Gate"
@@ -121,7 +124,12 @@ async def health():
 @app.get("/api/notifications")
 async def notifications():
     config = notification_config()
+    history = email_outbox.list_recent(limit=30) if email_outbox is not None else []
+    counts = {}
+    for item in history:
+        counts[item["status"]] = counts.get(item["status"], 0) + 1
     return {**config, "delivery_status": diagnostics.get("email_alert_status", config["status"]),
+            "history": history, "history_counts": counts,
             "signal_only": True, "automatic_orders": False}
 
 @app.get("/api/debug")
@@ -304,18 +312,67 @@ def closed_series_rows(s, interval, now_ms=None):
     return filter_closed_candles(series[s][interval], interval, now_ms)
 
 def queue_email_alert(event):
-    """Send email outside the market-data event loop; missing SMTP config is fail-closed."""
-    async def _send():
-        try:
-            sent = await asyncio.to_thread(send_email_alert, event)
-            diagnostics["email_alert_status"] = "SENT_TO_SMTP" if sent else "NOT_CONFIGURED"
-        except Exception as exc:
-            log_error("EMAIL ALERT", exc)
-            diagnostics["email_alert_status"] = "FAILED"
+    """Persist signal notifications before waking the asynchronous SMTP dispatcher."""
+    global email_outbox
     try:
-        asyncio.get_running_loop().create_task(_send())
-    except RuntimeError:
-        diagnostics["email_alert_status"] = "NO_EVENT_LOOP"
+        if email_outbox is None:
+            email_outbox = EmailOutbox()
+        inserted = email_outbox.enqueue(event)
+        if inserted:
+            diagnostics["email_alert_status"] = "QUEUED"
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(dispatch_email_outbox_once())
+        except RuntimeError:
+            diagnostics["email_alert_status"] = "QUEUED_NO_EVENT_LOOP"
+        return inserted
+    except Exception as exc:
+        log_error("EMAIL OUTBOX ENQUEUE", exc)
+        diagnostics["email_alert_status"] = "QUEUE_FAILED"
+        return False
+
+
+async def dispatch_email_outbox_once():
+    """Claim and send a bounded batch; SMTP runs outside SQLite transactions."""
+    if email_outbox is None:
+        return
+    if not notification_config().get("configured"):
+        diagnostics["email_alert_status"] = "NOT_CONFIGURED"
+        return
+    try:
+        claimed = email_outbox.claim_due(limit=10)
+    except Exception as exc:
+        log_error("EMAIL OUTBOX CLAIM", exc)
+        diagnostics["email_alert_status"] = "QUEUE_FAILED"
+        return
+    for item in claimed:
+        try:
+            accepted = await asyncio.to_thread(send_email_alert, item["event"])
+            if accepted:
+                if email_outbox.mark_sent(item["event_id"], item["lease_token"]):
+                    diagnostics["email_alert_status"] = "SENT_TO_SMTP"
+                else:
+                    diagnostics["email_alert_status"] = "DELIVERY_STATE_UNKNOWN"
+            else:
+                email_outbox.mark_failed(item["event_id"], item["lease_token"],
+                                         "SMTP configuration unavailable")
+                diagnostics["email_alert_status"] = "NOT_CONFIGURED"
+        except Exception as exc:
+            # Store a bounded error string; never log SMTP credentials or message bodies.
+            error = f"{type(exc).__name__}: {str(exc)[:350]}"
+            try:
+                email_outbox.mark_failed(item["event_id"], item["lease_token"], error)
+            except Exception as ledger_exc:
+                log_error("EMAIL OUTBOX UPDATE", ledger_exc)
+            log_error("EMAIL ALERT", error)
+            diagnostics["email_alert_status"] = "FAILED"
+
+
+async def email_outbox_worker():
+    """Poll durable pending events so retries survive process restarts."""
+    while True:
+        await dispatch_email_outbox_once()
+        await asyncio.sleep(5)
 
 
 async def email_exit_monitor_loop():
@@ -835,7 +892,10 @@ async def startup():
     asyncio.create_task(price_rest_fallback())
     asyncio.create_task(bybit_ticker_fallback())
     asyncio.create_task(metrics_loop())
+    global email_outbox, email_outbox_task
+    email_outbox = EmailOutbox()
     asyncio.create_task(email_exit_monitor_loop())
+    email_outbox_task = asyncio.create_task(email_outbox_worker())
 
 @app.on_event("shutdown")
 async def shutdown():
