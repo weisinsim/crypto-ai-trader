@@ -1857,6 +1857,86 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                 finally:
                     os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"] = original_path
 
+    def test_process_crash_after_exchange_acceptance_recovers_without_resubmission(self):
+        order_id = "crash-after-acceptance-01"
+        ledger_path = os.environ["CRYPTO_TESTNET_RISK_LEDGER_PATH"]
+        exchange_order = {
+            "symbol": "BTCUSDT", "clientOrderId": order_id, "side": "BUY",
+            "orderId": 987654, "status": "NEW", "origQty": "0.5",
+            "executedQty": "0", "avgPrice": "0",
+        }
+        open_order = {
+            "orderId": 987654, "symbol": "BTCUSDT", "clientOrderId": order_id,
+            "side": "BUY", "type": "MARKET", "status": "NEW",
+            "reduceOnly": False, "stopPrice": "0", "origQty": "0.5",
+            "executedQty": "0",
+        }
+
+        class CrashAfterExchangeAcceptanceClient(FakeClient):
+            def post(self, path, params):
+                self.calls.append((path, params))
+                if path == "/fapi/v1/order":
+                    # The exchange has accepted the order, but the process dies
+                    # before it can parse the response or persist a new state.
+                    raise SystemExit("simulated abrupt process termination")
+                return super().post(path, params)
+
+        crashing_client = CrashAfterExchangeAcceptanceClient()
+        crashing_adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=crashing_client
+        )
+        with self.assertRaisesRegex(SystemExit, "simulated abrupt process termination"):
+            crashing_adapter.submit_testnet_market_order(
+                self.intent(), order_id, ExecutionConfig(mode="testnet")
+            )
+
+        # Reconstruct the adapter as if the process restarted. The durable
+        # state remains SUBMITTING, while the exchange has the accepted order.
+        reopened_ledger = SQLiteRiskLedger(ledger_path)
+        reservation = reopened_ledger.get(order_id)
+        self.assertEqual(reservation["state"], "SUBMITTING")
+        self.assertGreater(float(reservation["notional_usdt"]), 0.0)
+        self.assertEqual(len(crashing_client.calls), 1)
+
+        class RestartedExchangeViewClient(FakeClient):
+            def get(self, path, params):
+                self.get_calls.append((path, params))
+                if path == "/fapi/v1/order":
+                    return FakeResponse(exchange_order)
+                if path == "/fapi/v2/account":
+                    return FakeResponse({"canTrade": True, "positions": [
+                        {"symbol": "BTCUSDT", "positionAmt": "0", "entryPrice": "0", "notional": "0"}
+                    ]})
+                if path == "/fapi/v1/openOrders":
+                    return FakeResponse([open_order])
+                return super().get(path, params)
+
+        restarted_client = RestartedExchangeViewClient()
+        restarted_adapter = BinanceFuturesTestnet(
+            api_key="test-key", api_secret="test-secret", client=restarted_client
+        )
+        recovered = restarted_adapter.reconcile_testnet_entry_reservation(
+            "BTCUSDT", order_id, recovery_audit=True
+        )
+        self.assertTrue(recovered["ok"], recovered)
+        self.assertEqual(recovered["state"], "EXTERNALIZED")
+        self.assertTrue(recovered["audit_persisted"])
+        self.assertEqual(restarted_adapter._risk_ledger.get(order_id)["state"], "EXTERNALIZED")
+        self.assertGreater(
+            float(restarted_adapter._risk_ledger.active_reserved_notional()), 0.0
+        )
+        self.assertEqual(
+            [path for path, _ in restarted_client.calls], []
+        )
+        self.assertEqual(
+            [path for path, _ in restarted_client.get_calls],
+            ["/fapi/v1/order", "/fapi/v2/account", "/fapi/v1/openOrders"],
+        )
+        audit = restarted_adapter._risk_ledger.list_recovery_audit(limit=10)
+        self.assertEqual(len(audit), 1)
+        self.assertEqual(audit[0]["outcome"], "ok")
+        self.assertEqual(audit[0]["reason"], "open_entry_order_confirmed_external")
+
     def test_market_order_timeout_is_ambiguous_and_never_retried(self):
         class TimeoutClient(FakeClient):
             def post(self, path, params):
