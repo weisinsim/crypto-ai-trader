@@ -385,11 +385,10 @@ async def email_exit_monitor_loop():
                 hit1 = price >= tp1 if long_side else price <= tp1
                 if hit1 and not flags["tp1_sent"]:
                     flags["tp1_sent"] = True
-                    queue_email_alert({
-                        "event_id": f"{symbol}:{row.get('confirmed_signal_time')}:TP1",
-                        "event": "TAKE_PROFIT_1", "symbol": symbol, "direction": state,
-                        "price": price, "level": tp1, "signal_time": row.get("confirmed_signal_time"),
-                    })
+                    queue_email_alert(build_signal_notification_event(
+                        "TAKE_PROFIT_1", symbol=symbol, direction=state,
+                        signal_time=row.get("confirmed_signal_time"), price=price, level=tp1,
+                    ))
             if isinstance(tp2, (int, float)) and math.isfinite(tp2):
                 hit2 = price >= tp2 if long_side else price <= tp2
                 if hit2 and not flags["tp2_sent"]:
