@@ -70,7 +70,7 @@ Configure SMTP only through deployment environment variables (never commit crede
 - `SMTP_PORT`: SMTP port (default `587`).
 - `SMTP_USER` and `SMTP_PASSWORD`: SMTP authentication credentials.
 - `ALERT_EMAIL_FROM`: sender address (defaults to `SMTP_USER`).
-- `ALERT_EMAIL_TO`: destination address.
+- `ALERT_EMAIL_TO`: comma-separated destination addresses; defaults to `wei_sin_sim@hotmail.com` and `weisinsim2018@gmail.com` when omitted. The dashboard displays the active recipients and SMTP configuration/delivery status.
 - `SMTP_USE_SSL=true`: use implicit TLS (typically port 465); otherwise STARTTLS is used.
 - `SMTP_TIMEOUT_SECONDS`: connection timeout (default 10 seconds; maximum 60).
 
