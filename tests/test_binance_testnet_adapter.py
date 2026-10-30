@@ -3304,9 +3304,12 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
                     SELECT RAISE(ABORT, 'injected adapter audit failure');
                 END
             """)
-        failed = adapter.reconcile_testnet_entry_reservation(
-            "BTCUSDT", order_id, recovery_audit=True
+        failed_sweep = adapter.reconcile_unresolved_testnet_entry_reservations(
+            {order_id: "BTCUSDT"}
         )
+        failed = failed_sweep["results"][0]
+        self.assertFalse(failed_sweep["ok"])
+        self.assertEqual(failed_sweep["audit_failures"], 1)
         self.assertFalse(failed["ok"])
         self.assertEqual(failed["reason"], "risk_ledger_release_failed")
         self.assertEqual(ledger.get(order_id)["state"], "EXTERNALIZED")
@@ -3315,10 +3318,12 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         with sqlite3.connect(ledger.path) as connection:
             connection.execute("DROP TRIGGER reject_terminal_recovery_audit")
 
-        result = adapter.reconcile_testnet_entry_reservation(
-            "BTCUSDT", order_id, recovery_audit=True
+        successful_sweep = adapter.reconcile_unresolved_testnet_entry_reservations(
+            {order_id: "BTCUSDT"}
         )
-        self.assertTrue(result["ok"], result)
+        result = successful_sweep["results"][0]
+        self.assertTrue(successful_sweep["ok"], successful_sweep)
+        self.assertEqual(successful_sweep["audit_persisted"], 1)
         self.assertTrue(result["audit_persisted"])
         self.assertEqual(result["reason"], "zero_fill_terminal_order_confirmed")
         self.assertEqual(result["state"], "RELEASED")
