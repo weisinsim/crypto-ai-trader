@@ -17,7 +17,7 @@ h1{font-size:22px;margin:0 0 5px}.sub{font-size:12px;color:#9aa4b2}
 .badge{font-size:11px;font-weight:700;padding:5px 8px;border-radius:8px;white-space:nowrap}.LONG{background:#124d31;color:#67f0a4}.SHORT{background:#5a1721;color:#ff8c98}.WATCH-LONG{background:#675313;color:#ffe17a}.WATCH-SHORT{background:#4a4f57;color:#d8dde5}.NO-TRADE{background:#252c35;color:#9fa8b4}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}.kv{background:#0d131a;border-radius:9px;padding:7px}.k{font-size:10px;color:#7f8997}.v{font-size:12px;margin-top:2px}
 .signal{margin-top:10px;border-top:1px solid #202a35;padding-top:9px}.score{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:12px}.score b{font-size:15px}.decision{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:7px 0;padding:8px 10px;border-radius:9px;background:#0d131a;border:1px solid #27313d;font-size:11px}.decision b{font-size:12px}.decision.wait{border-color:#665a2b}.decision.wait b{color:#ffe17a}.decision.ready{border-color:#245d3f}.decision.ready b{color:#67f0a4}.decision.blocked{border-color:#5b2730}.decision.blocked b{color:#ff8c98}.risk{font-size:10px;color:#8993a1;line-height:1.5}.levels{font-size:11px;color:#b6bfcb;line-height:1.65}
-.toolbar{display:flex;gap:7px;overflow:auto;margin-top:12px}.filter{border:1px solid #27313d;background:#121820;color:#cbd2dc;border-radius:9px;padding:7px 10px;font-size:11px}.filter.active{background:#26313d;color:#fff}
+.emailPanel{margin-top:12px;background:#121820;border:1px solid #344151;border-radius:14px;padding:12px}.emailPanel h2{font-size:14px;margin:0 0 7px}.emailMeta{font-size:11px;color:#aab4c2;line-height:1.7}.emailStatus{font-weight:700}.emailStatus.ok{color:#67f0a4}.emailStatus.off{color:#ffe17a}.emailStatus.bad{color:#ff8c98}.toolbar{display:flex;gap:7px;overflow:auto;margin-top:12px}.filter{border:1px solid #27313d;background:#121820;color:#cbd2dc;border-radius:9px;padding:7px 10px;font-size:11px}.filter.active{background:#26313d;color:#fff}
 .small{font-size:10px;color:#697482;margin-top:12px}.historyPanel{margin-top:14px}.researchPanel{margin-top:12px;background:#121820;border:1px solid #344151;border-radius:14px;padding:12px}.researchPanel h2{font-size:14px;margin:0 0 6px}.researchPanel .intro{font-size:11px;color:#aab4c2;line-height:1.5}.researchScroll{overflow-x:auto}.researchTable{width:100%;border-collapse:collapse;margin-top:8px;font-size:10px}.researchTable th,.researchTable td{text-align:left;padding:7px 4px;border-top:1px solid #27313d;white-space:nowrap}.researchTable th{color:#8793a3}.researchTable .fail{color:#ff8c98;font-weight:700}.researchLink{display:inline-block;margin-top:8px;color:#8ab4ff;font-size:11px;text-decoration:none}.history{background:#121820;border:1px solid #202a35;border-radius:14px;padding:12px}.history h3{margin:0 0 8px;font-size:14px}.histrow{display:grid;grid-template-columns:74px 70px 1fr 62px;gap:6px;padding:8px 0;border-top:1px solid #202a35;font-size:10px;color:#aeb7c4}.histrow:first-child{border-top:0}.histrow b{color:#eef2f7}.activeSig{color:#67f0a4}.invalidSig{color:#ff8c98}
 @media(min-width:760px){.cards{grid-template-columns:repeat(3,1fr)}}@media(max-width:420px){.cards{grid-template-columns:1fr}.price{font-size:18px}.card{min-width:0}.row{align-items:flex-start}.badge{font-size:10px}}
 </style>
@@ -95,7 +95,7 @@ function setDiag(j){
  const src=(d.find(x=>x.source)||{}).source||"—";
  $("diag").textContent="数据源："+src+" · 价格 "+ready+"/"+d.length+" · 分析 "+analyzed+"/"+d.length;
 }
-function executionState(x){
+async function loadNotificationStatus(){\n try{const r=await fetch("/api/notifications",{cache:"no-store"});const j=await r.json();\n const el=$("emailStatus");const status=j.delivery_status||j.status||"UNKNOWN";\n el.className="emailMeta emailStatus "+(status==="FAILED"?"bad":(j.configured?"ok":"off"));\n el.textContent="状态："+(status==="SENT_TO_SMTP"?"SMTP 已接受最近一封邮件":(j.configured?"SMTP 已配置，等待信号":"未配置 SMTP，邮件暂未启用"));\n $("emailRecipients").textContent="收件人："+(j.recipients||[]).join(" / ");\n }catch(e){$("emailStatus").textContent="通知状态暂时不可用";}\n}\nfunction executionState(x){
  const s=x.confirmed_signal||"NO-TRADE";
  const st=x.confirmed_status||"WAITING";
  if((s==="LONG"||s==="SHORT") && st!=="WAITING") return {cls:"ready",text:s+" · 可执行"};
@@ -152,7 +152,7 @@ function connect(){
  }catch(e){setTimeout(connect,3000)}
 }
 document.querySelectorAll(".filter").forEach(b=>b.onclick=()=>{document.querySelectorAll(".filter").forEach(x=>x.classList.remove("active"));b.classList.add("active");state.filter=b.dataset.f;render()});
-snapshot();connect();setInterval(snapshot,5000);
+snapshot();connect();loadNotificationStatus();setInterval(snapshot,5000);setInterval(loadNotificationStatus,15000);
 </script>
 </body>
 </html>
