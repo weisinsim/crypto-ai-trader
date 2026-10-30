@@ -158,3 +158,36 @@ class EmailOutbox:
                 "last_error": row["last_error"],
             })
         return result
+
+
+async def dispatch_outbox_batch(outbox: EmailOutbox, send_async, *, configured: bool,
+                                limit: int = 10) -> str:
+    """Dispatch a claimed batch using an async sender; suitable for isolated tests."""
+    if not configured:
+        return "NOT_CONFIGURED"
+    try:
+        claimed = outbox.claim_due(limit=limit)
+    except Exception:
+        return "QUEUE_FAILED"
+    if not claimed:
+        return "IDLE"
+    result = "SENT_TO_SMTP"
+    for item in claimed:
+        try:
+            accepted = await send_async(item["event"])
+            if accepted:
+                if not outbox.mark_sent(item["event_id"], item["lease_token"]):
+                    result = "DELIVERY_STATE_UNKNOWN"
+            else:
+                outbox.mark_failed(item["event_id"], item["lease_token"],
+                                   "SMTP sender returned not accepted")
+                result = "FAILED"
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {str(exc)[:350]}"
+            try:
+                outbox.mark_failed(item["event_id"], item["lease_token"], error)
+            except Exception:
+                result = "QUEUE_FAILED"
+                continue
+            result = "FAILED"
+    return result
