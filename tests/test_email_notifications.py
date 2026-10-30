@@ -56,20 +56,10 @@ class EmailNotificationTests(unittest.TestCase):
         self.assertTrue(send_email_alert({"event":"ENTRY_CONFIRMED"}, environ=env, smtp_factory=factory))
         self.assertEqual(instances[0].message["To"], "wei_sin_sim@hotmail.com, weisinsim2018@gmail.com")
 
-    def test_default_recipients_are_both_configured_addresses(self):
-        config = notification_config({})
-        self.assertEqual(config["recipients"], ["wei_sin_sim@hotmail.com", "weisinsim2018@gmail.com"])
-        self.assertEqual(config["status"], "NOT_CONFIGURED")
-
-    def test_multiple_recipients_are_sent_in_one_message(self):
-        instances = []
-        def factory(host, port, timeout):
-            client = FakeSMTP(host, port, timeout)
-            instances.append(client)
-            return client
-        env = {"SMTP_HOST": "smtp.example.com", "SMTP_USER": "bot@example.com", "SMTP_PASSWORD": "secret"}
-        self.assertTrue(send_email_alert({"event": "ENTRY_CONFIRMED"}, environ=env, smtp_factory=factory))
-        self.assertEqual(instances[0].message["To"], "wei_sin_sim@hotmail.com, weisinsim2018@gmail.com")
+    def test_empty_override_recipient_list_is_not_configured(self):
+        config = notification_config({"ALERT_EMAIL_TO": ", ,"})
+        self.assertFalse(config["configured"])
+        self.assertEqual(config["recipients"], [])
 
     def test_missing_smtp_configuration_does_not_attempt_network(self):
         self.assertFalse(send_email_alert({"event": "STOP_LOSS"}, environ={}))
