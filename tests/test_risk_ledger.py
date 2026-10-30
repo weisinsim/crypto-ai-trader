@@ -241,6 +241,53 @@ class SQLiteRiskLedgerTests(unittest.TestCase):
         self.assertEqual(self.ledger.active_reserved_notional(), "25")
         self.assertEqual(self.ledger.get("eventually-released")["state"], "RELEASED")
 
+    def test_transition_with_recovery_audit_commits_state_and_event_together(self):
+        self.assertTrue(self.ledger.reserve("atomic-audit-success", "12", "0", "100")["ok"])
+        result = self.ledger.transition_with_recovery_audit(
+            "atomic-audit-success", "RELEASED",
+            detail="confirmed_pre_submit: test proves no POST began",
+            symbol="BTCUSDT", outcome="ok", reason="zero_submit_confirmed",
+        )
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["audit_persisted"])
+        self.assertEqual(self.ledger.get("atomic-audit-success")["state"], "RELEASED")
+        events = self.ledger.list_recovery_audit(limit=10)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["state_before"], "RESERVED")
+        self.assertEqual(events[0]["outcome"], "ok")
+
+    def test_transition_with_recovery_audit_rolls_back_state_when_audit_insert_fails(self):
+        self.assertTrue(self.ledger.reserve("atomic-audit-rollback", "17", "0", "100")["ok"])
+        with sqlite3.connect(self.db_path) as connection:
+            connection.execute("""
+                CREATE TRIGGER reject_recovery_audit
+                BEFORE INSERT ON recovery_audit
+                BEGIN
+                    SELECT RAISE(ABORT, 'injected audit insert failure');
+                END
+            """)
+        with self.assertRaisesRegex(RiskLedgerError, "risk_ledger_transition_audit_failed"):
+            self.ledger.transition_with_recovery_audit(
+                "atomic-audit-rollback", "RELEASED",
+                detail="confirmed_pre_submit: test proves no POST began",
+                symbol="BTCUSDT", outcome="ok", reason="zero_submit_confirmed",
+            )
+        self.assertEqual(self.ledger.get("atomic-audit-rollback")["state"], "RESERVED")
+        self.assertEqual(self.ledger.active_reserved_notional(), "17")
+        self.assertEqual(self.ledger.list_recovery_audit(limit=10), [])
+
+    def test_transition_with_recovery_audit_does_not_audit_rejected_transition(self):
+        self.assertTrue(self.ledger.reserve("atomic-audit-rejected", "9", "0", "100")["ok"])
+        result = self.ledger.transition_with_recovery_audit(
+            "atomic-audit-rejected", "RELEASED",
+            detail="not independently confirmed",
+            symbol="BTCUSDT", outcome="ok", reason="should_not_be_written",
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "reserved_release_requires_pre_submit_confirmation")
+        self.assertEqual(self.ledger.get("atomic-audit-rejected")["state"], "RESERVED")
+        self.assertEqual(self.ledger.list_recovery_audit(limit=10), [])
+
     def test_recovery_audit_is_durable_append_only_and_bounded(self):
         first = self.ledger.record_recovery_audit(
             order_id="audit-order-1",
