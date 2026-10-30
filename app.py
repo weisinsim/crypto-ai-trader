@@ -457,14 +457,12 @@ def record_confirmed_signal(s, candle_close_ms=None):
 
     if sig in ("LONG", "SHORT"):
         email_exit_state[s] = {"tp1_sent": False, "tp2_sent": False}
-        queue_email_alert({
-            "event_id": f"{s}:{ts_ms}:ENTRY",
-            "event": "ENTRY_CONFIRMED", "symbol": s, "direction": sig,
-            "price": cache[s].get("price"), "entry": cache[s].get("confirmed_entry"),
-            "sl": cache[s].get("confirmed_sl"), "tp1": cache[s].get("confirmed_tp1"),
-            "tp2": cache[s].get("confirmed_tp2"), "score": cache[s].get("confirmed_score"),
-            "signal_time": ts_ms,
-        })
+        queue_email_alert(build_signal_notification_event(
+            "ENTRY_CONFIRMED", symbol=s, direction=sig, signal_time=ts_ms,
+            price=cache[s].get("price"), entry=cache[s].get("confirmed_entry"),
+            sl=cache[s].get("confirmed_sl"), tp1=cache[s].get("confirmed_tp1"),
+            tp2=cache[s].get("confirmed_tp2"), score=cache[s].get("confirmed_score"),
+        ))
         event = {
             "symbol": s, "signal": sig, "signal_time": ts_ms,
             "entry": cache[s].get("entry"), "sl": cache[s].get("sl"),
