@@ -321,6 +321,9 @@ async def email_exit_monitor_loop():
             row = cache[symbol]
             if state not in ("LONG", "SHORT") or row.get("confirmed_status") != "ACTIVE":
                 continue
+            # Do not trigger price-level emails from a stale ticker cache.
+            if not row.get("ts") or time.time() - float(row["ts"]) > 30:
+                continue
             price, stop = row.get("price"), row.get("confirmed_sl")
             tp1, tp2 = row.get("confirmed_tp1"), row.get("confirmed_tp2")
             if not all(isinstance(v, (int, float)) and math.isfinite(v) for v in (price, stop)):
