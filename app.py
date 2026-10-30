@@ -118,7 +118,13 @@ async def health():
     source = diagnostics["rest_source"] or diagnostics["ws_source"] or diagnostics["fallback_source"]
     return build_health_payload(now, cache, SYMBOLS, market_status["status"], source)
 
-@app.get("/api/notifications")\nasync def notifications():\n    config = notification_config()\n    return {**config, "delivery_status": diagnostics.get("email_alert_status", config["status"]),\n            "signal_only": True, "automatic_orders": False}\n\n@app.get("/api/debug")
+@app.get("/api/notifications")
+async def notifications():
+    config = notification_config()
+    return {**config, "delivery_status": diagnostics.get("email_alert_status", config["status"]),
+            "signal_only": True, "automatic_orders": False}
+
+@app.get("/api/debug")
 async def debug():
     now = time.time()
     return {
