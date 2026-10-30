@@ -7,6 +7,7 @@ from validation.dashboard_health import build_health_payload
 from validation.signal_confirmation import invalidate_stale_confirmation
 from validation.xrp_model import evaluate_xrp_signal
 from research.v12_hybrid_engine import evaluate_hybrid, MODEL_VERSION as HYBRID_MODEL_VERSION
+from validation.email_notifications import send_email_alert
 from pathlib import Path
 
 import httpx
@@ -58,6 +59,7 @@ last_analysis = {s: 0 for s in SYMBOLS}
 oi_history = {s: [] for s in SYMBOLS}
 signal_history = {s: [] for s in SYMBOLS}
 confirmed_state = {s: "NO-TRADE" for s in SYMBOLS}
+email_exit_state = {s: {"tp1_sent": False, "tp2_sent": False} for s in SYMBOLS}
 http_client = None
 
 MODEL_NAME = "Crypto AI Trader Multi-Asset Adaptive"
@@ -295,6 +297,69 @@ def closed_series_rows(s, interval, now_ms=None):
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
     return filter_closed_candles(series[s][interval], interval, now_ms)
 
+def queue_email_alert(event):
+    """Send email outside the market-data event loop; missing SMTP config is fail-closed."""
+    async def _send():
+        try:
+            sent = await asyncio.to_thread(send_email_alert, event)
+            if not sent:
+                diagnostics["email_alert_status"] = "NOT_CONFIGURED"
+        except Exception as exc:
+            log_error("EMAIL ALERT", exc)
+            diagnostics["email_alert_status"] = "FAILED"
+    try:
+        asyncio.get_running_loop().create_task(_send())
+    except RuntimeError:
+        diagnostics["email_alert_status"] = "NO_EVENT_LOOP"
+
+
+async def email_exit_monitor_loop():
+    """Notify on signal-level exits; never submits or manages exchange orders."""
+    while True:
+        for symbol in SYMBOLS:
+            state = confirmed_state.get(symbol)
+            row = cache[symbol]
+            if state not in ("LONG", "SHORT") or row.get("confirmed_status") != "ACTIVE":
+                continue
+            price, stop = row.get("price"), row.get("confirmed_sl")
+            tp1, tp2 = row.get("confirmed_tp1"), row.get("confirmed_tp2")
+            if not all(isinstance(v, (int, float)) and math.isfinite(v) for v in (price, stop)):
+                continue
+            long_side = state == "LONG"
+            stop_hit = price <= stop if long_side else price >= stop
+            if stop_hit:
+                row["confirmed_status"] = "EXIT_STOP_LOSS"
+                queue_email_alert({
+                    "event_id": f"{symbol}:{row.get('confirmed_signal_time')}:STOP_LOSS",
+                    "event": "STOP_LOSS", "symbol": symbol, "direction": state,
+                    "price": price, "level": stop, "signal_time": row.get("confirmed_signal_time"),
+                })
+                confirmed_state[symbol] = "NO-TRADE"
+                continue
+            flags = email_exit_state[symbol]
+            if isinstance(tp1, (int, float)) and math.isfinite(tp1):
+                hit1 = price >= tp1 if long_side else price <= tp1
+                if hit1 and not flags["tp1_sent"]:
+                    flags["tp1_sent"] = True
+                    queue_email_alert({
+                        "event_id": f"{symbol}:{row.get('confirmed_signal_time')}:TP1",
+                        "event": "TAKE_PROFIT_1", "symbol": symbol, "direction": state,
+                        "price": price, "level": tp1, "signal_time": row.get("confirmed_signal_time"),
+                    })
+            if isinstance(tp2, (int, float)) and math.isfinite(tp2):
+                hit2 = price >= tp2 if long_side else price <= tp2
+                if hit2 and not flags["tp2_sent"]:
+                    flags["tp2_sent"] = True
+                    row["confirmed_status"] = "EXIT_TAKE_PROFIT_2"
+                    queue_email_alert({
+                        "event_id": f"{symbol}:{row.get('confirmed_signal_time')}:TP2",
+                        "event": "TAKE_PROFIT_2", "symbol": symbol, "direction": state,
+                        "price": price, "level": tp2, "signal_time": row.get("confirmed_signal_time"),
+                    })
+                    confirmed_state[symbol] = "NO-TRADE"
+        await asyncio.sleep(5)
+
+
 def record_confirmed_signal(s, candle_close_ms=None):
     """Freeze the 1H signal at candle close so intrabar flips do not create fake entries."""
     sig = cache[s].get("signal") or "NO-TRADE"
@@ -306,11 +371,19 @@ def record_confirmed_signal(s, candle_close_ms=None):
     # A changed signal invalidates any previously confirmed direction before
     # applying the new model's validation gate. Otherwise a blocked opposite
     # signal can leave a stale LONG/SHORT confirmation displayed as ACTIVE.
+    previous_direction = prev
     prev = invalidate_stale_confirmation(
         prev, sig, cache[s], signal_history[s], ts_ms
     )
     if prev == "NO-TRADE":
         confirmed_state[s] = "NO-TRADE"
+        if previous_direction in ("LONG", "SHORT"):
+            queue_email_alert({
+                "event_id": f"{s}:{ts_ms}:SIGNAL_INVALIDATED",
+                "event": "SIGNAL_INVALIDATED", "symbol": s,
+                "direction": previous_direction, "price": cache[s].get("price"),
+                "level": None, "signal_time": ts_ms,
+            })
 
     # Only independently validated candidate/frozen models may become executable confirmations.
     cfg = MODEL_LIBRARY.get(s, {})
@@ -343,6 +416,15 @@ def record_confirmed_signal(s, candle_close_ms=None):
     cache[s]["confirmed_status"] = "ACTIVE" if sig in ("LONG", "SHORT") else "NO-TRADE"
 
     if sig in ("LONG", "SHORT"):
+        email_exit_state[s] = {"tp1_sent": False, "tp2_sent": False}
+        queue_email_alert({
+            "event_id": f"{s}:{ts_ms}:ENTRY",
+            "event": "ENTRY_CONFIRMED", "symbol": s, "direction": sig,
+            "price": cache[s].get("price"), "entry": cache[s].get("confirmed_entry"),
+            "sl": cache[s].get("confirmed_sl"), "tp1": cache[s].get("confirmed_tp1"),
+            "tp2": cache[s].get("confirmed_tp2"), "score": cache[s].get("confirmed_score"),
+            "signal_time": ts_ms,
+        })
         event = {
             "symbol": s, "signal": sig, "signal_time": ts_ms,
             "entry": cache[s].get("entry"), "sl": cache[s].get("sl"),
@@ -745,6 +827,7 @@ async def startup():
     asyncio.create_task(price_rest_fallback())
     asyncio.create_task(bybit_ticker_fallback())
     asyncio.create_task(metrics_loop())
+    asyncio.create_task(email_exit_monitor_loop())
 
 @app.on_event("shutdown")
 async def shutdown():
