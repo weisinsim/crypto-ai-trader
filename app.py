@@ -302,8 +302,7 @@ def queue_email_alert(event):
     async def _send():
         try:
             sent = await asyncio.to_thread(send_email_alert, event)
-            if not sent:
-                diagnostics["email_alert_status"] = "NOT_CONFIGURED"
+            diagnostics["email_alert_status"] = "SENT_TO_SMTP" if sent else "NOT_CONFIGURED"
         except Exception as exc:
             log_error("EMAIL ALERT", exc)
             diagnostics["email_alert_status"] = "FAILED"
