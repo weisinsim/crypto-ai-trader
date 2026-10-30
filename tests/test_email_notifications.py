@@ -64,7 +64,7 @@ class EmailNotificationTests(unittest.TestCase):
         self.assertTrue(instances[0].started_tls)
         self.assertEqual(instances[0].logged_in, ("bot@example.com", "secret"))
         self.assertIsInstance(instances[0].message, EmailMessage)
-        self.assertIn("Stop loss", instances[0].message.get_content())
+        self.assertIn("Stop-loss level reached", instances[0].message.get_content())
 
     def test_invalid_smtp_port_fails_closed(self):
         env = {
