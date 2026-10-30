@@ -3563,7 +3563,7 @@ class BinanceTestnetAdapterTests(unittest.TestCase):
         adapter = BinanceFuturesTestnet(
             api_key="test-key", api_secret="test-secret", client=FakeClient()
         )
-        adapter.reconcile_testnet_entry_reservation = lambda symbol, client_order_id: None
+        adapter.reconcile_testnet_entry_reservation = lambda symbol, client_order_id, **kwargs: None
 
         result = adapter.reconcile_unresolved_testnet_entry_reservations(
             {"sweep-invalid-result": "BTCUSDT"}
