@@ -96,7 +96,15 @@ function setDiag(j){
  const src=(d.find(x=>x.source)||{}).source||"—";
  $("diag").textContent="数据源："+src+" · 价格 "+ready+"/"+d.length+" · 分析 "+analyzed+"/"+d.length;
 }
-async function loadNotificationStatus(){\n try{const r=await fetch("/api/notifications",{cache:"no-store"});const j=await r.json();\n const el=$("emailStatus");const status=j.delivery_status||j.status||"UNKNOWN";\n el.className="emailMeta emailStatus "+(status==="FAILED"?"bad":(j.configured?"ok":"off"));\n el.textContent="状态："+(status==="SENT_TO_SMTP"?"SMTP 已接受最近一封邮件":(j.configured?"SMTP 已配置，等待信号":"未配置 SMTP，邮件暂未启用"));\n $("emailRecipients").textContent="收件人："+(j.recipients||[]).join(" / ");\n }catch(e){$("emailStatus").textContent="通知状态暂时不可用";}\n}\nfunction executionState(x){
+async function loadNotificationStatus(){
+ try{const r=await fetch("/api/notifications",{cache:"no-store"});const j=await r.json();
+ const el=$("emailStatus");const status=j.delivery_status||j.status||"UNKNOWN";
+ el.className="emailMeta emailStatus "+(status==="FAILED"?"bad":(j.configured?"ok":"off"));
+ el.textContent="状态："+(status==="SENT_TO_SMTP"?"SMTP 已接受最近一封邮件":(j.configured?"SMTP 已配置，等待信号":"未配置 SMTP，邮件暂未启用"));
+ $("emailRecipients").textContent="收件人："+(j.recipients||[]).join(" / ");
+ }catch(e){$("emailStatus").textContent="通知状态暂时不可用";}
+}
+function executionState(x){
  const s=x.confirmed_signal||"NO-TRADE";
  const st=x.confirmed_status||"WAITING";
  if((s==="LONG"||s==="SHORT") && st!=="WAITING") return {cls:"ready",text:s+" · 可执行"};
