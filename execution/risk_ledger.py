@@ -359,9 +359,18 @@ class SQLiteRiskLedger:
                     connection.execute("ROLLBACK")
                     return result
                 state_before = result.get("state_before", result.get("state", ""))
+                # A competing recovery worker may have completed this exact
+                # transition after the caller read the prior state. Record that
+                # idempotent observation distinctly; do not falsely claim this
+                # transaction performed a successful state transition.
+                audit_outcome = outcome
+                audit_reason = reason
+                if result.get("reason") == "state_unchanged":
+                    audit_outcome = "unchanged"
+                    audit_reason = "concurrent_recovery_already_completed"
                 audit = self._insert_recovery_audit_in_transaction(
                     connection, order_id=order_id, symbol=symbol,
-                    state_before=state_before, outcome=outcome, reason=reason,
+                    state_before=state_before, outcome=audit_outcome, reason=audit_reason,
                 )
                 connection.execute("COMMIT")
                 result.pop("state_before", None)
