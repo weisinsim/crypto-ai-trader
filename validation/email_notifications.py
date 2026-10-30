@@ -12,7 +12,7 @@ from email.utils import formatdate
 from typing import Mapping
 
 
-EVENT_LABELS = {
+DEFAULT_ALERT_RECIPIENTS = (\n    "wei_sin_sim@hotmail.com",\n    "weisinsim2018@gmail.com",\n)\n\n\ndef notification_config(environ: Mapping[str, str] | None = None) -> dict:\n    env = os.environ if environ is None else environ\n    configured = all((env.get("SMTP_HOST", "").strip(), env.get("SMTP_PASSWORD", ""),\n                      (env.get("ALERT_EMAIL_FROM", "").strip() or env.get("SMTP_USER", "").strip())))\n    raw = env.get("ALERT_EMAIL_TO", "").strip()\n    recipients = [item.strip() for item in raw.split(",") if item.strip()] if raw else list(DEFAULT_ALERT_RECIPIENTS)\n    return {"configured": bool(configured), "status": "CONFIGURED" if configured else "NOT_CONFIGURED",\n            "recipients": recipients, "events": list(EVENT_LABELS)}\n\n\nEVENT_LABELS = {
     "ENTRY_CONFIRMED": "Confirmed entry signal",
     "TAKE_PROFIT_1": "Take-profit level 1 reached",
     "TAKE_PROFIT_2": "Take-profit level 2 reached",
@@ -21,7 +21,7 @@ EVENT_LABELS = {
 }
 
 
-def build_alert_message(event: Mapping[str, object], *, sender: str, recipient: str) -> EmailMessage:
+def build_alert_message(event: Mapping[str, object], *, sender: str, recipient: str | list[str]) -> EmailMessage:
     event_type = str(event.get("event", "SIGNAL_UPDATE"))
     symbol = str(event.get("symbol", "UNKNOWN"))
     direction = str(event.get("direction", "UNKNOWN"))
@@ -72,7 +72,7 @@ def send_email_alert(
     recipient = env.get("ALERT_EMAIL_TO", "").strip()
     sender = env.get("ALERT_EMAIL_FROM", "").strip() or env.get("SMTP_USER", "").strip()
     password = env.get("SMTP_PASSWORD", "")
-    if not all((host, recipient, sender, password)):
+    if not all((host, sender, password)) or not recipient:
         return False
 
     try:
