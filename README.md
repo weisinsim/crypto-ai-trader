@@ -60,6 +60,22 @@ The snapshot must include exchange health, kill-switch state, confirmed closed-c
 Before enabling exchange execution, separately implement and validate idempotent order handling, exchange position reconciliation, reduce-only protective exits, partial-fill recovery, precision/minimum-notional checks, rate-limit/reconnect handling, persistent kill switch, daily loss stop, and testnet/paper soak with signal/replay parity. Never put API keys in source control.
 
 
+
+### Signal email notifications (manual execution only)
+
+The dashboard can send informational email alerts for a model-confirmed entry, TP1/TP2 level touch, stop-loss level touch, or confirmed-signal invalidation. Exit-level monitoring uses the latest available ticker price and the frozen confirmed signal levels; it does not know whether the operator actually entered a position and does not place, modify, or close orders. Treat these messages as prompts to verify the live market and your own position.
+
+Configure SMTP only through deployment environment variables (never commit credentials):
+- `SMTP_HOST`: SMTP server hostname.
+- `SMTP_PORT`: SMTP port (default `587`).
+- `SMTP_USER` and `SMTP_PASSWORD`: SMTP authentication credentials.
+- `ALERT_EMAIL_FROM`: sender address (defaults to `SMTP_USER`).
+- `ALERT_EMAIL_TO`: destination address.
+- `SMTP_USE_SSL=true`: use implicit TLS (typically port 465); otherwise STARTTLS is used.
+- `SMTP_TIMEOUT_SECONDS`: connection timeout (default 10 seconds; maximum 60).
+
+When SMTP is not configured, email sending is disabled and the app reports `email_alert_status=NOT_CONFIGURED` in diagnostics. SMTP failures are logged; this first implementation does not provide a durable retry queue, so configure and test SMTP before relying on email delivery. Email alerts are emitted only after the existing independent model validation gate permits a confirmed direction; research-only models do not generate actionable entry emails. A successful SMTP send means the mail server accepted the message, not that the recipient inbox delivered or displayed it.
+
 ### Paper order lifecycle
 
 `validation/paper_execution.py` provides an isolated simulator for idempotent order creation, partial/full fills, cancellation and conservative stop/target exits (stop wins when both are touched in one OHLC candle). By default it is in-memory; pass `storage_path="data/paper-ledger.json"` to enable versioned JSON persistence (schema v3) with atomic file replacement, restart recovery, fill-event idempotency via `record_fill(..., fill_id="...")`, and fail-closed handling of unreadable/unknown-schema ledgers. Schema-v1 and schema-v2 ledgers are migrated on the next save; legacy fill-event history is preserved as incomplete because older fills cannot be deduplicated retroactively. Schema v3 records whether a partial order remainder was cancelled, and protective exits remain available for the already-filled exposure after cancellation. Mutations are rolled back in memory if persistence fails. Persistence is intended for a single-process paper test only; it is not a distributed lock, exchange reconciliation mechanism, or production trading ledger. No exchange is contacted and no real orders are placed. Fees, funding, exchange precision and network recovery are not modeled. `validation/paper_reconciliation.py` derives signed and gross exposure from paper ledger orders, including partially filled cancelled orders; it is not a substitute for reconciling authoritative exchange positions. Do not use this in place of a production execution adapter.
