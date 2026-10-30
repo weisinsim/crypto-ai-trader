@@ -251,13 +251,9 @@ class SQLiteRiskLedger:
         except (sqlite3.Error, OSError, InvalidOperation) as exc:
             raise RiskLedgerError("risk_ledger_reservation_failed") from exc
 
-    def transition(self, order_id, new_state, *, detail=""):
-        """Move a reservation forward without automatically releasing risk."""
-        order_id = self._validate_order_id(order_id)
-        if not isinstance(new_state, str) or new_state not in _ALLOWED_STATES:
-            raise RiskLedgerError("invalid_reservation_state")
-        if not isinstance(detail, str) or len(detail) > 500:
-            raise RiskLedgerError("invalid_reservation_detail")
+    @staticmethod
+    def _transition_in_transaction(connection, order_id, new_state, detail):
+        """Apply the reservation state machine inside the caller's write transaction."""
         transitions = {
             "RESERVED": {"SUBMITTING", "RELEASED"},
             "SUBMITTING": {"UNKNOWN", "EXTERNALIZED", "RELEASED"},
@@ -265,80 +261,115 @@ class SQLiteRiskLedger:
             "EXTERNALIZED": {"RELEASED"},
             "RELEASED": set(),
         }
-        now = time.time()
+        if new_state == "SUBMITTING":
+            control = connection.execute(
+                "SELECT kill_switch_active FROM entry_control WHERE singleton_id = 1"
+            ).fetchone()
+            if control is None or control[0] != 0:
+                return {"ok": False, "reason": "operator_kill_switch_active_before_submission"}
+        row = connection.execute(
+            "SELECT state FROM risk_reservations WHERE order_id = ?", (order_id,)
+        ).fetchone()
+        if row is None:
+            return {"ok": False, "reason": "reservation_not_found"}
+        current = row[0]
+        if current not in _ALLOWED_STATES:
+            raise RiskLedgerError("invalid_reservation_state_in_ledger")
+        if new_state == current:
+            return {"ok": True, "reason": "state_unchanged", "state": current}
+        if new_state == "EXTERNALIZED" and current in {"SUBMITTING", "UNKNOWN"}:
+            if not detail.startswith("confirmed_snapshot:"):
+                return {"ok": False, "reason": "externalization_requires_snapshot_confirmation", "state": current}
+        if new_state == "RELEASED" and current == "RESERVED":
+            if not detail.startswith("confirmed_pre_submit:"):
+                return {"ok": False, "reason": "reserved_release_requires_pre_submit_confirmation", "state": current}
+        if new_state == "RELEASED" and current in {"SUBMITTING", "UNKNOWN", "EXTERNALIZED"}:
+            if not detail.startswith("confirmed_terminal:"):
+                return {"ok": False, "reason": "release_requires_terminal_confirmation", "state": current}
+        if new_state not in transitions[current]:
+            return {
+                "ok": False, "reason": "invalid_reservation_transition",
+                "state": current, "requested_state": new_state,
+            }
+        connection.execute(
+            "UPDATE risk_reservations SET state = ?, updated_at = ?, detail = ? WHERE order_id = ?",
+            (new_state, time.time(), detail, order_id),
+        )
+        return {"ok": True, "reason": "state_transitioned", "state": new_state, "state_before": current}
+
+    @staticmethod
+    def _validate_recovery_audit(order_id, symbol, state_before, outcome, reason):
+        SQLiteRiskLedger._validate_order_id(order_id)
+        for value, field, max_length in (
+            (symbol, "symbol", 32),
+            (state_before, "state_before", 32),
+            (outcome, "outcome", 32),
+            (reason, "reason", 200),
+        ):
+            if not isinstance(value, str) or len(value) > max_length:
+                raise RiskLedgerError(f"invalid_recovery_audit_{field}")
+        if not outcome.strip() or not reason.strip():
+            raise RiskLedgerError("invalid_recovery_audit_outcome_or_reason")
+
+    @staticmethod
+    def _insert_recovery_audit_in_transaction(connection, *, order_id, symbol, state_before, outcome, reason):
+        cursor = connection.execute(
+            """INSERT INTO recovery_audit
+            (created_at, order_id, symbol, state_before, outcome, reason)
+            VALUES (?, ?, ?, ?, ?, ?)""",
+            (time.time(), order_id, symbol, state_before, outcome, reason),
+        )
+        return {"ok": True, "audit_id": cursor.lastrowid}
+
+    def transition(self, order_id, new_state, *, detail=""):
+        """Move a reservation forward without automatically releasing risk."""
+        order_id = self._validate_order_id(order_id)
+        if not isinstance(new_state, str) or new_state not in _ALLOWED_STATES:
+            raise RiskLedgerError("invalid_reservation_state")
+        if not isinstance(detail, str) or len(detail) > 500:
+            raise RiskLedgerError("invalid_reservation_detail")
         try:
             with self._connection() as connection:
                 connection.execute("BEGIN IMMEDIATE")
-                # Recheck the persistent kill switch in the same SQLite write
-                # transaction that begins submission. If an operator activates
-                # it after reservation but before this transition, no exchange
-                # POST should follow from this reservation.
-                if new_state == "SUBMITTING":
-                    control = connection.execute(
-                        "SELECT kill_switch_active FROM entry_control WHERE singleton_id = 1"
-                    ).fetchone()
-                    if control is None or control[0] != 0:
-                        connection.execute("ROLLBACK")
-                        return {
-                            "ok": False,
-                            "reason": "operator_kill_switch_active_before_submission",
-                        }
-                row = connection.execute(
-                    "SELECT state FROM risk_reservations WHERE order_id = ?", (order_id,)
-                ).fetchone()
-                if row is None:
+                result = self._transition_in_transaction(connection, order_id, new_state, detail)
+                if not result.get("ok"):
                     connection.execute("ROLLBACK")
-                    return {"ok": False, "reason": "reservation_not_found"}
-                current = row[0]
-                if current not in _ALLOWED_STATES:
-                    connection.execute("ROLLBACK")
-                    raise RiskLedgerError("invalid_reservation_state_in_ledger")
-                if new_state == current:
-                    connection.execute("COMMIT")
-                    return {"ok": True, "reason": "state_unchanged", "state": current}
-                if new_state == "EXTERNALIZED" and current in {"SUBMITTING", "UNKNOWN"}:
-                    if not detail.startswith("confirmed_snapshot:"):
-                        connection.execute("ROLLBACK")
-                        return {
-                            "ok": False,
-                            "reason": "externalization_requires_snapshot_confirmation",
-                            "state": current,
-                        }
-                if new_state == "RELEASED" and current == "RESERVED":
-                    # A RESERVED row may survive a crash around the boundary
-                    # before SUBMITTING is committed. Release only when the
-                    # caller has independently established that no POST began.
-                    if not detail.startswith("confirmed_pre_submit:"):
-                        connection.execute("ROLLBACK")
-                        return {
-                            "ok": False,
-                            "reason": "reserved_release_requires_pre_submit_confirmation",
-                            "state": current,
-                        }
-                if new_state == "RELEASED" and current in {"SUBMITTING", "UNKNOWN", "EXTERNALIZED"}:
-                    if not detail.startswith("confirmed_terminal:"):
-                        connection.execute("ROLLBACK")
-                        return {
-                            "ok": False,
-                            "reason": "release_requires_terminal_confirmation",
-                            "state": current,
-                        }
-                if new_state not in transitions[current]:
-                    connection.execute("ROLLBACK")
-                    return {
-                        "ok": False,
-                        "reason": "invalid_reservation_transition",
-                        "state": current,
-                        "requested_state": new_state,
-                    }
-                connection.execute(
-                    "UPDATE risk_reservations SET state = ?, updated_at = ?, detail = ? WHERE order_id = ?",
-                    (new_state, now, detail, order_id),
-                )
+                    return result
                 connection.execute("COMMIT")
-                return {"ok": True, "reason": "state_transitioned", "state": new_state}
+                result.pop("state_before", None)
+                return result
         except (sqlite3.Error, OSError) as exc:
             raise RiskLedgerError("risk_ledger_transition_failed") from exc
+
+    def transition_with_recovery_audit(
+        self, order_id, new_state, *, detail="", symbol="", outcome="ok", reason
+    ):
+        """Atomically transition a reservation and append its recovery audit event."""
+        order_id = self._validate_order_id(order_id)
+        if not isinstance(new_state, str) or new_state not in _ALLOWED_STATES:
+            raise RiskLedgerError("invalid_reservation_state")
+        if not isinstance(detail, str) or len(detail) > 500:
+            raise RiskLedgerError("invalid_reservation_detail")
+        self._validate_recovery_audit(order_id, symbol, "", outcome, reason)
+        try:
+            with self._connection() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                result = self._transition_in_transaction(connection, order_id, new_state, detail)
+                if not result.get("ok"):
+                    connection.execute("ROLLBACK")
+                    return result
+                state_before = result.get("state_before", result.get("state", ""))
+                audit = self._insert_recovery_audit_in_transaction(
+                    connection, order_id=order_id, symbol=symbol,
+                    state_before=state_before, outcome=outcome, reason=reason,
+                )
+                connection.execute("COMMIT")
+                result.pop("state_before", None)
+                result["audit_persisted"] = True
+                result["audit_id"] = audit["audit_id"]
+                return result
+        except (sqlite3.Error, OSError) as exc:
+            raise RiskLedgerError("risk_ledger_transition_audit_failed") from exc
 
     def get(self, order_id):
         order_id = self._validate_order_id(order_id)
