@@ -9,6 +9,7 @@ from validation.xrp_model import evaluate_xrp_signal
 from research.v12_hybrid_engine import evaluate_hybrid, MODEL_VERSION as HYBRID_MODEL_VERSION
 from validation.email_notifications import send_email_alert, notification_config
 from validation.email_outbox import EmailOutbox, dispatch_outbox_batch
+from validation.signal_notification_events import build_signal_notification_event
 from pathlib import Path
 
 import httpx
