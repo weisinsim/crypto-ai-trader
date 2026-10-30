@@ -41,7 +41,22 @@ class EmailNotificationTests(unittest.TestCase):
         self.assertIn("Take profit 2: 67000", body)
         self.assertIn("No order has been placed", body)
 
-    def test_default_recipients_are_both_configured_addresses(self):\n        config = notification_config({})\n        self.assertEqual(config["recipients"], ["wei_sin_sim@hotmail.com", "weisinsim2018@gmail.com"])\n        self.assertEqual(config["status"], "NOT_CONFIGURED")\n\n    def test_multiple_recipients_are_sent_in_one_message(self):\n        instances = []\n        def factory(host, port, timeout):\n            client = FakeSMTP(host, port, timeout)\n            instances.append(client)\n            return client\n        env = {"SMTP_HOST":"smtp.example.com", "SMTP_USER":"bot@example.com", "SMTP_PASSWORD":"secret"}\n        self.assertTrue(send_email_alert({"event":"ENTRY_CONFIRMED"}, environ=env, smtp_factory=factory))\n        self.assertEqual(instances[0].message["To"], "wei_sin_sim@hotmail.com, weisinsim2018@gmail.com")\n\n    def test_default_recipients_are_both_configured_addresses(self):
+    def test_default_recipients_are_both_configured_addresses(self):
+        config = notification_config({})
+        self.assertEqual(config["recipients"], ["wei_sin_sim@hotmail.com", "weisinsim2018@gmail.com"])
+        self.assertEqual(config["status"], "NOT_CONFIGURED")
+
+    def test_multiple_recipients_are_sent_in_one_message(self):
+        instances = []
+        def factory(host, port, timeout):
+            client = FakeSMTP(host, port, timeout)
+            instances.append(client)
+            return client
+        env = {"SMTP_HOST":"smtp.example.com", "SMTP_USER":"bot@example.com", "SMTP_PASSWORD":"secret"}
+        self.assertTrue(send_email_alert({"event":"ENTRY_CONFIRMED"}, environ=env, smtp_factory=factory))
+        self.assertEqual(instances[0].message["To"], "wei_sin_sim@hotmail.com, weisinsim2018@gmail.com")
+
+    def test_default_recipients_are_both_configured_addresses(self):
         config = notification_config({})
         self.assertEqual(config["recipients"], ["wei_sin_sim@hotmail.com", "weisinsim2018@gmail.com"])
         self.assertEqual(config["status"], "NOT_CONFIGURED")
