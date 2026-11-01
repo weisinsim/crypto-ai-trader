@@ -143,8 +143,12 @@ class EmailOutbox:
         for key, event in events.items():
             if not isinstance(key, str) or not key or len(key) > 160 or not isinstance(event, dict):
                 raise EmailOutboxError("Invalid outbox event; refusing to send")
-            if set(event) != allowed_fields or event.get("event_id") != key:
+            status = event.get("status")
+            expected_fields = allowed_fields | ({"sent_at"} if status == "SENT" else set())
+            if set(event) != expected_fields or event.get("event_id") != key:
                 raise EmailOutboxError("Invalid outbox event schema; refusing to send")
+            if status == "SENT" and not self._finite_number(event.get("sent_at")):
+                raise EmailOutboxError("Invalid sent timestamp; refusing to send")
             recipients = event.get("recipients")
             pending = event.get("pending_recipients")
             if (not isinstance(recipients, list) or not recipients
