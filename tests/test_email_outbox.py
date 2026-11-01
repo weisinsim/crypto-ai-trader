@@ -50,6 +50,14 @@ class EmailOutboxTests(unittest.TestCase):
         with self.assertRaises(EmailConfigurationError):
             EmailConfig.from_env({"ALERT_EMAIL_ENABLED": "true"})
 
+    def test_smtp_credentials_reject_newlines(self):
+        with self.assertRaises(EmailConfigurationError):
+            EmailConfig(
+                enabled=True, host="smtp.example.test", port=587,
+                username="user\\nInjected: yes", password="secret",
+                sender="alerts@example.test", recipients=("one@example.test",),
+            ).validate()
+
     def test_enqueue_is_durable_and_idempotent_across_restart(self):
         self.assertTrue(self.enqueue())
         self.assertFalse(self.enqueue())
@@ -70,7 +78,7 @@ class EmailOutboxTests(unittest.TestCase):
         self.assertEqual(calls[0][1], ["one@example.test", "two@example.test"])
         self.assertEqual(self.outbox.snapshot()["events"]["event-001"]["status"], "SENT")
 
-    def test_failure_is_retried_with_backoff_then_dead_lettered(self):
+    def test_failure_is_retried_with_backoff(self):
         self.enqueue()
         for attempt in range(2):
             result = self.outbox.send_due(
