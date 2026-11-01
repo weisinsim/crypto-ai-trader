@@ -12,10 +12,37 @@ from research.run_backtest import load_funding_csv
 
 
 def _metrics(result):
-    return {key: result[key] for key in (
+    metrics = {key: result[key] for key in (
         "trades", "wins", "losses", "win_rate_pct", "profit_factor",
         "funding_pnl_total", "net_return_pct", "max_drawdown_pct", "equity_final",
     )}
+    trades = result.get("trade_log", [])
+    streak = max_streak = 0
+    for trade in trades:
+        if trade.get("net_pnl", 0) < 0:
+            streak += 1
+            max_streak = max(max_streak, streak)
+        else:
+            streak = 0
+    winners = [trade for trade in trades if trade.get("net_pnl", 0) > 0]
+    losers = [trade for trade in trades if trade.get("net_pnl", 0) < 0]
+    largest_winner = max((trade["net_pnl"] for trade in winners), default=0.0)
+    gross_profit = sum(trade["net_pnl"] for trade in winners)
+    gross_loss = -sum(trade["net_pnl"] for trade in losers)
+    initial_equity = result.get("initial_equity", 1.0)
+    metrics["max_consecutive_losses"] = max_streak
+    metrics["largest_winner_net_pnl"] = round(largest_winner, 10)
+    metrics["winner_removed_net_return_pct"] = round(
+        (result["equity_final"] - initial_equity - largest_winner) / initial_equity * 100, 4
+    )
+    remaining_profit = max(0.0, gross_profit - largest_winner)
+    metrics["winner_removed_profit_factor"] = (
+        round(remaining_profit / gross_loss, 4) if gross_loss else ("INF" if remaining_profit else None)
+    )
+    metrics["winner_removal_method"] = (
+        "mechanical trade-PnL subtraction; subsequent equity-dependent position sizing is not re-simulated"
+    )
+    return metrics
 
 
 def _calibrate_threshold(train_rows, symbol, common):
@@ -386,6 +413,15 @@ def run_v12_validation(rows, symbol, *, holdout_fraction=0.2, folds=4,
             cvd_mode=cvd_mode, **selected_overrides,
         )
         cost_stress[name] = _metrics(result)
+
+    # Exact 0.30% round-trip stress: 0.05% fee + 0.10% slippage per side.
+    stress_030 = run_v12_backtest(
+        holdout_rows, symbol, fee_rate=0.0005, slippage_rate=0.0010,
+        initial_equity=initial_equity, risk_fraction=risk_fraction,
+        max_leverage=max_leverage, funding_events=list(funding_events or []),
+        direction_mode=direction_mode, cvd_mode=cvd_mode, **selected_overrides,
+    )
+    cost_stress["stress_0_30pct_round_trip"] = _metrics(stress_030)
 
     holdout_sample_gate = (
         "SUFFICIENT_FOR_SCREENING" if calibrated_holdout["trades"] >= 20
