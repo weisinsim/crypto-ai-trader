@@ -7,6 +7,7 @@ provided through environment variables. No credentials belong in source control.
 from __future__ import annotations
 
 import json
+import math
 import os
 import smtplib
 import ssl
