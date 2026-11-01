@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from research.binance_archive import download_archive_funding, download_archive_klines
+from research.binance_archive import _archive_rows, download_archive_funding, download_archive_klines
 
 HOUR = 3_600_000
 
@@ -12,6 +12,19 @@ def kline(ts, close="100"):
 
 
 class BinanceArchiveTests(unittest.TestCase):
+    @patch("research.binance_archive._archive_csv")
+    def test_missing_monthly_archive_falls_back_to_daily_files(self, archive_csv):
+        def fake_archive(_client, path):
+            if path.startswith("monthly/"):
+                return []
+            if path.endswith("BTCUSDT-1h-1970-01-01.zip"):
+                return [kline(0), kline(HOUR, "101")]
+            return []
+        archive_csv.side_effect = fake_archive
+        rows = _archive_rows(object(), "BTCUSDT", "klines", "1h", 0, 2 * HOUR)
+        self.assertEqual([row[0] for row in rows], ["0", str(HOUR)])
+        self.assertTrue(any("daily/klines/BTCUSDT/1h/" in call.args[1] for call in archive_csv.call_args_list))
+
     @patch("research.binance_archive._archive_rows")
     def test_archive_klines_are_normalized_and_coverage_checked(self, archive_rows):
         archive_rows.return_value = [kline(0), kline(HOUR, "101")]
