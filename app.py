@@ -45,7 +45,7 @@ cache = {
         "entry": None, "sl": None, "tp1": None, "tp2": None, "rr": None, "score": 0, "score_label": "NO-TRADE", "score_breakdown": {}, "position_qty": None, "position_usd": None, "margin_3x": None,
         "funding": None, "oi": None, "oi_change": None, "adx_1h": None, "vwap_1h": None, "support": None, "resistance": None, "atr_pct": None, "btc_filter": "NEUTRAL", "analysis_ts": 0, "source": None,
         "error": None, "live_signal": "NO-TRADE",
-        "confirmed_signal": "NO-TRADE", "confirmed_signal_time": None, "confirmed_entry": None, "confirmed_sl": None, "confirmed_tp1": None, "confirmed_tp2": None, "confirmed_score": 0, "confirmed_score_label": "NO-TRADE", "confirmed_status": "WAITING", "regime": "LOADING", "direction_bias": "NEUTRAL", "opportunity_tier": "D", "confirmation_basis": "1H candle close", "last_closed_candle": None,
+        "confirmed_signal": "NO-TRADE", "confirmed_signal_time": None, "confirmed_entry": None, "confirmed_sl": None, "confirmed_tp1": None, "confirmed_tp2": None, "confirmed_score": 0, "confirmed_score_label": "NO-TRADE", "confirmed_status": "WAITING", "model_validation_passed": False, "regime": "LOADING", "direction_bias": "NEUTRAL", "opportunity_tier": "D", "confirmation_basis": "1H candle close", "last_closed_candle": None,
     } for s in SYMBOLS
 }
 series = {s: {"1h": [], "4h": []} for s in SYMBOLS}
@@ -310,7 +310,9 @@ def closed_series_rows(s, interval, now_ms=None):
     return filter_closed_candles(series[s][interval], interval, now_ms)
 
 def _model_validation_passed(cfg):
-    validation = cfg.get("validation") if isinstance(cfg, dict) else None
+    if not isinstance(cfg, dict):
+        return False
+    validation = cfg.get("validation")
     return (
         cfg.get("status") in ("CANDIDATE", "PRODUCTION")
         and isinstance(validation, dict)
