@@ -8,7 +8,8 @@ class AlertContractTests(unittest.TestCase):
         self.now = 1_800_000_000.0
         self.item = {
             "confirmed_signal": "LONG",
-            "model_status": "RESEARCH",
+            "model_status": "CANDIDATE",
+            "model_validation_passed": True,
             "ts": self.now - 5,
             "price": 100.0,
             "confirmed_signal_time": (self.now - 60) * 1000,
@@ -29,6 +30,19 @@ class AlertContractTests(unittest.TestCase):
         self.assertIs(alert["auto_trade_authorized"], False)
         self.assertTrue(alert["research_only"])
         self.assertEqual(alert["side"], "LONG")
+
+    def test_candidate_requires_explicit_independent_validation_flag(self):
+        for value in (None, False, 1, "true"):
+            with self.subTest(value=value):
+                item = {**self.item, "model_validation_passed": value}
+                self.assertIsNone(validate_alert_candidate("BTCUSDT", item, self.now))
+
+        alert = validate_alert_candidate(
+            "BTCUSDT", {**self.item, "model_validation_passed": True}, self.now
+        )
+        self.assertIsNotNone(alert)
+        self.assertEqual(alert["model_status"], "CANDIDATE")
+        self.assertTrue(alert["research_only"])
 
     def test_candidate_score_threshold_is_70_and_not_a_probability_claim(self):
         from validation.alert_contract import MIN_ENTRY_CANDIDATE_SCORE
@@ -65,7 +79,7 @@ class AlertContractTests(unittest.TestCase):
                 self.assertIsNone(validate_alert_candidate(symbol, self.item, self.now))
 
     def test_frozen_or_unknown_model_is_rejected(self):
-        for status in ("FROZEN", "UNKNOWN", None, "NO-PRODUCTION", [], {}):
+        for status in ("FROZEN", "UNKNOWN", None, "NO-PRODUCTION", "RESEARCH", [], {}):
             with self.subTest(status=status):
                 item = {**self.item, "model_status": status}
                 self.assertIsNone(validate_alert_candidate("BTCUSDT", item, self.now))
