@@ -6,7 +6,7 @@ import hashlib
 import math
 import re
 
-ALLOWED_MODEL_STATUSES = frozenset({"RESEARCH", "PRODUCTION"})
+ALLOWED_MODEL_STATUSES = frozenset({"CANDIDATE", "PRODUCTION"})
 # This is a candidate-score threshold, not a calibrated win-probability claim.
 MIN_ENTRY_CANDIDATE_SCORE = 70.0
 _SYMBOL_RE = re.compile(r"^[A-Z0-9]{2,20}USDT$")
@@ -35,6 +35,10 @@ def validate_alert_candidate(symbol, item, now, max_age_seconds=90 * 60):
     # Validate types before set membership so malformed list/dict values fail
     # closed instead of raising TypeError in the request path.
     if side not in ("LONG", "SHORT") or not isinstance(model_status, str) or model_status not in ALLOWED_MODEL_STATUSES:
+        return None
+    # A status label alone is never sufficient: the server must attach the
+    # result of the independent holdout / walk-forward / cost-stress gate.
+    if item.get("model_validation_passed") is not True:
         return None
 
     ticker_ts = item.get("ts")
