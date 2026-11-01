@@ -77,6 +77,8 @@ class EmailOutboxTests(unittest.TestCase):
         self.assertEqual(result, {"sent": 1, "failed": 0, "disabled": False})
         self.assertEqual(calls[0][1], ["one@example.test", "two@example.test"])
         self.assertEqual(self.outbox.snapshot()["events"]["event-001"]["status"], "SENT")
+        restarted = EmailOutbox(self.path, enabled=True, clock=self.clock)
+        self.assertEqual(restarted.snapshot()["events"]["event-001"]["status"], "SENT")
 
     def test_failure_is_retried_with_backoff(self):
         self.enqueue()
