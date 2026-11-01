@@ -166,7 +166,7 @@ class EmailOutboxTests(unittest.TestCase):
         invalid_events.append(mismatched_id)
         non_finite_time = dict(original, created_at=float("nan"))
         invalid_events.append(non_finite_time)
-        oversized_integer_time = dict(original, created_at=10 ** 10000)
+        oversized_integer_time = dict(original, created_at=10 ** 400)
         invalid_events.append(oversized_integer_time)
         unknown_field = dict(original, unexpected="value")
         invalid_events.append(unknown_field)
