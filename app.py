@@ -80,6 +80,87 @@ for _s in SYMBOLS:
 app = FastAPI(title=f"Crypto AI Trader {MODEL_NAME}")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+def _env_flag(value):
+    return isinstance(value, str) and value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def configure_email_notifications(environ=None):
+    """Enable optional single-process email delivery only after explicit operator opt-in."""
+    global email_config, email_outbox
+    env = os.environ if environ is None else environ
+    email_config = None
+    email_outbox = None
+    if not _env_flag(env.get("ALERT_EMAIL_ENABLED")):
+        return False
+    if not _env_flag(env.get("ALERT_EMAIL_SINGLE_PROCESS_ACK")):
+        log_error("EMAIL OUTBOX", "Delivery disabled: explicit single-process acknowledgement is required")
+        return False
+    for key in ("WEB_CONCURRENCY", "UVICORN_WORKERS", "GUNICORN_WORKERS"):
+        raw = env.get(key)
+        if raw is not None:
+            try:
+                if int(raw) > 1:
+                    log_error("EMAIL OUTBOX", "Delivery disabled: multiple workers detected")
+                    return False
+            except (TypeError, ValueError):
+                log_error("EMAIL OUTBOX", "Delivery disabled: invalid worker count")
+                return False
+    try:
+        config = EmailConfig.from_env(env)
+        if not config.enabled:
+            return False
+        path = env.get("ALERT_EMAIL_OUTBOX_PATH", str(ROOT / "data" / "email-outbox.json"))
+        if not isinstance(path, str) or not path.strip():
+            raise EmailOutboxError("Invalid email outbox storage path")
+        outbox = EmailOutbox(path, enabled=True)
+    except (ValueError, OSError, EmailOutboxError) as exc:
+        log_error("EMAIL OUTBOX", type(exc).__name__)
+        return False
+    email_config = config
+    email_outbox = outbox
+    return True
+
+
+def queue_signal_email(symbol):
+    """Queue a validated notification only; never submits or manages orders."""
+    if email_config is None or email_outbox is None or not email_config.enabled:
+        return False
+    alert = validate_alert_candidate(symbol, cache.get(symbol), time.time())
+    if alert is None:
+        return False
+    subject = "[Crypto AI Trader] {} {} entry alert".format(alert["symbol"], alert["side"])
+    body = "\n".join([
+        "Symbol: {}".format(alert["symbol"]),
+        "Direction: {}".format(alert["side"]),
+        "Model: {} ({})".format(alert["model_name"] or "N/A", alert["model_status"]),
+        "Entry: {}".format(alert["entry"]),
+        "Stop loss: {}".format(alert["stop_loss"]),
+        "Take profit 1: {}".format(alert["take_profit_1"]),
+        "Take profit 2: {}".format(alert["take_profit_2"]),
+        "Model score: {} / 100 (not a win probability)".format(alert["score"]),
+        "Signal candle (ms): {}".format(alert["signal_candle_ms"]),
+        "",
+        "Notification only. No exchange order was placed.",
+    ])
+    try:
+        return email_outbox.enqueue(
+            event_id=alert["event_id"], subject=subject, body=body,
+            recipients=list(email_config.recipients),
+        )
+    except (ValueError, EmailOutboxError) as exc:
+        log_error("EMAIL OUTBOX ENQUEUE", type(exc).__name__)
+        return False
+
+
+async def email_delivery_loop():
+    """Deliver queued notifications off the event loop; single-process only."""
+    while True:
+        try:
+            await asyncio.to_thread(email_outbox.send_due, email_config)
+        except Exception as exc:
+            log_error("EMAIL DELIVERY", type(exc).__name__)
+        await asyncio.sleep(10)
+
 def log_error(stage, detail):
     msg = f"{stage}: {str(detail)[:220]}"
     diagnostics["last_errors"] = (diagnostics["last_errors"] + [msg])[-10:]
