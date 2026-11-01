@@ -20,7 +20,8 @@ function validAlert(overrides = {}) {
     score_is_probability: false,
     minimum_candidate_score: 70,
     entry_candidate: true,
-    model_status: "RESEARCH",
+    model_status: "CANDIDATE",
+    model_validation_passed: true,
     research_only: true,
     notification_only: true,
     auto_trade_authorized: false,
@@ -91,6 +92,8 @@ test("rejects malformed IDs, symbols, non-finite values, and invalid status flag
     validAlert({ symbol: "btc/usdt" }),
     validAlert({ score: Number.NaN }),
     validAlert({ model_status: "UNKNOWN" }),
+    validAlert({ model_status: "RESEARCH" }),
+    validAlert({ model_validation_passed: false }),
     validAlert({ research_only: false }),
   ];
   assert.equal(validateAlertPayload(validPayload(candidates), NOW_MS).alerts.length, 0);
