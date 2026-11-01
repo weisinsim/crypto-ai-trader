@@ -184,6 +184,15 @@ class EmailOutbox:
                    if e["status"] in {"PENDING", "RETRY"}
                    and e["next_attempt_at"] <= now][:limit]
         for event in due:
+            # Never let a queued event expand the configured recipient allowlist.
+            if not set(event["pending_recipients"]).issubset(set(config.recipients)):
+                with self._lock:
+                    current = self._state["events"][event["event_id"]]
+                    current["status"] = "DEAD"
+                    current["last_error"] = "Recipient not present in configured allowlist"
+                    self._save()
+                failed += 1
+                continue
             message = EmailMessage()
             message["From"] = config.sender
             message["To"] = ", ".join(event["pending_recipients"])
