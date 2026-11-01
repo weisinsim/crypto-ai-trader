@@ -99,7 +99,7 @@ class EmailConfig:
             raise EmailConfigurationError("SMTP port or timeout is outside safe bounds")
         if len(set(self.recipients)) != len(self.recipients):
             raise EmailConfigurationError("Duplicate SMTP recipients are not allowed")
-        if any("\\r" in value or "\\n" in value for value in (
+        if any("\r" in value or "\n" in value for value in (
             *string_fields, *self.recipients
         )):
             raise EmailConfigurationError("Invalid newline in email configuration")
