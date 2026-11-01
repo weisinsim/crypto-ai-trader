@@ -59,6 +59,27 @@ class EmailOutboxTests(unittest.TestCase):
                 sender="alerts@example.test", recipients=("one@example.test",),
             ).validate()
 
+    def test_malformed_smtp_configuration_types_fail_closed(self):
+        invalid_configs = [
+            EmailConfig(enabled=True, host=123, username="user", password="secret",
+                        sender="alerts@example.test", recipients=("one@example.test",)),
+            EmailConfig(enabled=True, host="smtp.example.test", username="user", password="secret",
+                        sender="alerts@example.test", recipients=(123,)),
+            EmailConfig(enabled=True, host="smtp.example.test", port=True, username="user",
+                        password="secret", sender="alerts@example.test",
+                        recipients=("one@example.test",)),
+            EmailConfig(enabled=True, host="smtp.example.test", username="user", password="secret",
+                        sender="alerts@example.test", recipients=("one@example.test",),
+                        timeout=float("inf")),
+            EmailConfig(enabled=True, host="smtp.example.test", username="user", password="secret",
+                        sender="alerts@example.test",
+                        recipients=("one@example.test", "one@example.test")),
+        ]
+        for config in invalid_configs:
+            with self.subTest(config=config):
+                with self.assertRaises(EmailConfigurationError):
+                    config.validate()
+
     def test_enqueue_is_durable_and_idempotent_across_restart(self):
         self.assertTrue(self.enqueue())
         self.assertFalse(self.enqueue())
