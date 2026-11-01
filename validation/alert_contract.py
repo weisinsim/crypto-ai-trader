@@ -103,6 +103,7 @@ def validate_alert_candidate(symbol, item, now, max_age_seconds=90 * 60):
         "score_label": score_label,
         "model_name": model_name,
         "model_status": model_status,
+        "model_validation_passed": True,
         "research_only": model_status != "PRODUCTION",
         "notification_only": True,
         "auto_trade_authorized": False,
