@@ -1,5 +1,6 @@
 import json
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -79,6 +80,48 @@ class EmailOutboxTests(unittest.TestCase):
         self.assertEqual(self.outbox.snapshot()["events"]["event-001"]["status"], "SENT")
         restarted = EmailOutbox(self.path, enabled=True, clock=self.clock)
         self.assertEqual(restarted.snapshot()["events"]["event-001"]["status"], "SENT")
+
+    def test_concurrent_send_due_calls_do_not_send_same_event_twice(self):
+        self.enqueue()
+        entered_transport = threading.Event()
+        release_transport = threading.Event()
+        second_started = threading.Event()
+        calls = []
+        results = []
+
+        def blocked_transport(config, message, recipients):
+            calls.append(message["Subject"])
+            entered_transport.set()
+            if not release_transport.wait(timeout=3):
+                raise TimeoutError("test transport release timed out")
+            return {}
+
+        first = threading.Thread(
+            target=lambda: results.append(
+                self.outbox.send_due(self.config, transport=blocked_transport)
+            )
+        )
+
+        def run_second():
+            second_started.set()
+            results.append(self.outbox.send_due(
+                self.config, transport=blocked_transport
+            ))
+
+        second = threading.Thread(target=run_second)
+        first.start()
+        self.assertTrue(entered_transport.wait(timeout=2))
+        second.start()
+        self.assertTrue(second_started.wait(timeout=2))
+        release_transport.set()
+        first.join(timeout=3)
+        second.join(timeout=3)
+
+        self.assertFalse(first.is_alive())
+        self.assertFalse(second.is_alive())
+        self.assertEqual(calls, ["Signal notification"])
+        self.assertEqual(sum(result["sent"] for result in results), 1)
+        self.assertEqual(self.outbox.snapshot()["events"]["event-001"]["status"], "SENT")
 
     def test_failure_is_retried_with_backoff(self):
         self.enqueue()
