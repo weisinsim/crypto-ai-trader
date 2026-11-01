@@ -156,7 +156,7 @@ class EmailOutbox:
                     or not all(isinstance(x, str) and x and "\r" not in x and "\n" not in x for x in recipients)
                     or len(set(recipients)) != len(recipients)
                     or not isinstance(pending, list)
-                    or not all(isinstance(x, str) and x and "\\r" not in x and "\\n" not in x for x in pending)
+                    or not all(isinstance(x, str) and x and "\r" not in x and "\n" not in x for x in pending)
                     or len(set(pending)) != len(pending)
                     or not set(pending).issubset(set(recipients))):
                 raise EmailOutboxError("Invalid outbox recipients; refusing to send")
@@ -205,7 +205,11 @@ class EmailOutbox:
             raise ValueError("Invalid email subject")
         if not isinstance(body, str) or not body.strip():
             raise ValueError("Email body must be non-empty text")
-        clean = _clean_addresses(",".join(recipients) if isinstance(recipients, (list, tuple)) else "")
+        if not isinstance(recipients, (list, tuple)) or not recipients:
+            raise ValueError("recipients must be a non-empty list or tuple of email strings")
+        if not all(isinstance(x, str) for x in recipients):
+            raise ValueError("Every recipient must be a string")
+        clean = _clean_addresses(",".join(recipients))
         if not clean or any("\r" in x or "\n" in x for x in clean):
             raise ValueError("At least one valid recipient is required")
         with self._lock:
