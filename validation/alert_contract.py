@@ -13,11 +13,12 @@ _SYMBOL_RE = re.compile(r"^[A-Z0-9]{2,20}USDT$")
 
 
 def _finite_number(value):
-    return (
-        isinstance(value, (int, float))
-        and not isinstance(value, bool)
-        and math.isfinite(value)
-    )
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(value)
+    except (OverflowError, TypeError, ValueError):
+        return False
 
 
 def validate_alert_candidate(symbol, item, now, max_age_seconds=90 * 60):
