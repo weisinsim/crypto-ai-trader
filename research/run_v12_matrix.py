@@ -96,6 +96,7 @@ def run_matrix(*, start_date: str, end_date: str, holdout_start: str,
             "directions": list(DIRECTIONS),
             "cvd_modes": list(CVD_MODES),
             "exact_stress_cost": "0.30% round-trip = 0.05% fee + 0.10% slippage per side",
+            "archive_policy": "Current-month daily archives may lag; missing candles fail closed and must not be interpolated or mixed across venues",
         },
         "symbols": {},
     }
