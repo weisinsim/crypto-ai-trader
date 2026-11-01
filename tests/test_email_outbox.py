@@ -154,6 +154,27 @@ class EmailOutboxTests(unittest.TestCase):
         with self.assertRaises(EmailOutboxError):
             EmailOutbox(self.path, enabled=True)
 
+    def test_malformed_persisted_event_fails_closed(self):
+        self.enqueue()
+        original = self.outbox.snapshot()["events"]["event-001"]
+        invalid_events = []
+        sent_with_pending = dict(original, status="SENT")
+        invalid_events.append(sent_with_pending)
+        mismatched_id = dict(original, event_id="different-id")
+        invalid_events.append(mismatched_id)
+        non_finite_time = dict(original, created_at=float("nan"))
+        invalid_events.append(non_finite_time)
+        unknown_field = dict(original, unexpected="value")
+        invalid_events.append(unknown_field)
+
+        for event in invalid_events:
+            with self.subTest(event=event):
+                self.path.write_text(json.dumps({
+                    "schema_version": 1, "events": {"event-001": event}
+                }), encoding="utf-8")
+                with self.assertRaises(EmailOutboxError):
+                    EmailOutbox(self.path, enabled=True, clock=self.clock)
+
     def test_invalid_subject_and_empty_body_are_rejected(self):
         with self.assertRaises(ValueError):
             self.outbox.enqueue(event_id="e", subject="bad\nsubject", body="b",
