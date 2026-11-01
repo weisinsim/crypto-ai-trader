@@ -80,16 +80,36 @@ class EmailConfig:
         return config
 
     def validate(self):
-        if not self.host or not self.sender or not self.recipients:
-            raise EmailConfigurationError("Enabled email requires host, sender, and recipients")
+        string_fields = (self.host, self.username, self.password, self.sender)
+        if not all(isinstance(value, str) for value in string_fields):
+            raise EmailConfigurationError("SMTP host, credentials, and sender must be strings")
+        if (not isinstance(self.recipients, (tuple, list)) or not self.recipients
+                or not all(isinstance(value, str) for value in self.recipients)):
+            raise EmailConfigurationError("Enabled email requires a string recipient list")
+        if (not self.host.strip() or not self.sender.strip()
+                or not self.username.strip() or not self.password
+                or any(not value.strip() for value in self.recipients)):
+            raise EmailConfigurationError("Enabled email requires host, sender, credentials, and recipients")
+        if type(self.port) is not int:
+            raise EmailConfigurationError("SMTP port must be an integer")
+        if (not isinstance(self.timeout, (int, float)) or isinstance(self.timeout, bool)
+                or not self._finite_timeout(self.timeout)):
+            raise EmailConfigurationError("SMTP timeout must be a finite number")
         if not (1 <= self.port <= 65535) or not (1 <= self.timeout <= 60):
             raise EmailConfigurationError("SMTP port or timeout is outside safe bounds")
-        if not self.username or not self.password:
-            raise EmailConfigurationError("Enabled email requires SMTP credentials")
-        if any("\r" in x or "\n" in x for x in (
-            self.host, self.username, self.password, self.sender, *self.recipients
+        if len(set(self.recipients)) != len(self.recipients):
+            raise EmailConfigurationError("Duplicate SMTP recipients are not allowed")
+        if any("\\r" in value or "\\n" in value for value in (
+            *string_fields, *self.recipients
         )):
             raise EmailConfigurationError("Invalid newline in email configuration")
+
+    @staticmethod
+    def _finite_timeout(value):
+        try:
+            return math.isfinite(value)
+        except (OverflowError, TypeError, ValueError):
+            return False
 
 
 class EmailOutbox:
