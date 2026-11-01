@@ -156,7 +156,8 @@ class EmailOutbox:
                     or not all(isinstance(x, str) and x and "\r" not in x and "\n" not in x for x in recipients)
                     or len(set(recipients)) != len(recipients)
                     or not isinstance(pending, list)
-                    or not all(isinstance(x, str) for x in pending)
+                    or not all(isinstance(x, str) and x and "\\r" not in x and "\\n" not in x for x in pending)
+                    or len(set(pending)) != len(pending)
                     or not set(pending).issubset(set(recipients))):
                 raise EmailOutboxError("Invalid outbox recipients; refusing to send")
             if (not isinstance(event.get("subject"), str) or not event["subject"].strip()
