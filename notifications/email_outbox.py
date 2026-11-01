@@ -123,10 +123,56 @@ class EmailOutbox:
             data = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise EmailOutboxError("Outbox ledger is unreadable; refusing to send") from exc
-        if (not isinstance(data, dict) or data.get("schema_version") != self.SCHEMA_VERSION
+        if (not isinstance(data, dict) or type(data.get("schema_version")) is not int
+                or data.get("schema_version") != self.SCHEMA_VERSION
                 or not isinstance(data.get("events"), dict)):
             raise EmailOutboxError("Unsupported outbox ledger schema; refusing to send")
+        self._validate_ledger_events(data["events"])
         return data
+
+    @staticmethod
+    def _finite_number(value):
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+    def _validate_ledger_events(self, events):
+        allowed_fields = {
+            "event_id", "subject", "body", "recipients", "pending_recipients",
+            "status", "attempts", "created_at", "next_attempt_at", "last_error",
+        }
+        allowed_statuses = {"PENDING", "RETRY", "SENT", "DEAD"}
+        for key, event in events.items():
+            if not isinstance(key, str) or not key or len(key) > 160 or not isinstance(event, dict):
+                raise EmailOutboxError("Invalid outbox event; refusing to send")
+            if set(event) != allowed_fields or event.get("event_id") != key:
+                raise EmailOutboxError("Invalid outbox event schema; refusing to send")
+            recipients = event.get("recipients")
+            pending = event.get("pending_recipients")
+            if (not isinstance(recipients, list) or not recipients
+                    or not all(isinstance(x, str) and x and "\\r" not in x and "\\n" not in x for x in recipients)
+                    or len(set(recipients)) != len(recipients)
+                    or not isinstance(pending, list)
+                    or not all(isinstance(x, str) for x in pending)
+                    or not set(pending).issubset(set(recipients))):
+                raise EmailOutboxError("Invalid outbox recipients; refusing to send")
+            if (not isinstance(event.get("subject"), str) or not event["subject"].strip()
+                    or "\\r" in event["subject"] or "\\n" in event["subject"]
+                    or not isinstance(event.get("body"), str) or not event["body"].strip()):
+                raise EmailOutboxError("Invalid outbox message; refusing to send")
+            attempts = event.get("attempts")
+            if (event.get("status") not in allowed_statuses or type(attempts) is not int
+                    or attempts < 0 or attempts > self.max_attempts
+                    or not self._finite_number(event.get("created_at"))
+                    or not self._finite_number(event.get("next_attempt_at"))):
+                raise EmailOutboxError("Invalid outbox state; refusing to send")
+            last_error = event.get("last_error")
+            if last_error is not None and (not isinstance(last_error, str) or len(last_error) > 120):
+                raise EmailOutboxError("Invalid outbox error metadata; refusing to send")
+            if event["status"] == "SENT" and pending:
+                raise EmailOutboxError("Sent event still has pending recipients; refusing to send")
+            if event["status"] in {"PENDING", "RETRY"} and not pending:
+                raise EmailOutboxError("Pending event has no recipients; refusing to send")
+            if event["status"] == "RETRY" and attempts >= self.max_attempts:
+                raise EmailOutboxError("Retry event exceeds retry limit; refusing to send")
 
     def _save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
