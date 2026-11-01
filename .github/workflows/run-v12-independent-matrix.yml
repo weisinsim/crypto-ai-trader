@@ -6,6 +6,8 @@ on:
       - research/v12-cvd-independent-validation
     paths:
       - ".github/workflows/run-v12-independent-matrix.yml"
+      - "research/run_v12_matrix.py"
+      - "research/v12_validation.py"
 
 permissions:
   contents: read
