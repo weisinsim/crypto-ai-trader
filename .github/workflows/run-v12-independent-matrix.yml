@@ -25,7 +25,7 @@ jobs:
         run: python -m pip install -r requirements.txt
       - name: Run five-coin V12 + CVD research matrix
         run: |
-          END_DATE="$(date -u +%Y-%m-%d)"
+          END_DATE="$(date -u -d '2 days ago' +%Y-%m-%d)"
           python -m research.run_v12_matrix \
             --symbols BTCUSDT ETHUSDT SOLUSDT AVAXUSDT XRPUSDT \
             --start 2025-10-01 \
