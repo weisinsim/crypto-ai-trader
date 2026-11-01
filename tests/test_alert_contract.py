@@ -224,6 +224,15 @@ class AlertContractTests(unittest.TestCase):
         self.assertFalse(alert["research_only"])
 
 
+    def test_extremely_large_integer_timestamps_fail_closed_without_exception(self):
+        huge = 10 ** 10000
+        item = {**self.item, "ts": huge}
+        self.assertIsNone(validate_alert_candidate("BTCUSDT", item, self.now))
+        item = {**self.item, "confirmed_signal_time": huge}
+        self.assertIsNone(validate_alert_candidate("BTCUSDT", item, self.now))
+        item = {**self.item, "confirmed_score": huge}
+        self.assertIsNone(validate_alert_candidate("BTCUSDT", item, self.now))
+
     def test_malformed_signal_field_types_fail_closed(self):
         malformed = (
             ("confirmed_signal", []),
