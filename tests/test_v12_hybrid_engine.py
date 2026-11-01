@@ -76,6 +76,18 @@ class V12HybridEngineTests(unittest.TestCase):
         self.assertEqual(filtered["signal"], "NO-TRADE")
         self.assertEqual(filtered["status"], "SHORT_EXHAUSTION_FILTER")
 
+    def test_direction_mode_is_side_constrained(self):
+        long_only = evaluate_hybrid("BTCUSDT", strong_long_features(), direction_mode="LONG")
+        short_only = evaluate_hybrid("BTCUSDT", strong_long_features(), direction_mode="SHORT")
+        self.assertEqual(long_only["signal"], "LONG")
+        self.assertNotEqual(short_only["signal"], "LONG")
+        self.assertEqual(long_only["components"]["direction_mode"], "LONG")
+
+    def test_invalid_direction_mode_fails_closed(self):
+        result = evaluate_hybrid("BTCUSDT", strong_long_features(), direction_mode="BOTH_SIDES")
+        self.assertEqual(result["signal"], "NO-TRADE")
+        self.assertEqual(result["status"], "INVALID_DIRECTION_MODE")
+
     def test_component_weight_override_is_normalized(self):
         result = evaluate_hybrid(
             "BTCUSDT", strong_long_features(),
