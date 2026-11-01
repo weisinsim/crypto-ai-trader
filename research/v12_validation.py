@@ -343,7 +343,7 @@ def run_v12_validation(rows, symbol, *, holdout_fraction=0.2, folds=4,
                        initial_equity=1.0, risk_fraction=0.005, max_leverage=3.0,
                        funding_events=None, trailing_atr_multiple=1.5,
                        max_holding_bars=72, signal_reversal_exit=True,
-                       direction_mode="BOTH", cvd_mode="ON"):
+                       direction_mode="BOTH", cvd_mode="ON", holdout_start_ts=None):
     if not math.isfinite(holdout_fraction) or not 0.1 <= holdout_fraction <= 0.4:
         raise ValueError("holdout_fraction must be between 0.1 and 0.4")
     if not isinstance(folds, int) or isinstance(folds, bool) or folds < 2:
@@ -358,7 +358,15 @@ def run_v12_validation(rows, symbol, *, holdout_fraction=0.2, folds=4,
         raise ValueError("direction_mode must be BOTH, LONG or SHORT")
     if cvd_mode not in ("ON", "OFF"):
         raise ValueError("cvd_mode must be ON or OFF")
-    split = int(len(rows) * (1 - holdout_fraction))
+    if holdout_start_ts is None:
+        split = int(len(rows) * (1 - holdout_fraction))
+    else:
+        if isinstance(holdout_start_ts, bool) or not isinstance(holdout_start_ts, int) or holdout_start_ts < 0:
+            raise ValueError("holdout_start_ts must be a nonnegative integer millisecond timestamp")
+        matches = [index for index, row in enumerate(rows) if row.get("t") == holdout_start_ts]
+        if not matches:
+            raise ValueError("holdout_start_ts must exactly match a feature-row timestamp")
+        split = matches[0]
     wf_start = max(int(len(rows) * 0.5), 1)
     if split < 10 or len(rows) - split < 5:
         raise ValueError("insufficient rows in chronological holdout split")
@@ -437,6 +445,8 @@ def run_v12_validation(rows, symbol, *, holdout_fraction=0.2, folds=4,
             "walk_forward_folds": folds, "walk_forward_start_index": wf_start,
             "walk_forward_end_index": split,
             "direction_mode": direction_mode, "cvd_mode": cvd_mode,
+            "holdout_start_ts": holdout_start_ts,
+            "holdout_boundary_policy": "exact_timestamp" if holdout_start_ts is not None else "fractional_tail",
             "parameter_policy": "expanding-window threshold calibration uses only data before each test fold; final holdout is never used for selection",
             "note": "Walk-forward test folds cover the pre-holdout period from 50% to the training/holdout boundary. Final holdout is reported separately.",
         },
@@ -490,6 +500,7 @@ def main():
     parser.add_argument("--disable-signal-reversal-exit", action="store_true")
     parser.add_argument("--direction-mode", choices=("BOTH", "LONG", "SHORT"), default="BOTH")
     parser.add_argument("--cvd-mode", choices=("ON", "OFF"), default="ON")
+    parser.add_argument("--holdout-start-ts", type=int, help="exact first holdout feature timestamp in milliseconds; if set, overrides fractional split")
     parser.add_argument("--holdout-fraction", type=float, default=0.2)
     parser.add_argument("--folds", type=int, default=4)
     parser.add_argument("--output", required=True)
@@ -511,6 +522,7 @@ def main():
         max_holding_bars=args.max_holding_bars,
         signal_reversal_exit=not args.disable_signal_reversal_exit,
         direction_mode=args.direction_mode, cvd_mode=args.cvd_mode,
+        holdout_start_ts=args.holdout_start_ts,
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8")
