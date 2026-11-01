@@ -15,7 +15,7 @@ import tempfile
 import time
 from email.message import EmailMessage
 from pathlib import Path
-from threading import RLock
+from threading import Lock, RLock
 from typing import Callable
 
 
@@ -110,6 +110,9 @@ class EmailOutbox:
         self.base_retry_seconds = int(base_retry_seconds)
         self.clock = clock
         self._lock = RLock()
+        # Serialize delivery attempts within this process to prevent two callers
+        # from sending the same pending event concurrently.
+        self._send_lock = Lock()
         if self.max_attempts < 1 or self.max_attempts > 20 or self.base_retry_seconds < 1:
             raise ValueError("Invalid retry policy")
         self._state = self._load()
@@ -234,6 +237,11 @@ class EmailOutbox:
             return json.loads(json.dumps(self._state))
 
     def send_due(self, config: EmailConfig, *, transport=None, limit=20):
+        """Serialize delivery attempts within this process."""
+        with self._send_lock:
+            return self._send_due_once(config, transport=transport, limit=limit)
+
+    def _send_due_once(self, config: EmailConfig, *, transport=None, limit=20):
         """Send due messages. A transport can be injected for deterministic tests."""
         if not self.enabled or not config.enabled:
             return {"sent": 0, "failed": 0, "disabled": True}
