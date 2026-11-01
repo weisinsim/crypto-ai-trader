@@ -1,14 +1,16 @@
 import asyncio
 import json
 import math
+import os
 import time
 from validation.candle_closure import filter_closed_candles, normalize_timestamp_ms, upsert_candle, validate_candle_series
 from validation.dashboard_health import build_health_payload
-from validation.alert_contract import build_alert_payload
+from validation.alert_contract import build_alert_payload, validate_alert_candidate
 from validation.signal_confirmation import invalidate_stale_confirmation
 from validation.xrp_model import evaluate_xrp_signal
 from research.v12_hybrid_engine import evaluate_hybrid, MODEL_VERSION as HYBRID_MODEL_VERSION
 from pathlib import Path
+from notifications.email_outbox import EmailConfig, EmailOutbox, EmailOutboxError
 
 import httpx
 import websockets
@@ -60,6 +62,8 @@ oi_history = {s: [] for s in SYMBOLS}
 signal_history = {s: [] for s in SYMBOLS}
 confirmed_state = {s: "NO-TRADE" for s in SYMBOLS}
 http_client = None
+email_config = None
+email_outbox = None
 
 MODEL_NAME = "Crypto AI Trader Multi-Asset Adaptive"
 MODEL_VERSION = "V28.4-V12 Adaptive Hybrid Research + Closed-Candle Freshness Gate"
