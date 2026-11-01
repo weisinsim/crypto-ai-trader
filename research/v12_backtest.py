@@ -87,8 +87,11 @@ def load_feature_csv(path: str) -> list[dict]:
     return rows
 
 
-def _features(row: dict) -> dict:
-    return {key: row.get(key) for key in (
+def _features(row: dict, *, cvd_mode: str = "ON") -> dict:
+    cvd_mode = str(cvd_mode).upper()
+    if cvd_mode not in ("ON", "OFF"):
+        raise ValueError("cvd_mode must be ON or OFF")
+    features = {key: row.get(key) for key in (
         "c", "ema20_1h", "ema50_1h", "ema200_1h", "ema20_4h", "ema50_4h",
         "ema200_4h", "rsi_1h", "atr_1h", "atr_pct", "adx_1h", "vol_ratio",
         "vwap_1h", "support", "resistance", "funding_rate", "oi_change_pct",
@@ -96,6 +99,9 @@ def _features(row: dict) -> dict:
         "retest_long", "retest_short", "cvd_direction", "cvd_ratio_12", "cvd_ratio_24", "market_regime",
         "data_fresh", "candle_closed", "spread_bps",
     )} | {"price": row["c"]}
+    if cvd_mode == "OFF":
+        features.update({"cvd_direction": "UNKNOWN", "cvd_ratio_12": None, "cvd_ratio_24": None})
+    return features
 
 
 def _adverse_fill(price: float, direction: int, *, entry: bool, slippage_rate: float) -> float:
@@ -170,6 +176,8 @@ def run_v12_backtest(
     max_holding_bars: int = 72,
     signal_reversal_exit: bool = True,
     component_weights_override: dict | None = None,
+    direction_mode: str = "BOTH",
+    cvd_mode: str = "ON",
 ) -> dict:
     """Run next-open V12 simulation with partial targets, ATR trailing, reversal and time exits."""
     if len(rows) < 3:
@@ -194,6 +202,12 @@ def run_v12_backtest(
         raise ValueError("max_holding_bars must be an integer in [1, 720]")
     if not isinstance(signal_reversal_exit, bool):
         raise ValueError("signal_reversal_exit must be boolean")
+    direction_mode = str(direction_mode).upper()
+    cvd_mode = str(cvd_mode).upper()
+    if direction_mode not in ("BOTH", "LONG", "SHORT"):
+        raise ValueError("direction_mode must be BOTH, LONG or SHORT")
+    if cvd_mode not in ("ON", "OFF"):
+        raise ValueError("cvd_mode must be ON or OFF")
     funding_events = list(funding_events or [])
     previous_funding_ts = None
     for event in funding_events:
@@ -220,7 +234,12 @@ def run_v12_backtest(
     i = 0
     while i < len(rows) - 1:
         signal_row = rows[i]
-        result = evaluate_hybrid(symbol, _features(signal_row), min_score_override=min_score_override, min_edge_override=min_edge_override, short_rsi_floor=short_rsi_floor, component_weights_override=component_weights_override)
+        result = evaluate_hybrid(
+            symbol, _features(signal_row, cvd_mode=cvd_mode),
+            min_score_override=min_score_override, min_edge_override=min_edge_override,
+            short_rsi_floor=short_rsi_floor, component_weights_override=component_weights_override,
+            direction_mode=direction_mode,
+        )
         if result["signal"] not in ("LONG", "SHORT") or result.get("status") != "RESEARCH_CANDIDATE":
             i += 1
             continue
@@ -336,9 +355,9 @@ def run_v12_backtest(
 
             if signal_reversal_exit and remaining > 0:
                 close_signal = evaluate_hybrid(
-                    symbol, _features(bar), min_score_override=min_score_override,
+                    symbol, _features(bar, cvd_mode=cvd_mode), min_score_override=min_score_override,
                     min_edge_override=min_edge_override, short_rsi_floor=short_rsi_floor,
-                    component_weights_override=component_weights_override,
+                    component_weights_override=component_weights_override, direction_mode=direction_mode,
                 )
                 opposite = "SHORT" if direction == 1 else "LONG"
                 if close_signal["signal"] == opposite and close_signal.get("status") == "RESEARCH_CANDIDATE":
@@ -430,6 +449,7 @@ def run_v12_backtest(
                         "trailing_atr_multiple": trailing_atr_multiple,
                         "max_holding_bars": max_holding_bars,
                         "signal_reversal_exit": signal_reversal_exit,
+                        "direction_mode": direction_mode, "cvd_mode": cvd_mode,
                         "funding_costs_included": bool(funding_events),
                         "funding_boundary_policy": "exclude event at entry timestamp; include event at exit candle open before OHLC exit"},
         "trade_log": trades, "equity_curve": equity_curve,
