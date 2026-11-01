@@ -54,7 +54,7 @@ class EmailOutboxTests(unittest.TestCase):
         with self.assertRaises(EmailConfigurationError):
             EmailConfig(
                 enabled=True, host="smtp.example.test", port=587,
-                username="user\\nInjected: yes", password="secret",
+                username="user\nInjected: yes", password="secret",
                 sender="alerts@example.test", recipients=("one@example.test",),
             ).validate()
 
