@@ -134,6 +134,7 @@ def run_matrix(*, start_date: str, end_date: str, holdout_start: str,
             "status": "RESEARCH_ONLY",
             "data_lineage": {
                 "venue": "Binance USD-M Futures",
+                "data_acquisition": "Binance API with monthly archive and daily archive fallback for incomplete current month",
                 "symbol": symbol,
                 "candle_1h_rows": len(candle_1h),
                 "candle_4h_rows": len(candle_4h),
