@@ -36,7 +36,7 @@ Repeat per symbol. Do not mix symbols or exchanges in one input file. Funding in
 - Fee and slippage rates are charged on entry and each exit.
 - Position risk is capped at 0.5% of current equity by default and notional leverage at 3x.
 - When historical funding events are supplied, cash flows are applied as `-direction × open quantity × settlement mark price × funding rate`. Funding exactly at entry time is excluded as a boundary ambiguity; an event at the exit candle open is applied before OHLC exit handling. Endpoint mark prices have not been reconciled against an account ledger.
-- Historical OI change, CVD, and spread are not currently available in the feature builder and are explicitly left unknown/empty, not fabricated.
+- Historical OI change and spread are not currently available in the feature builder and remain unknown/empty, not fabricated. A causal CVD proxy is now available when 1h Binance kline taker-buy base-volume fields are present: 12h/24h normalized aggressor-volume delta. This is not tick-level CVD; inspect taker-flow and CVD feature coverage before interpreting any CVD-ON result.
 
 ## Calibration and drawdown accounting
 - The validation report includes a component ablation study: it removes one of the four ensemble modules at a time, renormalizes the remaining weights, and compares fixed per-coin default thresholds on the same expanding pre-holdout windows. This is diagnostic only; ablation variants are not separately threshold-tuned.
@@ -45,6 +45,21 @@ Repeat per symbol. Do not mix symbols or exchanges in one input file. Funding in
 - The final chronological holdout is never used to choose thresholds. The calibrated holdout is reported separately from the default holdout. Expanding-window walk-forward folds recalibrate on earlier data only and test on the next contiguous window.
 - Maximum drawdown is computed from candle-close mark-to-market equity while positions are open, not only from closed-trade balances. A holdout with fewer than 20 trades is explicitly marked insufficient for screening.
 - These are initial screening gates, not proof of an edge; 20 trades is not enough for statistical confidence and must be followed by larger sample / paper-trading checks.
+
+## Independent five-coin CVD matrix
+
+Use `research/V12_CVD_INDEPENDENT_VALIDATION_PLAN.md` for the frozen experiment protocol. The matrix runner compares CVD ON/OFF on development walk-forward folds for LONG and SHORT independently, then opens the fixed forward holdout only for the selected symbol/direction/CVD arm:
+
+```bash
+python -m research.run_v12_matrix \
+  --symbols BTCUSDT ETHUSDT SOLUSDT AVAXUSDT XRPUSDT \
+  --start 2025-10-01 --holdout-start 2026-10-01 --end 2026-11-01 \
+  --output-dir reports/v12-independent-matrix
+```
+
+The reviewed pre-2026-10-01 data is development data, not an untouched final holdout. The fixed forward window may initially be too short to meet the minimum trade count; in that case the result remains insufficient and must be accumulated without tuning the frozen candidate. The validator includes an exact 0.30% round-trip cost scenario (0.05% fee plus 0.10% slippage per side). Funding timestamps/mark-price provenance are audited, but account cashflow reconciliation is still not established by timestamp alignment alone.
+
+The matrix report is research-only. It does not promote models, send exchange orders, or authorize deployment.
 
 ## Validation gates
 The feature builder is causal but still needs review against independent fixtures. Before model promotion, require:
