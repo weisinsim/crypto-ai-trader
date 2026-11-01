@@ -434,7 +434,7 @@ def run_v12_backtest(
         "model_version": MODEL_VERSION, "symbol": symbol.upper(),
         "status": "RESEARCH_ONLY", "profitability_claim_eligible": False,
         "strategy_approval": False, "live_trading_enabled": False,
-        "bars": len(rows), "trades": len(trades),
+        "bars": len(rows), "trades": len(trades), "initial_equity": initial_equity,
         "wins": len(wins), "losses": len(losses),
         "win_rate_pct": round(len(wins) / len(trades) * 100, 4) if trades else None,
         "profit_factor": round(gross_profit / gross_loss, 4) if gross_loss else (None if not gross_profit else "INF"),
