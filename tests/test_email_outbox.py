@@ -107,6 +107,37 @@ class EmailOutboxTests(unittest.TestCase):
             self.outbox.snapshot()["events"]["event-001"]["pending_recipients"], []
         )
 
+    def test_recipient_allowlist_blocks_unapproved_destination(self):
+        self.outbox.enqueue(
+            event_id="outside", subject="Signal", body="Notification only",
+            recipients=["attacker@example.test"],
+        )
+        called = []
+        result = self.outbox.send_due(
+            self.config, transport=lambda *args: called.append(args) or {}
+        )
+        self.assertEqual(result["failed"], 1)
+        self.assertEqual(called, [])
+        event = self.outbox.snapshot()["events"]["outside"]
+        self.assertEqual(event["status"], "DEAD")
+        self.assertIn("allowlist", event["last_error"])
+
+    def test_retry_limit_moves_event_to_dead_letter(self):
+        outbox = EmailOutbox(
+            self.path, enabled=True, max_attempts=2,
+            base_retry_seconds=1, clock=self.clock,
+        )
+        outbox.enqueue(
+            event_id="dead", subject="Signal", body="Notification only",
+            recipients=["one@example.test"],
+        )
+        failing = lambda *args: (_ for _ in ()).throw(TimeoutError())
+        outbox.send_due(self.config, transport=failing)
+        event = outbox.snapshot()["events"]["dead"]
+        self.now[0] = event["next_attempt_at"]
+        outbox.send_due(self.config, transport=failing)
+        self.assertEqual(outbox.snapshot()["events"]["dead"]["status"], "DEAD")
+
     def test_corrupt_or_unknown_ledger_fails_closed(self):
         self.path.write_text("{broken", encoding="utf-8")
         with self.assertRaises(EmailOutboxError):
