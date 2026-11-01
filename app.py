@@ -331,7 +331,7 @@ def record_confirmed_signal(s, candle_close_ms=None):
     ts_ms = int(candle_close_ms) if candle_close_ms else int(time.time() * 1000)
     cfg = MODEL_LIBRARY.get(s, {})
     validation_passed = _model_validation_passed(cfg)
-    eligible_model = validation_passed and cfg.get("status") in ("CANDIDATE", "PRODUCTION")
+    eligible_model = validation_passed
     cache[s]["model_validation_passed"] = bool(eligible_model)
 
     # Re-check the gate even when direction is unchanged. A revoked or stale
