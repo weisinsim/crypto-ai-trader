@@ -168,6 +168,8 @@ class EmailOutboxTests(unittest.TestCase):
         invalid_events.append(non_finite_time)
         unknown_field = dict(original, unexpected="value")
         invalid_events.append(unknown_field)
+        duplicate_pending = dict(original, pending_recipients=["one@example.test", "one@example.test"])
+        invalid_events.append(duplicate_pending)
 
         for event in invalid_events:
             with self.subTest(event=event):
@@ -176,6 +178,15 @@ class EmailOutboxTests(unittest.TestCase):
                 }), encoding="utf-8")
                 with self.assertRaises(EmailOutboxError):
                     EmailOutbox(self.path, enabled=True, clock=self.clock)
+
+    def test_enqueue_rejects_non_string_recipient_items(self):
+        for recipients in (["valid@example.test", 123], [None], "valid@example.test"):
+            with self.subTest(recipients=recipients):
+                with self.assertRaises(ValueError):
+                    self.outbox.enqueue(
+                        event_id="bad-recipient", subject="Signal", body="Notification",
+                        recipients=recipients,
+                    )
 
     def test_invalid_subject_and_empty_body_are_rejected(self):
         with self.assertRaises(ValueError):
