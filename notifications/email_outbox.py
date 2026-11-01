@@ -85,7 +85,9 @@ class EmailConfig:
             raise EmailConfigurationError("SMTP port or timeout is outside safe bounds")
         if not self.username or not self.password:
             raise EmailConfigurationError("Enabled email requires SMTP credentials")
-        if any("\r" in x or "\n" in x for x in (self.host, self.sender, *self.recipients)):
+        if any("\r" in x or "\n" in x for x in (
+            self.host, self.username, self.password, self.sender, *self.recipients
+        )):
             raise EmailConfigurationError("Invalid newline in email configuration")
 
 
