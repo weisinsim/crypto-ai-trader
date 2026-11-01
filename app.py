@@ -99,7 +99,7 @@ def configure_email_notifications(environ=None):
         raw = env.get(key)
         if raw is not None:
             try:
-                if int(raw) > 1:
+                if int(raw) != 1:
                     log_error("EMAIL OUTBOX", "Delivery disabled: multiple workers detected")
                     return False
             except (TypeError, ValueError):
