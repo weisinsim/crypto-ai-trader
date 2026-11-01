@@ -148,18 +148,18 @@ class EmailOutbox:
             recipients = event.get("recipients")
             pending = event.get("pending_recipients")
             if (not isinstance(recipients, list) or not recipients
-                    or not all(isinstance(x, str) and x and "\\r" not in x and "\\n" not in x for x in recipients)
+                    or not all(isinstance(x, str) and x and "\r" not in x and "\n" not in x for x in recipients)
                     or len(set(recipients)) != len(recipients)
                     or not isinstance(pending, list)
                     or not all(isinstance(x, str) for x in pending)
                     or not set(pending).issubset(set(recipients))):
                 raise EmailOutboxError("Invalid outbox recipients; refusing to send")
             if (not isinstance(event.get("subject"), str) or not event["subject"].strip()
-                    or "\\r" in event["subject"] or "\\n" in event["subject"]
+                    or "\r" in event["subject"] or "\n" in event["subject"]
                     or not isinstance(event.get("body"), str) or not event["body"].strip()):
                 raise EmailOutboxError("Invalid outbox message; refusing to send")
             attempts = event.get("attempts")
-            if (event.get("status") not in allowed_statuses or type(attempts) is not int
+            if (not isinstance(event.get("status"), str) or event.get("status") not in allowed_statuses\n                    or type(attempts) is not int
                     or attempts < 0 or attempts > self.max_attempts
                     or not self._finite_number(event.get("created_at"))
                     or not self._finite_number(event.get("next_attempt_at"))):
