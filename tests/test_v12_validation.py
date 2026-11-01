@@ -54,6 +54,17 @@ class V12ValidationTests(unittest.TestCase):
         self.assertEqual(report["methodology"]["cvd_mode"], "OFF")
         self.assertEqual(report["holdout_cost_stress"]["base"]["trades"], 0)
 
+    def test_fixed_holdout_boundary_must_match_exact_feature_timestamp(self):
+        rows = [row(i * 3_600_000) for i in range(40)]
+        report = run_v12_validation(
+            rows, "BTCUSDT", folds=4, direction_mode="SHORT",
+            cvd_mode="OFF", holdout_start_ts=32 * 3_600_000,
+        )
+        self.assertEqual(report["methodology"]["holdout_start_ts"], 32 * 3_600_000)
+        self.assertEqual(report["dataset"]["rows"], 40)
+        with self.assertRaises(ValueError):
+            run_v12_validation(rows, "BTCUSDT", folds=4, holdout_start_ts=32 * 3_600_000 + 1)
+
     def test_invalid_fold_count_rejected(self):
         with self.assertRaises(ValueError):
             run_v12_validation([row(i) for i in range(40)], "BTCUSDT", folds=1)
