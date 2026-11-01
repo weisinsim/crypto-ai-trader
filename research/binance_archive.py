@@ -11,7 +11,7 @@ import csv
 import hashlib
 import io
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
 import httpx
@@ -65,6 +65,8 @@ def _archive_csv(client: httpx.Client, relative_path: str) -> list[list[str]]:
 def _archive_rows(client: httpx.Client, symbol: str, data_type: str,
                   interval: str | None, start_ms: int, end_ms: int) -> list[list[str]]:
     result = []
+    start_dt = datetime.fromtimestamp(start_ms / 1000, tz=timezone.utc)
+    end_dt = datetime.fromtimestamp((end_ms - 1) / 1000, tz=timezone.utc)
     for ym in _months(start_ms, end_ms):
         if data_type in ("klines", "markPriceKlines"):
             assert interval is not None
@@ -75,7 +77,38 @@ def _archive_rows(client: httpx.Client, symbol: str, data_type: str,
             path = f"monthly/fundingRate/{symbol}/{name}"
         else:
             raise ValueError(f"unsupported archive data type: {data_type}")
-        result.extend(_archive_csv(client, path))
+
+        monthly_rows = _archive_csv(client, path)
+        if monthly_rows:
+            result.extend(monthly_rows)
+            continue
+
+        # Binance publishes monthly archives after month-end. For the current
+        # incomplete month, fall back to daily archives; final coverage checks
+        # still reject any missing day rather than silently accepting a gap.
+        month_start = datetime.strptime(ym + "-01", "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        next_month = (
+            month_start.replace(year=month_start.year + 1, month=1)
+            if month_start.month == 12 else month_start.replace(month=month_start.month + 1)
+        )
+        first_day = max(start_dt.date(), month_start.date())
+        last_day = min(end_dt.date(), (next_month - timedelta(days=1)).date())
+        day = first_day
+        while day <= last_day:
+            date_text = day.isoformat()
+            if data_type in ("klines", "markPriceKlines"):
+                daily_name = f"{symbol}-{interval}-{date_text}.zip"
+                daily_path = f"daily/{data_type}/{symbol}/{interval}/{daily_name}"
+            else:
+                daily_name = f"{symbol}-fundingRate-{date_text}.zip"
+                daily_path = f"daily/fundingRate/{symbol}/{daily_name}"
+            daily_rows = _archive_csv(client, daily_path)
+            result.extend(
+                row for row in daily_rows
+                if row and str(row[0]).isdigit()
+                and start_ms <= int(row[0]) < end_ms
+            )
+            day += timedelta(days=1)
     return result
 
 
