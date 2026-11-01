@@ -44,6 +44,16 @@ class V12ValidationTests(unittest.TestCase):
         self.assertEqual(len(report["weight_profile_walk_forward_folds"]), 4)
         self.assertIn("net_return_pct", report["weight_profile_walk_forward_aggregate"])
 
+    def test_validation_accepts_and_reports_independent_modes(self):
+        rows = [row(i * 3_600_000) for i in range(40)]
+        report = run_v12_validation(
+            rows, "BTCUSDT", holdout_fraction=0.2, folds=4,
+            direction_mode="SHORT", cvd_mode="OFF",
+        )
+        self.assertEqual(report["methodology"]["direction_mode"], "SHORT")
+        self.assertEqual(report["methodology"]["cvd_mode"], "OFF")
+        self.assertEqual(report["holdout_cost_stress"]["base"]["trades"], 0)
+
     def test_invalid_fold_count_rejected(self):
         with self.assertRaises(ValueError):
             run_v12_validation([row(i) for i in range(40)], "BTCUSDT", folds=1)
