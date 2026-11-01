@@ -309,36 +309,53 @@ def closed_series_rows(s, interval, now_ms=None):
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
     return filter_closed_candles(series[s][interval], interval, now_ms)
 
+def _model_validation_passed(cfg):
+    validation = cfg.get("validation") if isinstance(cfg, dict) else None
+    return (
+        cfg.get("status") in ("CANDIDATE", "PRODUCTION")
+        and isinstance(validation, dict)
+        and validation.get("holdout_passed") is True
+        and validation.get("walk_forward_passed") is True
+        and validation.get("cost_stress_passed") is True
+        and isinstance(validation.get("report_id"), str)
+        and bool(validation["report_id"].strip())
+    )
+
+
 def record_confirmed_signal(s, candle_close_ms=None):
-    """Freeze the 1H signal at candle close so intrabar flips do not create fake entries."""
+    """Freeze the 1H signal at candle close and require an auditable validation record."""
     sig = cache[s].get("signal") or "NO-TRADE"
     prev = confirmed_state[s]
     ts_ms = int(candle_close_ms) if candle_close_ms else int(time.time() * 1000)
+    cfg = MODEL_LIBRARY.get(s, {})
+    validation_passed = _model_validation_passed(cfg)
+    eligible_model = validation_passed and cfg.get("status") in ("CANDIDATE", "PRODUCTION")
+    cache[s]["model_validation_passed"] = bool(eligible_model)
+
+    # Re-check the gate even when direction is unchanged. A revoked or stale
+    # validation record must invalidate an already displayed confirmed signal.
     if sig == prev:
+        if sig in ("LONG", "SHORT") and not eligible_model:
+            invalidate_stale_confirmation(
+                prev, "NO-TRADE", cache[s], signal_history[s], ts_ms
+            )
+            confirmed_state[s] = "NO-TRADE"
+            cache[s]["confirmed_status"] = "WAITING_VALIDATION"
+            cache[s]["confirmation_basis"] = "1H candle close + validated model gate"
         return False
 
-    # A changed signal invalidates any previously confirmed direction before
-    # applying the new model's validation gate. Otherwise a blocked opposite
-    # signal can leave a stale LONG/SHORT confirmation displayed as ACTIVE.
+    # A changed direction invalidates the previous confirmation before the
+    # new model-validation gate is applied.
     prev = invalidate_stale_confirmation(
         prev, sig, cache[s], signal_history[s], ts_ms
     )
     if prev == "NO-TRADE":
         confirmed_state[s] = "NO-TRADE"
 
-    # Only independently validated candidate/frozen models may become executable confirmations.
-    cfg = MODEL_LIBRARY.get(s, {})
-    # Execution requires an explicit, auditable validation record.
-    # FROZEN means parameters are preserved, not that profitability is proven.
-    validation = cfg.get("validation", {})
     executable = (
         sig in ("LONG", "SHORT")
         and cache[s].get("opportunity_tier") == "A"
-        and cfg.get("status") == "CANDIDATE"
-        and validation.get("holdout_passed") is True
-        and validation.get("walk_forward_passed") is True
-        and validation.get("cost_stress_passed") is True
-        and validation.get("report_id")
+        and eligible_model
     )
     if sig in ("LONG", "SHORT") and not executable:
         cache[s]["confirmed_status"] = "WAITING_VALIDATION"
@@ -569,7 +586,8 @@ async def analyze_symbol(s):
             btc_filter="NEUTRAL", entry_location=entry_location, entry_location_score=score_breakdown.get("entry_location",0),
             position_qty=round(qty,6) if qty is not None else None, position_usd=round(position_usd,2) if position_usd is not None else None,
             margin_3x=round(margin_3x,2) if margin_3x is not None else None,
-            model_name=cfg["name"], model_status=cfg["status"], direction_mode=cfg["direction"], horizon=cfg["horizon"],
+            model_name=cfg["name"], model_status=cfg["status"], model_validation_passed=_model_validation_passed(cfg),
+            direction_mode=cfg["direction"], horizon=cfg["horizon"],
             regime=regime, direction_bias=direction_bias, opportunity_tier=opportunity_tier,
             confirmation_basis="1H candle close", last_closed_candle=(series[s]["1h"][-2]["t"] + 3600000 if len(series[s]["1h"]) >= 2 else None),
             analysis_ts=time.time(), ts=time.time(), error=None
