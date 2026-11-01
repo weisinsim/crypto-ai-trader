@@ -159,7 +159,8 @@ class EmailOutbox:
                     or not isinstance(event.get("body"), str) or not event["body"].strip()):
                 raise EmailOutboxError("Invalid outbox message; refusing to send")
             attempts = event.get("attempts")
-            if (not isinstance(event.get("status"), str) or event.get("status") not in allowed_statuses\n                    or type(attempts) is not int
+            if (not isinstance(event.get("status"), str) or event.get("status") not in allowed_statuses
+                    or type(attempts) is not int
                     or attempts < 0 or attempts > self.max_attempts
                     or not self._finite_number(event.get("created_at"))
                     or not self._finite_number(event.get("next_attempt_at"))):
