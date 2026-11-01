@@ -470,6 +470,7 @@ def record_confirmed_signal(s, candle_close_ms=None):
         }
         signal_history[s].insert(0, event)
         signal_history[s] = signal_history[s][:20]
+        queue_signal_email(s)
     return True
 
 async def seed_symbol(s):
@@ -859,6 +860,8 @@ async def startup():
         timeout=httpx.Timeout(4.0, connect=2.0),
         limits=httpx.Limits(max_connections=40, max_keepalive_connections=20),
     )
+    if configure_email_notifications():
+        asyncio.create_task(email_delivery_loop())
     asyncio.create_task(seed_all())
     asyncio.create_task(ws_loop())
     asyncio.create_task(price_rest_fallback())
