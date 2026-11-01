@@ -29,6 +29,9 @@ class V12ValidationTests(unittest.TestCase):
         self.assertIn("base", report["holdout_cost_stress"])
         self.assertIn("stress_1_5x", report["holdout_cost_stress"])
         self.assertIn("severe_2x", report["holdout_cost_stress"])
+        self.assertIn("stress_0_30pct_round_trip", report["holdout_cost_stress"])
+        self.assertIn("max_consecutive_losses", report["holdout_cost_stress"]["stress_0_30pct_round_trip"])
+        self.assertIn("winner_removed_net_return_pct", report["holdout_cost_stress"]["stress_0_30pct_round_trip"])
         self.assertEqual(report["threshold_calibration"]["training_rows"], 32)
         self.assertIn(report["threshold_calibration"]["status"],
                       ("TRAINING_CANDIDATE_SELECTED", "NO_CANDIDATE_PASSED_TRAINING_GATES"))
