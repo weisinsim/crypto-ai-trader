@@ -27,7 +27,8 @@
     for (const alert of payload.alerts) {
       if (!alert || typeof alert.symbol !== "string" || !SYMBOL_RE.test(alert.symbol)) continue;
       if (!["LONG", "SHORT"].includes(alert.side)) continue;
-      if (!["RESEARCH", "PRODUCTION"].includes(alert.model_status)) continue;
+      if (!["CANDIDATE", "PRODUCTION"].includes(alert.model_status)) continue;
+      if (alert.model_validation_passed !== true) continue;
       if (alert.notification_only !== true || alert.auto_trade_authorized !== false) continue;
       if (alert.research_only !== (alert.model_status !== "PRODUCTION")) continue;
       if (typeof alert.event_id !== "string" || !EVENT_ID_RE.test(alert.event_id) || seen.has(alert.event_id)) continue;
