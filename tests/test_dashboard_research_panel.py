@@ -43,6 +43,15 @@ class DashboardResearchPanelTests(unittest.TestCase):
         self.assertIn("未批准实盘", self.html)
         self.assertIn("RESEARCH ONLY", self.html)
 
+
+    def test_confirmed_directional_signals_are_manual_review_only(self):
+        self.assertIn('text:s+" · 仅供人工评估"', self.html)
+        self.assertIn('信号状态（非执行）', self.html)
+        self.assertIn('不代表获准交易或可提交订单', self.html)
+        self.assertIn('模型标记PRODUCTION · 仍需人工评估', self.html)
+        self.assertNotIn('text:s+" · 可执行"', self.html)
+        self.assertNotIn('只有「交易执行状态」显示可执行时才考虑入场', self.html)
+
     def test_html_document_and_script_are_closed(self):
         opening_scripts = self.html.count("<script>") + self.html.count("<script ")
         self.assertEqual(opening_scripts, self.html.count("</script>"))
