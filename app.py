@@ -422,13 +422,20 @@ def record_confirmed_signal(s, candle_close_ms=None):
     # Re-check the gate even when direction is unchanged. A revoked or stale
     # validation record must invalidate an already displayed confirmed signal.
     if sig == prev:
-        if sig in ("LONG", "SHORT") and not eligible_model:
-            invalidate_stale_confirmation(
-                prev, "NO-TRADE", cache[s], signal_history[s], ts_ms
-            )
-            confirmed_state[s] = "NO-TRADE"
-            cache[s]["confirmed_status"] = "WAITING_VALIDATION"
-            cache[s]["confirmation_basis"] = "1H candle close + validated model gate"
+        if sig in ("LONG", "SHORT"):
+            if not eligible_model:
+                invalidate_stale_confirmation(
+                    prev, "NO-TRADE", cache[s], signal_history[s], ts_ms
+                )
+                confirmed_state[s] = "NO-TRADE"
+                cache[s]["confirmed_status"] = "WAITING_VALIDATION"
+                cache[s]["confirmation_basis"] = "1H candle close + validated model gate"
+            else:
+                # Retry queue persistence while the same confirmed event remains
+                # fresh. The deterministic event ID makes this idempotent after
+                # a successful enqueue; a transient local persistence failure
+                # must not permanently suppress the email for this signal.
+                queue_signal_email(s)
         return False
 
     # A changed direction invalidates the previous confirmation before the
