@@ -31,6 +31,10 @@ class V12ValidationTests(unittest.TestCase):
         self.assertIn("severe_2x", report["holdout_cost_stress"])
         self.assertIn("stress_0_30pct_round_trip", report["holdout_cost_stress"])
         self.assertIn("stress_0_46pct_round_trip", report["holdout_cost_stress"])
+        self.assertEqual(
+            report["methodology"]["cost_scenarios"]["stress_0_46pct_round_trip"]["round_trip_cost_pct"],
+            0.46,
+        )
         self.assertIn("max_consecutive_losses", report["holdout_cost_stress"]["stress_0_30pct_round_trip"])
         self.assertIn("winner_removed_net_return_pct", report["holdout_cost_stress"]["stress_0_30pct_round_trip"])
         self.assertEqual(report["threshold_calibration"]["training_rows"], 32)
