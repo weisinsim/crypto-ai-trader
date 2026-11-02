@@ -68,7 +68,14 @@ class EmailNotificationIntegrationTests(unittest.TestCase):
         }
         queued = []
         class FakeOutbox:
+            def __init__(self):
+                self.event_ids = set()
+
             def enqueue(self, **kwargs):
+                event_id = kwargs["event_id"]
+                if event_id in self.event_ids:
+                    return False
+                self.event_ids.add(event_id)
                 queued.append(kwargs)
                 return True
 
