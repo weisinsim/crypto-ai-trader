@@ -40,7 +40,7 @@ class V12MatrixTests(unittest.TestCase):
                 "net_return_pct": 2.0, "max_drawdown_pct": 8.0,
             },
         }
-        self.assertEqual(_development_score(report)[0], 0)
+        self.assertEqual(_development_score(_with_development_stress(report))[0], 0)
 
     def test_development_selection_rejects_insufficient_trades(self):
         report = {
@@ -55,7 +55,7 @@ class V12MatrixTests(unittest.TestCase):
                 "net_return_pct": 2.0, "max_drawdown_pct": 8.0,
             },
         }
-        self.assertEqual(_development_score(report)[0], 0)
+        self.assertEqual(_development_score(_with_development_stress(report))[0], 0)
 
 
     def test_development_selection_rejects_nonfinite_or_boolean_metrics(self):
@@ -85,7 +85,7 @@ class V12MatrixTests(unittest.TestCase):
             }
             report["walk_forward_aggregate"][field] = value
             with self.subTest(field=field, value=value):
-                self.assertEqual(_development_score(report)[0], 0)
+                self.assertEqual(_development_score(_with_development_stress(report))[0], 0)
 
     def test_development_selection_requires_exact_cost_stress_metrics(self):
         report = {
@@ -141,7 +141,7 @@ class V12MatrixTests(unittest.TestCase):
                 "net_return_pct": 2.0, "max_drawdown_pct": 8.0,
             },
         }
-        self.assertEqual(_development_score(report)[0], 0)
+        self.assertEqual(_development_score(_with_development_stress(report))[0], 0)
 
     def test_funding_audit_review_required_or_unknown_status_blocks_research(self):
         self.assertFalse(_funding_audit_allows_research({"status": "REVIEW_REQUIRED"}))
