@@ -261,6 +261,8 @@ def run_matrix(*, start_date: str, end_date: str, holdout_start: str,
                 (mode, report) for mode, report in arms.items()
                 if report.get("status") == "RESEARCH_ONLY"
                 and _development_score(report)[0] == 1
+                and isinstance(report.get("threshold_calibration"), dict)
+                and isinstance(report["threshold_calibration"].get("selected"), dict)
             ]
             if not eligible_arms:
                 symbol_result["development"][direction] = {
@@ -279,6 +281,18 @@ def run_matrix(*, start_date: str, end_date: str, holdout_start: str,
             selected_mode, selected_report = max(
                 eligible_arms, key=lambda item: _development_score(item[1])
             )
+            selected = selected_report["threshold_calibration"]["selected"]
+            frozen_parameters = {
+                "min_score": selected["min_score"],
+                "min_edge": selected["min_edge"],
+                "short_rsi_floor": selected["short_rsi_floor"],
+            }
+            frozen_parameter_json = json.dumps(
+                frozen_parameters, sort_keys=True, separators=(",", ":"), allow_nan=False
+            )
+            frozen_parameter_sha256 = hashlib.sha256(
+                frozen_parameter_json.encode("utf-8")
+            ).hexdigest()
             symbol_result["development"][direction] = {
                 "arms": arms,
                 "selection": {
@@ -287,17 +301,22 @@ def run_matrix(*, start_date: str, end_date: str, holdout_start: str,
                     "selection_basis": "development walk-forward only; forward holdout metrics not read",
                     "development_score": list(_development_score(selected_report)),
                     "development_walk_forward_aggregate": selected_report["walk_forward_aggregate"],
+                    "frozen_parameters": frozen_parameters,
+                    "frozen_parameters_sha256": frozen_parameter_sha256,
                 },
             }
 
-            # The final forward window is opened only for the single preselected
-            # symbol/direction/CVD arm; all other arms remain development-only.
+            # The final forward window uses the exact parameters selected on
+            # development data; no threshold recalibration is allowed here.
             final_report = run_v12_validation(
                 features, symbol, holdout_fraction=0.2, folds=folds,
                 fee_rate=fee_rate, slippage_rate=slippage_rate,
                 funding_events=funding, direction_mode=direction,
                 cvd_mode=selected_mode, holdout_start_ts=holdout_ms,
+                frozen_overrides=frozen_parameters,
             )
+            final_report["frozen_parameters"] = frozen_parameters
+            final_report["frozen_parameters_sha256"] = frozen_parameter_sha256
             final_report["forward_holdout_sample_gate"] = (
                 "SUFFICIENT_FOR_SCREENING" if final_report["calibrated_holdout"]["trades"] >= 100
                 else "INSUFFICIENT_FORWARD_TRADES"
