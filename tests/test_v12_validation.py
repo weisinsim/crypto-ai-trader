@@ -73,6 +73,34 @@ class V12ValidationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             run_v12_validation(rows, "BTCUSDT", folds=4, holdout_start_ts=32 * 3_600_000 + 1)
 
+    def test_forward_validation_applies_frozen_threshold_parameters_without_reselection(self):
+        rows = [row(i * 3_600_000) for i in range(40)]
+        frozen = {"min_score": 75, "min_edge": 8, "short_rsi_floor": 30.0}
+        report = run_v12_validation(
+            rows, "BTCUSDT", holdout_fraction=0.2, folds=4,
+            direction_mode="SHORT", cvd_mode="OFF",
+            frozen_overrides=frozen,
+        )
+        self.assertEqual(report["threshold_calibration"]["status"], "FROZEN_PARAMETERS_APPLIED")
+        self.assertEqual(report["threshold_calibration"]["selected"], frozen)
+        self.assertTrue(report["methodology"]["frozen_parameters_applied"])
+        self.assertIn("frozen development parameters", report["methodology"]["parameter_policy"])
+
+    def test_forward_validation_rejects_invalid_frozen_parameters(self):
+        rows = [row(i * 3_600_000) for i in range(40)]
+        invalid = [
+            {"min_score": True, "min_edge": 8, "short_rsi_floor": None},
+            {"min_score": 49, "min_edge": 8, "short_rsi_floor": None},
+            {"min_score": 75, "min_edge": 51, "short_rsi_floor": None},
+            {"min_score": 75, "min_edge": 8, "short_rsi_floor": 51},
+            {"min_score": 75, "min_edge": 8, "short_rsi_floor": float("nan")},
+            {"min_score": 75, "min_edge": 8},
+        ]
+        for parameters in invalid:
+            with self.subTest(parameters=parameters):
+                with self.assertRaises(ValueError):
+                    run_v12_validation(rows, "BTCUSDT", folds=4, frozen_overrides=parameters)
+
     def test_invalid_fold_count_rejected(self):
         with self.assertRaises(ValueError):
             run_v12_validation([row(i) for i in range(40)], "BTCUSDT", folds=1)
