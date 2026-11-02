@@ -3,6 +3,14 @@ import unittest
 from research.run_v12_matrix import _development_score, _funding_audit_allows_research
 
 
+def _with_development_stress(report):
+    report["development_cost_stress_0_30pct_round_trip"] = {
+        "walk_forward_folds": report["walk_forward_folds"],
+        "walk_forward_aggregate": report["walk_forward_aggregate"],
+    }
+    return report
+
+
 class V12MatrixTests(unittest.TestCase):
     def test_development_selection_requires_majority_positive_folds_and_pf(self):
         report = {
@@ -17,7 +25,7 @@ class V12MatrixTests(unittest.TestCase):
                 "net_return_pct": 2.0, "max_drawdown_pct": 8.0,
             },
         }
-        self.assertEqual(_development_score(report)[0], 1)
+        self.assertEqual(_development_score(_with_development_stress(report))[0], 1)
 
     def test_development_selection_rejects_weak_walk_forward(self):
         report = {
@@ -78,6 +86,47 @@ class V12MatrixTests(unittest.TestCase):
             report["walk_forward_aggregate"][field] = value
             with self.subTest(field=field, value=value):
                 self.assertEqual(_development_score(report)[0], 0)
+
+    def test_development_selection_requires_exact_cost_stress_metrics(self):
+        report = {
+            "walk_forward_folds": [
+                {"test_metrics": {"net_return_pct": 1.0}},
+                {"test_metrics": {"net_return_pct": 0.5}},
+                {"test_metrics": {"net_return_pct": 0.2}},
+                {"test_metrics": {"net_return_pct": 0.8}},
+            ],
+            "walk_forward_aggregate": {
+                "trades": 40, "profit_factor": 1.5,
+                "net_return_pct": 3.0, "max_drawdown_pct": 8.0,
+            },
+            "development_cost_stress_0_30pct_round_trip": {
+                "walk_forward_folds": [
+                    {"test_metrics": {"net_return_pct": -1.0}},
+                    {"test_metrics": {"net_return_pct": -0.5}},
+                    {"test_metrics": {"net_return_pct": 0.2}},
+                    {"test_metrics": {"net_return_pct": -0.8}},
+                ],
+                "walk_forward_aggregate": {
+                    "trades": 40, "profit_factor": 0.8,
+                    "net_return_pct": -2.0, "max_drawdown_pct": 8.0,
+                },
+            },
+        }
+        self.assertEqual(_development_score(report)[0], 0)
+
+    def test_development_selection_rejects_missing_cost_stress_metrics(self):
+        report = {
+            "walk_forward_folds": [
+                {"test_metrics": {"net_return_pct": 1.0}},
+                {"test_metrics": {"net_return_pct": 0.5}},
+                {"test_metrics": {"net_return_pct": 0.2}},
+            ],
+            "walk_forward_aggregate": {
+                "trades": 40, "profit_factor": 1.5,
+                "net_return_pct": 3.0, "max_drawdown_pct": 8.0,
+            },
+        }
+        self.assertEqual(_development_score(report)[0], 0)
 
     def test_development_selection_rejects_incomplete_fold_metrics(self):
         report = {
