@@ -15,6 +15,7 @@ from pathlib import Path
 from research.audit_funding_data import audit_funding_against_candles
 from research.binance_data import download_klines, save_csv as save_candles, utc_ms
 from research.binance_funding_data import download_funding_history, save_csv as save_funding
+from research.run_backtest import load_funding_csv
 from research.v12_features import build_v12_features, write_feature_csv
 from research.v12_validation import run_v12_validation
 
@@ -171,6 +172,10 @@ def run_matrix(*, start_date: str, end_date: str, holdout_start: str,
         save_candles(candle_1h, p1)
         save_candles(candle_4h, p4)
         save_funding(funding, pf)
+        # Re-load through the canonical funding parser so raw exchange timestamps
+        # are preserved for audit while sub-second 8h-boundary jitter is normalized
+        # only under the shared, explicit tolerance policy used by backtests.
+        funding = load_funding_csv(str(pf))
         features = build_v12_features(candle_1h, candle_4h, funding, symbol=symbol)
         write_feature_csv(px, features)
 
