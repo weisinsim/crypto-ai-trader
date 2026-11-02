@@ -89,5 +89,93 @@ class EmailNotificationIntegrationTests(unittest.TestCase):
         self.assertIn("No exchange order was placed", queued[0]["body"])
 
 
+    def _install_confirmable_candidate(self, now):
+        item = {
+            "signal": "LONG",
+            "model_status": "CANDIDATE",
+            "ts": now - 5,
+            "price": 100.0,
+            "analysis_ts": now - 30,
+            "entry": 100.0,
+            "sl": 98.0,
+            "tp1": 103.0,
+            "tp2": 106.0,
+            "score": 82.0,
+            "score_label": "A",
+            "opportunity_tier": "A",
+            "model_name": "BTC Candidate Model",
+        }
+        config = {
+            "name": "BTC Candidate Model",
+            "status": "CANDIDATE",
+            "validation": {
+                "holdout_passed": True,
+                "walk_forward_passed": True,
+                "cost_stress_passed": True,
+                "report_id": "independent-report-001",
+            },
+        }
+        app_module.email_config = EmailConfig(
+            enabled=True, host="smtp.example.test", username="user",
+            password="password", sender="alerts@example.test",
+            recipients=("one@example.test",),
+        )
+        queued = []
+
+        class FakeOutbox:
+            def enqueue(self, **kwargs):
+                queued.append(kwargs)
+                return True
+
+        app_module.email_outbox = FakeOutbox()
+        return item, config, queued
+
+    def test_confirmed_validated_signal_queues_exactly_one_email(self):
+        now = 1_800_000_000.0
+        item, config, queued = self._install_confirmable_candidate(now)
+        with patch.dict(app_module.cache, {"BTCUSDT": item}), patch.dict(
+            app_module.MODEL_LIBRARY, {"BTCUSDT": config}
+        ), patch.dict(app_module.confirmed_state, {"BTCUSDT": "NO-TRADE"}), patch.dict(
+            app_module.signal_history, {"BTCUSDT": []}
+        ), patch.object(app_module.time, "time", return_value=now):
+            self.assertTrue(app_module.record_confirmed_signal(
+                "BTCUSDT", candle_close_ms=int((now - 60) * 1000)
+            ))
+            self.assertEqual(len(queued), 1)
+            self.assertEqual(queued[0]["recipients"], ["one@example.test"])
+            self.assertIn("Notification only", queued[0]["body"])
+            self.assertIn("No exchange order was placed", queued[0]["body"])
+
+            # A repeated evaluation of the same confirmed direction must not enqueue again.
+            self.assertFalse(app_module.record_confirmed_signal(
+                "BTCUSDT", candle_close_ms=int((now - 60) * 1000)
+            ))
+            self.assertEqual(len(queued), 1)
+
+            # Revoking any independent-validation gate invalidates the confirmation
+            # and must not create another notification.
+            config["validation"]["cost_stress_passed"] = False
+            self.assertFalse(app_module.record_confirmed_signal(
+                "BTCUSDT", candle_close_ms=int((now + 3600) * 1000)
+            ))
+            self.assertEqual(len(queued), 1)
+            self.assertEqual(item["confirmed_signal"], "NO-TRADE")
+            self.assertEqual(item["confirmed_status"], "WAITING_VALIDATION")
+
+    def test_unvalidated_candidate_never_queues_email(self):
+        now = 1_800_000_000.0
+        item, config, queued = self._install_confirmable_candidate(now)
+        config["validation"]["holdout_passed"] = False
+        with patch.dict(app_module.cache, {"BTCUSDT": item}), patch.dict(
+            app_module.MODEL_LIBRARY, {"BTCUSDT": config}
+        ), patch.dict(app_module.confirmed_state, {"BTCUSDT": "NO-TRADE"}), patch.dict(
+            app_module.signal_history, {"BTCUSDT": []}
+        ), patch.object(app_module.time, "time", return_value=now):
+            self.assertFalse(app_module.record_confirmed_signal(
+                "BTCUSDT", candle_close_ms=int((now - 60) * 1000)
+            ))
+        self.assertEqual(queued, [])
+
+
 if __name__ == "__main__":
     unittest.main()
