@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import app as app_module
-from notifications.email_outbox import EmailConfig
+from notifications.email_outbox import EmailConfig, EmailOutboxError
 
 
 class EmailNotificationIntegrationTests(unittest.TestCase):
@@ -175,6 +175,44 @@ class EmailNotificationIntegrationTests(unittest.TestCase):
                 "BTCUSDT", candle_close_ms=int((now - 60) * 1000)
             ))
         self.assertEqual(queued, [])
+
+
+
+    def test_same_confirmed_signal_retries_after_transient_outbox_failure(self):
+        now = 1_800_000_000.0
+        item, config, queued = self._install_confirmable_candidate(now)
+
+        class FlakyOutbox:
+            def __init__(self):
+                self.calls = 0
+
+            def enqueue(self, **kwargs):
+                self.calls += 1
+                if self.calls == 1:
+                    raise EmailOutboxError("simulated local persistence failure")
+                queued.append(kwargs)
+                return True
+
+        flaky = FlakyOutbox()
+        app_module.email_outbox = flaky
+        with patch.dict(app_module.cache, {"BTCUSDT": item}), patch.dict(
+            app_module.MODEL_LIBRARY, {"BTCUSDT": config}
+        ), patch.dict(app_module.confirmed_state, {"BTCUSDT": "NO-TRADE"}), patch.dict(
+            app_module.signal_history, {"BTCUSDT": []}
+        ), patch.object(app_module.time, "time", return_value=now):
+            self.assertTrue(app_module.record_confirmed_signal(
+                "BTCUSDT", candle_close_ms=int((now - 60) * 1000)
+            ))
+            self.assertEqual(flaky.calls, 1)
+            self.assertEqual(queued, [])
+
+            # The direction is unchanged, but the event is still fresh and valid.
+            # Retry the durable enqueue; the outbox event ID protects against duplicates.
+            self.assertFalse(app_module.record_confirmed_signal(
+                "BTCUSDT", candle_close_ms=int((now - 60) * 1000)
+            ))
+            self.assertEqual(flaky.calls, 2)
+            self.assertEqual(len(queued), 1)
 
 
 if __name__ == "__main__":
