@@ -100,12 +100,53 @@ class V12MatrixTests(unittest.TestCase):
         self.assertFalse(_funding_audit_allows_research(None))
 
     def test_timestamp_aligned_but_unreconciled_funding_is_labeled_not_reconciled(self):
+        funding = {
+            "source_labels": ["binance_funding_rate_endpoint_markPrice"],
+            "venue_labels": ["binance_usdm"],
+            "records_outside_candle_range": 0,
+            "nonmatching_in_range": 0,
+            "records_missing_or_invalid_source_label": 0,
+            "records_missing_or_invalid_venue_label": 0,
+        }
+        common = {
+            "candle_timestamps_strictly_increasing": True,
+            "duplicate_candle_records": 0,
+            "duplicate_event_records": 0,
+            "intervals_exceeding_gap_threshold": 0,
+            "funding": funding,
+        }
         self.assertTrue(_funding_audit_allows_research({
-            "status": "TIMESTAMP_ALIGNMENT_PASS_NOT_RECONCILED"
+            **common, "status": "TIMESTAMP_ALIGNMENT_PASS_NOT_RECONCILED"
         }))
         self.assertTrue(_funding_audit_allows_research({
-            "status": "BOUNDARY_JITTER_NORMALIZED_ALIGNMENT_PASS_NOT_RECONCILED"
+            **common, "status": "BOUNDARY_JITTER_NORMALIZED_ALIGNMENT_PASS_NOT_RECONCILED"
         }))
+
+    def test_funding_audit_rejects_unknown_provenance_and_bad_coverage(self):
+        base = {
+            "status": "TIMESTAMP_ALIGNMENT_PASS_NOT_RECONCILED",
+            "candle_timestamps_strictly_increasing": True,
+            "duplicate_candle_records": 0,
+            "duplicate_event_records": 0,
+            "intervals_exceeding_gap_threshold": 0,
+            "funding": {
+                "source_labels": ["binance_funding_rate_endpoint_markPrice"],
+                "venue_labels": ["binance_usdm"],
+                "records_outside_candle_range": 0,
+                "nonmatching_in_range": 0,
+                "records_missing_or_invalid_source_label": 0,
+                "records_missing_or_invalid_venue_label": 0,
+            },
+        }
+        invalid = []
+        unknown_source = {**base, "funding": {**base["funding"], "source_labels": ["unknown"]}}
+        missing_venue = {**base, "funding": {**base["funding"], "venue_labels": []}}
+        duplicate = {**base, "duplicate_event_records": 1}
+        outside = {**base, "funding": {**base["funding"], "records_outside_candle_range": 1}}
+        invalid.extend([unknown_source, missing_venue, duplicate, outside])
+        for audit in invalid:
+            with self.subTest(audit=audit):
+                self.assertFalse(_funding_audit_allows_research(audit))
 
 
 if __name__ == "__main__":
