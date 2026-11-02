@@ -431,6 +431,15 @@ def run_v12_validation(rows, symbol, *, holdout_fraction=0.2, folds=4,
     )
     cost_stress["stress_0_30pct_round_trip"] = _metrics(stress_030)
 
+    # Exact 0.46% round-trip stress: 0.05% fee + 0.18% slippage per side.
+    stress_046 = run_v12_backtest(
+        holdout_rows, symbol, fee_rate=0.0005, slippage_rate=0.0018,
+        initial_equity=initial_equity, risk_fraction=risk_fraction,
+        max_leverage=max_leverage, funding_events=list(funding_events or []),
+        direction_mode=direction_mode, cvd_mode=cvd_mode, **selected_overrides,
+    )
+    cost_stress["stress_0_46pct_round_trip"] = _metrics(stress_046)
+
     holdout_sample_gate = (
         "SUFFICIENT_FOR_SCREENING" if calibrated_holdout["trades"] >= 20
         else "INSUFFICIENT_HOLDOUT_TRADES"
