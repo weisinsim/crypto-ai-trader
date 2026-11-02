@@ -343,7 +343,7 @@ def run_v12_validation(rows, symbol, *, holdout_fraction=0.2, folds=4,
                        initial_equity=1.0, risk_fraction=0.005, max_leverage=3.0,
                        funding_events=None, trailing_atr_multiple=1.5,
                        max_holding_bars=72, signal_reversal_exit=True,
-                       direction_mode="BOTH", cvd_mode="ON", holdout_start_ts=None):
+                       direction_mode="BOTH", cvd_mode="ON", holdout_start_ts=None, frozen_overrides=None):
     if not math.isfinite(holdout_fraction) or not 0.1 <= holdout_fraction <= 0.4:
         raise ValueError("holdout_fraction must be between 0.1 and 0.4")
     if not isinstance(folds, int) or isinstance(folds, bool) or folds < 2:
@@ -384,7 +384,38 @@ def run_v12_validation(rows, symbol, *, holdout_fraction=0.2, folds=4,
     holdout_rows = rows[split:]
     baseline_holdout = run_v12_backtest(holdout_rows, symbol, **common)
 
-    calibration = _calibrate_threshold(train_rows, symbol, common)
+    if frozen_overrides is None:
+        calibration = _calibrate_threshold(train_rows, symbol, common)
+    else:
+        required = {"min_score", "min_edge", "short_rsi_floor"}
+        if not isinstance(frozen_overrides, dict) or set(frozen_overrides) != required:
+            raise ValueError("frozen_overrides must contain exactly min_score, min_edge, and short_rsi_floor")
+        min_score = frozen_overrides["min_score"]
+        min_edge = frozen_overrides["min_edge"]
+        short_rsi_floor = frozen_overrides["short_rsi_floor"]
+        if type(min_score) is not int or not 50 <= min_score <= 95:
+            raise ValueError("frozen min_score must be an integer between 50 and 95")
+        if type(min_edge) is not int or not 0 <= min_edge <= 50:
+            raise ValueError("frozen min_edge must be an integer between 0 and 50")
+        if short_rsi_floor is not None and (
+            isinstance(short_rsi_floor, bool)
+            or not isinstance(short_rsi_floor, (int, float))
+            or not math.isfinite(short_rsi_floor)
+            or not 0 <= short_rsi_floor <= 50
+        ):
+            raise ValueError("frozen short_rsi_floor must be null or a finite number between 0 and 50")
+        calibration = {
+            "base_min_score": int(ASSET_PROFILES.get(symbol, {}).get("min_score", 75)),
+            "minimum_training_trades": 20,
+            "eligibility": "preselected development walk-forward parameters; no forward-window recalibration",
+            "candidates": [],
+            "selected": {
+                "min_score": min_score,
+                "min_edge": min_edge,
+                "short_rsi_floor": short_rsi_floor,
+            },
+            "status": "FROZEN_PARAMETERS_APPLIED",
+        }
     selected_overrides = _overrides(calibration)
     calibrated_holdout = (
         run_v12_backtest(holdout_rows, symbol, **common, **selected_overrides)
@@ -473,7 +504,12 @@ def run_v12_validation(rows, symbol, *, holdout_fraction=0.2, folds=4,
                     "round_trip_cost_pct": 0.46,
                 },
             },
-            "parameter_policy": "expanding-window threshold calibration uses only data before each test fold; final holdout is never used for selection",
+            "parameter_policy": (
+                "frozen development parameters supplied explicitly; no recalibration"
+                if frozen_overrides is not None else
+                "expanding-window threshold calibration uses only data before each test fold; final holdout is never used for selection"
+            ),
+            "frozen_parameters_applied": frozen_overrides is not None,
             "note": "Walk-forward test folds cover the pre-holdout period from 50% to the training/holdout boundary. Final holdout is reported separately.",
         },
         "full_sample": {key: full[key] for key in (
