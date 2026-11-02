@@ -456,6 +456,23 @@ def run_v12_validation(rows, symbol, *, holdout_fraction=0.2, folds=4,
             "direction_mode": direction_mode, "cvd_mode": cvd_mode,
             "holdout_start_ts": holdout_start_ts,
             "holdout_boundary_policy": "exact_timestamp" if holdout_start_ts is not None else "fractional_tail",
+            "cost_scenarios": {
+                "base": {
+                    "fee_rate_per_side": fee_rate,
+                    "slippage_rate_per_side": slippage_rate,
+                    "round_trip_cost_pct": round((fee_rate + slippage_rate) * 200, 4),
+                },
+                "stress_0_30pct_round_trip": {
+                    "fee_rate_per_side": 0.0005,
+                    "slippage_rate_per_side": 0.0010,
+                    "round_trip_cost_pct": 0.30,
+                },
+                "stress_0_46pct_round_trip": {
+                    "fee_rate_per_side": 0.0005,
+                    "slippage_rate_per_side": 0.0018,
+                    "round_trip_cost_pct": 0.46,
+                },
+            },
             "parameter_policy": "expanding-window threshold calibration uses only data before each test fold; final holdout is never used for selection",
             "note": "Walk-forward test folds cover the pre-holdout period from 50% to the training/holdout boundary. Final holdout is reported separately.",
         },
