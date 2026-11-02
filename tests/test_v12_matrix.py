@@ -69,6 +69,7 @@ class V12MatrixTests(unittest.TestCase):
             ("net_return_pct", float("nan")),
             ("max_drawdown_pct", float("inf")),
             ("max_drawdown_pct", -0.1),
+            ("net_return_pct", 10 ** 400),
         ):
             report = {
                 "walk_forward_folds": [dict(row) for row in base["walk_forward_folds"]],
