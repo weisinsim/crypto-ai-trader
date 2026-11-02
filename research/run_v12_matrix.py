@@ -54,6 +54,10 @@ def _development_score(report: dict) -> tuple:
     """Return a train/WF-only selection tuple; never inspect final forward metrics here."""
     folds = report.get("walk_forward_folds", [])
     fold_metrics = [item.get("test_metrics", {}) for item in folds]
+    fold_metrics_complete = all(
+        isinstance(item, dict) and _finite_metric(item.get("net_return_pct"))
+        for item in fold_metrics
+    )
     positive = sum(
         _finite_metric(item.get("net_return_pct"))
         and item["net_return_pct"] > 0 for item in fold_metrics
@@ -69,6 +73,7 @@ def _development_score(report: dict) -> tuple:
     valid_trades = type(trades) is int and trades >= 20
     eligible = (
         len(folds) >= 3
+        and fold_metrics_complete
         and positive >= (len(folds) // 2 + 1)
         and valid_trades
         and finite_pf and pf > 1
