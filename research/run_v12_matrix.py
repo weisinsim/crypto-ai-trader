@@ -41,13 +41,36 @@ def _finite_metric(value) -> bool:
 
 
 def _funding_audit_allows_research(audit: dict) -> bool:
-    """Allow timestamp-aligned research inputs only; never waive REVIEW_REQUIRED."""
+    """Allow only explicitly sourced, gap-free timestamp alignment for research."""
+    if not isinstance(audit, dict) or audit.get("status") not in {
+        "TIMESTAMP_ALIGNMENT_PASS_NOT_RECONCILED",
+        "BOUNDARY_JITTER_NORMALIZED_ALIGNMENT_PASS_NOT_RECONCILED",
+    }:
+        return False
+    funding = audit.get("funding")
+    if not isinstance(funding, dict):
+        return False
+    allowed_sources = {
+        "binance_funding_rate_endpoint_markPrice",
+        "binance_archive_prior_closed_mark_price_1h_proxy_NOT_SETTLEMENT_MARK",
+        "binance_archive_prior_closed_regular_price_1h_proxy_NOT_SETTLEMENT_MARK",
+    }
+    allowed_venues = {"binance_usdm", "binance_usdm_archive"}
+    sources = funding.get("source_labels")
+    venues = funding.get("venue_labels")
     return (
-        isinstance(audit, dict)
-        and audit.get("status") in {
-            "TIMESTAMP_ALIGNMENT_PASS_NOT_RECONCILED",
-            "BOUNDARY_JITTER_NORMALIZED_ALIGNMENT_PASS_NOT_RECONCILED",
-        }
+        audit.get("candle_timestamps_strictly_increasing") is True
+        and audit.get("duplicate_candle_records") == 0
+        and audit.get("duplicate_event_records") == 0
+        and audit.get("intervals_exceeding_gap_threshold") == 0
+        and funding.get("records_outside_candle_range") == 0
+        and funding.get("nonmatching_in_range") == 0
+        and funding.get("records_missing_or_invalid_source_label") == 0
+        and funding.get("records_missing_or_invalid_venue_label") == 0
+        and isinstance(sources, list) and bool(sources)
+        and all(source in allowed_sources for source in sources)
+        and isinstance(venues, list) and bool(venues)
+        and all(venue in allowed_venues for venue in venues)
     )
 
 
