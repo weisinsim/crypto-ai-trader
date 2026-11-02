@@ -76,8 +76,11 @@ def _funding_audit_allows_research(audit: dict) -> bool:
 
 
 def _development_score(report: dict) -> tuple:
-    """Return a train/WF-only selection tuple; never inspect final forward metrics here."""
-    folds = report.get("walk_forward_folds", [])
+    """Score only pre-holdout walk-forward metrics under exact 0.30% round-trip costs."""
+    stress = report.get("development_cost_stress_0_30pct_round_trip")
+    if not isinstance(stress, dict):
+        return (0, 0, -1e9, -1e9, -1e9, -1)
+    folds = stress.get("walk_forward_folds", [])
     fold_metrics = [item.get("test_metrics", {}) for item in folds]
     fold_metrics_complete = all(
         isinstance(item, dict) and _finite_metric(item.get("net_return_pct"))
@@ -87,7 +90,7 @@ def _development_score(report: dict) -> tuple:
         _finite_metric(item.get("net_return_pct"))
         and item["net_return_pct"] > 0 for item in fold_metrics
     )
-    aggregate = report.get("walk_forward_aggregate", {})
+    aggregate = stress.get("walk_forward_aggregate", {})
     trades = aggregate.get("trades", 0)
     pf = aggregate.get("profit_factor")
     net_return = aggregate.get("net_return_pct")
@@ -117,11 +120,26 @@ def _development_score(report: dict) -> tuple:
 
 
 def _run_arm(rows, symbol, direction, cvd_mode, funding, *, folds, fee_rate, slippage_rate):
-    return run_v12_validation(
+    report = run_v12_validation(
         rows, symbol, holdout_fraction=0.2, folds=folds,
         fee_rate=fee_rate, slippage_rate=slippage_rate,
         funding_events=funding, direction_mode=direction, cvd_mode=cvd_mode,
     )
+    # Run the same development folds again at the exact 0.30% round-trip
+    # stress cost. CVD selection is gated on these stressed WF metrics, while
+    # the base-cost metrics remain available in the primary report.
+    stress_report = run_v12_validation(
+        rows, symbol, holdout_fraction=0.2, folds=folds,
+        fee_rate=0.0005, slippage_rate=0.0010,
+        funding_events=funding, direction_mode=direction, cvd_mode=cvd_mode,
+    )
+    report["development_cost_stress_0_30pct_round_trip"] = {
+        "fee_rate_per_side": 0.0005,
+        "slippage_rate_per_side": 0.0010,
+        "walk_forward_folds": stress_report["walk_forward_folds"],
+        "walk_forward_aggregate": stress_report["walk_forward_aggregate"],
+    }
+    return report
 
 
 def run_matrix(*, start_date: str, end_date: str, holdout_start: str,
