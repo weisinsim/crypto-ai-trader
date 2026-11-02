@@ -43,7 +43,7 @@ def _clamp(value: float, lo: float = 0.0, hi: float = 100.0) -> float:
     return max(lo, min(hi, value))
 
 
-def evaluate_hybrid(symbol: str, features: Mapping[str, Any], *, min_score_override: int | None = None, min_edge_override: int | None = None, short_rsi_floor: float | None = None, component_weights_override: Mapping[str, float] | None = None) -> dict:
+def evaluate_hybrid(symbol: str, features: Mapping[str, Any], *, min_score_override: int | None = None, min_edge_override: int | None = None, short_rsi_floor: float | None = None, component_weights_override: Mapping[str, float] | None = None, direction_mode: str = "BOTH") -> dict:
     """Return an auditable directional candidate from normalized feature inputs.
 
     Expected optional inputs:
@@ -56,6 +56,11 @@ def evaluate_hybrid(symbol: str, features: Mapping[str, Any], *, min_score_overr
     explicitly supplied; no inference from future candles is performed here.
     """
     symbol = str(symbol).upper()
+    direction_mode = str(direction_mode).upper()
+    if direction_mode not in ("BOTH", "LONG", "SHORT"):
+        return {"model_version": MODEL_VERSION, "symbol": symbol, "signal": "NO-TRADE",
+                "score": 0, "status": "INVALID_DIRECTION_MODE", "missing": [],
+                "components": {}, "reasons": ["direction_mode must be BOTH, LONG or SHORT"]}
     profile = ASSET_PROFILES.get(symbol, {"family": "generic_adaptive", "min_score": 75, "max_atr_pct": 6.0})
     required = ("price", "ema20_1h", "ema50_1h", "ema20_4h", "ema50_4h", "rsi_1h", "atr_1h")
     missing = [key for key in required if _num(features, key) is None]
@@ -244,15 +249,19 @@ def evaluate_hybrid(symbol: str, features: Mapping[str, Any], *, min_score_overr
         return {"model_version": MODEL_VERSION, "symbol": symbol, "signal": "NO-TRADE",
                 "score": 0, "status": "INVALID_THRESHOLD_OVERRIDE", "missing": [],
                 "components": {}, "reasons": ["Threshold override outside permitted research bounds"]}
-    edge = abs(long_score - short_score)
-    if max(long_score, short_score) < min_score or edge < min_edge:
+    # Side-constrained evaluation suppresses the opposite side before candidate
+    # selection; it is not a post-hoc filter of a combined LONG/SHORT equity curve.
+    decision_long_score = long_score if direction_mode in ("BOTH", "LONG") else 0
+    decision_short_score = short_score if direction_mode in ("BOTH", "SHORT") else 0
+    edge = abs(decision_long_score - decision_short_score)
+    if max(decision_long_score, decision_short_score) < min_score or edge < min_edge:
         signal = "NO-TRADE"
-        score = max(long_score, short_score)
+        score = max(decision_long_score, decision_short_score)
         status = "BELOW_THRESHOLD_OR_DIRECTION_CONFLICT"
-    elif long_score > short_score:
-        signal, score, status = "LONG", long_score, "RESEARCH_CANDIDATE"
+    elif decision_long_score > decision_short_score:
+        signal, score, status = "LONG", decision_long_score, "RESEARCH_CANDIDATE"
     else:
-        signal, score, status = "SHORT", short_score, "RESEARCH_CANDIDATE"
+        signal, score, status = "SHORT", decision_short_score, "RESEARCH_CANDIDATE"
 
     reasons = []
     if short_rsi_floor is not None:
@@ -277,7 +286,8 @@ def evaluate_hybrid(symbol: str, features: Mapping[str, Any], *, min_score_overr
         "signal": signal, "score": score, "status": status, "missing": [],
         "components": {"long": long_parts, "short": short_parts,
                        "long_score": long_score, "short_score": short_score,
-                       "weights": weights, "regime_factor": regime_factor},
+                       "weights": weights, "regime_factor": regime_factor,
+                       "direction_mode": direction_mode},
         "risk": {"atr": atr, "stop_atr_default": 1.5, "target_r_default": 2.0,
                  "long_resistance_room_atr": long_room, "short_support_room_atr": short_room},
         "reasons": reasons,

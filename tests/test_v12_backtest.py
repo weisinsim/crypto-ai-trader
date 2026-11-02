@@ -56,6 +56,31 @@ class V12BacktestTests(unittest.TestCase):
         costly = run_v12_backtest(rows, "BTCUSDT", fee_rate=0.001, slippage_rate=0.001)
         self.assertGreater(cheap["trade_log"][0]["net_pnl"], costly["trade_log"][0]["net_pnl"])
 
+    def test_direction_mode_prevents_opposite_side_entries(self):
+        rows = [
+            feature_row(0),
+            feature_row(3_600_000, o=101.0, h=106.0, l=100.0, c=105.0),
+            feature_row(7_200_000, o=105.0, h=106.0, l=104.0, c=105.0),
+        ]
+        long_only = run_v12_backtest(rows, "BTCUSDT", direction_mode="LONG")
+        short_only = run_v12_backtest(rows, "BTCUSDT", direction_mode="SHORT")
+        self.assertEqual(long_only["trades"], 1)
+        self.assertEqual(short_only["trades"], 0)
+        self.assertEqual(short_only["assumptions"]["direction_mode"], "SHORT")
+
+    def test_cvd_off_matches_explicitly_neutralized_cvd_inputs(self):
+        rows = [
+            feature_row(0),
+            feature_row(3_600_000, o=101.0, h=106.0, l=100.0, c=105.0),
+            feature_row(7_200_000, o=105.0, h=106.0, l=104.0, c=105.0),
+        ]
+        neutral_rows = [dict(row, cvd_direction="UNKNOWN", cvd_ratio_12=None, cvd_ratio_24=None) for row in rows]
+        ablated = run_v12_backtest(rows, "BTCUSDT", cvd_mode="OFF")
+        explicit = run_v12_backtest(neutral_rows, "BTCUSDT", cvd_mode="ON")
+        self.assertEqual(ablated["trades"], explicit["trades"])
+        self.assertAlmostEqual(ablated["net_return_pct"], explicit["net_return_pct"])
+        self.assertEqual(ablated["assumptions"]["cvd_mode"], "OFF")
+
     def test_invalid_risk_configuration_is_rejected(self):
         with self.assertRaises(ValueError):
             run_v12_backtest([feature_row(0), feature_row(1), feature_row(2)],

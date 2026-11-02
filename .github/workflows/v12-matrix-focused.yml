@@ -1,0 +1,39 @@
+name: V12 independent matrix focused tests
+
+on:
+  push:
+    branches:
+      - research/v12-cvd-independent-validation
+  pull_request:
+    paths:
+      - "research/v12_hybrid_engine.py"
+      - "research/v12_backtest.py"
+      - "research/v12_validation.py"
+      - "research/run_v12_matrix.py"
+      - "tests/test_v12_*.py"
+      - ".github/workflows/v12-matrix-focused.yml"
+
+jobs:
+  focused-v12-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install research dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run V12 independent matrix tests
+        run: >-
+          python -m pytest -q
+          tests/test_v12_hybrid_engine.py
+          tests/test_v12_backtest.py
+          tests/test_v12_validation.py
+          tests/test_v12_matrix.py
+      - name: Compile research modules
+        run: >-
+          python -m compileall -q
+          research/v12_hybrid_engine.py
+          research/v12_backtest.py
+          research/v12_validation.py
+          research/run_v12_matrix.py

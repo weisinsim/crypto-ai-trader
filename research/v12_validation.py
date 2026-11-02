@@ -12,10 +12,37 @@ from research.run_backtest import load_funding_csv
 
 
 def _metrics(result):
-    return {key: result[key] for key in (
+    metrics = {key: result[key] for key in (
         "trades", "wins", "losses", "win_rate_pct", "profit_factor",
         "funding_pnl_total", "net_return_pct", "max_drawdown_pct", "equity_final",
     )}
+    trades = result.get("trade_log", [])
+    streak = max_streak = 0
+    for trade in trades:
+        if trade.get("net_pnl", 0) < 0:
+            streak += 1
+            max_streak = max(max_streak, streak)
+        else:
+            streak = 0
+    winners = [trade for trade in trades if trade.get("net_pnl", 0) > 0]
+    losers = [trade for trade in trades if trade.get("net_pnl", 0) < 0]
+    largest_winner = max((trade["net_pnl"] for trade in winners), default=0.0)
+    gross_profit = sum(trade["net_pnl"] for trade in winners)
+    gross_loss = -sum(trade["net_pnl"] for trade in losers)
+    initial_equity = result.get("initial_equity", 1.0)
+    metrics["max_consecutive_losses"] = max_streak
+    metrics["largest_winner_net_pnl"] = round(largest_winner, 10)
+    metrics["winner_removed_net_return_pct"] = round(
+        (result["equity_final"] - initial_equity - largest_winner) / initial_equity * 100, 4
+    )
+    remaining_profit = max(0.0, gross_profit - largest_winner)
+    metrics["winner_removed_profit_factor"] = (
+        round(remaining_profit / gross_loss, 4) if gross_loss else ("INF" if remaining_profit else None)
+    )
+    metrics["winner_removal_method"] = (
+        "mechanical trade-PnL subtraction; subsequent equity-dependent position sizing is not re-simulated"
+    )
+    return metrics
 
 
 def _calibrate_threshold(train_rows, symbol, common):
@@ -315,7 +342,8 @@ def run_v12_validation(rows, symbol, *, holdout_fraction=0.2, folds=4,
                        fee_rate=0.0005, slippage_rate=0.0002,
                        initial_equity=1.0, risk_fraction=0.005, max_leverage=3.0,
                        funding_events=None, trailing_atr_multiple=1.5,
-                       max_holding_bars=72, signal_reversal_exit=True):
+                       max_holding_bars=72, signal_reversal_exit=True,
+                       direction_mode="BOTH", cvd_mode="ON", holdout_start_ts=None, frozen_overrides=None):
     if not math.isfinite(holdout_fraction) or not 0.1 <= holdout_fraction <= 0.4:
         raise ValueError("holdout_fraction must be between 0.1 and 0.4")
     if not isinstance(folds, int) or isinstance(folds, bool) or folds < 2:
@@ -324,7 +352,21 @@ def run_v12_validation(rows, symbol, *, holdout_fraction=0.2, folds=4,
         raise ValueError("not enough feature rows for holdout and forward evaluation")
 
     symbol = str(symbol).upper()
-    split = int(len(rows) * (1 - holdout_fraction))
+    direction_mode = str(direction_mode).upper()
+    cvd_mode = str(cvd_mode).upper()
+    if direction_mode not in ("BOTH", "LONG", "SHORT"):
+        raise ValueError("direction_mode must be BOTH, LONG or SHORT")
+    if cvd_mode not in ("ON", "OFF"):
+        raise ValueError("cvd_mode must be ON or OFF")
+    if holdout_start_ts is None:
+        split = int(len(rows) * (1 - holdout_fraction))
+    else:
+        if isinstance(holdout_start_ts, bool) or not isinstance(holdout_start_ts, int) or holdout_start_ts < 0:
+            raise ValueError("holdout_start_ts must be a nonnegative integer millisecond timestamp")
+        matches = [index for index, row in enumerate(rows) if row.get("t") == holdout_start_ts]
+        if not matches:
+            raise ValueError("holdout_start_ts must exactly match a feature-row timestamp")
+        split = matches[0]
     wf_start = max(int(len(rows) * 0.5), 1)
     if split < 10 or len(rows) - split < 5:
         raise ValueError("insufficient rows in chronological holdout split")
@@ -334,6 +376,7 @@ def run_v12_validation(rows, symbol, *, holdout_fraction=0.2, folds=4,
         "max_leverage": max_leverage, "funding_events": list(funding_events or []),
         "trailing_atr_multiple": trailing_atr_multiple,
         "max_holding_bars": max_holding_bars, "signal_reversal_exit": signal_reversal_exit,
+        "direction_mode": direction_mode, "cvd_mode": cvd_mode,
     }
 
     full = run_v12_backtest(rows, symbol, **common)
@@ -341,7 +384,38 @@ def run_v12_validation(rows, symbol, *, holdout_fraction=0.2, folds=4,
     holdout_rows = rows[split:]
     baseline_holdout = run_v12_backtest(holdout_rows, symbol, **common)
 
-    calibration = _calibrate_threshold(train_rows, symbol, common)
+    if frozen_overrides is None:
+        calibration = _calibrate_threshold(train_rows, symbol, common)
+    else:
+        required = {"min_score", "min_edge", "short_rsi_floor"}
+        if not isinstance(frozen_overrides, dict) or set(frozen_overrides) != required:
+            raise ValueError("frozen_overrides must contain exactly min_score, min_edge, and short_rsi_floor")
+        min_score = frozen_overrides["min_score"]
+        min_edge = frozen_overrides["min_edge"]
+        short_rsi_floor = frozen_overrides["short_rsi_floor"]
+        if type(min_score) is not int or not 50 <= min_score <= 95:
+            raise ValueError("frozen min_score must be an integer between 50 and 95")
+        if type(min_edge) is not int or not 0 <= min_edge <= 50:
+            raise ValueError("frozen min_edge must be an integer between 0 and 50")
+        if short_rsi_floor is not None and (
+            isinstance(short_rsi_floor, bool)
+            or not isinstance(short_rsi_floor, (int, float))
+            or not math.isfinite(short_rsi_floor)
+            or not 0 <= short_rsi_floor <= 50
+        ):
+            raise ValueError("frozen short_rsi_floor must be null or a finite number between 0 and 50")
+        calibration = {
+            "base_min_score": int(ASSET_PROFILES.get(symbol, {}).get("min_score", 75)),
+            "minimum_training_trades": 20,
+            "eligibility": "preselected development walk-forward parameters; no forward-window recalibration",
+            "candidates": [],
+            "selected": {
+                "min_score": min_score,
+                "min_edge": min_edge,
+                "short_rsi_floor": short_rsi_floor,
+            },
+            "status": "FROZEN_PARAMETERS_APPLIED",
+        }
     selected_overrides = _overrides(calibration)
     calibrated_holdout = (
         run_v12_backtest(holdout_rows, symbol, **common, **selected_overrides)
@@ -374,9 +448,28 @@ def run_v12_validation(rows, symbol, *, holdout_fraction=0.2, folds=4,
             holdout_rows, symbol, fee_rate=fee_rate * multiplier,
             slippage_rate=slippage_rate * multiplier, initial_equity=initial_equity,
             risk_fraction=risk_fraction, max_leverage=max_leverage,
-            funding_events=list(funding_events or []), **selected_overrides,
+            funding_events=list(funding_events or []), direction_mode=direction_mode,
+            cvd_mode=cvd_mode, **selected_overrides,
         )
         cost_stress[name] = _metrics(result)
+
+    # Exact 0.30% round-trip stress: 0.05% fee + 0.10% slippage per side.
+    stress_030 = run_v12_backtest(
+        holdout_rows, symbol, fee_rate=0.0005, slippage_rate=0.0010,
+        initial_equity=initial_equity, risk_fraction=risk_fraction,
+        max_leverage=max_leverage, funding_events=list(funding_events or []),
+        direction_mode=direction_mode, cvd_mode=cvd_mode, **selected_overrides,
+    )
+    cost_stress["stress_0_30pct_round_trip"] = _metrics(stress_030)
+
+    # Exact 0.46% round-trip stress: 0.05% fee + 0.18% slippage per side.
+    stress_046 = run_v12_backtest(
+        holdout_rows, symbol, fee_rate=0.0005, slippage_rate=0.0018,
+        initial_equity=initial_equity, risk_fraction=risk_fraction,
+        max_leverage=max_leverage, funding_events=list(funding_events or []),
+        direction_mode=direction_mode, cvd_mode=cvd_mode, **selected_overrides,
+    )
+    cost_stress["stress_0_46pct_round_trip"] = _metrics(stress_046)
 
     holdout_sample_gate = (
         "SUFFICIENT_FOR_SCREENING" if calibrated_holdout["trades"] >= 20
@@ -391,7 +484,32 @@ def run_v12_validation(rows, symbol, *, holdout_fraction=0.2, folds=4,
             "holdout_fraction": holdout_fraction, "holdout_start_index": split,
             "walk_forward_folds": folds, "walk_forward_start_index": wf_start,
             "walk_forward_end_index": split,
-            "parameter_policy": "expanding-window threshold calibration uses only data before each test fold; final holdout is never used for selection",
+            "direction_mode": direction_mode, "cvd_mode": cvd_mode,
+            "holdout_start_ts": holdout_start_ts,
+            "holdout_boundary_policy": "exact_timestamp" if holdout_start_ts is not None else "fractional_tail",
+            "cost_scenarios": {
+                "base": {
+                    "fee_rate_per_side": fee_rate,
+                    "slippage_rate_per_side": slippage_rate,
+                    "round_trip_cost_pct": round((fee_rate + slippage_rate) * 200, 4),
+                },
+                "stress_0_30pct_round_trip": {
+                    "fee_rate_per_side": 0.0005,
+                    "slippage_rate_per_side": 0.0010,
+                    "round_trip_cost_pct": 0.30,
+                },
+                "stress_0_46pct_round_trip": {
+                    "fee_rate_per_side": 0.0005,
+                    "slippage_rate_per_side": 0.0018,
+                    "round_trip_cost_pct": 0.46,
+                },
+            },
+            "parameter_policy": (
+                "frozen development parameters supplied explicitly; no recalibration"
+                if frozen_overrides is not None else
+                "expanding-window threshold calibration uses only data before each test fold; final holdout is never used for selection"
+            ),
+            "frozen_parameters_applied": frozen_overrides is not None,
             "note": "Walk-forward test folds cover the pre-holdout period from 50% to the training/holdout boundary. Final holdout is reported separately.",
         },
         "full_sample": {key: full[key] for key in (
@@ -442,6 +560,9 @@ def main():
     parser.add_argument("--trailing-atr-multiple", type=float, default=1.5)
     parser.add_argument("--max-holding-bars", type=int, default=72)
     parser.add_argument("--disable-signal-reversal-exit", action="store_true")
+    parser.add_argument("--direction-mode", choices=("BOTH", "LONG", "SHORT"), default="BOTH")
+    parser.add_argument("--cvd-mode", choices=("ON", "OFF"), default="ON")
+    parser.add_argument("--holdout-start-ts", type=int, help="exact first holdout feature timestamp in milliseconds; if set, overrides fractional split")
     parser.add_argument("--holdout-fraction", type=float, default=0.2)
     parser.add_argument("--folds", type=int, default=4)
     parser.add_argument("--output", required=True)
@@ -462,6 +583,8 @@ def main():
         trailing_atr_multiple=args.trailing_atr_multiple,
         max_holding_bars=args.max_holding_bars,
         signal_reversal_exit=not args.disable_signal_reversal_exit,
+        direction_mode=args.direction_mode, cvd_mode=args.cvd_mode,
+        holdout_start_ts=args.holdout_start_ts,
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8")

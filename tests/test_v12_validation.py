@@ -29,6 +29,14 @@ class V12ValidationTests(unittest.TestCase):
         self.assertIn("base", report["holdout_cost_stress"])
         self.assertIn("stress_1_5x", report["holdout_cost_stress"])
         self.assertIn("severe_2x", report["holdout_cost_stress"])
+        self.assertIn("stress_0_30pct_round_trip", report["holdout_cost_stress"])
+        self.assertIn("stress_0_46pct_round_trip", report["holdout_cost_stress"])
+        self.assertEqual(
+            report["methodology"]["cost_scenarios"]["stress_0_46pct_round_trip"]["round_trip_cost_pct"],
+            0.46,
+        )
+        self.assertIn("max_consecutive_losses", report["holdout_cost_stress"]["stress_0_30pct_round_trip"])
+        self.assertIn("winner_removed_net_return_pct", report["holdout_cost_stress"]["stress_0_30pct_round_trip"])
         self.assertEqual(report["threshold_calibration"]["training_rows"], 32)
         self.assertIn(report["threshold_calibration"]["status"],
                       ("TRAINING_CANDIDATE_SELECTED", "NO_CANDIDATE_PASSED_TRAINING_GATES"))
@@ -43,6 +51,55 @@ class V12ValidationTests(unittest.TestCase):
                       ("default", "trend_light", "trend_off"))
         self.assertEqual(len(report["weight_profile_walk_forward_folds"]), 4)
         self.assertIn("net_return_pct", report["weight_profile_walk_forward_aggregate"])
+
+    def test_validation_accepts_and_reports_independent_modes(self):
+        rows = [row(i * 3_600_000) for i in range(40)]
+        report = run_v12_validation(
+            rows, "BTCUSDT", holdout_fraction=0.2, folds=4,
+            direction_mode="SHORT", cvd_mode="OFF",
+        )
+        self.assertEqual(report["methodology"]["direction_mode"], "SHORT")
+        self.assertEqual(report["methodology"]["cvd_mode"], "OFF")
+        self.assertEqual(report["holdout_cost_stress"]["base"]["trades"], 0)
+
+    def test_fixed_holdout_boundary_must_match_exact_feature_timestamp(self):
+        rows = [row(i * 3_600_000) for i in range(40)]
+        report = run_v12_validation(
+            rows, "BTCUSDT", folds=4, direction_mode="SHORT",
+            cvd_mode="OFF", holdout_start_ts=32 * 3_600_000,
+        )
+        self.assertEqual(report["methodology"]["holdout_start_ts"], 32 * 3_600_000)
+        self.assertEqual(report["dataset"]["rows"], 40)
+        with self.assertRaises(ValueError):
+            run_v12_validation(rows, "BTCUSDT", folds=4, holdout_start_ts=32 * 3_600_000 + 1)
+
+    def test_forward_validation_applies_frozen_threshold_parameters_without_reselection(self):
+        rows = [row(i * 3_600_000) for i in range(40)]
+        frozen = {"min_score": 75, "min_edge": 8, "short_rsi_floor": 30.0}
+        report = run_v12_validation(
+            rows, "BTCUSDT", holdout_fraction=0.2, folds=4,
+            direction_mode="SHORT", cvd_mode="OFF",
+            frozen_overrides=frozen,
+        )
+        self.assertEqual(report["threshold_calibration"]["status"], "FROZEN_PARAMETERS_APPLIED")
+        self.assertEqual(report["threshold_calibration"]["selected"], frozen)
+        self.assertTrue(report["methodology"]["frozen_parameters_applied"])
+        self.assertIn("frozen development parameters", report["methodology"]["parameter_policy"])
+
+    def test_forward_validation_rejects_invalid_frozen_parameters(self):
+        rows = [row(i * 3_600_000) for i in range(40)]
+        invalid = [
+            {"min_score": True, "min_edge": 8, "short_rsi_floor": None},
+            {"min_score": 49, "min_edge": 8, "short_rsi_floor": None},
+            {"min_score": 75, "min_edge": 51, "short_rsi_floor": None},
+            {"min_score": 75, "min_edge": 8, "short_rsi_floor": 51},
+            {"min_score": 75, "min_edge": 8, "short_rsi_floor": float("nan")},
+            {"min_score": 75, "min_edge": 8},
+        ]
+        for parameters in invalid:
+            with self.subTest(parameters=parameters):
+                with self.assertRaises(ValueError):
+                    run_v12_validation(rows, "BTCUSDT", folds=4, frozen_overrides=parameters)
 
     def test_invalid_fold_count_rejected(self):
         with self.assertRaises(ValueError):
