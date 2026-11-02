@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 
 from research.audit_funding_data import audit_funding_against_candles
@@ -30,12 +31,31 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _finite_metric(value) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+    )
+
+
+def _funding_audit_allows_research(audit: dict) -> bool:
+    """Allow timestamp-aligned research inputs only; never waive REVIEW_REQUIRED."""
+    return (
+        isinstance(audit, dict)
+        and audit.get("status") in {
+            "TIMESTAMP_ALIGNMENT_PASS_NOT_RECONCILED",
+            "BOUNDARY_JITTER_NORMALIZED_ALIGNMENT_PASS_NOT_RECONCILED",
+        }
+    )
+
+
 def _development_score(report: dict) -> tuple:
     """Return a train/WF-only selection tuple; never inspect final forward metrics here."""
     folds = report.get("walk_forward_folds", [])
     fold_metrics = [item.get("test_metrics", {}) for item in folds]
     positive = sum(
-        isinstance(item.get("net_return_pct"), (int, float))
+        _finite_metric(item.get("net_return_pct"))
         and item["net_return_pct"] > 0 for item in fold_metrics
     )
     aggregate = report.get("walk_forward_aggregate", {})
@@ -43,20 +63,25 @@ def _development_score(report: dict) -> tuple:
     pf = aggregate.get("profit_factor")
     net_return = aggregate.get("net_return_pct")
     drawdown = aggregate.get("max_drawdown_pct")
+    finite_pf = _finite_metric(pf)
+    finite_return = _finite_metric(net_return)
+    finite_drawdown = _finite_metric(drawdown)
+    valid_trades = type(trades) is int and trades >= 20
     eligible = (
         len(folds) >= 3
         and positive >= (len(folds) // 2 + 1)
-        and trades >= 20
-        and isinstance(pf, (int, float)) and pf > 1
-        and isinstance(net_return, (int, float)) and net_return > 0
-        and isinstance(drawdown, (int, float)) and drawdown <= 15
+        and valid_trades
+        and finite_pf and pf > 1
+        and finite_return and net_return > 0
+        and finite_drawdown and 0 <= drawdown <= 15
     )
     # Tuple order is deliberate: only development WF statistics are used.
     score = (
-        int(eligible), positive, float(net_return or -1e9),
-        float(pf) if isinstance(pf, (int, float)) else -1e9,
-        -float(drawdown) if isinstance(drawdown, (int, float)) else -1e9,
-        int(trades),
+        int(eligible), positive,
+        float(net_return) if finite_return else -1e9,
+        float(pf) if finite_pf else -1e9,
+        -float(drawdown) if finite_drawdown else -1e9,
+        trades if type(trades) is int else -1,
     )
     return score
 
@@ -158,6 +183,16 @@ def run_matrix(*, start_date: str, end_date: str, holdout_start: str,
         }
 
         for direction in DIRECTIONS:
+            if not _funding_audit_allows_research(funding_audit):
+                symbol_result["development"][direction] = {
+                    "status": "DATA_QUALITY_BLOCKED",
+                    "reason": "Funding timestamp audit is REVIEW_REQUIRED or has an unknown status; no backtest arm may consume these events",
+                }
+                symbol_result["forward_confirmation"][direction] = {
+                    "status": "NOT_RUN",
+                    "reason": "Funding data quality must be resolved before development selection or forward confirmation",
+                }
+                continue
             arms = {}
             for cvd_mode in CVD_MODES:
                 if cvd_mode == "ON" and (flow_coverage < 0.999999 or cvd_coverage < 0.999999):
