@@ -99,16 +99,27 @@ function setDiag(j){
 function executionState(x){
  const s=x.confirmed_signal||"NO-TRADE";
  const st=x.confirmed_status||"WAITING";
- if((s==="LONG"||s==="SHORT") && st!=="WAITING") return {cls:"review",text:s+" · 仅供人工评估"};
- if(s==="LONG"||s==="SHORT") return {cls:"wait",text:s+" · 等待确认"};
+ const validated=x.model_validation_passed===true && ["CANDIDATE","PRODUCTION"].includes(x.model_status);
+ if(s==="LONG"||s==="SHORT"){
+  if(st==="ACTIVE" && validated) return {cls:"review",text:s+" · 验证通过 · 仅供人工评估"};
+  if(st==="WAITING_VALIDATION" || !validated) return {cls:"wait",text:s+" · 等待独立验证"};
+  if(st==="WAITING") return {cls:"wait",text:s+" · 等待1H收盘确认"};
+  return {cls:"wait",text:s+" · 尚未确认"};
+ }
  return {cls:"wait",text:"NO-TRADE · 等待1H确认"};
+}
+function signalBadge(x){
+ const s=x.signal||"NO-TRADE";
+ if(s!=="LONG" && s!=="SHORT") return s;
+ const validated=x.model_validation_passed===true && ["CANDIDATE","PRODUCTION"].includes(x.model_status);
+ return x.confirmed_status==="ACTIVE" && validated ? s : (s==="LONG"?"WATCH-LONG":"WATCH-SHORT");
 }
 function render(){
  const arr=Object.values(state.data).filter(x=>state.filter==="ALL"||x.signal===state.filter);
  arr.sort((a,b)=>(b.score||0)-(a.score||0)||(Math.abs(b.change||0)-Math.abs(a.change||0)));
  $("cards").innerHTML=arr.map(x=>`
  <div class="card">
-  <div class="row"><div><div class="symbol">${x.symbol.replace("USDT","/USDT")}</div><div class="small">${x.model_name||"Asset Model"} · ${x.model_status||"RESEARCH"} · ${x.direction_mode||"—"} · ${x.horizon||"—"}</div><div class="price">${fmt(x.price)}</div><div class="chg ${(x.change||0)>=0?"up":"down"}">${(x.change||0)>=0?"+":""}${fmt(x.change)}%</div></div><span class="badge ${((x.signal==="LONG"||x.signal==="SHORT") && (x.confirmed_status||"WAITING")==="WAITING")?(x.signal==="LONG"?"WATCH-LONG":"WATCH-SHORT"):x.signal}">${((x.signal==="LONG"||x.signal==="SHORT") && (x.confirmed_status||"WAITING")==="WAITING")?(x.signal==="LONG"?"WATCH-LONG":"WATCH-SHORT"):x.signal}</span></div>
+  <div class="row"><div><div class="symbol">${x.symbol.replace("USDT","/USDT")}</div><div class="small">${x.model_name||"Asset Model"} · ${x.model_status||"RESEARCH"} · ${x.direction_mode||"—"} · ${x.horizon||"—"}</div><div class="price">${fmt(x.price)}</div><div class="chg ${(x.change||0)>=0?"up":"down"}">${(x.change||0)>=0?"+":""}${fmt(x.change)}%</div></div><span class="badge ${signalBadge(x)}">${signalBadge(x)}</span></div>
   <div class="grid">
    <div class="kv"><div class="k">4H TREND</div><div class="v">${x.trend||"—"}</div></div><div class="kv"><div class="k">1H RSI</div><div class="v">${fmt(x.rsi_1h)}</div></div>
    <div class="kv"><div class="k">VOL / AVG</div><div class="v">${x.vol_ratio?fmt(x.vol_ratio)+"x":"—"}</div></div><div class="kv"><div class="k">FUNDING</div><div class="v">${x.funding!=null?(x.funding*100).toFixed(4)+"%":"—"}</div></div>
