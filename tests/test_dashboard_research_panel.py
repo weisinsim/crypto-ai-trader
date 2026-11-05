@@ -33,9 +33,16 @@ class DashboardResearchPanelTests(unittest.TestCase):
         self.assertIn("PASS_COVERAGE_ONLY", self.html)
         self.assertIn("不声称最新五币种研究产物已经完整", self.html)
 
-    def test_waiting_signals_keep_directional_watch_badges(self):
+    def test_unvalidated_directional_signals_keep_watch_badges(self):
+        self.assertIn('function signalBadge(x)', self.html)
+        self.assertIn('x.confirmed_status==="ACTIVE" && validated ? s', self.html)
         self.assertIn('x.signal==="LONG"?"WATCH-LONG":"WATCH-SHORT"', self.html)
-        self.assertEqual(self.html.count('x.signal==="LONG"?"WATCH-LONG":"WATCH-SHORT"'), 2)
+
+    def test_waiting_validation_is_never_presented_as_confirmed_manual_review(self):
+        self.assertIn('st==="WAITING_VALIDATION" || !validated', self.html)
+        self.assertIn('等待独立验证', self.html)
+        self.assertIn('验证通过 · 仅供人工评估', self.html)
+        self.assertNotIn('st!=="WAITING") return {cls:"review"', self.html)
 
     def test_candidates_are_not_misrepresented_as_approved(self):
         self.assertIn("当前无模型获准实盘", self.html)
