@@ -51,8 +51,9 @@ class DashboardResearchPanelTests(unittest.TestCase):
         self.assertIn("RESEARCH ONLY", self.html)
 
 
-    def test_confirmed_directional_signals_are_manual_review_only(self):
-        self.assertIn('text:s+" · 仅供人工评估"', self.html)
+    def test_only_validated_active_directional_signals_are_manual_review_only(self):
+        self.assertIn('st==="ACTIVE" && validated', self.html)
+        self.assertIn('验证通过 · 仅供人工评估', self.html)
         self.assertIn('信号状态（非执行）', self.html)
         self.assertIn('不代表获准交易或可提交订单', self.html)
         self.assertIn('模型标记PRODUCTION · 仍需人工评估', self.html)
