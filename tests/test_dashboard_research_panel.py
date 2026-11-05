@@ -36,7 +36,7 @@ class DashboardResearchPanelTests(unittest.TestCase):
     def test_unvalidated_directional_signals_keep_watch_badges(self):
         self.assertIn('function signalBadge(x)', self.html)
         self.assertIn('x.confirmed_status==="ACTIVE" && validated ? s', self.html)
-        self.assertIn('x.signal==="LONG"?"WATCH-LONG":"WATCH-SHORT"', self.html)
+        self.assertIn('s==="LONG"?"WATCH-LONG":"WATCH-SHORT"', self.html)
 
     def test_waiting_validation_is_never_presented_as_confirmed_manual_review(self):
         self.assertIn('st==="WAITING_VALIDATION" || !validated', self.html)
