@@ -46,7 +46,7 @@ class PionexReaderTests(unittest.TestCase):
     def test_rejects_write_paths_and_spot_symbols(self):
         reader = PionexFuturesReader("k", "s")
         with self.assertRaises(PionexReadError):
-            asyncio.run(reader.get("/uapi/v1/trade/order", symbol="BTC_USDT_PERP", side="BUY"))
+            asyncio.run(reader.get("/uapi/v1/trade/massOrder", symbol="BTC_USDT_PERP", side="BUY"))
         with self.assertRaises(PionexReadError):
             asyncio.run(reader.fills("BTC_USDT"))
 
