@@ -92,5 +92,5 @@ def reconcile_reduction(before, after, fills, *, coverage_complete=False, same_a
         "remaining_quantity": str(new_qty),
         "fill_ids": sorted(fill_ids),
         "classification": "EXIT_REASON_UNVERIFIED",
-        "notification_ready": True,
+        "notification_ready": False,  # No delivery until live schema/coverage and persistence gates exist.
     }
