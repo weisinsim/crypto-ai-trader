@@ -42,7 +42,10 @@ def reconcile_reduction(before, after, fills, *, coverage_complete=False, same_a
     """
     if coverage_complete is not True or same_account is not True:
         raise ReconciliationError("Unverified account identity or incomplete fill coverage")
-    if (not isinstance(account_scope, str) or not account_scope.strip()\n            or not isinstance(position_epoch, str) or not position_epoch.strip()):\n        raise ReconciliationError("Missing account scope or position lifecycle identifier")\n    symbol, side, old_qty = _position(before)
+    if (not isinstance(account_scope, str) or not account_scope.strip()
+            or not isinstance(position_epoch, str) or not position_epoch.strip()):
+        raise ReconciliationError("Missing account scope or position lifecycle identifier")
+    symbol, side, old_qty = _position(before)
     after_symbol, after_side, new_qty = _position(after)
     if (symbol, side) != (after_symbol, after_side):
         raise ReconciliationError("Position identity mismatch")
