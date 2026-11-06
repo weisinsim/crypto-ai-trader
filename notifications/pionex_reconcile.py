@@ -34,7 +34,7 @@ def _position(value):
     return symbol, side, _quantity(value["quantity"])
 
 
-def reconcile_reduction(before, after, fills, *, coverage_complete=False, same_account=False):
+def reconcile_reduction(before, after, fills, *, coverage_complete=False, same_account=False, account_scope=None, position_epoch=None):
     """Require matching account snapshots and complete, individually identified close fills.
 
     Fill effect CLOSE must be established from verified exchange order semantics.
@@ -42,7 +42,7 @@ def reconcile_reduction(before, after, fills, *, coverage_complete=False, same_a
     """
     if coverage_complete is not True or same_account is not True:
         raise ReconciliationError("Unverified account identity or incomplete fill coverage")
-    symbol, side, old_qty = _position(before)
+    if (not isinstance(account_scope, str) or not account_scope.strip()\n            or not isinstance(position_epoch, str) or not position_epoch.strip()):\n        raise ReconciliationError("Missing account scope or position lifecycle identifier")\n    symbol, side, old_qty = _position(before)
     after_symbol, after_side, new_qty = _position(after)
     if (symbol, side) != (after_symbol, after_side):
         raise ReconciliationError("Position identity mismatch")
@@ -81,7 +81,7 @@ def reconcile_reduction(before, after, fills, *, coverage_complete=False, same_a
         fill_ids.append(str(fid))
     if total != reduction:
         raise ReconciliationError("Executed fills do not reconcile with position delta")
-    fingerprint = "|".join([symbol, side, *sorted(fill_ids)])
+    fingerprint = "|".join([account_scope, position_epoch, symbol, side, *sorted(fill_ids)])
     return {
         "event_id": "pionex-exit-" + sha256(fingerprint.encode()).hexdigest(),
         "source": "PIONEX_EXECUTION",
