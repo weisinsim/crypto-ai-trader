@@ -40,6 +40,11 @@ class PionexReconciliationTests(unittest.TestCase):
             coverage_complete=True, account_scope="account-A",
             position_epoch="position-2")["event_id"])
 
+    def test_missing_account_scope_is_rejected(self):
+        with self.assertRaises(ReconciliationError):
+            reconcile_reduction(self.before, self.after, self.fills,
+                                same_account=True, coverage_complete=True)
+
     def test_full_exit(self):
         self.after["quantity"] = "0"
         self.fills[0]["quantity"] = "0.9"
