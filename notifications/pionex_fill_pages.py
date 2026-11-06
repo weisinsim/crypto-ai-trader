@@ -24,10 +24,10 @@ def collect_verified_fill_pages(pages, *, expected_symbol, complete=False,
     if (not isinstance(expected_symbol, str)
             or not expected_symbol.endswith("_USDT_PERP")):
         raise PaginationError("Unsupported futures symbol")
-    if not isinstance(pages, list) or not pages or len(pages) > max_pages:
-        raise PaginationError("Missing or excessive pages")
     if type(max_pages) is not int or type(max_fills) is not int or max_pages <= 0 or max_fills <= 0:
         raise PaginationError("Invalid safety bounds")
+    if not isinstance(pages, list) or not pages or len(pages) > max_pages:
+        raise PaginationError("Missing or excessive pages")
     previous_cursor = None
     all_fills = []
     seen_ids = set()
