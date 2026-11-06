@@ -46,7 +46,7 @@ class PionexExitStore:
             raise ExitStoreError("Invalid exit event contract")
         if (event["source"] != "PIONEX_EXECUTION"
                 or event["notification_ready"] is not False
-                or event["classification"] != "EXIT_REASON_UNVERIFIED"
+                or event["classification"] not in (\n                    "EXIT_REASON_UNVERIFIED", "TAKE_PROFIT", "STOP_LOSS",\n                    "MANUAL", "OTHER")
                 or event["event_type"] not in ("FULL_EXIT", "PARTIAL_EXIT")
                 or not isinstance(event["event_id"], str)
                 or not event["event_id"].startswith("pionex-exit-")):
