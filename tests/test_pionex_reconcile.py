@@ -18,7 +18,7 @@ class PionexReconciliationTests(unittest.TestCase):
 
     def reconcile(self, **kwargs):
         return reconcile_reduction(self.before, self.after, self.fills,
-                                   same_account=True, coverage_complete=True, **kwargs)
+                                   same_account=True, coverage_complete=True, account_scope="account-A", position_epoch="position-1", **kwargs)
 
     def test_partial_exit_and_deterministic_id(self):
         event = self.reconcile()
@@ -27,7 +27,18 @@ class PionexReconciliationTests(unittest.TestCase):
         self.assertEqual(event["classification"], "EXIT_REASON_UNVERIFIED")
         self.assertEqual(event["event_id"], reconcile_reduction(
             self.before, self.after, list(reversed(self.fills)),
-            same_account=True, coverage_complete=True)["event_id"])
+            same_account=True, coverage_complete=True, account_scope="account-A", position_epoch="position-1")["event_id"])
+
+    def test_account_and_position_scope_change_event_id(self):
+        original = self.reconcile()["event_id"]
+        self.assertNotEqual(original, reconcile_reduction(
+            self.before, self.after, self.fills, same_account=True,
+            coverage_complete=True, account_scope="account-B",
+            position_epoch="position-1")["event_id"])
+        self.assertNotEqual(original, reconcile_reduction(
+            self.before, self.after, self.fills, same_account=True,
+            coverage_complete=True, account_scope="account-A",
+            position_epoch="position-2")["event_id"])
 
     def test_full_exit(self):
         self.after["quantity"] = "0"
