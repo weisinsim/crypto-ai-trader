@@ -44,6 +44,18 @@ class RecoveryWindowTests(unittest.TestCase):
         self.assertEqual(window["end_ms"], 1000001)
         self.assertTrue(window["more_history_pending"])
 
+    def test_equal_now_never_returns_window_behind_checkpoint(self):
+        with self.assertRaisesRegex(RecoveryWindowError, "cannot reach checkpoint"):
+            recovery_window(1000000, 1000000, overlap_ms=500000,
+                            max_span_ms=100000)
+
+    def test_equal_now_may_recheck_up_to_checkpoint(self):
+        window = recovery_window(1000000, 1000000, overlap_ms=500000,
+                                 max_span_ms=500000)
+        self.assertEqual(window["end_ms"], 1000000)
+        self.assertFalse(window["more_history_pending"])
+        self.assertFalse(window["safe_to_advance"])
+
     def test_overlap_clamps_at_one(self):
         window = recovery_window(5, 10, overlap_ms=100)
         self.assertEqual(window["start_ms"], 1)
