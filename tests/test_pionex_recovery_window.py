@@ -33,6 +33,17 @@ class RecoveryWindowTests(unittest.TestCase):
             with self.assertRaises(RecoveryWindowError):
                 recovery_window(1000000, 2000000, max_span_ms=value)
 
+    def test_overlap_larger_than_span_cannot_stall_recovery(self):
+        with self.assertRaisesRegex(RecoveryWindowError, "cannot advance"):
+            recovery_window(1000000, 9000000, overlap_ms=500000,
+                            max_span_ms=500000)
+
+    def test_overlap_smaller_than_span_advances(self):
+        window = recovery_window(1000000, 9000000, overlap_ms=499999,
+                                 max_span_ms=500000)
+        self.assertEqual(window["end_ms"], 1000001)
+        self.assertTrue(window["more_history_pending"])
+
     def test_overlap_clamps_at_one(self):
         window = recovery_window(5, 10, overlap_ms=100)
         self.assertEqual(window["start_ms"], 1)
