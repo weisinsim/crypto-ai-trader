@@ -1,0 +1,190 @@
+import unittest
+
+from research.funding_history_import import import_funding_csv
+
+
+class FundingHistoryImportTests(unittest.TestCase):
+    def test_imports_iso8601_events_and_creates_digest_manifest(self):
+        source = (
+            "symbol,fundingTime,fundingRate\n"
+            "BTCUSDT,2025-01-01T00:00:00Z,0.001\n"
+            "BTCUSDT,2025-01-01T08:00:00Z,-0.0005\n"
+        )
+        result = import_funding_csv(
+            source, symbol="BTCUSDT",
+            start_ts_ms=1735689600000, end_ts_ms=1735747200000,
+            expected_interval_ms=28_800_000,
+        )
+        self.assertEqual(len(result["events"]), 2)
+        self.assertEqual(result["manifest"]["row_count"], 2)
+        self.assertEqual(len(result["manifest"]["sha256"]), 64)
+        self.assertTrue(result["manifest"]["cadence_check_passed"])
+        self.assertFalse(result["manifest"]["source_verified"])
+        self.assertFalse(result["manifest"]["coverage_verified"])
+        self.assertFalse(result["auto_trade_authorized"])
+
+    def test_detects_missing_intermediate_settlement(self):
+        source = (
+            "fundingTime,fundingRate\n"
+            "2025-01-01T00:00:00Z,0.001\n"
+            "2025-01-01T16:00:00Z,0.001\n"
+        )
+        result = import_funding_csv(
+            source, symbol="BTCUSDT",
+            start_ts_ms=1735689600000, end_ts_ms=1735776000000,
+            expected_interval_ms=28_800_000,
+        )
+        self.assertEqual(
+            result["manifest"]["missing_expected_timestamps_ms"],
+            [1735718400000],
+        )
+        self.assertFalse(result["manifest"]["cadence_check_passed"])
+
+    def test_anchored_cadence_detects_missing_window_boundaries(self):
+        source = (
+            "fundingTime,fundingRate\n"
+            "2025-01-01T08:00:00Z,0.001\n"
+            "2025-01-01T16:00:00Z,0.001\n"
+        )
+        result = import_funding_csv(
+            source, symbol="BTCUSDT",
+            start_ts_ms=1735689600000, end_ts_ms=1735776000000,
+            expected_interval_ms=28_800_000,
+            expected_anchor_ts_ms=1735689600000,
+        )
+        manifest = result["manifest"]
+        self.assertEqual(manifest["missing_expected_timestamps_ms"], [1735689600000])
+        self.assertEqual(manifest["cadence_check_status"], "WINDOW_GAPS_FOUND")
+        self.assertFalse(manifest["cadence_check_passed"])
+        self.assertFalse(manifest["cadence_boundary_coverage_verified"])
+        self.assertFalse(manifest["coverage_verified"])
+
+    def test_anchored_cadence_passes_only_when_full_window_grid_is_present(self):
+        source = (
+            "fundingTime,fundingRate\n"
+            "2025-01-01T00:00:00Z,0.001\n"
+            "2025-01-01T08:00:00Z,0.001\n"
+            "2025-01-01T16:00:00Z,0.001\n"
+        )
+        result = import_funding_csv(
+            source, symbol="BTCUSDT",
+            start_ts_ms=1735689600000, end_ts_ms=1735776000000,
+            expected_interval_ms=28_800_000,
+            expected_anchor_ts_ms=1735689600000,
+        )
+        manifest = result["manifest"]
+        self.assertTrue(manifest["cadence_check_passed"])
+        self.assertEqual(manifest["cadence_check_status"], "ANCHORED_WINDOW_SEQUENCE_OK")
+        self.assertTrue(manifest["cadence_boundary_coverage_verified"])
+        self.assertFalse(manifest["coverage_verified"])
+        self.assertFalse(manifest["source_verified"])
+
+    def test_anchored_cadence_detects_missing_trailing_window_settlement(self):
+        source = (
+            "fundingTime,fundingRate\n"
+            "2025-01-01T00:00:00Z,0.001\n"
+            "2025-01-01T08:00:00Z,0.001\n"
+            "2025-01-01T16:00:00Z,0.001\n"
+        )
+        result = import_funding_csv(
+            source, symbol="BTCUSDT",
+            start_ts_ms=1735689600000, end_ts_ms=1735776000000 + 28_800_000,
+            expected_interval_ms=28_800_000,
+            expected_anchor_ts_ms=1735689600000,
+        )
+        manifest = result["manifest"]
+        self.assertEqual(manifest["missing_expected_timestamps_ms"], [1735776000000])
+        self.assertEqual(manifest["cadence_check_status"], "WINDOW_GAPS_FOUND")
+        self.assertFalse(manifest["cadence_check_passed"])
+
+    def test_rejects_non_finite_funding_rates(self):
+        for invalid_rate in ("nan", "inf", "-inf"):
+            with self.subTest(invalid_rate=invalid_rate):
+                source = f"fundingTime,fundingRate\n2025-01-01T00:00:00Z,{invalid_rate}\n"
+                with self.assertRaisesRegex(ValueError, "must be finite"):
+                    import_funding_csv(
+                        source, symbol="BTCUSDT",
+                        start_ts_ms=1735689600000, end_ts_ms=1735776000000,
+                    )
+
+    def test_unanchored_cadence_rejects_excessive_internal_grid(self):
+        source = (
+            "fundingTime,fundingRate\n"
+            "1970-01-01T00:00:00Z,0.001\n"
+            "1970-01-02T03:46:40Z,0.001\n"
+        )
+        with self.assertRaisesRegex(ValueError, "exceeds 100000 events"):
+            import_funding_csv(
+                source, symbol="BTCUSDT",
+                start_ts_ms=0, end_ts_ms=100_000_001,
+                expected_interval_ms=1_000,
+            )
+
+    def test_anchored_cadence_rejects_excessive_expected_grid(self):
+        source = "fundingTime,fundingRate\n"
+        with self.assertRaisesRegex(ValueError, "exceeds 100000 events"):
+            import_funding_csv(
+                source, symbol="BTCUSDT",
+                start_ts_ms=0, end_ts_ms=100_001,
+                expected_interval_ms=1,
+                expected_anchor_ts_ms=0,
+            )
+
+    def test_anchor_requires_expected_interval(self):
+        with self.assertRaisesRegex(ValueError, "requires expected_interval_ms"):
+            import_funding_csv(
+                "fundingTime,fundingRate\n", symbol="BTCUSDT",
+                start_ts_ms=1735689600000, end_ts_ms=1735776000000,
+                expected_anchor_ts_ms=1735689600000,
+            )
+
+    def test_empty_window_does_not_pass_expected_cadence(self):
+        source = "fundingTime,fundingRate\n"
+        result = import_funding_csv(
+            source, symbol="BTCUSDT",
+            start_ts_ms=1735689600000, end_ts_ms=1735776000000,
+            expected_interval_ms=28_800_000,
+        )
+        self.assertEqual(result["events"], [])
+        self.assertFalse(result["manifest"]["cadence_check_passed"])
+        self.assertEqual(result["manifest"]["cadence_check_status"], "INSUFFICIENT_EVENTS")
+        self.assertFalse(result["manifest"]["cadence_boundary_coverage_verified"])
+        self.assertFalse(result["manifest"]["coverage_verified"])
+
+    def test_rejects_ambiguous_numeric_timestamps(self):
+        source = "fundingTime,fundingRate\n1735689600000,0.001\n"
+        with self.assertRaisesRegex(ValueError, "ambiguous"):
+            import_funding_csv(
+                source, symbol="BTCUSDT",
+                start_ts_ms=0, end_ts_ms=2_000_000_000_000,
+            )
+
+    def test_rejects_timezone_naive_timestamps(self):
+        source = "fundingTime,fundingRate\n2025-01-01T00:00:00,0.001\n"
+        with self.assertRaisesRegex(ValueError, "timezone"):
+            import_funding_csv(
+                source, symbol="BTCUSDT",
+                start_ts_ms=0, end_ts_ms=2_000_000_000_000,
+            )
+
+    def test_rejects_mixed_symbols(self):
+        source = (
+            "symbol,fundingTime,fundingRate\n"
+            "ETHUSDT,2025-01-01T00:00:00Z,0.001\n"
+        )
+        with self.assertRaisesRegex(ValueError, "symbol mismatch"):
+            import_funding_csv(
+                source, symbol="BTCUSDT",
+                start_ts_ms=0, end_ts_ms=2_000_000_000_000,
+            )
+
+    def test_rejects_missing_columns(self):
+        with self.assertRaisesRegex(ValueError, "requires"):
+            import_funding_csv(
+                "time,rate\n1,0.001\n", symbol="BTCUSDT",
+                start_ts_ms=0, end_ts_ms=10000,
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()
