@@ -1,17 +1,20 @@
 import asyncio
 import json
 import math
+import os
 import time
 from validation.candle_closure import filter_closed_candles, normalize_timestamp_ms, upsert_candle, validate_candle_series
 from validation.dashboard_health import build_health_payload
+from validation.alert_contract import build_alert_payload, validate_alert_candidate
 from validation.signal_confirmation import invalidate_stale_confirmation
 from validation.xrp_model import evaluate_xrp_signal
 from research.v12_hybrid_engine import evaluate_hybrid, MODEL_VERSION as HYBRID_MODEL_VERSION
 from pathlib import Path
+from notifications.email_outbox import EmailConfig, EmailOutbox, EmailOutboxError
 
 import httpx
 import websockets
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -44,7 +47,7 @@ cache = {
         "entry": None, "sl": None, "tp1": None, "tp2": None, "rr": None, "score": 0, "score_label": "NO-TRADE", "score_breakdown": {}, "position_qty": None, "position_usd": None, "margin_3x": None,
         "funding": None, "oi": None, "oi_change": None, "adx_1h": None, "vwap_1h": None, "support": None, "resistance": None, "atr_pct": None, "btc_filter": "NEUTRAL", "analysis_ts": 0, "source": None,
         "error": None, "live_signal": "NO-TRADE",
-        "confirmed_signal": "NO-TRADE", "confirmed_signal_time": None, "confirmed_entry": None, "confirmed_sl": None, "confirmed_tp1": None, "confirmed_tp2": None, "confirmed_score": 0, "confirmed_score_label": "NO-TRADE", "confirmed_status": "WAITING", "regime": "LOADING", "direction_bias": "NEUTRAL", "opportunity_tier": "D", "confirmation_basis": "1H candle close", "last_closed_candle": None,
+        "confirmed_signal": "NO-TRADE", "confirmed_signal_time": None, "confirmed_entry": None, "confirmed_sl": None, "confirmed_tp1": None, "confirmed_tp2": None, "confirmed_score": 0, "confirmed_score_label": "NO-TRADE", "confirmed_status": "WAITING", "model_validation_passed": False, "regime": "LOADING", "direction_bias": "NEUTRAL", "opportunity_tier": "D", "confirmation_basis": "1H candle close", "last_closed_candle": None,
     } for s in SYMBOLS
 }
 series = {s: {"1h": [], "4h": []} for s in SYMBOLS}
@@ -59,6 +62,8 @@ oi_history = {s: [] for s in SYMBOLS}
 signal_history = {s: [] for s in SYMBOLS}
 confirmed_state = {s: "NO-TRADE" for s in SYMBOLS}
 http_client = None
+email_config = None
+email_outbox = None
 
 MODEL_NAME = "Crypto AI Trader Multi-Asset Adaptive"
 MODEL_VERSION = "V28.4-V12 Adaptive Hybrid Research + Closed-Candle Freshness Gate"
@@ -74,6 +79,87 @@ for _s in SYMBOLS:
     cache[_s].update({"model_name":MODEL_LIBRARY[_s]["name"],"model_status":MODEL_LIBRARY[_s]["status"],"direction_mode":MODEL_LIBRARY[_s]["direction"],"horizon":MODEL_LIBRARY[_s]["horizon"]})
 app = FastAPI(title=f"Crypto AI Trader {MODEL_NAME}")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+def _env_flag(value):
+    return isinstance(value, str) and value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def configure_email_notifications(environ=None):
+    """Enable optional single-process email delivery only after explicit operator opt-in."""
+    global email_config, email_outbox
+    env = os.environ if environ is None else environ
+    email_config = None
+    email_outbox = None
+    if not _env_flag(env.get("ALERT_EMAIL_ENABLED")):
+        return False
+    if not _env_flag(env.get("ALERT_EMAIL_SINGLE_PROCESS_ACK")):
+        log_error("EMAIL OUTBOX", "Delivery disabled: explicit single-process acknowledgement is required")
+        return False
+    for key in ("WEB_CONCURRENCY", "UVICORN_WORKERS", "GUNICORN_WORKERS"):
+        raw = env.get(key)
+        if raw is not None:
+            try:
+                if int(raw) != 1:
+                    log_error("EMAIL OUTBOX", "Delivery disabled: multiple workers detected")
+                    return False
+            except (TypeError, ValueError):
+                log_error("EMAIL OUTBOX", "Delivery disabled: invalid worker count")
+                return False
+    try:
+        config = EmailConfig.from_env(env)
+        if not config.enabled:
+            return False
+        path = env.get("ALERT_EMAIL_OUTBOX_PATH", str(ROOT / "data" / "email-outbox.json"))
+        if not isinstance(path, str) or not path.strip():
+            raise EmailOutboxError("Invalid email outbox storage path")
+        outbox = EmailOutbox(path, enabled=True)
+    except (ValueError, OSError, EmailOutboxError) as exc:
+        log_error("EMAIL OUTBOX", type(exc).__name__)
+        return False
+    email_config = config
+    email_outbox = outbox
+    return True
+
+
+def queue_signal_email(symbol):
+    """Queue a validated notification only; never submits or manages orders."""
+    if email_config is None or email_outbox is None or not email_config.enabled:
+        return False
+    alert = validate_alert_candidate(symbol, cache.get(symbol), time.time())
+    if alert is None:
+        return False
+    subject = "[Crypto AI Trader] {} {} entry alert".format(alert["symbol"], alert["side"])
+    body = "\n".join([
+        "Symbol: {}".format(alert["symbol"]),
+        "Direction: {}".format(alert["side"]),
+        "Model: {} ({})".format(alert["model_name"] or "N/A", alert["model_status"]),
+        "Entry: {}".format(alert["entry"]),
+        "Stop loss: {}".format(alert["stop_loss"]),
+        "Take profit 1: {}".format(alert["take_profit_1"]),
+        "Take profit 2: {}".format(alert["take_profit_2"]),
+        "Model score: {} / 100 (not a win probability)".format(alert["score"]),
+        "Signal candle (ms): {}".format(alert["signal_candle_ms"]),
+        "",
+        "Notification only. No exchange order was placed.",
+    ])
+    try:
+        return email_outbox.enqueue(
+            event_id=alert["event_id"], subject=subject, body=body,
+            recipients=list(email_config.recipients),
+        )
+    except (ValueError, EmailOutboxError) as exc:
+        log_error("EMAIL OUTBOX ENQUEUE", type(exc).__name__)
+        return False
+
+
+async def email_delivery_loop():
+    """Deliver queued notifications off the event loop; single-process only."""
+    while True:
+        try:
+            await asyncio.to_thread(email_outbox.send_due, email_config)
+        except Exception as exc:
+            log_error("EMAIL DELIVERY", type(exc).__name__)
+        await asyncio.sleep(10)
 
 def log_error(stage, detail):
     msg = f"{stage}: {str(detail)[:220]}"
@@ -135,6 +221,19 @@ async def snapshot():
 @app.get("/api/models")
 async def models():
     return {"model_name": MODEL_NAME, "version": MODEL_VERSION, "models": MODEL_LIBRARY}
+
+
+@app.get("/api/chatgpt/alerts")
+async def chatgpt_alerts(response: Response):
+    """Read-only notification feed; never authorizes exchange execution."""
+    # Alert freshness is time-sensitive; prevent browsers and intermediaries from caching it.
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    now = time.time()
+    payload = build_alert_payload(market_status, cache, SYMBOLS, now)
+    payload["model_version"] = MODEL_VERSION
+    return payload
 
 @app.get("/api/signals")
 async def signals():
@@ -295,36 +394,62 @@ def closed_series_rows(s, interval, now_ms=None):
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
     return filter_closed_candles(series[s][interval], interval, now_ms)
 
+def _model_validation_passed(cfg):
+    if not isinstance(cfg, dict):
+        return False
+    validation = cfg.get("validation")
+    return (
+        cfg.get("status") in ("CANDIDATE", "PRODUCTION")
+        and isinstance(validation, dict)
+        and validation.get("holdout_passed") is True
+        and validation.get("walk_forward_passed") is True
+        and validation.get("cost_stress_passed") is True
+        and isinstance(validation.get("report_id"), str)
+        and bool(validation["report_id"].strip())
+    )
+
+
 def record_confirmed_signal(s, candle_close_ms=None):
-    """Freeze the 1H signal at candle close so intrabar flips do not create fake entries."""
+    """Freeze the 1H signal at candle close and require an auditable validation record."""
     sig = cache[s].get("signal") or "NO-TRADE"
     prev = confirmed_state[s]
     ts_ms = int(candle_close_ms) if candle_close_ms else int(time.time() * 1000)
+    cfg = MODEL_LIBRARY.get(s, {})
+    validation_passed = _model_validation_passed(cfg)
+    eligible_model = validation_passed
+    cache[s]["model_validation_passed"] = bool(eligible_model)
+
+    # Re-check the gate even when direction is unchanged. A revoked or stale
+    # validation record must invalidate an already displayed confirmed signal.
     if sig == prev:
+        if sig in ("LONG", "SHORT"):
+            if not eligible_model:
+                invalidate_stale_confirmation(
+                    prev, "NO-TRADE", cache[s], signal_history[s], ts_ms
+                )
+                confirmed_state[s] = "NO-TRADE"
+                cache[s]["confirmed_status"] = "WAITING_VALIDATION"
+                cache[s]["confirmation_basis"] = "1H candle close + validated model gate"
+            else:
+                # Retry queue persistence while the same confirmed event remains
+                # fresh. The deterministic event ID makes this idempotent after
+                # a successful enqueue; a transient local persistence failure
+                # must not permanently suppress the email for this signal.
+                queue_signal_email(s)
         return False
 
-    # A changed signal invalidates any previously confirmed direction before
-    # applying the new model's validation gate. Otherwise a blocked opposite
-    # signal can leave a stale LONG/SHORT confirmation displayed as ACTIVE.
+    # A changed direction invalidates the previous confirmation before the
+    # new model-validation gate is applied.
     prev = invalidate_stale_confirmation(
         prev, sig, cache[s], signal_history[s], ts_ms
     )
     if prev == "NO-TRADE":
         confirmed_state[s] = "NO-TRADE"
 
-    # Only independently validated candidate/frozen models may become executable confirmations.
-    cfg = MODEL_LIBRARY.get(s, {})
-    # Execution requires an explicit, auditable validation record.
-    # FROZEN means parameters are preserved, not that profitability is proven.
-    validation = cfg.get("validation", {})
     executable = (
         sig in ("LONG", "SHORT")
         and cache[s].get("opportunity_tier") == "A"
-        and cfg.get("status") == "CANDIDATE"
-        and validation.get("holdout_passed") is True
-        and validation.get("walk_forward_passed") is True
-        and validation.get("cost_stress_passed") is True
-        and validation.get("report_id")
+        and eligible_model
     )
     if sig in ("LONG", "SHORT") and not executable:
         cache[s]["confirmed_status"] = "WAITING_VALIDATION"
@@ -352,6 +477,7 @@ def record_confirmed_signal(s, candle_close_ms=None):
         }
         signal_history[s].insert(0, event)
         signal_history[s] = signal_history[s][:20]
+        queue_signal_email(s)
     return True
 
 async def seed_symbol(s):
@@ -555,7 +681,8 @@ async def analyze_symbol(s):
             btc_filter="NEUTRAL", entry_location=entry_location, entry_location_score=score_breakdown.get("entry_location",0),
             position_qty=round(qty,6) if qty is not None else None, position_usd=round(position_usd,2) if position_usd is not None else None,
             margin_3x=round(margin_3x,2) if margin_3x is not None else None,
-            model_name=cfg["name"], model_status=cfg["status"], direction_mode=cfg["direction"], horizon=cfg["horizon"],
+            model_name=cfg["name"], model_status=cfg["status"], model_validation_passed=_model_validation_passed(cfg),
+            direction_mode=cfg["direction"], horizon=cfg["horizon"],
             regime=regime, direction_bias=direction_bias, opportunity_tier=opportunity_tier,
             confirmation_basis="1H candle close", last_closed_candle=(series[s]["1h"][-2]["t"] + 3600000 if len(series[s]["1h"]) >= 2 else None),
             analysis_ts=time.time(), ts=time.time(), error=None
@@ -740,6 +867,8 @@ async def startup():
         timeout=httpx.Timeout(4.0, connect=2.0),
         limits=httpx.Limits(max_connections=40, max_keepalive_connections=20),
     )
+    if configure_email_notifications():
+        asyncio.create_task(email_delivery_loop())
     asyncio.create_task(seed_all())
     asyncio.create_task(ws_loop())
     asyncio.create_task(price_rest_fallback())
