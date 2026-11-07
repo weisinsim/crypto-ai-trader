@@ -29,6 +29,10 @@ def recovery_window(last_verified_ms, now_ms, *, overlap_ms=300000,
     if last_verified_ms > now_ms:
         raise RecoveryWindowError("Checkpoint is in the future")
     start_ms = max(1, last_verified_ms - overlap_ms)
+    # A bounded recovery poll must make forward progress even with overlap.
+    # Otherwise a short max_span can loop forever without reaching new fills.
+    if start_ms + max_span_ms <= last_verified_ms and last_verified_ms < now_ms:
+        raise RecoveryWindowError("Recovery span cannot advance beyond checkpoint")
     end_ms = min(now_ms, start_ms + max_span_ms)
     if end_ms < start_ms:
         raise RecoveryWindowError("Recovery interval is invalid")
