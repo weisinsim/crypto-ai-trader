@@ -6,6 +6,7 @@ coverage. A watermark may be committed without an event only for a fully
 verified interval with no reduction.
 """
 import json
+import re
 import sqlite3
 from pathlib import Path
 
@@ -67,9 +68,12 @@ class AtomicExitCheckpointStore:
                     or event["classification"] not in (
                         "EXIT_REASON_UNVERIFIED", "TAKE_PROFIT", "STOP_LOSS", "MANUAL", "OTHER")
                     or not isinstance(event["event_id"], str)
-                    or not event["event_id"].startswith("pionex-exit-")
+                    or re.fullmatch(r"pionex-exit-[0-9a-f]{64}", event["event_id"]) is None
                     or not isinstance(event["fill_ids"], list)
-                    or not event["fill_ids"]):
+                    or not event["fill_ids"]
+                    or any(type(fill_id) is not str or not fill_id.strip()
+                           for fill_id in event["fill_ids"])
+                    or len(set(event["fill_ids"])) != len(event["fill_ids"])):
                 raise AtomicCheckpointError("Invalid STAGED-only event")
             payload = json.dumps(event, sort_keys=True, separators=(",", ":"), allow_nan=False)
         conn = self._conn
