@@ -70,6 +70,30 @@ class AtomicCheckpointTests(unittest.TestCase):
             "SELECT count(*) FROM pionex_exit_staging").fetchone()[0]
         self.assertEqual(count, 1)
 
+    def test_rejects_malformed_event_id_without_checkpoint(self):
+        bad = event()
+        bad["event_id"] = "pionex-exit-" + "z" * 64
+        with self.assertRaises(AtomicCheckpointError):
+            self.store.commit_verified_interval(
+                "acct", "BTC_USDT_PERP", 100, bad, **self.gates)
+        self.assertIsNone(self.store.checkpoint("acct", "BTC_USDT_PERP"))
+
+    def test_rejects_duplicate_fill_ids_without_checkpoint(self):
+        bad = event()
+        bad["fill_ids"] = ["f1", "f1"]
+        with self.assertRaises(AtomicCheckpointError):
+            self.store.commit_verified_interval(
+                "acct", "BTC_USDT_PERP", 100, bad, **self.gates)
+        self.assertIsNone(self.store.checkpoint("acct", "BTC_USDT_PERP"))
+
+    def test_rejects_blank_fill_ids_without_checkpoint(self):
+        bad = event()
+        bad["fill_ids"] = ["  "]
+        with self.assertRaises(AtomicCheckpointError):
+            self.store.commit_verified_interval(
+                "acct", "BTC_USDT_PERP", 100, bad, **self.gates)
+        self.assertIsNone(self.store.checkpoint("acct", "BTC_USDT_PERP"))
+
     def test_verified_no_exit_can_advance(self):
         self.store.commit_verified_interval(
             "acct", "BTC_USDT_PERP", 100, None, **self.gates)
