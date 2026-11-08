@@ -38,7 +38,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install test runner
-        run: python -m pip install --disable-pip-version-check pytest
+        run: python -m pip install --disable-pip-version-check pytest httpx
       - name: Compile read-only modules and tests
         run: python -m compileall -q notifications tests
       - name: Run Pionex offline unit tests
