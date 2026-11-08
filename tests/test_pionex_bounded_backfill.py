@@ -46,6 +46,22 @@ class BoundedBackfillTests(unittest.TestCase):
         with self.assertRaisesRegex(FillBackfillError, "budget"):
             self.run_fetch(reader, limit=1, max_requests=1)
 
+    def test_duplicate_identity_across_disjoint_windows_fails_closed(self):
+        class InconsistentReader:
+            async def fills(self, symbol, **filters):
+                lo, hi = filters["startTime"], filters["endTime"]
+                if hi - lo > 1:
+                    return {"fills": [fill("a", lo), fill("b", hi)]}
+                return {"fills": [fill("same-id", lo)]}
+        with self.assertRaisesRegex(FillBackfillError, "Repeated fill identity"):
+            self.run_fetch(InconsistentReader(), 100, 103, limit=2)
+
+    def test_boundary_timestamp_is_not_lost_when_split(self):
+        reader = FakeReader([fill("a", 100), fill("b", 104),
+                             fill("c", 105), fill("d", 109)])
+        result = self.run_fetch(reader, limit=2)
+        self.assertEqual([x["timestamp_ms"] for x in result], [100, 104, 105, 109])
+
     def test_invalid_response_fails_closed(self):
         class BadReader:
             async def fills(self, *args, **kwargs):
