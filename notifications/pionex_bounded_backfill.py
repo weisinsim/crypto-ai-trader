@@ -50,7 +50,7 @@ async def fetch_bounded_fills(reader, symbol, start_ms, end_ms, *,
             raise FillBackfillError("Unverified fill window") from exc
         for fill in fills:
             fid = fill["fill_id"]
-            if fid in seen and seen[fid] != fill:
-                raise FillBackfillError("Conflicting fill identity")
+            if fid in seen:
+                raise FillBackfillError("Repeated fill identity across disjoint windows")
             seen[fid] = fill
     return sorted(seen.values(), key=lambda x: (x["timestamp_ms"], x["fill_id"]))
