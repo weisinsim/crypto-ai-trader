@@ -35,6 +35,20 @@ h1{font-size:22px;margin:0 0 5px}.sub{font-size:12px;color:#9aa4b2}
 <button class="filter" data-f="SHORT">SHORT</button><button class="filter" data-f="WATCH-LONG">WATCH-LONG</button><button class="filter" data-f="WATCH-SHORT">WATCH-SHORT</button>
 <button class="filter" data-f="NO-TRADE">NO-TRADE</button>
 </div>
+<section class="researchPanel" aria-label="Pionex 开发进度快照" data-snapshot-date="2026-11-09">
+<h2>Pionex 只读通知系统 · 开发进度快照（2026-11-09）</h2>
+<div class="intro">此处为 GitHub 开发分支的人工核验快照，并非实时 CI、真实账户持仓或通知状态；只有本分支代码被明确批准并部署后，线上 Dashboard 才会显示本面板。<strong>当前不可视为已实盘就绪。</strong></div>
+<div class="researchScroll"><table class="researchTable"><thead><tr><th>项目</th><th>核验状态</th><th>说明</th></tr></thead><tbody>
+<tr><td>PR #195</td><td>Draft / 未合并</td><td>保持人工审批</td></tr>
+<tr><td>最新核验提交</td><td>0ecbd182</td><td>2026-11-09 核验时的分支 HEAD</td></tr>
+<tr><td>GitHub Actions</td><td>4/4 SUCCESS</td><td>仅代表该提交的自动测试通过</td></tr>
+<tr><td>Pionex 真实只读 API</td><td class="fail">尚未实测通过</td><td>持仓与成交字段待验证</td></tr>
+<tr><td>断线补查 / 对账</td><td class="fail">尚未端到端验证</td><td>不得将模拟数据视为真实成交</td></tr>
+<tr><td>Dashboard / ChatGPT 通知</td><td class="fail">尚未端到端验证</td><td>不得宣称真实通知已送达</td></tr>
+<tr><td>自动下单</td><td>禁止</td><td>不合并、不部署、不启用交易</td></tr>
+</tbody></table></div>
+<a class="researchLink" href="https://github.com/weisinsim/crypto-ai-trader/pull/195" target="_blank" rel="noopener noreferrer">查看 PR #195 最新状态（GitHub）</a>
+</section>
 <section class="researchPanel" aria-label="模型验证状态">
 <h2>研究与验证状态 · 2026-10-16</h2>
 <div class="intro">RESEARCH ONLY · 未批准实盘。Historical baseline research #233 已于提交 14f3dc8 完成，5/5 个交易对的历史数据、资金费率审计、基线回测及后续研究任务均成功执行。工作流成功表示计算完成，不表示策略通过盈利门槛。以下数据来自该次运行日志的样本外 Holdout 指标；参数优化和组合级风险仍需独立验证。</div>
