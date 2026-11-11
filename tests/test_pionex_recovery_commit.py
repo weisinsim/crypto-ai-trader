@@ -52,6 +52,24 @@ class RecoveryCommitTests(unittest.TestCase):
             self.commit(100, **self.gates)
         self.assertEqual(self.store.checkpoint("acct", "BTC_USDT_PERP"), 200)
 
+    def test_restart_resumes_from_durable_checkpoint(self):
+        self.store.commit_verified_interval("acct", "BTC_USDT_PERP", 100, **self.gates)
+        self.commit(250, **self.gates)
+        self.store.close()
+        self.store = AtomicExitCheckpointStore(Path(self.tmp.name) / "checkpoint.db")
+        resumed = self.commit(250, **self.gates)
+        self.assertEqual(resumed["window"]["start_ms"], 130)
+        self.assertEqual(resumed["window"]["end_ms"], 180)
+
+    def test_failed_poll_then_retry_does_not_skip_history(self):
+        self.store.commit_verified_interval("acct", "BTC_USDT_PERP", 100, **self.gates)
+        with self.assertRaises(RecoveryCommitError):
+            self.commit(250, **dict(self.gates, pages_complete=False))
+        self.assertEqual(self.store.checkpoint("acct", "BTC_USDT_PERP"), 100)
+        recovered = self.commit(250, **self.gates)
+        self.assertEqual(recovered["window"]["start_ms"], 90)
+        self.assertEqual(recovered["window"]["end_ms"], 140)
+
     def test_bool_evidence_is_not_accepted(self):
         self.store.commit_verified_interval("acct", "BTC_USDT_PERP", 100, **self.gates)
         with self.assertRaises(RecoveryCommitError):
