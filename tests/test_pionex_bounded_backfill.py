@@ -69,6 +69,25 @@ class BoundedBackfillTests(unittest.TestCase):
         with self.assertRaises(FillBackfillError):
             self.run_fetch(BadReader())
 
+    def test_bad_fill_in_one_split_window_rejects_whole_backfill(self):
+        class CorruptReader:
+            async def fills(self, symbol, **filters):
+                lo, hi = filters["startTime"], filters["endTime"]
+                if hi - lo > 1:
+                    return {"fills": [fill("a", lo), fill("b", hi)]}
+                if lo >= 102:
+                    return {"fills": [fill("bad", lo - 1)]}
+                return {"fills": [fill("good", lo)]}
+        with self.assertRaisesRegex(FillBackfillError, "Unverified fill window"):
+            self.run_fetch(CorruptReader(), 100, 103, limit=2)
+
+    def test_rejects_malformed_fill_without_partial_results(self):
+        class CorruptReader:
+            async def fills(self, symbol, **filters):
+                return {"fills": [{"id": "x", "symbol": symbol}]}
+        with self.assertRaisesRegex(FillBackfillError, "Unverified fill window"):
+            self.run_fetch(CorruptReader())
+
     def test_invalid_input_rejected_before_request(self):
         reader = FakeReader([])
         with self.assertRaises(FillBackfillError):
