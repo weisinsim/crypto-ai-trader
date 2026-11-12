@@ -46,6 +46,35 @@ def concentration(trades: list[dict]) -> dict:
     return result
 
 
+
+def trade_attribution(trades: list[dict]) -> dict:
+    """Describe realized trades by entry month, side, and exit reason; never retune."""
+    from datetime import datetime, timezone
+
+    groups: dict[str, list[dict]] = {}
+    for trade in trades:
+        month = datetime.fromtimestamp(int(trade["entry_time"]) / 1000, timezone.utc).strftime("%Y-%m")
+        for key in (f"month:{month}", f"side:{trade['side']}", f"exit_reason:{trade['reason']}"):
+            groups.setdefault(key, []).append(trade)
+
+    summary = {}
+    for key, items in sorted(groups.items()):
+        pnls = [float(item["pnl_equity"]) for item in items]
+        durations = [max(0.0, (int(item["exit_time"]) - int(item["entry_time"])) / 3_600_000)
+                     for item in items]
+        summary[key] = {
+            "trades": len(items),
+            "net_trade_pnl_equity_pct_additive": round(sum(pnls) * 100, 4),
+            "win_rate_pct": round(sum(value > 0 for value in pnls) / len(pnls) * 100, 2),
+            "mean_hold_hours": round(sum(durations) / len(durations), 2),
+            "stop_count": sum(item["reason"] == "STOP" for item in items),
+            "price_pnl_equity_pct_additive": round(sum(float(item.get("price_pnl_equity", 0)) for item in items) * 100, 4),
+            "trading_cost_equity_pct_additive": round(sum(float(item.get("trading_cost_equity", 0)) for item in items) * 100, 4),
+            "funding_pnl_equity_pct_additive": round(sum(float(item.get("funding_pnl_equity", 0)) for item in items) * 100, 4),
+        }
+    return summary
+
+
 def run(rows, params, start, end, cost, funding, symbol):
     # Existing simulator defines cost as fee + slippage per side, so these values
     # reproduce the workflow's base, 0.30%, and 0.46% round-trip scenarios.
@@ -109,7 +138,8 @@ def main():
             r = run(rows, params, a, b, slippage, funding, args.symbol)
             holdout_results.append({"half": idx, "cost_scenario": cost_name,
                                     "metrics": {k: v for k, v in r.items() if k != "trade_log"},
-                                    "trade_pnl_concentration": concentration(r["trade_log"])})
+                                    "trade_pnl_concentration": concentration(r["trade_log"]),
+                                    "trade_attribution_additive_only": trade_attribution(r["trade_log"])})
     output = {
         "status": "RESEARCH_ONLY",
         "symbol": args.symbol.upper(),
