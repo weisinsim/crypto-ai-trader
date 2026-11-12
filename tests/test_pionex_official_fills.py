@@ -36,6 +36,22 @@ class OfficialFillSchemaTests(unittest.TestCase):
             with self.assertRaises(PionexFillSchemaError):
                 self.normalize(response(data))
 
+    def test_numeric_and_string_fill_ids_cannot_alias(self):
+        with self.assertRaises(PionexFillSchemaError):
+            self.normalize(response([fill(1), fill("1")]))
+
+    def test_rejects_boolean_timestamp_and_fill_identity(self):
+        for bad in (dict(fill(), timestamp=True),
+                    dict(fill(), id=True),
+                    dict(fill(), orderId=False)):
+            with self.subTest(bad=bad), self.assertRaises(PionexFillSchemaError):
+                self.normalize(response([bad]))
+
+    def test_rejects_nonfinite_and_nonpositive_sizes(self):
+        for size in ("NaN", "Infinity", "-1", "0", "not-a-number"):
+            with self.subTest(size=size), self.assertRaises(PionexFillSchemaError):
+                self.normalize(response([dict(fill(), size=size)]))
+
     def test_out_of_window_and_failed_response(self):
         with self.assertRaises(PionexFillSchemaError):
             self.normalize(response([fill(ts=999)]))
