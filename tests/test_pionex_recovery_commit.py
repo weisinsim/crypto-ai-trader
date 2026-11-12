@@ -70,6 +70,26 @@ class RecoveryCommitTests(unittest.TestCase):
         self.assertEqual(recovered["window"]["start_ms"], 90)
         self.assertEqual(recovered["window"]["end_ms"], 140)
 
+    def test_order_evidence_is_mandatory(self):
+        self.store.commit_verified_interval("acct", "BTC_USDT_PERP", 100, **self.gates)
+        with self.assertRaisesRegex(RecoveryCommitError, "incomplete"):
+            self.commit(200, **dict(self.gates, order_evidence_verified=False))
+        self.assertEqual(self.store.checkpoint("acct", "BTC_USDT_PERP"), 100)
+
+    def test_overlap_larger_than_span_cannot_stall_or_skip(self):
+        self.store.commit_verified_interval("acct", "BTC_USDT_PERP", 100, **self.gates)
+        with self.assertRaises(RecoveryCommitError):
+            commit_recovered_window(
+                self.store, "acct", "BTC_USDT_PERP", 200,
+                overlap_ms=60, max_span_ms=50, **self.gates)
+        self.assertEqual(self.store.checkpoint("acct", "BTC_USDT_PERP"), 100)
+
+    def test_checkpoint_isolated_by_account_and_symbol(self):
+        self.store.commit_verified_interval("acct", "BTC_USDT_PERP", 100, **self.gates)
+        self.commit(200, **self.gates)
+        self.assertIsNone(self.store.checkpoint("other", "BTC_USDT_PERP"))
+        self.assertIsNone(self.store.checkpoint("acct", "ETH_USDT_PERP"))
+
     def test_bool_evidence_is_not_accepted(self):
         self.store.commit_verified_interval("acct", "BTC_USDT_PERP", 100, **self.gates)
         with self.assertRaises(RecoveryCommitError):
