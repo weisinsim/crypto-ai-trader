@@ -88,6 +88,32 @@ class BoundedBackfillTests(unittest.TestCase):
         with self.assertRaisesRegex(FillBackfillError, "Unverified fill window"):
             self.run_fetch(CorruptReader())
 
+    def test_transport_failure_is_not_silently_accepted(self):
+        class FailingReader:
+            async def fills(self, symbol, **filters):
+                raise TimeoutError("exchange unavailable")
+        with self.assertRaises(TimeoutError):
+            self.run_fetch(FailingReader())
+
+    def test_unsuccessful_exchange_envelope_rejected(self):
+        class ErrorReader:
+            async def fills(self, symbol, **filters):
+                return {"result": False, "data": {"fills": []}}
+        with self.assertRaises(FillBackfillError):
+            self.run_fetch(ErrorReader())
+
+    def test_wrong_symbol_in_split_window_fails_closed(self):
+        class WrongSymbolReader:
+            async def fills(self, symbol, **filters):
+                lo, hi = filters["startTime"], filters["endTime"]
+                if hi - lo > 1:
+                    return {"fills": [fill("a", lo), fill("b", hi)]}
+                item = fill("wrong", lo)
+                item["symbol"] = "ETH_USDT_PERP"
+                return {"fills": [item]}
+        with self.assertRaisesRegex(FillBackfillError, "Unverified fill window"):
+            self.run_fetch(WrongSymbolReader(), 100, 103, limit=2)
+
     def test_invalid_input_rejected_before_request(self):
         reader = FakeReader([])
         with self.assertRaises(FillBackfillError):
