@@ -14,6 +14,32 @@ class PionexReaderTests(unittest.TestCase):
         with self.assertRaises(PionexReadError):
             PionexFuturesReader.from_env({"PIONEX_READ_API_KEY": "x", "PIONEX_READ_API_SECRET": "y"})
 
+    def test_read_only_enable_flag_requires_explicit_true(self):
+        for flag in ("false", "1", "yes", "on", "", " true "):
+            with self.subTest(flag=flag):
+                with self.assertRaises(PionexReadError):
+                    PionexFuturesReader.from_env({
+                        "PIONEX_READ_ONLY_ENABLED": flag,
+                        "PIONEX_READ_API_KEY": "test-key",
+                        "PIONEX_READ_API_SECRET": "test-secret",
+                    })
+        reader = PionexFuturesReader.from_env({
+            "PIONEX_READ_ONLY_ENABLED": "true",
+            "PIONEX_READ_API_KEY": "test-key",
+            "PIONEX_READ_API_SECRET": "test-secret",
+        })
+        self.assertIsInstance(reader, PionexFuturesReader)
+
+    def test_enabled_reader_rejects_missing_credentials(self):
+        for key, secret in (("", "s"), ("k", ""), (" ", "s")):
+            with self.subTest(key=bool(key), secret=bool(secret)):
+                with self.assertRaises(ValueError):
+                    PionexFuturesReader.from_env({
+                        "PIONEX_READ_ONLY_ENABLED": "true",
+                        "PIONEX_READ_API_KEY": key,
+                        "PIONEX_READ_API_SECRET": secret,
+                    })
+
     def test_no_mutation_methods_or_paths(self):
         self.assertFalse(hasattr(PionexFuturesReader, "place_order"))
         self.assertFalse(hasattr(PionexFuturesReader, "cancel_order"))
