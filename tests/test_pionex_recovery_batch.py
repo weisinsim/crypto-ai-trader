@@ -51,5 +51,32 @@ class RecoveryBatchTests(unittest.TestCase):
             self.batch()
 
 
+    def test_rejects_duplicate_exchange_fill_id(self):
+        self.pages[0]["fills"].append(dict(self.pages[0]["fills"][0]))
+        with self.assertRaises(ValueError):
+            self.batch()
+
+    def test_rejects_wrong_contract(self):
+        self.pages[0]["fills"][0]["symbol"] = "ETH_USDT_PERP"
+        with self.assertRaises(ValueError):
+            self.batch()
+
+    def test_accepts_empty_terminal_page_with_verified_coverage(self):
+        self.pages[0]["fills"] = []
+        batch = self.batch()
+        self.assertEqual(batch["fills"], [])
+        self.assertFalse(batch["checkpoint_advanced"])
+
+    def test_rejects_boolean_timestamp(self):
+        self.pages[0]["fills"][0]["timestamp_ms"] = True
+        with self.assertRaises(RecoveryBatchError):
+            self.batch()
+
+    def test_rejects_future_fill(self):
+        self.pages[0]["fills"][0]["timestamp_ms"] = 1100001
+        with self.assertRaises(RecoveryBatchError):
+            self.batch()
+
+
 if __name__ == "__main__":
     unittest.main()
