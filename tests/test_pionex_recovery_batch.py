@@ -78,5 +78,18 @@ class RecoveryBatchTests(unittest.TestCase):
             self.batch()
 
 
+    def test_enforces_fill_count_cap(self):
+        with self.assertRaises(ValueError):
+            self.batch(max_fills=0)
+
+    def test_enforces_page_count_cap(self):
+        with self.assertRaises(ValueError):
+            self.batch(max_pages=0)
+
+    def test_rejects_invalid_recovery_span(self):
+        with self.assertRaises(ValueError):
+            self.batch(max_span_ms=0)
+
+
 if __name__ == "__main__":
     unittest.main()
