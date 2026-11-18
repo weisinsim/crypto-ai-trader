@@ -16,7 +16,8 @@ class RecoveryBatchError(ValueError):
 def prepare_recovery_batch(last_verified_ms, now_ms, pages, *,
                            expected_symbol, terminal_page_verified=False,
                            interval_coverage_verified=False,
-                           overlap_ms=300000, max_span_ms=3600000):
+                           overlap_ms=300000, max_span_ms=3600000,
+                           max_pages=100, max_fills=10000):
     """Return a bounded, uncommitted batch of normalized fills.
 
     This function deliberately cannot advance a checkpoint. Even a complete
@@ -29,7 +30,8 @@ def prepare_recovery_batch(last_verified_ms, now_ms, pages, *,
     if interval_coverage_verified is not True:
         raise RecoveryBatchError("Requested interval coverage not verified")
     fills = collect_verified_fill_pages(
-        pages, expected_symbol=expected_symbol, complete=True)
+        pages, expected_symbol=expected_symbol, complete=True,
+        max_pages=max_pages, max_fills=max_fills)
     for fill in fills:
         timestamp = fill.get("timestamp_ms")
         if type(timestamp) is not int:
