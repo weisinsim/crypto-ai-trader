@@ -6,6 +6,7 @@ No checkpoints, alerts, orders or deployment actions are performed here.
 """
 from __future__ import annotations
 
+import asyncio
 import inspect
 
 from notifications.pionex_recovery_window import recovery_window
@@ -19,7 +20,7 @@ class RecoveryRunnerError(ValueError):
 async def run_recovery_once(last_verified_ms, now_ms, *, expected_symbol,
                             fetch_verified_pages, overlap_ms=300000,
                             max_span_ms=3600000, max_pages=100,
-                            max_fills=10000):
+                            max_fills=10000, source_timeout_seconds=15):
     """Fetch and validate one bounded interval, leaving all side effects disabled.
 
     fetch_verified_pages(symbol=..., start_ms=..., end_ms=..., max_pages=...,
@@ -29,6 +30,9 @@ async def run_recovery_once(last_verified_ms, now_ms, *, expected_symbol,
     Evidence flags must be independently derived, never inferred from a
     successful HTTP response or simply from an empty page.
     """
+    if (type(source_timeout_seconds) not in (int, float)
+            or not 0 < source_timeout_seconds <= 120):
+        raise RecoveryRunnerError("Invalid source timeout")
     if not callable(fetch_verified_pages):
         raise RecoveryRunnerError("Async read-only page source required")
     window = recovery_window(last_verified_ms, now_ms,
@@ -38,7 +42,10 @@ async def run_recovery_once(last_verified_ms, now_ms, *, expected_symbol,
         end_ms=window["end_ms"], max_pages=max_pages, max_fills=max_fills)
     if not inspect.isawaitable(result):
         raise RecoveryRunnerError("Page source must be asynchronous")
-    evidence = await result
+    try:
+        evidence = await asyncio.wait_for(result, timeout=source_timeout_seconds)
+    except asyncio.TimeoutError:
+        raise RecoveryRunnerError("Read-only source timed out; recovery not verified") from None
     if not isinstance(evidence, dict) or set(evidence) != {
             "pages", "terminal_page_verified", "interval_coverage_verified"}:
         raise RecoveryRunnerError("Incomplete or unexpected source evidence")
