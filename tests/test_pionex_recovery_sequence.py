@@ -121,5 +121,32 @@ class RecoverySequenceTests(unittest.IsolatedAsyncioTestCase):
                 fetch_verified_pages=None, max_fills=0)
 
 
+    async def test_total_timeout_across_multiple_windows(self):
+        import asyncio
+
+        async def source(**kwargs):
+            await asyncio.sleep(0.025)
+            return {"pages": [{"request_cursor": None, "next_cursor": None,
+                               "fills": []}],
+                    "terminal_page_verified": True,
+                    "interval_coverage_verified": True}
+
+        with self.assertRaisesRegex(ValueError, "timed out|budget exhausted"):
+            await inspect_recovery_sequence(
+                1000000, 2500000, expected_symbol="BTC_USDT_PERP",
+                fetch_verified_pages=source, max_span_ms=600000,
+                overlap_ms=100000, max_windows=4,
+                source_timeout_seconds=1, total_timeout_seconds=0.035)
+
+    async def test_invalid_total_timeout(self):
+        for timeout in (0, -1, True, float("nan"), float("inf"), 601):
+            with self.subTest(timeout=timeout):
+                with self.assertRaises(RecoverySequenceError):
+                    await inspect_recovery_sequence(
+                        1000000, 2500000, expected_symbol="BTC_USDT_PERP",
+                        fetch_verified_pages=None,
+                        total_timeout_seconds=timeout)
+
+
 if __name__ == "__main__":
     unittest.main()
