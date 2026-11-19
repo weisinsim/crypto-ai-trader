@@ -25,6 +25,8 @@ async def inspect_recovery_sequence(last_verified_ms, now_ms, *,
         raise RecoverySequenceError("Verified checkpoint and clock required")
     if last_verified_ms > now_ms:
         raise RecoverySequenceError("Checkpoint in future")
+    if type(max_fills) is not int or max_fills <= 0:
+        raise RecoverySequenceError("Invalid sequence fill cap")
     cursor = last_verified_ms
     windows = []
     seen_fills = {}
@@ -50,6 +52,9 @@ async def inspect_recovery_sequence(last_verified_ms, now_ms, *,
                     raise RecoverySequenceError(
                         "Conflicting exchange fill ID across recovery windows")
             else:
+                if len(seen_fills) >= max_fills:
+                    raise RecoverySequenceError(
+                        "Total unique fills exceed sequence safety cap")
                 seen_fills[fill_id] = fill.copy()
                 unique_fills.append(fill)
         batch["fills"] = unique_fills
