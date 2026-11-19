@@ -99,5 +99,27 @@ class RecoverySequenceTests(unittest.IsolatedAsyncioTestCase):
                 overlap_ms=300000, max_windows=4)
 
 
+    async def test_total_unique_fills_cap_across_windows(self):
+        async def source(**kwargs):
+            fill_id = str(kwargs["end_ms"])
+            return {"pages": [{"request_cursor": None, "next_cursor": None,
+                               "fills": [{"fill_id": fill_id,
+                                          "symbol": "BTC_USDT_PERP",
+                                          "timestamp_ms": kwargs["end_ms"]}]}],
+                    "terminal_page_verified": True,
+                    "interval_coverage_verified": True}
+        with self.assertRaisesRegex(RecoverySequenceError, "Total unique"):
+            await inspect_recovery_sequence(
+                1000000, 2500000, expected_symbol="BTC_USDT_PERP",
+                fetch_verified_pages=source, max_span_ms=600000,
+                overlap_ms=100000, max_windows=4, max_fills=2)
+
+    async def test_rejects_invalid_total_fill_cap(self):
+        with self.assertRaises(RecoverySequenceError):
+            await inspect_recovery_sequence(
+                1000000, 2500000, expected_symbol="BTC_USDT_PERP",
+                fetch_verified_pages=None, max_fills=0)
+
+
 if __name__ == "__main__":
     unittest.main()
