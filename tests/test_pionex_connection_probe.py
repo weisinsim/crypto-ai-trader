@@ -2,7 +2,7 @@
 import asyncio
 import unittest
 
-from notifications.pionex_connection_probe import probe_positions
+from notifications.pionex_connection_probe import probe_positions, live_probe_authorized
 
 
 class FakeReader:
@@ -21,6 +21,19 @@ class FakeReader:
 class ProbeTests(unittest.TestCase):
     def run_probe(self, reader):
         return asyncio.run(probe_positions(reader))
+
+    def test_live_probe_requires_two_exact_opt_ins(self):
+        self.assertFalse(live_probe_authorized({}))
+        self.assertFalse(live_probe_authorized({"PIONEX_READ_ONLY_ENABLED": "true"}))
+        self.assertFalse(live_probe_authorized({"PIONEX_LIVE_PROBE_APPROVED": "true"}))
+        self.assertFalse(live_probe_authorized({
+            "PIONEX_READ_ONLY_ENABLED": "TRUE",
+            "PIONEX_LIVE_PROBE_APPROVED": "true",
+        }))
+        self.assertTrue(live_probe_authorized({
+            "PIONEX_READ_ONLY_ENABLED": "true",
+            "PIONEX_LIVE_PROBE_APPROVED": "true",
+        }))
 
     def test_dict_success_does_not_leak_positions(self):
         reader = FakeReader({"positions": [{"symbol": "BTC_USDT_PERP", "quantity": "9", "secret": "SENSITIVE"}]})
