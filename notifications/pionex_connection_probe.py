@@ -45,8 +45,10 @@ async def main() -> int:
         return 2
     try:
         reader = PionexFuturesReader.from_env()
-    except (PionexReadError, ValueError):
-        print(json.dumps({"ok": False, "stage": "configuration", "reason": "disabled_or_missing_credentials"}))
+    except Exception:
+        # Never expose exception strings: credential parsing and injected clients
+        # may embed private environment values in their error messages.
+        print(json.dumps({"ok": False, "stage": "configuration", "reason": "reader_initialization_failed"}))
         return 2
     result = await probe_positions(reader)
     print(json.dumps(result, sort_keys=True))
