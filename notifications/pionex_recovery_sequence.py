@@ -27,6 +27,7 @@ async def inspect_recovery_sequence(last_verified_ms, now_ms, *,
         raise RecoverySequenceError("Checkpoint in future")
     cursor = last_verified_ms
     windows = []
+    seen_fill_ids = set()
     for _ in range(max_windows):
         batch = await run_recovery_once(
             cursor, now_ms, expected_symbol=expected_symbol,
@@ -39,6 +40,15 @@ async def inspect_recovery_sequence(last_verified_ms, now_ms, *,
             raise RecoverySequenceError("Recovery regressed")
         if window["end_ms"] == cursor and window["more_history_pending"]:
             raise RecoverySequenceError("Recovery made no forward progress")
+        # Overlapping windows may legitimately return the same exchange fill.
+        # Deduplicate across the entire sequence, not only within each page.
+        unique_fills = []
+        for fill in batch["fills"]:
+            fill_id = str(fill["fill_id"])
+            if fill_id not in seen_fill_ids:
+                seen_fill_ids.add(fill_id)
+                unique_fills.append(fill)
+        batch["fills"] = unique_fills
         windows.append(batch)
         cursor = window["end_ms"]
         if not window["more_history_pending"]:
