@@ -58,5 +58,24 @@ class RecoverySequenceTests(unittest.IsolatedAsyncioTestCase):
                 fetch_verified_pages=source)
 
 
+    async def test_overlapping_fills_are_deduplicated(self):
+        async def source(**kwargs):
+            fills = [{"fill_id": "shared", "symbol": "BTC_USDT_PERP",
+                      "timestamp_ms": 1000000}]
+            return {"pages": [{"request_cursor": None, "next_cursor": None,
+                               "fills": fills}],
+                    "terminal_page_verified": True,
+                    "interval_coverage_verified": True}
+
+        result = await inspect_recovery_sequence(
+            1000000, 1800000, expected_symbol="BTC_USDT_PERP",
+            fetch_verified_pages=source, max_span_ms=600000,
+            overlap_ms=300000, max_windows=4)
+        self.assertEqual(len(result["batches"]), 3)
+        self.assertEqual(
+            sum(len(batch["fills"]) for batch in result["batches"]), 1)
+        self.assertFalse(result["notification_ready"])
+
+
 if __name__ == "__main__":
     unittest.main()
