@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 
 from notifications.pionex_readonly import PionexFuturesReader, PionexReadError
@@ -31,7 +32,17 @@ async def probe_positions(reader: PionexFuturesReader) -> dict[str, object]:
     }
 
 
+def live_probe_authorized(environ=None) -> bool:
+    """Require two independent explicit opt-ins before any live request."""
+    env = os.environ if environ is None else environ
+    return (env.get("PIONEX_READ_ONLY_ENABLED") == "true"
+            and env.get("PIONEX_LIVE_PROBE_APPROVED") == "true")
+
+
 async def main() -> int:
+    if not live_probe_authorized():
+        print(json.dumps({"ok": False, "stage": "configuration", "reason": "live_probe_not_approved"}))
+        return 2
     try:
         reader = PionexFuturesReader.from_env()
     except (PionexReadError, ValueError):
