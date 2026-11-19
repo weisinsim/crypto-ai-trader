@@ -26,7 +26,7 @@ class V12PipelineTests(unittest.TestCase):
                     "mark_price_source": "test_fixture", "venue": "binance_usdm"}]
         with tempfile.TemporaryDirectory() as tmp:
             with patch("research.run_v12_research.download_klines",
-                       side_effect=lambda symbol, interval, start, end: one_hour if interval == "1h" else four_hour), \
+                       side_effect=lambda symbol, interval, start, end, **kwargs: one_hour if interval == "1h" else four_hour), \
                  patch("research.run_v12_research.download_funding_history", return_value=funding):
                 result = run_pipeline("BTCUSDT", "2026-01-01", "2026-03-01", tmp, folds=2)
             self.assertEqual(result["status"], "RESEARCH_ONLY")
