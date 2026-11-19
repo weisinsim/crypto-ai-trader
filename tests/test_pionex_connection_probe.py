@@ -54,6 +54,37 @@ class ProbeTests(unittest.TestCase):
         self.assertEqual(json.loads(output.getvalue())["reason"], "live_probe_not_approved")
         self.assertNotIn("PRIVATE", output.getvalue())
 
+    def test_approved_main_success_still_does_not_claim_live_reconciliation(self):
+        reader = FakeReader({"positions": [{"symbol": "BTC_USDT_PERP", "size": "123"}]})
+        env = {"PIONEX_READ_ONLY_ENABLED": "true", "PIONEX_LIVE_PROBE_APPROVED": "true"}
+        with patch.dict("os.environ", env, clear=True):
+            with patch("notifications.pionex_connection_probe.PionexFuturesReader.from_env", return_value=reader):
+                output = io.StringIO()
+                with redirect_stdout(output):
+                    exit_code = asyncio.run(main())
+        report = json.loads(output.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(report["ok"])
+        self.assertFalse(report["schema_verified"])
+        self.assertFalse(report["fills_verified"])
+        self.assertFalse(report["notifications_verified"])
+        self.assertNotIn("BTC_USDT_PERP", output.getvalue())
+        self.assertEqual(reader.calls, 1)
+
+    def test_approved_main_failure_redacts_exchange_error(self):
+        reader = FakeReader(error=RuntimeError("PIONEX_READ_API_SECRET=PRIVATE"))
+        env = {"PIONEX_READ_ONLY_ENABLED": "true", "PIONEX_LIVE_PROBE_APPROVED": "true"}
+        with patch.dict("os.environ", env, clear=True):
+            with patch("notifications.pionex_connection_probe.PionexFuturesReader.from_env", return_value=reader):
+                output = io.StringIO()
+                with redirect_stdout(output):
+                    exit_code = asyncio.run(main())
+        report = json.loads(output.getvalue())
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(report["reason"], "read_or_validation_failed")
+        self.assertNotIn("PRIVATE", output.getvalue())
+        self.assertEqual(reader.calls, 1)
+
     def test_dict_success_does_not_leak_positions(self):
         reader = FakeReader({"positions": [{"symbol": "BTC_USDT_PERP", "quantity": "9", "secret": "SENSITIVE"}]})
         result = self.run_probe(reader)
