@@ -60,8 +60,10 @@ class RecoverySequenceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_overlapping_fills_are_deduplicated(self):
         async def source(**kwargs):
-            fills = [{"fill_id": "shared", "symbol": "BTC_USDT_PERP",
-                      "timestamp_ms": 1000000}]
+            fills = ([{"fill_id": "shared", "symbol": "BTC_USDT_PERP",
+                       "timestamp_ms": 1000000}]
+                     if kwargs["start_ms"] <= 1000000 <= kwargs["end_ms"]
+                     else [])
             return {"pages": [{"request_cursor": None, "next_cursor": None,
                                "fills": fills}],
                     "terminal_page_verified": True,
