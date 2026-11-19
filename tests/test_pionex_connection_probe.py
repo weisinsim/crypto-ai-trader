@@ -54,6 +54,19 @@ class ProbeTests(unittest.TestCase):
         self.assertEqual(json.loads(output.getvalue())["reason"], "live_probe_not_approved")
         self.assertNotIn("PRIVATE", output.getvalue())
 
+    def test_approved_main_reader_initialization_error_is_redacted(self):
+        env = {"PIONEX_READ_ONLY_ENABLED": "true", "PIONEX_LIVE_PROBE_APPROVED": "true"}
+        with patch.dict("os.environ", env, clear=True):
+            with patch("notifications.pionex_connection_probe.PionexFuturesReader.from_env",
+                       side_effect=RuntimeError("API_SECRET=PRIVATE")):
+                output = io.StringIO()
+                with redirect_stdout(output):
+                    exit_code = asyncio.run(main())
+        report = json.loads(output.getvalue())
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(report["reason"], "reader_initialization_failed")
+        self.assertNotIn("PRIVATE", output.getvalue())
+
     def test_approved_main_success_still_does_not_claim_live_reconciliation(self):
         reader = FakeReader({"positions": [{"symbol": "BTC_USDT_PERP", "size": "123"}]})
         env = {"PIONEX_READ_ONLY_ENABLED": "true", "PIONEX_LIVE_PROBE_APPROVED": "true"}
