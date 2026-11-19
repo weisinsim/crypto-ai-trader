@@ -1,8 +1,12 @@
 """Offline safety tests for the redacted Pionex connection probe."""
 import asyncio
+import io
+import json
 import unittest
+from contextlib import redirect_stdout
+from unittest.mock import patch
 
-from notifications.pionex_connection_probe import probe_positions, live_probe_authorized
+from notifications.pionex_connection_probe import probe_positions, live_probe_authorized, main
 
 
 class FakeReader:
@@ -34,6 +38,21 @@ class ProbeTests(unittest.TestCase):
             "PIONEX_READ_ONLY_ENABLED": "true",
             "PIONEX_LIVE_PROBE_APPROVED": "true",
         }))
+
+    def test_main_refuses_live_requests_without_separate_approval(self):
+        with patch.dict("os.environ", {
+            "PIONEX_READ_ONLY_ENABLED": "true",
+            "PIONEX_READ_API_KEY": "PRIVATE_KEY",
+            "PIONEX_READ_API_SECRET": "PRIVATE_SECRET",
+        }, clear=True):
+            with patch("notifications.pionex_connection_probe.PionexFuturesReader.from_env",
+                       side_effect=AssertionError("must not construct live reader")):
+                output = io.StringIO()
+                with redirect_stdout(output):
+                    exit_code = asyncio.run(main())
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(json.loads(output.getvalue())["reason"], "live_probe_not_approved")
+        self.assertNotIn("PRIVATE", output.getvalue())
 
     def test_dict_success_does_not_leak_positions(self):
         reader = FakeReader({"positions": [{"symbol": "BTC_USDT_PERP", "quantity": "9", "secret": "SENSITIVE"}]})
