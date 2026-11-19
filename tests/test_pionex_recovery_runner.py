@@ -60,5 +60,27 @@ class RecoveryRunnerTests(unittest.IsolatedAsyncioTestCase):
                                     fetch_verified_pages=None)
 
 
+    async def test_source_timeout_fails_closed(self):
+        import asyncio
+
+        async def source(**kwargs):
+            await asyncio.sleep(0.1)
+            return {}
+        with self.assertRaisesRegex(RecoveryRunnerError, "timed out"):
+            await run_recovery_once(
+                1000000, 1100000, expected_symbol="BTC_USDT_PERP",
+                fetch_verified_pages=source, source_timeout_seconds=0.001)
+
+    async def test_rejects_invalid_timeout(self):
+        async def source(**kwargs):
+            return {}
+        for timeout in (0, -1, True, 121, "15"):
+            with self.subTest(timeout=timeout):
+                with self.assertRaises(RecoveryRunnerError):
+                    await run_recovery_once(
+                        1000000, 1100000, expected_symbol="BTC_USDT_PERP",
+                        fetch_verified_pages=source, source_timeout_seconds=timeout)
+
+
 if __name__ == "__main__":
     unittest.main()
