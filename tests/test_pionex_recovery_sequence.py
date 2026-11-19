@@ -79,5 +79,25 @@ class RecoverySequenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result["notification_ready"])
 
 
+    async def test_conflicting_duplicate_fill_fails_closed(self):
+        calls = 0
+
+        async def source(**kwargs):
+            nonlocal calls
+            calls += 1
+            fill = {"fill_id": "shared", "symbol": "BTC_USDT_PERP",
+                    "timestamp_ms": 1000000, "quantity": calls}
+            return {"pages": [{"request_cursor": None, "next_cursor": None,
+                               "fills": [fill] if kwargs["start_ms"] <= 1000000 <= kwargs["end_ms"] else []}],
+                    "terminal_page_verified": True,
+                    "interval_coverage_verified": True}
+
+        with self.assertRaisesRegex(RecoverySequenceError, "Conflicting"):
+            await inspect_recovery_sequence(
+                1000000, 1800000, expected_symbol="BTC_USDT_PERP",
+                fetch_verified_pages=source, max_span_ms=600000,
+                overlap_ms=300000, max_windows=4)
+
+
 if __name__ == "__main__":
     unittest.main()
