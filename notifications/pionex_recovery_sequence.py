@@ -27,7 +27,7 @@ async def inspect_recovery_sequence(last_verified_ms, now_ms, *,
         raise RecoverySequenceError("Checkpoint in future")
     cursor = last_verified_ms
     windows = []
-    seen_fill_ids = set()
+    seen_fills = {}
     for _ in range(max_windows):
         batch = await run_recovery_once(
             cursor, now_ms, expected_symbol=expected_symbol,
@@ -45,8 +45,12 @@ async def inspect_recovery_sequence(last_verified_ms, now_ms, *,
         unique_fills = []
         for fill in batch["fills"]:
             fill_id = str(fill["fill_id"])
-            if fill_id not in seen_fill_ids:
-                seen_fill_ids.add(fill_id)
+            if fill_id in seen_fills:
+                if seen_fills[fill_id] != fill:
+                    raise RecoverySequenceError(
+                        "Conflicting exchange fill ID across recovery windows")
+            else:
+                seen_fills[fill_id] = fill.copy()
                 unique_fills.append(fill)
         batch["fills"] = unique_fills
         windows.append(batch)
